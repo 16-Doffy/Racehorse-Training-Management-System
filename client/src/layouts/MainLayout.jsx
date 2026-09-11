@@ -29,7 +29,14 @@ export default function MainLayout() {
   };
 
   return (
-    <Layout className="min-h-screen">
+    // Fixed-height app shell: the outer Layout is exactly one viewport tall and never scrolls
+    // itself. Only <Content> scrolls internally. Without this, a page taller than the viewport
+    // makes the whole body scroll, and Ant Design's Sider collapse trigger (which is
+    // position:fixed to the *window* bottom) visually detaches from the Sider's own background —
+    // the "empty gap + floating arrow" bug. Sizing is done with inline styles here because the
+    // flex height chain (Layout -> Sider/Layout -> Header/Content) has to be exact, not just a
+    // minimum, for the internal-scroll behavior to kick in.
+    <Layout style={{ height: '100vh' }}>
       <Sider collapsible collapsed={siderCollapsed} onCollapse={() => dispatch(siderToggled())}>
         <div className="h-16 flex items-center justify-center text-white font-semibold text-lg">
           {siderCollapsed ? 'RTM' : 'Racehorse TMS'}
@@ -45,8 +52,8 @@ export default function MainLayout() {
           }}
         />
       </Sider>
-      <Layout>
-        <Header className="!bg-white !px-6 flex items-center justify-between shadow-sm">
+      <Layout style={{ height: '100vh' }}>
+        <Header className="!bg-white !px-6 flex items-center justify-between shadow-sm shrink-0">
           <Text strong>{ROLE_LABELS[user?.role]}</Text>
           <div className="flex items-center gap-5">
             <AlertBell />
@@ -62,7 +69,10 @@ export default function MainLayout() {
             </Dropdown>
           </div>
         </Header>
-        <Content className="m-4 p-4 bg-white rounded-md min-h-[calc(100vh-112px)]">
+        <Content
+          style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
+          className="m-4 p-4 bg-white rounded-md"
+        >
           <Outlet />
         </Content>
       </Layout>

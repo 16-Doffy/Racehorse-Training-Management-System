@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Form, Input, Button, Card, Typography, Alert } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { authApi } from './authApi';
@@ -22,7 +22,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const location = useLocation();
 
   const onFinish = async (values) => {
     setError('');
@@ -30,8 +29,11 @@ export default function LoginPage() {
     try {
       const res = await authApi.login(values);
       dispatch(credentialsReceived(res.data));
-      const redirectTo = location.state?.from || '/';
-      navigate(redirectTo, { replace: true });
+      // Always land on the dashboard, never on a remembered "from" location: this app is
+      // frequently used by switching between different-role demo accounts in the same tab, and
+      // honoring a stale "from" (e.g. a role-restricted page the previous account was on) sends
+      // the newly-logged-in user straight into a 403 instead of a working screen.
+      navigate('/', { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed.');
     } finally {

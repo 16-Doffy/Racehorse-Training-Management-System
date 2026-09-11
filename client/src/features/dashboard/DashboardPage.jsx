@@ -30,23 +30,25 @@ export default function DashboardPage() {
         {ROLE_LABELS[user?.role]} — {ROLE_WELCOME[user?.role]}
       </Paragraph>
 
-      <Row gutter={16} className="mt-4">
-        <Col span={6}>
+      {/* xs/sm/lg breakpoints so the 4 stat cards wrap into 2 or 1 per row on narrower windows
+          instead of squeezing into fixed 6/24 columns. */}
+      <Row gutter={[16, 16]} className="mt-4">
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic title="Tổng số ngựa" value={horses.length} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic title="Đủ điều kiện" value={eligible} valueStyle={{ color: '#3f8600' }} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic title="Cần theo dõi" value={monitoring} valueStyle={{ color: '#d4b106' }} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic title="Chấn thương" value={injured} valueStyle={{ color: '#cf1322' }} />
           </Card>
