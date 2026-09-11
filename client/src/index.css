@@ -1,0 +1,15 @@
+/* Preflight is skipped on purpose: Ant Design is the primary component library and its own
+   resets would otherwise fight Tailwind's. Only theme tokens + utility classes are imported. */
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/utilities" layer(utilities);
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
