@@ -6,3 +6,6 @@ build/
 *.log
 .DS_Store
 uploads/
+
+# Local working notes: session/progress tracking, not committed to git.
+PROJECT_STATUS.md
