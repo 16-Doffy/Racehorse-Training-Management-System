@@ -36,6 +36,15 @@ npm run dev                 # chạy song song server (:5000) và client (:5173)
 
 Mở http://localhost:5173
 
+## Tài liệu API (Swagger)
+
+- Local: http://localhost:5000/api-docs
+- Bản deploy dùng chung: https://racehorse-tms-server.onrender.com/api-docs
+
+Toàn bộ endpoint (auth, horses, training, health, stable, feeding, inventory, races, finance,
+notifications, audit-logs) đều liệt kê ở đây kèm request/response mẫu — dùng nút **Authorize**
+trên Swagger UI (dán JWT lấy từ `POST /auth/login`) để gọi thử trực tiếp các API cần đăng nhập.
+
 ## Tài khoản demo (mật khẩu chung: `123456`)
 
 | Vai trò | Email |

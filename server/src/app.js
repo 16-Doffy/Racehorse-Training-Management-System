@@ -2,8 +2,10 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
+const swaggerUi = require('swagger-ui-express');
 const { clientOrigins } = require('./config/env');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
+const openapiSpec = require('./docs/openapi');
 
 const authRoutes = require('./modules/auth/auth.routes');
 const usersRoutes = require('./modules/users/users.routes');
@@ -26,6 +28,10 @@ app.use(morgan('dev'));
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 app.get('/api/v1/health-check', (req, res) => res.json({ success: true, message: 'API is running.' }));
+
+// Interactive API docs: GET /api-docs (Swagger UI), GET /api-docs.json (raw spec).
+app.get('/api-docs.json', (req, res) => res.json(openapiSpec));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpec, { customSiteTitle: 'Racehorse TMS API Docs' }));
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', usersRoutes);
