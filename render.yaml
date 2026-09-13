@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: racehorse-tms-server
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/v1/health-check
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: ENABLE_SENSOR_SIMULATOR
+        value: "true"
+      # Set these two manually in the Render dashboard after the first deploy
+      # (not stored in this file — see DEPLOYMENT.md):
+      - key: MONGO_URI
+        sync: false
+      - key: CLIENT_URL
+        sync: false

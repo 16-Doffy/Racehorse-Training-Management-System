@@ -15,6 +15,9 @@ WDP301/
 Xem chi tiết kiến trúc, data model và phạm vi triển khai từng giai đoạn tại kế hoạch đã lưu
 trong quá trình phát triển (data model, API structure, realtime alerts, core flow theo role).
 
+**Muốn cả team dùng chung 1 database/backend thay vì mỗi người chạy Mongo/server local riêng?**
+Xem [DEPLOYMENT.md](DEPLOYMENT.md) (MongoDB Atlas + Render, có `render.yaml` deploy sẵn).
+
 ## Yêu cầu môi trường
 
 - Node.js 18+ (đã test với Node 22)

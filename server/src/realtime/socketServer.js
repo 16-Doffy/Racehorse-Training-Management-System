@@ -1,6 +1,6 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
-const { jwtSecret, clientUrl } = require('../config/env');
+const { jwtSecret, clientOrigins } = require('../config/env');
 const Horse = require('../models/Horse');
 
 let io = null;
@@ -8,7 +8,7 @@ let io = null;
 /** Attaches Socket.io to the HTTP server and authenticates each connection via its JWT. */
 function initSocket(httpServer) {
   io = new Server(httpServer, {
-    cors: { origin: clientUrl, credentials: true },
+    cors: { origin: clientOrigins, credentials: true },
   });
 
   io.use((socket, next) => {

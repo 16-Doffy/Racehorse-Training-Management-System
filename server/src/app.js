@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
-const { clientUrl } = require('./config/env');
+const { clientOrigins } = require('./config/env');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
 
 const authRoutes = require('./modules/auth/auth.routes');
@@ -20,7 +20,7 @@ const auditRoutes = require('./modules/audit/audit.routes');
 
 const app = express();
 
-app.use(cors({ origin: clientUrl, credentials: true }));
+app.use(cors({ origin: clientOrigins, credentials: true }));
 app.use(express.json());
 app.use(morgan('dev'));
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
