@@ -1,15 +1,14 @@
 const mongoose = require('mongoose');
 
 // Scaffold model: full CRUD is exposed, procurement workflow comes in a later phase.
-const restockRequestSchema = new mongoose.Schema(
-  {
-    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    quantity: { type: Number, required: true },
-    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
-    requestedAt: { type: Date, default: Date.now },
-  },
-  { _id: false }
-);
+// Keeps its own _id (unlike other embedded arrays in this file's siblings) because the
+// approve/reject endpoint needs to address one specific request within the array.
+const restockRequestSchema = new mongoose.Schema({
+  requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  quantity: { type: Number, required: true },
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  requestedAt: { type: Date, default: Date.now },
+});
 
 const inventoryItemSchema = new mongoose.Schema(
   {

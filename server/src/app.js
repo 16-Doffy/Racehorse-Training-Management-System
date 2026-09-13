@@ -19,6 +19,7 @@ const raceRoutes = require('./modules/race/race.routes');
 const financeRoutes = require('./modules/finance/finance.routes');
 const notificationRoutes = require('./modules/alerts/notification.routes');
 const auditRoutes = require('./modules/audit/audit.routes');
+const reportsRoutes = require('./modules/reports/reports.routes');
 
 const app = express();
 
@@ -45,6 +46,7 @@ app.use('/api/v1/races', raceRoutes);
 app.use('/api/v1/finance', financeRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/audit-logs', auditRoutes);
+app.use('/api/v1/reports', reportsRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -237,7 +237,7 @@ module.exports = {
           stableBlock: { type: 'string' },
           restockRequests: {
             type: 'array',
-            items: { type: 'object', properties: { requestedBy: { type: 'string' }, quantity: { type: 'number' }, status: { type: 'string', enum: ['pending', 'approved', 'rejected'] } } },
+            items: { type: 'object', properties: { _id: { type: 'string' }, requestedBy: { type: 'string' }, quantity: { type: 'number' }, status: { type: 'string', enum: ['pending', 'approved', 'rejected'] } } },
           },
         },
       },
@@ -306,6 +306,7 @@ module.exports = {
     { name: 'Finance (scaffold)' },
     { name: 'Notifications' },
     { name: 'Audit Log (Manager)' },
+    { name: 'Reports (Manager)' },
     { name: 'System' },
   ],
   paths: {
@@ -545,6 +546,18 @@ module.exports = {
     '/inventory/{id}/restock-request': {
       post: { tags: ['Inventory (scaffold)'], summary: 'Request a restock (Groom, Head Trainer, Veterinarian)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { quantity: { type: 'number' } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 404: responses[404] } },
     },
+    '/inventory/{id}/restock-requests/{reqId}': {
+      patch: {
+        tags: ['Inventory (scaffold)'],
+        summary: 'Approve or reject a pending restock request (Manager) — approving adds the quantity to stock',
+        parameters: [idParam('id'), idParam('reqId', 'The restockRequests sub-document id')],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['status'], properties: { status: { type: 'string', enum: ['approved', 'rejected'] } } } } },
+        },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
     '/races': {
       get: { tags: ['Races (scaffold)'], summary: 'List race entries', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/RaceEntry' } }) } },
       post: { tags: ['Races (scaffold)'], summary: 'Register a horse for a race (Head Trainer)', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/RaceEntry' }), 403: responses[403] } },
@@ -578,6 +591,46 @@ module.exports = {
         summary: 'Paginated system audit trail',
         parameters: [{ name: 'page', in: 'query', schema: { type: 'integer', default: 1 } }, { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 } }],
         responses: { 200: responses[200]({ type: 'object', properties: { items: { type: 'array', items: { $ref: '#/components/schemas/AuditLog' } }, total: { type: 'integer' }, page: { type: 'integer' }, limit: { type: 'integer' } } }), 403: responses[403] },
+      },
+    },
+    '/reports/overview': {
+      get: {
+        tags: ['Reports (Manager)'],
+        summary: 'Aggregated training performance, operating cost, and race revenue/participation report',
+        parameters: [
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Period start (ISO date), applied to session/finance/race dates' },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Period end (ISO date)' },
+        ],
+        responses: {
+          200: responses[200]({
+            type: 'object',
+            properties: {
+              period: { type: 'object', properties: { from: { type: 'string', nullable: true }, to: { type: 'string', nullable: true } } },
+              trainingPerformance: {
+                type: 'object',
+                properties: {
+                  totalSessions: { type: 'integer' },
+                  sessionsByStatus: { type: 'object', additionalProperties: { type: 'integer' } },
+                  avgPerformanceRating: { type: 'number', nullable: true },
+                  ratedSessionCount: { type: 'integer' },
+                },
+              },
+              operatingCost: {
+                type: 'object',
+                properties: { total: { type: 'number' }, byCategory: { type: 'array', items: { type: 'object', properties: { category: { type: 'string' }, total: { type: 'number' } } } } },
+              },
+              raceRevenue: {
+                type: 'object',
+                properties: { total: { type: 'number' }, byCategory: { type: 'array', items: { type: 'object', properties: { category: { type: 'string' }, total: { type: 'number' } } } } },
+              },
+              raceParticipation: {
+                type: 'object',
+                properties: { totalEntries: { type: 'integer' }, byStatus: { type: 'object', additionalProperties: { type: 'integer' } } },
+              },
+            },
+          }),
+          403: responses[403],
+        },
       },
     },
   },
