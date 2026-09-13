@@ -10,6 +10,10 @@ const trainingPlanSchema = new mongoose.Schema(
       required: true,
     },
     distanceTarget: { type: Number, required: true }, // meters
+    // "Khối lượng" — weekly training volume/load, so a plan captures more than just target
+    // distance: how much work per week and how hard, alongside the surface it's run on.
+    weeklyVolumeKm: { type: Number, required: true }, // total km of work planned per week
+    intensity: { type: String, enum: ['light', 'moderate', 'high'], default: 'moderate' },
     surface: { type: String, enum: ['turf', 'dirt', 'synthetic', 'sand'], required: true },
     startDate: { type: Date, required: true },
     endDate: { type: Date },

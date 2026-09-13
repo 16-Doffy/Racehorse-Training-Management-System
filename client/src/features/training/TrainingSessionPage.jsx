@@ -11,6 +11,7 @@ import {
   message,
   InputNumber,
   Input,
+  Segmented,
 } from 'antd';
 import { PlusOutlined, EditOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -20,18 +21,22 @@ import { horsesApi } from '../horses/horsesApi';
 const { Title } = Typography;
 
 const STATUS_COLORS = { scheduled: 'default', in_progress: 'processing', completed: 'success', cancelled: 'error' };
+const SESSION_TYPE_LABELS = { training: 'Buổi tập thường', trial_run: 'Lượt chạy thử' };
 
 export default function TrainingSessionPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [evalOpen, setEvalOpen] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
+  const [typeFilter, setTypeFilter] = useState('all');
   const [createForm] = Form.useForm();
   const [evalForm] = Form.useForm();
   const queryClient = useQueryClient();
 
   const { data: sessionsData, isLoading } = useQuery({
-    queryKey: ['training-sessions'],
-    queryFn: () => trainingSessionApi.list(),
+    // Re-fetches whenever the filter changes, letting the server do the filtering rather than
+    // hiding rows client-side — keeps this consistent with every other list page in the app.
+    queryKey: ['training-sessions', typeFilter],
+    queryFn: () => trainingSessionApi.list(typeFilter === 'all' ? undefined : { sessionType: typeFilter }),
   });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
@@ -62,6 +67,12 @@ export default function TrainingSessionPage() {
 
   const columns = [
     { title: 'Ngựa', dataIndex: ['horse', 'name'], key: 'horse' },
+    {
+      title: 'Loại',
+      dataIndex: 'sessionType',
+      key: 'sessionType',
+      render: (t) => <Tag color={t === 'trial_run' ? 'purple' : 'default'}>{SESSION_TYPE_LABELS[t] || t}</Tag>,
+    },
     {
       title: 'Thời gian',
       dataIndex: 'scheduledAt',
@@ -114,6 +125,17 @@ export default function TrainingSessionPage() {
         </Button>
       </div>
 
+      <Segmented
+        className="mb-4"
+        value={typeFilter}
+        onChange={setTypeFilter}
+        options={[
+          { value: 'all', label: 'Tất cả' },
+          { value: 'training', label: SESSION_TYPE_LABELS.training },
+          { value: 'trial_run', label: SESSION_TYPE_LABELS.trial_run },
+        ]}
+      />
+
       <Table rowKey="_id" columns={columns} dataSource={sessionsData?.data} loading={isLoading} />
 
       <Modal
@@ -136,6 +158,9 @@ export default function TrainingSessionPage() {
           </Form.Item>
           <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>
             <Select options={(horsesData?.data || []).map((h) => ({ value: h._id, label: h.name }))} />
+          </Form.Item>
+          <Form.Item name="sessionType" label="Loại buổi tập" initialValue="training">
+            <Select options={Object.entries(SESSION_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
           </Form.Item>
           <Form.Item name="scheduledAt" label="Thời gian" rules={[{ required: true }]}>
             <DatePicker showTime className="w-full" />

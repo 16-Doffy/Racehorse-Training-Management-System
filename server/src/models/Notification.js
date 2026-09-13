@@ -12,6 +12,7 @@ const notificationSchema = new mongoose.Schema(
         'fitness_alert',
         'injury_lock',
         'vaccination_due',
+        'deworming_due',
         'farrier_due',
         'incident_report',
         'system',

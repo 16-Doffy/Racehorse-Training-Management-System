@@ -99,6 +99,15 @@ module.exports = {
               properties: { race: { type: 'string' }, result: { type: 'string' }, date: { type: 'string', format: 'date-time' } },
             },
           },
+          careSchedule: {
+            type: 'object',
+            description: 'Recurring vet care due-dates; checked hourly by the care scheduler to notify the Veterinarian role.',
+            properties: {
+              nextVaccinationDue: { type: 'string', format: 'date-time', nullable: true },
+              nextDewormingDue: { type: 'string', format: 'date-time', nullable: true },
+              nextFarrierDue: { type: 'string', format: 'date-time', nullable: true },
+            },
+          },
         },
       },
       TrainingPlan: {
@@ -109,6 +118,8 @@ module.exports = {
           createdBy: { type: 'string' },
           phase: { type: 'string', enum: ['base_building', 'strength', 'speed', 'peak', 'recovery'] },
           distanceTarget: { type: 'number', description: 'meters' },
+          weeklyVolumeKm: { type: 'number', description: 'Total planned training km per week ("khối lượng")' },
+          intensity: { type: 'string', enum: ['light', 'moderate', 'high'] },
           surface: { type: 'string', enum: ['turf', 'dirt', 'synthetic', 'sand'] },
           startDate: { type: 'string', format: 'date-time' },
           endDate: { type: 'string', format: 'date-time' },
@@ -123,6 +134,7 @@ module.exports = {
           trainingPlan: { type: 'string' },
           horse: { type: 'string' },
           assignedTo: { type: 'string' },
+          sessionType: { type: 'string', enum: ['training', 'trial_run'], description: '"lượt chạy thử" vs a normal training rep' },
           scheduledAt: { type: 'string', format: 'date-time' },
           status: { type: 'string', enum: ['scheduled', 'in_progress', 'completed', 'cancelled'] },
           metrics: {
@@ -260,7 +272,7 @@ module.exports = {
           recipientUser: { type: 'string', nullable: true },
           recipientRole: { type: 'string', nullable: true },
           horse: { type: 'string' },
-          type: { type: 'string', enum: ['fitness_alert', 'injury_lock', 'vaccination_due', 'farrier_due', 'incident_report', 'system'] },
+          type: { type: 'string', enum: ['fitness_alert', 'injury_lock', 'vaccination_due', 'deworming_due', 'farrier_due', 'incident_report', 'system'] },
           severity: { type: 'string', enum: ['info', 'warning', 'critical'] },
           message: { type: 'string' },
           isRead: { type: 'boolean' },
@@ -378,6 +390,28 @@ module.exports = {
       put: { tags: ['Horses'], summary: 'Update horse (Manager only)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Horse' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404] } },
       delete: { tags: ['Horses'], summary: 'Delete horse (Manager only)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
     },
+    '/horses/{id}/care-schedule': {
+      patch: {
+        tags: ['Horses'],
+        summary: 'Set recurring vet care due-dates (Veterinarian only) — triggers automatic reminders when due',
+        parameters: [idParam('id')],
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  nextVaccinationDue: { type: 'string', format: 'date-time' },
+                  nextDewormingDue: { type: 'string', format: 'date-time' },
+                  nextFarrierDue: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404] },
+      },
+    },
     '/training/plans': {
       get: { tags: ['Training (Head Trainer)'], summary: 'List training plans', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/TrainingPlan' } }) } },
       post: { tags: ['Training (Head Trainer)'], summary: 'Create training plan', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/TrainingPlan' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/TrainingPlan' }), 403: responses[403] } },
@@ -391,7 +425,7 @@ module.exports = {
       get: {
         tags: ['Training (Head Trainer)'],
         summary: 'List training sessions',
-        parameters: [horseQueryParam, { name: 'trainingPlan', in: 'query', schema: { type: 'string' } }, { name: 'status', in: 'query', schema: { type: 'string' } }],
+        parameters: [horseQueryParam, { name: 'trainingPlan', in: 'query', schema: { type: 'string' } }, { name: 'status', in: 'query', schema: { type: 'string' } }, { name: 'sessionType', in: 'query', schema: { type: 'string', enum: ['training', 'trial_run'] } }],
         responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/TrainingSession' } }) },
       },
       post: {

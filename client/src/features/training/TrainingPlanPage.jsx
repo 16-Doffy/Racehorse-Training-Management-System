@@ -15,6 +15,9 @@ const PHASE_LABELS = {
   recovery: 'Phục hồi',
 };
 
+const INTENSITY_LABELS = { light: 'Nhẹ', moderate: 'Vừa', high: 'Cao' };
+const INTENSITY_COLORS = { light: 'green', moderate: 'gold', high: 'red' };
+
 export default function TrainingPlanPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
@@ -38,6 +41,13 @@ export default function TrainingPlanPage() {
     { title: 'Ngựa', dataIndex: ['horse', 'name'], key: 'horse' },
     { title: 'Giai đoạn', dataIndex: 'phase', key: 'phase', render: (p) => PHASE_LABELS[p] || p },
     { title: 'Cự ly mục tiêu (m)', dataIndex: 'distanceTarget', key: 'distanceTarget' },
+    { title: 'Khối lượng (km/tuần)', dataIndex: 'weeklyVolumeKm', key: 'weeklyVolumeKm' },
+    {
+      title: 'Cường độ',
+      dataIndex: 'intensity',
+      key: 'intensity',
+      render: (v) => <Tag color={INTENSITY_COLORS[v]}>{INTENSITY_LABELS[v] || v}</Tag>,
+    },
     { title: 'Mặt sân', dataIndex: 'surface', key: 'surface' },
     {
       title: 'Trạng thái',
@@ -85,6 +95,12 @@ export default function TrainingPlanPage() {
           </Form.Item>
           <Form.Item name="distanceTarget" label="Cự ly mục tiêu (m)" rules={[{ required: true }]}>
             <InputNumber min={100} step={100} className="w-full" />
+          </Form.Item>
+          <Form.Item name="weeklyVolumeKm" label="Khối lượng (km/tuần)" rules={[{ required: true }]}>
+            <InputNumber min={1} step={1} className="w-full" />
+          </Form.Item>
+          <Form.Item name="intensity" label="Cường độ" initialValue="moderate">
+            <Select options={Object.entries(INTENSITY_LABELS).map(([value, label]) => ({ value, label }))} />
           </Form.Item>
           <Form.Item name="surface" label="Mặt sân" rules={[{ required: true }]}>
             <Select

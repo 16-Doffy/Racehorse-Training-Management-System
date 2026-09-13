@@ -6,11 +6,12 @@ const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 
 const listSessions = asyncHandler(async (req, res) => {
-  const { horse, trainingPlan, status } = req.query;
+  const { horse, trainingPlan, status, sessionType } = req.query;
   const filter = {};
   if (horse) filter.horse = horse;
   if (trainingPlan) filter.trainingPlan = trainingPlan;
   if (status) filter.status = status;
+  if (sessionType) filter.sessionType = sessionType;
 
   const sessions = await TrainingSession.find(filter)
     .populate('horse', 'name healthStatus')

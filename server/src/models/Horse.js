@@ -26,6 +26,18 @@ const horseSchema = new mongoose.Schema(
     weightKg: { type: Number },
     achievements: [achievementSchema],
     photoUrl: { type: String },
+    // Recurring vet care due-dates. The care scheduler (realtime/careScheduler.js) checks these
+    // against "now" and fires a Notification to the Veterinarian role when one falls due; each
+    // *NotifiedAt field records the last time a reminder was actually sent, so the scheduler
+    // doesn't spam a fresh notification every time it runs while a date is still overdue.
+    careSchedule: {
+      nextVaccinationDue: { type: Date, default: null },
+      nextDewormingDue: { type: Date, default: null },
+      nextFarrierDue: { type: Date, default: null },
+      vaccinationNotifiedAt: { type: Date, default: null },
+      dewormingNotifiedAt: { type: Date, default: null },
+      farrierNotifiedAt: { type: Date, default: null },
+    },
   },
   { timestamps: true }
 );

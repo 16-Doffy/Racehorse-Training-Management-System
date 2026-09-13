@@ -5,6 +5,9 @@ const trainingSessionSchema = new mongoose.Schema(
     trainingPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingPlan', required: true },
     horse: { type: mongoose.Schema.Types.ObjectId, ref: 'Horse', required: true },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // caretaker/trainer running the session
+    // Distinguishes a normal training rep from an official timed trial run (used to pick which
+    // horse gets entered for an upcoming race) — same lifecycle/metrics, different intent.
+    sessionType: { type: String, enum: ['training', 'trial_run'], default: 'training' },
     scheduledAt: { type: Date, required: true },
     status: {
       type: String,

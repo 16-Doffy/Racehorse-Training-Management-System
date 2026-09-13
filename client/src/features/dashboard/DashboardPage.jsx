@@ -2,7 +2,9 @@ import { useSelector } from 'react-redux';
 import { Typography, Card, Row, Col, Statistic } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { horsesApi } from '../horses/horsesApi';
-import { ROLE_LABELS } from '../../constants/roles';
+import { trainingSessionApi } from '../training/trainingApi';
+import { ROLE_LABELS, ROLES } from '../../constants/roles';
+import FitnessOverviewChart from './FitnessOverviewChart';
 
 const { Title, Paragraph } = Typography;
 
@@ -16,8 +18,17 @@ const ROLE_WELCOME = {
 
 export default function DashboardPage() {
   const { user } = useSelector((state) => state.auth);
+  const isHeadTrainer = user?.role === ROLES.HEAD_TRAINER;
   const { data } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const horses = data?.data || [];
+
+  // Only fetched for the Head Trainer, who's the one this chart is for (§ Head Trainer
+  // requirement: "bảng tiến độ và biểu đồ thể lực tổng quan").
+  const { data: sessionsData } = useQuery({
+    queryKey: ['training-sessions'],
+    queryFn: () => trainingSessionApi.list(),
+    enabled: isHeadTrainer,
+  });
 
   const eligible = horses.filter((h) => h.healthStatus === 'eligible').length;
   const monitoring = horses.filter((h) => h.healthStatus === 'monitoring').length;
@@ -54,6 +65,13 @@ export default function DashboardPage() {
           </Card>
         </Col>
       </Row>
+
+      {isHeadTrainer && (
+        <div className="mt-6">
+          <Title level={4}>Biểu đồ thể lực tổng quan</Title>
+          <FitnessOverviewChart sessions={sessionsData?.data || []} />
+        </div>
+      )}
     </div>
   );
 }

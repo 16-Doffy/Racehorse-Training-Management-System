@@ -57,6 +57,13 @@ async function run() {
       owner: owner._id,
       healthStatus: 'eligible',
       achievements: [{ race: 'Spring Derby 2025', result: '2nd', date: new Date('2025-04-10') }],
+      careSchedule: {
+        // First horse is deliberately overdue on vaccination so the care scheduler has something
+        // to demo immediately after seeding; the rest are scheduled comfortably in the future.
+        nextVaccinationDue: horses.length === 0 ? new Date(Date.now() - 2 * 86400000) : new Date(Date.now() + 30 * 86400000),
+        nextDewormingDue: new Date(Date.now() + 45 * 86400000),
+        nextFarrierDue: new Date(Date.now() + 20 * 86400000),
+      },
     });
     horses.push(horse);
   }
@@ -79,6 +86,8 @@ async function run() {
     createdBy: trainer._id,
     phase: 'speed',
     distanceTarget: 1200,
+    weeklyVolumeKm: 28,
+    intensity: 'high',
     surface: 'dirt',
     startDate: new Date(),
     status: 'active',
@@ -90,6 +99,7 @@ async function run() {
       trainingPlan: plan._id,
       horse: horses[0]._id,
       assignedTo: trainer._id,
+      sessionType: 'training',
       scheduledAt: new Date(),
       status: 'in_progress',
       metrics: { avgHeartRate: 120, maxHeartRate: 140, maxSpeed: 45, distance: 800 },
@@ -98,11 +108,51 @@ async function run() {
       trainingPlan: plan._id,
       horse: horses[0]._id,
       assignedTo: trainer._id,
+      sessionType: 'trial_run',
       scheduledAt: new Date(Date.now() - 86400000),
       status: 'completed',
       metrics: { avgHeartRate: 110, maxHeartRate: 150, maxSpeed: 52, distance: 1200 },
       trainerComment: 'Strong finish, good recovery time.',
       performanceRating: 8,
+    },
+  ]);
+
+  // A second, lighter plan covering the rest of the roster so the Head Trainer dashboard's
+  // fitness chart has more than one horse's worth of data to plot.
+  const basePlan = await TrainingPlan.create({
+    horse: horses[1]._id,
+    createdBy: trainer._id,
+    phase: 'base_building',
+    distanceTarget: 800,
+    weeklyVolumeKm: 18,
+    intensity: 'moderate',
+    surface: 'turf',
+    startDate: new Date(),
+    status: 'active',
+  });
+
+  await TrainingSession.create([
+    {
+      trainingPlan: basePlan._id,
+      horse: horses[1]._id,
+      assignedTo: trainer._id,
+      sessionType: 'training',
+      scheduledAt: new Date(Date.now() - 43200000),
+      status: 'completed',
+      metrics: { avgHeartRate: 128, maxHeartRate: 145, maxSpeed: 48, distance: 900 },
+      trainerComment: 'Steady pace, on track for the base-building phase.',
+      performanceRating: 7,
+    },
+    {
+      trainingPlan: basePlan._id,
+      horse: horses[2]._id,
+      assignedTo: trainer._id,
+      sessionType: 'training',
+      scheduledAt: new Date(Date.now() - 21600000),
+      status: 'completed',
+      metrics: { avgHeartRate: 132, maxHeartRate: 158, maxSpeed: 55, distance: 1000 },
+      trainerComment: 'Good acceleration, watch heart rate recovery next session.',
+      performanceRating: 6,
     },
   ]);
 
@@ -114,7 +164,7 @@ async function run() {
     resultStatus: 'eligible',
   });
 
-  console.log(`[seed] created ${horses.length} horses, 1 training plan, 2 sessions, 1 health record.`);
+  console.log(`[seed] created ${horses.length} horses, 2 training plans, 4 sessions, 1 health record.`);
   console.log('[seed] done.');
   await mongoose.disconnect();
 }

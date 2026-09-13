@@ -49,4 +49,30 @@ const deleteHorse = asyncHandler(async (req, res) => {
   return ok(res, null, 'Horse deleted.');
 });
 
-module.exports = { listHorses, getHorse, createHorse, updateHorse, deleteHorse };
+// Veterinarian sets/updates the recurring care due-dates (vaccination, deworming, farrier).
+// Setting a new due date also clears that item's *NotifiedAt so the scheduler will remind again
+// once the new date falls due, instead of staying silent because of the old reminder record.
+const updateCareSchedule = asyncHandler(async (req, res) => {
+  const { nextVaccinationDue, nextDewormingDue, nextFarrierDue } = req.body;
+  const horse = await Horse.findById(req.params.id);
+  if (!horse) return fail(res, 'Horse not found.', 404);
+
+  if (nextVaccinationDue !== undefined) {
+    horse.careSchedule.nextVaccinationDue = nextVaccinationDue;
+    horse.careSchedule.vaccinationNotifiedAt = null;
+  }
+  if (nextDewormingDue !== undefined) {
+    horse.careSchedule.nextDewormingDue = nextDewormingDue;
+    horse.careSchedule.dewormingNotifiedAt = null;
+  }
+  if (nextFarrierDue !== undefined) {
+    horse.careSchedule.nextFarrierDue = nextFarrierDue;
+    horse.careSchedule.farrierNotifiedAt = null;
+  }
+
+  await horse.save();
+  await logAction({ actorId: req.user._id, action: 'horse.update_care_schedule', targetModel: 'Horse', targetId: horse._id });
+  return ok(res, horse, 'Care schedule updated.');
+});
+
+module.exports = { listHorses, getHorse, createHorse, updateHorse, deleteHorse, updateCareSchedule };
