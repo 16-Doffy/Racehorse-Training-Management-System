@@ -19,6 +19,9 @@ import FeedingPage from '../features/feeding/FeedingPage';
 import InventoryPage from '../features/inventory/InventoryPage';
 import RacePage from '../features/race/RacePage';
 import FinancePage from '../features/finance/FinancePage';
+import OwnerHealthPage from '../features/horses/OwnerHealthPage';
+import OwnerTrainingPage from '../features/horses/OwnerTrainingPage';
+import OwnerEvaluationsPage from '../features/horses/OwnerEvaluationsPage';
 import { ROLES } from '../constants/roles';
 
 const ALL_ROLES = Object.values(ROLES);
@@ -62,6 +65,13 @@ export default function AppRouter() {
             <Route path="/admin/audit-logs" element={<AuditLogPage />} />
           </Route>
 
+          {/* Horse Owner core flow. */}
+          <Route element={<ProtectedRoute allowedRoles={[ROLES.OWNER]} />}>
+            <Route path="/owner/health" element={<OwnerHealthPage />} />
+            <Route path="/owner/training" element={<OwnerTrainingPage />} />
+            <Route path="/owner/evaluations" element={<OwnerEvaluationsPage />} />
+          </Route>
+
           {/* Scaffold modules, shared by whichever roles the menu exposes them to. */}
           <Route element={<ProtectedRoute allowedRoles={[ROLES.GROOM]} />}>
             <Route path="/feeding" element={<FeedingPage />} />
@@ -82,3 +92,4 @@ export default function AppRouter() {
     </Routes>
   );
 }
+

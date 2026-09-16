@@ -10,6 +10,9 @@ import {
   TrophyOutlined,
   DollarOutlined,
   ProfileOutlined,
+  HeartOutlined,
+  CalendarOutlined,
+  StarOutlined,
 } from '@ant-design/icons';
 import { ROLES } from '../../constants/roles';
 
@@ -47,6 +50,9 @@ const MENUS = {
   [ROLES.OWNER]: [
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
     { key: 'my-horses', icon: <ProfileOutlined />, label: 'Ngựa của tôi', path: '/horses' },
+    { key: 'owner-health', icon: <HeartOutlined />, label: 'Sức khỏe Ngựa', path: '/owner/health' },
+    { key: 'owner-training', icon: <CalendarOutlined />, label: 'Lịch Huấn luyện', path: '/owner/training' },
+    { key: 'owner-evaluations', icon: <StarOutlined />, label: 'Đánh giá HLV', path: '/owner/evaluations' },
     { key: 'finance', icon: <DollarOutlined />, label: 'Chi phí & Doanh thu', path: '/finance' },
   ],
 };
