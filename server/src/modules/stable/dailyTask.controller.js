@@ -38,21 +38,28 @@ const createTask = asyncHandler(async (req, res) => {
   return created(res, task, 'Daily task created.');
 });
 
+// Grooms may only act on tasks assigned to them, not on a colleague's worklist.
+const isAssignee = (task, user) => String(task.assignedTo) === String(user._id);
+
 const completeTask = asyncHandler(async (req, res) => {
-  const task = await DailyTask.findByIdAndUpdate(
-    req.params.id,
-    { status: 'completed', completedAt: new Date() },
-    { new: true }
-  );
+  const task = await DailyTask.findById(req.params.id);
   if (!task) return fail(res, 'Daily task not found.', 404);
+  if (!isAssignee(task, req.user)) return fail(res, 'Forbidden: this task is assigned to someone else.', 403);
+
+  task.status = 'completed';
+  task.completedAt = new Date();
+  await task.save();
   return ok(res, task, 'Task marked as completed.');
 });
 
 // Groom-reported incident, with optional photo evidence uploaded via multipart/form-data.
 const reportIncident = asyncHandler(async (req, res) => {
   const { description, severity } = req.body;
+  if (!description || !description.trim()) return fail(res, 'Incident description is required.', 400);
+
   const task = await DailyTask.findById(req.params.id);
   if (!task) return fail(res, 'Daily task not found.', 404);
+  if (!isAssignee(task, req.user)) return fail(res, 'Forbidden: this task is assigned to someone else.', 403);
 
   const images = (req.files || []).map((f) => `/uploads/incidents/${f.filename}`);
 

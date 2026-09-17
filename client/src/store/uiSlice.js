@@ -6,11 +6,11 @@ const uiSlice = createSlice({
     siderCollapsed: false,
   },
   reducers: {
-    siderToggled(state) {
-      state.siderCollapsed = !state.siderCollapsed;
+    siderCollapsedSet(state, action) {
+      state.siderCollapsed = action.payload;
     },
   },
 });
 
-export const { siderToggled } = uiSlice.actions;
+export const { siderCollapsedSet } = uiSlice.actions;
 export default uiSlice.reducer;

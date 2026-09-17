@@ -3,14 +3,23 @@ import { UserOutlined, LogoutOutlined } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { loggedOut } from '../features/auth/authSlice';
-import { siderToggled } from '../store/uiSlice';
+import { siderCollapsedSet } from '../store/uiSlice';
 import { getMenuByRole } from './menuConfig';
-import { ROLE_LABELS } from '../constants/roles';
+import { ROLES, ROLE_LABELS } from '../constants/roles';
 import AlertBell from '../features/alerts/AlertBell';
 import { disconnectSocket } from '../lib/socket';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
+
+// Small caption above the role name in the header.
+const ROLE_GROUPS = {
+  [ROLES.OWNER]: 'Hội đồng Chủ ngựa',
+  [ROLES.GROOM]: 'Đội Chăm sóc & Chuồng trại',
+  [ROLES.HEAD_TRAINER]: 'Ban Huấn luyện',
+  [ROLES.VETERINARIAN]: 'Phòng Thú y',
+  [ROLES.MANAGER]: 'Ban Quản lý CLB',
+};
 
 export default function MainLayout() {
   const { user } = useSelector((state) => state.auth);
@@ -41,7 +50,10 @@ export default function MainLayout() {
         theme="dark" 
         collapsible 
         collapsed={siderCollapsed} 
-        onCollapse={() => dispatch(siderToggled())}
+        // onCollapse receives the new value for both the trigger click and the responsive
+        // breakpoint (auto-collapse on phones, where grooms mostly use the app).
+        onCollapse={(value) => dispatch(siderCollapsedSet(value))}
+        breakpoint="md"
         className="!bg-[#022c22] border-r border-[#064e3b]"
         style={{ backgroundColor: '#022c22' }}
       >
@@ -70,8 +82,8 @@ export default function MainLayout() {
             <div className="w-8 h-8 rounded bg-[#022c22] flex items-center justify-center text-[#eab308]">
               <UserOutlined />
             </div>
-            <div className="flex flex-col">
-              <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Hội đồng Chủ ngựa</span>
+            <div className="hidden sm:flex flex-col">
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">{ROLE_GROUPS[user?.role]}</span>
               <Text strong className="text-[#022c22] text-sm">{ROLE_LABELS[user?.role]}</Text>
             </div>
           </div>
@@ -84,14 +96,16 @@ export default function MainLayout() {
             >
               <div className="flex items-center gap-2 cursor-pointer hover:bg-white/50 px-2 py-1 rounded transition-colors">
                 <Avatar icon={<UserOutlined />} className="bg-[#022c22] text-[#eab308]" />
-                <Text className="font-semibold text-[#022c22]">{user?.name}</Text>
+                <span className="hidden sm:inline">
+                  <Text className="font-semibold text-[#022c22]">{user?.name}</Text>
+                </span>
               </div>
             </Dropdown>
           </div>
         </Header>
         <Content
           style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
-          className="p-6"
+          className="p-4 md:p-6"
         >
           <Outlet />
         </Content>

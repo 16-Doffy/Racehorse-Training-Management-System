@@ -13,6 +13,9 @@ import {
   HeartOutlined,
   CalendarOutlined,
   StarOutlined,
+  AppstoreOutlined,
+  CarryOutOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import { ROLES } from '../../constants/roles';
 
@@ -43,9 +46,11 @@ const MENUS = {
   ],
   [ROLES.GROOM]: [
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
-    { key: 'my-tasks', icon: <HomeOutlined />, label: 'Công việc Hàng ngày', path: '/stable/my-tasks' },
+    { key: 'stable-map', icon: <AppstoreOutlined />, label: 'Sơ đồ Chuồng trại', path: '/stable/map' },
+    { key: 'my-tasks', icon: <CarryOutOutlined />, label: 'Việc Hàng ngày', path: '/stable/my-tasks' },
     { key: 'feeding', icon: <AppleOutlined />, label: 'Khẩu phần Ăn', path: '/feeding' },
-    { key: 'inventory', icon: <ShoppingOutlined />, label: 'Vật tư Khu vực', path: '/inventory' },
+    { key: 'incidents', icon: <WarningOutlined />, label: 'Báo cáo Sự cố', path: '/stable/incidents' },
+    { key: 'supplies', icon: <ShoppingOutlined />, label: 'Vật tư Khu vực', path: '/stable/supplies' },
   ],
   [ROLES.OWNER]: [
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },

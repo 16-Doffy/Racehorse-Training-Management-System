@@ -11,6 +11,9 @@ const TrainingPlan = require('../src/models/TrainingPlan');
 const TrainingSession = require('../src/models/TrainingSession');
 const HealthRecord = require('../src/models/HealthRecord');
 const StableAssignment = require('../src/models/StableAssignment');
+const DailyTask = require('../src/models/DailyTask');
+const FeedingSchedule = require('../src/models/FeedingSchedule');
+const InventoryItem = require('../src/models/InventoryItem');
 
 const DEMO_PASSWORD = '123456';
 
@@ -40,6 +43,9 @@ async function run() {
   await TrainingSession.deleteMany({});
   await HealthRecord.deleteMany({});
   await StableAssignment.deleteMany({});
+  await DailyTask.deleteMany({});
+  await FeedingSchedule.deleteMany({});
+  await InventoryItem.deleteMany({});
   await Horse.deleteMany({});
 
   const horseNames = [
@@ -164,7 +170,83 @@ async function run() {
     resultStatus: 'eligible',
   });
 
+  // Groom module: today's worklist (one task done, one with an incident), an overdue task from
+  // yesterday, approved rations per meal, and area supplies with a few low-stock items.
+  const at = (daysFromToday, hour, minute = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() + daysFromToday);
+    d.setHours(hour, minute, 0, 0);
+    return d;
+  };
+
+  const taskDocs = [];
+  horses.forEach((h, i) => {
+    taskDocs.push(
+      { horse: h._id, assignedTo: groom._id, taskType: 'feeding', scheduledDate: at(0, 8), ...(i === 0 && { status: 'completed', completedAt: at(0, 6, 35) }) },
+      { horse: h._id, assignedTo: groom._id, taskType: 'cleaning', scheduledDate: at(0, 8) }
+    );
+  });
+  taskDocs.push(
+    { horse: horses[0]._id, assignedTo: groom._id, taskType: 'icing', scheduledDate: at(0, 8) },
+    { horse: horses[1]._id, assignedTo: groom._id, taskType: 'bathing', scheduledDate: at(0, 8) },
+    { horse: horses[2]._id, assignedTo: groom._id, taskType: 'bathing', scheduledDate: at(-1, 8), status: 'completed', completedAt: at(-1, 15) },
+    { horse: horses[3]._id, assignedTo: groom._id, taskType: 'icing', scheduledDate: at(-1, 8) }
+  );
+  const tasks = await DailyTask.create(taskDocs);
+
+  const hoofIncidentTask = tasks.find((t) => String(t.horse) === String(horses[3]._id) && t.taskType === 'cleaning');
+  hoofIncidentTask.incidentReport = {
+    description: 'Móng bị xước. Móng trước bên trái có vết xước nhẹ, ngựa vẫn ăn uống bình thường',
+    severity: 'low',
+    images: [],
+    reportedAt: at(0, 7, 10),
+  };
+  await hoofIncidentTask.save();
+
+  const rations = {
+    morning: [{ type: 'grain', quantity: '2.5kg' }, { type: 'hay', quantity: '3kg' }, { type: 'vitamin', quantity: '30g' }],
+    noon: [{ type: 'hay', quantity: '4kg' }, { type: 'carrot', quantity: '0.5kg' }],
+    evening: [{ type: 'grain', quantity: '2kg' }, { type: 'hay', quantity: '5kg' }, { type: 'electrolyte', quantity: '50g' }],
+  };
+  await FeedingSchedule.create(
+    horses.flatMap((h, i) =>
+      Object.entries(rations).map(([mealTime, items]) => ({
+        horse: h._id,
+        mealTime,
+        items,
+        // Last horse's dinner is left unapproved so the "pending approval" state is visible.
+        approvedBy: i === horses.length - 1 && mealTime === 'evening' ? undefined : trainer._id,
+      }))
+    )
+  );
+
+  await InventoryItem.create([
+    { name: 'Yến mạch cao cấp', category: 'feed', quantity: 120, unit: 'kg', stableBlock: 'Block A' },
+    {
+      name: 'Cỏ khô Timothy',
+      category: 'feed',
+      quantity: 8,
+      unit: 'bó',
+      stableBlock: 'Block A',
+      restockRequests: [{ requestedBy: groom._id, quantity: 30, status: 'pending', requestedAt: at(0, 7, 30) }],
+    },
+    { name: 'Muối điện giải', category: 'feed', quantity: 0, unit: 'gói', stableBlock: 'Block A' },
+    { name: 'Vitamin tổng hợp', category: 'medicine', quantity: 6, unit: 'hộp', stableBlock: 'Block A' },
+    { name: 'Dung dịch sát trùng Povidine', category: 'medicine', quantity: 15, unit: 'chai' },
+    {
+      name: 'Túi chườm đá',
+      category: 'equipment',
+      quantity: 24,
+      unit: 'cái',
+      stableBlock: 'Block A',
+      restockRequests: [{ requestedBy: groom._id, quantity: 12, status: 'approved', requestedAt: at(-3, 9) }],
+    },
+    { name: 'Băng quấn chân', category: 'equipment', quantity: 9, unit: 'cuộn', stableBlock: 'Block A' },
+    { name: 'Bàn chải tắm ngựa', category: 'equipment', quantity: 12, unit: 'cái', stableBlock: 'Block B' },
+  ]);
+
   console.log(`[seed] created ${horses.length} horses, 2 training plans, 4 sessions, 1 health record.`);
+  console.log(`[seed] groom data: ${tasks.length} daily tasks, ${horses.length * 3} feeding schedules, 8 inventory items.`);
   console.log('[seed] done.');
   await mongoose.disconnect();
 }

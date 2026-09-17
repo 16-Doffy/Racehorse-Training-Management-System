@@ -65,7 +65,7 @@ trên Swagger UI (dán JWT lấy từ `POST /auth/login`) để gọi thử tr�
 | Club Manager | Quản lý tài khoản & phân quyền (RBAC) — `/admin/users` |
 | Head Trainer | Giáo án + Buổi tập + đánh giá phong độ — `/training/plans`, `/training/sessions` |
 | Veterinarian | Hồ sơ khám bệnh + Điều trị + **Khóa huấn luyện khẩn cấp** — `/health/records`, `/health/treatments` |
-| Groom | Công việc hàng ngày + báo cáo sự cố kèm ảnh — `/stable/my-tasks` |
+| Groom | Tổng quan ca làm, sơ đồ chuồng + lịch sinh hoạt từng ngựa, công việc hàng ngày, khẩu phần ăn theo bữa, báo cáo sự cố kèm ảnh, vật tư khu vực + đề xuất bổ sung — `/`, `/stable/map`, `/stable/my-tasks`, `/feeding`, `/stable/incidents`, `/stable/supplies` |
 | Horse Owner | Hồ sơ/pedigree/thành tích ngựa — `/horses` |
 
 Các module còn lại (khẩu phần ăn, vật tư, đăng ký giải đua, báo cáo tài chính, sơ đồ chấn thương

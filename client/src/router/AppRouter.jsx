@@ -4,7 +4,7 @@ import MainLayout from '../layouts/MainLayout';
 import LoginPage from '../features/auth/LoginPage';
 import ForbiddenPage from '../pages/ForbiddenPage';
 import NotFoundPage from '../pages/NotFoundPage';
-import DashboardPage from '../features/dashboard/DashboardPage';
+import RoleDashboard from '../features/dashboard/RoleDashboard';
 import HorseListPage from '../features/horses/HorseListPage';
 import HorseDetailPage from '../features/horses/HorseDetailPage';
 import TrainingPlanPage from '../features/training/TrainingPlanPage';
@@ -13,6 +13,9 @@ import HealthBoardPage from '../features/health/HealthBoardPage';
 import TreatmentPage from '../features/health/TreatmentPage';
 import DailyTaskPage from '../features/stable/DailyTaskPage';
 import StableAssignPage from '../features/stable/StableAssignPage';
+import StableMapPage from '../features/stable/StableMapPage';
+import IncidentReportsPage from '../features/stable/IncidentReportsPage';
+import GroomSuppliesPage from '../features/inventory/GroomSuppliesPage';
 import UserManagementPage from '../features/admin/UserManagementPage';
 import AuditLogPage from '../features/admin/AuditLogPage';
 import FeedingPage from '../features/feeding/FeedingPage';
@@ -35,7 +38,7 @@ export default function AppRouter() {
       {/* Every authenticated role shares the shell; individual pages are further role-gated below. */}
       <Route element={<ProtectedRoute allowedRoles={ALL_ROLES} />}>
         <Route element={<MainLayout />}>
-          <Route path="/" element={<DashboardPage />} />
+          <Route path="/" element={<RoleDashboard />} />
 
           {/* Shared: horse roster/profile (Owner's core flow; visible to every role). */}
           <Route path="/horses" element={<HorseListPage />} />
@@ -57,6 +60,9 @@ export default function AppRouter() {
           {/* Groom core flow. */}
           <Route element={<ProtectedRoute allowedRoles={[ROLES.GROOM]} />}>
             <Route path="/stable/my-tasks" element={<DailyTaskPage />} />
+            <Route path="/stable/map" element={<StableMapPage />} />
+            <Route path="/stable/incidents" element={<IncidentReportsPage />} />
+            <Route path="/stable/supplies" element={<GroomSuppliesPage />} />
           </Route>
 
           {/* Club Manager core flow. */}
