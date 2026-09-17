@@ -4,7 +4,7 @@ import MainLayout from '../layouts/MainLayout';
 import LoginPage from '../features/auth/LoginPage';
 import ForbiddenPage from '../pages/ForbiddenPage';
 import NotFoundPage from '../pages/NotFoundPage';
-import DashboardPage from '../features/dashboard/DashboardPage';
+import RoleDashboard from '../features/dashboard/RoleDashboard';
 import HorseListPage from '../features/horses/HorseListPage';
 import HorseDetailPage from '../features/horses/HorseDetailPage';
 import TrainingPlanPage from '../features/training/TrainingPlanPage';
@@ -22,12 +22,18 @@ import PrescriptionForm from '../pages/veterinarian/PrescriptionForm';
 import MedicalSchedule from '../pages/veterinarian/MedicalSchedule';
 import DailyTaskPage from '../features/stable/DailyTaskPage';
 import StableAssignPage from '../features/stable/StableAssignPage';
+import StableMapPage from '../features/stable/StableMapPage';
+import IncidentReportsPage from '../features/stable/IncidentReportsPage';
+import GroomSuppliesPage from '../features/inventory/GroomSuppliesPage';
 import UserManagementPage from '../features/admin/UserManagementPage';
 import AuditLogPage from '../features/admin/AuditLogPage';
 import FeedingPage from '../features/feeding/FeedingPage';
 import InventoryPage from '../features/inventory/InventoryPage';
 import RacePage from '../features/race/RacePage';
 import FinancePage from '../features/finance/FinancePage';
+import OwnerHealthPage from '../features/horses/OwnerHealthPage';
+import OwnerTrainingPage from '../features/horses/OwnerTrainingPage';
+import OwnerEvaluationsPage from '../features/horses/OwnerEvaluationsPage';
 import { ROLES } from '../constants/roles';
 
 const ALL_ROLES = Object.values(ROLES);
@@ -41,7 +47,7 @@ export default function AppRouter() {
       {/* Every authenticated role shares the shell; individual pages are further role-gated below. */}
       <Route element={<ProtectedRoute allowedRoles={ALL_ROLES} />}>
         <Route element={<MainLayout />}>
-          <Route path="/" element={<DashboardPage />} />
+          <Route path="/" element={<RoleDashboard />} />
 
           {/* Shared: horse roster/profile (Owner's core flow; visible to every role). */}
           <Route path="/horses" element={<HorseListPage />} />
@@ -77,12 +83,22 @@ export default function AppRouter() {
           {/* Groom core flow. */}
           <Route element={<ProtectedRoute allowedRoles={[ROLES.GROOM]} />}>
             <Route path="/stable/my-tasks" element={<DailyTaskPage />} />
+            <Route path="/stable/map" element={<StableMapPage />} />
+            <Route path="/stable/incidents" element={<IncidentReportsPage />} />
+            <Route path="/stable/supplies" element={<GroomSuppliesPage />} />
           </Route>
 
           {/* Club Manager core flow. */}
           <Route element={<ProtectedRoute allowedRoles={[ROLES.MANAGER]} />}>
             <Route path="/admin/users" element={<UserManagementPage />} />
             <Route path="/admin/audit-logs" element={<AuditLogPage />} />
+          </Route>
+
+          {/* Horse Owner core flow. */}
+          <Route element={<ProtectedRoute allowedRoles={[ROLES.OWNER]} />}>
+            <Route path="/owner/health" element={<OwnerHealthPage />} />
+            <Route path="/owner/training" element={<OwnerTrainingPage />} />
+            <Route path="/owner/evaluations" element={<OwnerEvaluationsPage />} />
           </Route>
 
           {/* Scaffold modules, shared by whichever roles the menu exposes them to. */}
@@ -105,3 +121,4 @@ export default function AppRouter() {
     </Routes>
   );
 }
+

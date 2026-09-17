@@ -10,6 +10,12 @@ import {
   TrophyOutlined,
   DollarOutlined,
   ProfileOutlined,
+  HeartOutlined,
+  CalendarOutlined,
+  StarOutlined,
+  AppstoreOutlined,
+  CarryOutOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import { ROLES } from '../../constants/roles';
 
@@ -42,13 +48,18 @@ const MENUS = {
   ],
   [ROLES.GROOM]: [
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
-    { key: 'my-tasks', icon: <HomeOutlined />, label: 'Công việc Hàng ngày', path: '/stable/my-tasks' },
+    { key: 'stable-map', icon: <AppstoreOutlined />, label: 'Sơ đồ Chuồng trại', path: '/stable/map' },
+    { key: 'my-tasks', icon: <CarryOutOutlined />, label: 'Việc Hàng ngày', path: '/stable/my-tasks' },
     { key: 'feeding', icon: <AppleOutlined />, label: 'Khẩu phần Ăn', path: '/feeding' },
-    { key: 'inventory', icon: <ShoppingOutlined />, label: 'Vật tư Khu vực', path: '/inventory' },
+    { key: 'incidents', icon: <WarningOutlined />, label: 'Báo cáo Sự cố', path: '/stable/incidents' },
+    { key: 'supplies', icon: <ShoppingOutlined />, label: 'Vật tư Khu vực', path: '/stable/supplies' },
   ],
   [ROLES.OWNER]: [
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
     { key: 'my-horses', icon: <ProfileOutlined />, label: 'Ngựa của tôi', path: '/horses' },
+    { key: 'owner-health', icon: <HeartOutlined />, label: 'Sức khỏe Ngựa', path: '/owner/health' },
+    { key: 'owner-training', icon: <CalendarOutlined />, label: 'Lịch Huấn luyện', path: '/owner/training' },
+    { key: 'owner-evaluations', icon: <StarOutlined />, label: 'Đánh giá HLV', path: '/owner/evaluations' },
     { key: 'finance', icon: <DollarOutlined />, label: 'Chi phí & Doanh thu', path: '/finance' },
   ],
 };
