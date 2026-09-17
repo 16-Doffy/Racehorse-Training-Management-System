@@ -6,7 +6,7 @@ import { UserOutlined, LockOutlined, TrophyOutlined } from '@ant-design/icons';
 import { authApi } from './authApi';
 import { credentialsReceived } from './authSlice';
 import { ROLE_LABELS } from '../../constants/roles';
-import loginBg from '../../assets/login-bg.png';
+import loginBg from '../../assets/login-bg.jpg';
 
 const { Title, Text, Paragraph } = Typography;
 
