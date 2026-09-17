@@ -64,37 +64,17 @@ export function useVeterinarianData() {
           .map((t) => (t.horse?._id || t.horse)?.toString())
       );
 
-      // Auto-sync horses healthStatus dynamically based on active injuries & lock state
+      // Auto-sync horses healthStatus dynamically for display based on active injuries & lock state
       const sanitizedHorses = fetchedHorses.map((horse) => {
         const horseId = horse._id?.toString();
         const activeInjuries = activeInjuriesCountByHorse[horseId] || 0;
         const isLocked = lockedHorseIds.has(horseId);
 
-        // Case 1: Has active injuries -> MUST be 'injured' (unless quarantined)
         if (activeInjuries > 0 && horse.healthStatus !== 'quarantined' && horse.healthStatus !== 'injured') {
-          veterinarianApi
-            .createHealthRecord({
-              horse: horse._id,
-              diagnosis: `Tự động cập nhật: Phát hiện ${activeInjuries} điểm chấn thương cần điều trị`,
-              resultStatus: 'injured',
-              date: new Date(),
-            })
-            .catch(() => {});
-
           return { ...horse, healthStatus: 'injured' };
         }
 
-        // Case 2: 0 active injuries and not locked -> MUST be 'eligible'
         if (horse.healthStatus === 'injured' && activeInjuries === 0 && !isLocked) {
-          veterinarianApi
-            .createHealthRecord({
-              horse: horse._id,
-              diagnosis: 'Tự động chuyển trạng thái: Không còn chấn thương (Đã bình phục)',
-              resultStatus: 'eligible',
-              date: new Date(),
-            })
-            .catch(() => {});
-
           return { ...horse, healthStatus: 'eligible' };
         }
         return horse;

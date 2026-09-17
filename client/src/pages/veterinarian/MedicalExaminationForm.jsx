@@ -101,9 +101,15 @@ export default function MedicalExaminationForm() {
     setSubmitting(true);
     setError(null);
 
+    const todayStr = formatDateForInput(new Date());
+    let examDate = new Date();
+    if (formData.date && formData.date !== todayStr) {
+      examDate = new Date(formData.date);
+    }
+
     const payload = {
       horse: formData.horse,
-      date: formData.date ? new Date(formData.date) : new Date(),
+      date: examDate,
       diagnosis: formData.diagnosis.trim(),
       resultStatus: formData.resultStatus,
       vitalSigns: {

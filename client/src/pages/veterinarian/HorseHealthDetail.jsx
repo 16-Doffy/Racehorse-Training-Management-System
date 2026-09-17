@@ -51,24 +51,8 @@ export default function HorseHealthDetail() {
 
       if (activeInjuries.length > 0 && horseData?.healthStatus !== 'quarantined' && horseData?.healthStatus !== 'injured') {
         horseData = { ...horseData, healthStatus: 'injured' };
-        veterinarianApi
-          .createHealthRecord({
-            horse: id,
-            diagnosis: `Tự động cập nhật: Phát hiện ${activeInjuries.length} điểm chấn thương đang điều trị`,
-            resultStatus: 'injured',
-            date: new Date(),
-          })
-          .catch(() => {});
       } else if (horseData?.healthStatus === 'injured' && activeInjuries.length === 0 && !isLocked) {
         horseData = { ...horseData, healthStatus: 'eligible' };
-        veterinarianApi
-          .createHealthRecord({
-            horse: id,
-            diagnosis: 'Tự động chuyển trạng thái: Không còn chấn thương (Đã bình phục)',
-            resultStatus: 'eligible',
-            date: new Date(),
-          })
-          .catch(() => {});
       }
 
       setHorse(horseData);

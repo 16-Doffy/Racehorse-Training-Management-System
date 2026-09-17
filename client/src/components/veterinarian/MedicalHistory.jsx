@@ -22,6 +22,11 @@ export default function MedicalHistory({ records = [], horseId, onNewExam }) {
     .sort((a, b) => {
       const dateA = new Date(a.date || a.createdAt).getTime();
       const dateB = new Date(b.date || b.createdAt).getTime();
+      if (dateA === dateB) {
+        const createdA = new Date(a.createdAt || a.date).getTime();
+        const createdB = new Date(b.createdAt || b.date).getTime();
+        return sortAsc ? createdA - createdB : createdB - createdA;
+      }
       return sortAsc ? dateA - dateB : dateB - dateA;
     });
 

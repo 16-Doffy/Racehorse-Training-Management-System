@@ -10,7 +10,7 @@ const listRecords = asyncHandler(async (req, res) => {
   const records = await HealthRecord.find(filter)
     .populate('horse', 'name healthStatus')
     .populate('examinedBy', 'name')
-    .sort({ date: -1 });
+    .sort({ date: -1, createdAt: -1 });
   return ok(res, records, 'Health records fetched.');
 });
 
