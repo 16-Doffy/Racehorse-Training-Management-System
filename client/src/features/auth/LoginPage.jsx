@@ -6,7 +6,7 @@ import { UserOutlined, LockOutlined, TrophyOutlined } from '@ant-design/icons';
 import { authApi } from './authApi';
 import { credentialsReceived } from './authSlice';
 import { ROLE_LABELS } from '../../constants/roles';
-import loginBg from '../../assets/login-bg.jpg';
+import loginBg from '../../assets/login-bg.png';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -44,16 +44,11 @@ export default function LoginPage() {
 
   return (
     <div className="relative w-screen h-screen overflow-y-auto overflow-x-hidden flex items-center">
-      {/* Background image on its own layer so the contrast/saturate filter below only touches
-          the photo, not the text and form sitting on top of it. The source photo is only
-          740x249 — well below most viewport widths, so bg-cover has to upscale it 2-4x and it
-          comes in soft; the filter can't add back missing detail, but punchier tones read as
-          "sharper" at a glance. Swap in a higher-res source if one becomes available and drop
-          this filter — it's a workaround, not a fix. */}
-      <div
-        className="absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: `url(${loginBg})`, filter: 'contrast(1.12) saturate(1.2)' }}
-      />
+      {/* Background image on its own layer, kept separate from the text/form so a future filter
+          or effect on the photo never touches what's layered on top of it. 1365x768 source —
+          sharp enough to cover typical viewports without the upscaling softness the previous
+          740x249 photo had. */}
+      <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${loginBg})` }} />
 
       {/* Light, mostly-left scrim: just enough for text/inputs to stay legible, while the photo
           itself — not a panel on top of it — stays the visual centerpiece. */}
