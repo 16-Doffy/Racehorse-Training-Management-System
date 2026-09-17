@@ -41,19 +41,10 @@ export default function HorseHealthDetail() {
         veterinarianApi.getInjuryMarkers({ horse: id }),
       ]);
 
-      let horseData = horseRes.data;
+      const horseData = horseRes.data;
       const recordsData = recordsRes.data || [];
       const treatmentsData = treatmentsRes.data || [];
       const injuriesData = injuriesRes.data || [];
-
-      const activeInjuries = injuriesData.filter((i) => i.recoveryStatus !== 'recovered');
-      const isLocked = treatmentsData.some((t) => t.isTrainingLocked);
-
-      if (activeInjuries.length > 0 && horseData?.healthStatus !== 'quarantined' && horseData?.healthStatus !== 'injured') {
-        horseData = { ...horseData, healthStatus: 'injured' };
-      } else if (horseData?.healthStatus === 'injured' && activeInjuries.length === 0 && !isLocked) {
-        horseData = { ...horseData, healthStatus: 'eligible' };
-      }
 
       setHorse(horseData);
       setRecords(recordsData);
