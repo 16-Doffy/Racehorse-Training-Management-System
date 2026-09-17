@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { Form, Input, Button, Card, Typography, Alert } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Typography, Alert } from 'antd';
+import { UserOutlined, LockOutlined, TrophyOutlined } from '@ant-design/icons';
 import { authApi } from './authApi';
 import { credentialsReceived } from './authSlice';
 import { ROLE_LABELS } from '../../constants/roles';
+import loginBg from '../../assets/login-bg.jpg';
 
-const { Title, Text } = Typography;
+const { Title, Text, Paragraph } = Typography;
 
 const DEMO_ACCOUNTS = [
   { email: 'manager@demo.com', role: 'manager' },
@@ -42,33 +43,62 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md shadow-md">
-        <Title level={3} className="!mb-1 text-center">
-          Racehorse Training &amp; Management
+    <div className="relative w-screen h-screen overflow-y-auto overflow-x-hidden flex items-center">
+      {/* Background image on its own layer so the contrast/saturate filter below only touches
+          the photo, not the text and form sitting on top of it. The source photo is only
+          740x249 — well below most viewport widths, so bg-cover has to upscale it 2-4x and it
+          comes in soft; the filter can't add back missing detail, but punchier tones read as
+          "sharper" at a glance. Swap in a higher-res source if one becomes available and drop
+          this filter — it's a workaround, not a fix. */}
+      <div
+        className="absolute inset-0 bg-cover bg-center"
+        style={{ backgroundImage: `url(${loginBg})`, filter: 'contrast(1.12) saturate(1.2)' }}
+      />
+
+      {/* Light, mostly-left scrim: just enough for text/inputs to stay legible, while the photo
+          itself — not a panel on top of it — stays the visual centerpiece. */}
+      <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/20 to-transparent" />
+
+      <div className="relative z-10 w-full max-w-xl px-6 md:px-16 py-10 text-white">
+        <div className="flex items-center gap-2 mb-5 text-[#eab308]">
+          <TrophyOutlined className="text-2xl" />
+          <span className="uppercase tracking-[0.25em] text-xs font-semibold">Prestige Athletic Club</span>
+        </div>
+        <Title level={1} className="!text-white !mb-3 !leading-[1.1] drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)]" style={{ fontFamily: 'Georgia, serif' }}>
+          Racehorse Training &amp;<br />Management System
         </Title>
-        <Text type="secondary" className="block text-center mb-6">
-          Đăng nhập theo vai trò của bạn
-        </Text>
+        <Paragraph className="!text-gray-200 text-base max-w-md mb-8 drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
+          Quản lý toàn diện huấn luyện, sức khỏe, chuồng trại và thành tích thi đấu — từ Huấn luyện
+          viên trưởng đến Bác sĩ thú y, Nhân viên chăm sóc, Chủ sở hữu và Ban quản lý.
+        </Paragraph>
 
-        {error && <Alert type="error" message={error} className="mb-4" showIcon />}
+        {error && <Alert type="error" message={error} className="mb-4 max-w-sm" showIcon />}
 
-        <Form layout="vertical" onFinish={onFinish} autoComplete="off">
-          <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Vui lòng nhập email' }]}>
-            <Input prefix={<UserOutlined />} placeholder="you@demo.com" size="large" />
+        <Form layout="vertical" onFinish={onFinish} autoComplete="off" className="max-w-sm">
+          <Form.Item name="email" label={<span className="text-white/90">Email</span>} rules={[{ required: true, message: 'Vui lòng nhập email' }]}>
+            <Input prefix={<UserOutlined className="text-white/70" />} placeholder="you@demo.com" size="large" className="login-glass-input" />
           </Form.Item>
-          <Form.Item name="password" label="Mật khẩu" rules={[{ required: true, message: 'Vui lòng nhập mật khẩu' }]}>
-            <Input.Password prefix={<LockOutlined />} placeholder="••••••" size="large" />
+          <Form.Item name="password" label={<span className="text-white/90">Mật khẩu</span>} rules={[{ required: true, message: 'Vui lòng nhập mật khẩu' }]}>
+            <Input.Password prefix={<LockOutlined className="text-white/70" />} placeholder="••••••" size="large" className="login-glass-input" />
           </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" block size="large" loading={loading}>
+          <Form.Item className="!mb-4">
+            <Button
+              type="primary"
+              htmlType="submit"
+              block
+              size="large"
+              loading={loading}
+              className="!bg-[#eab308] hover:!bg-yellow-400 !border-none !text-[#022c22] !font-semibold"
+            >
               Đăng nhập
             </Button>
           </Form.Item>
         </Form>
 
-        <div className="mt-4 text-xs text-gray-500">
-          <Text strong>Tài khoản demo (mật khẩu: 123456):</Text>
+        <div className="text-xs text-white/70 max-w-sm">
+          <Text className="!text-white/90" strong>
+            Tài khoản demo (mật khẩu: 123456):
+          </Text>
           <ul className="mt-1 space-y-0.5">
             {DEMO_ACCOUNTS.map((acc) => (
               <li key={acc.email}>
@@ -77,7 +107,30 @@ export default function LoginPage() {
             ))}
           </ul>
         </div>
-      </Card>
+      </div>
+
+      {/* "Glass" input skin: translucent over the photo instead of Ant Design's default solid
+          white field, so the background image reads through the whole form. Done as a scoped
+          stylesheet rather than the `style` prop because AntD renders these as
+          .ant-input-affix-wrapper (for the prefix icon), and only a stylesheet rule can safely
+          override its own !important-free defaults for both the wrapper and its inner <input>
+          without the two fighting each other. */}
+      <style>{`
+        .login-glass-input.ant-input-affix-wrapper {
+          background: rgba(255,255,255,0.10);
+          border-color: rgba(255,255,255,0.35);
+        }
+        .login-glass-input.ant-input-affix-wrapper:hover,
+        .login-glass-input.ant-input-affix-wrapper-focused {
+          background: rgba(255,255,255,0.16);
+          border-color: #eab308 !important;
+        }
+        .login-glass-input .ant-input {
+          background: transparent;
+          color: #fff;
+        }
+        .login-glass-input .ant-input::placeholder { color: rgba(255,255,255,0.55); }
+      `}</style>
     </div>
   );
 }
