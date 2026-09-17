@@ -11,6 +11,15 @@ import TrainingPlanPage from '../features/training/TrainingPlanPage';
 import TrainingSessionPage from '../features/training/TrainingSessionPage';
 import HealthBoardPage from '../features/health/HealthBoardPage';
 import TreatmentPage from '../features/health/TreatmentPage';
+import VeterinarianDashboard from '../pages/veterinarian/VeterinarianDashboard';
+import HorseHealthList from '../pages/veterinarian/HorseHealthList';
+import HorseHealthDetail from '../pages/veterinarian/HorseHealthDetail';
+import MedicalExaminationForm from '../pages/veterinarian/MedicalExaminationForm';
+import InjuryManagement from '../pages/veterinarian/InjuryManagement';
+import InjuryForm from '../pages/veterinarian/InjuryForm';
+import TreatmentPlanForm from '../pages/veterinarian/TreatmentPlanForm';
+import PrescriptionForm from '../pages/veterinarian/PrescriptionForm';
+import MedicalSchedule from '../pages/veterinarian/MedicalSchedule';
 import DailyTaskPage from '../features/stable/DailyTaskPage';
 import StableAssignPage from '../features/stable/StableAssignPage';
 import UserManagementPage from '../features/admin/UserManagementPage';
@@ -45,10 +54,24 @@ export default function AppRouter() {
             <Route path="/stable/tasks" element={<StableAssignPage />} />
           </Route>
 
-          {/* Veterinarian core flow. */}
+          {/* Veterinarian core flow & full module. */}
           <Route element={<ProtectedRoute allowedRoles={[ROLES.VETERINARIAN]} />}>
-            <Route path="/health/records" element={<HealthBoardPage />} />
-            <Route path="/health/treatments" element={<TreatmentPage />} />
+            <Route path="/veterinarian" element={<VeterinarianDashboard />} />
+            <Route path="/veterinarian/horses" element={<HorseHealthList />} />
+            <Route path="/veterinarian/horses/:id" element={<HorseHealthDetail />} />
+            <Route path="/veterinarian/examinations/new/:horseId" element={<MedicalExaminationForm />} />
+            <Route path="/veterinarian/examinations/:id/edit" element={<MedicalExaminationForm />} />
+            <Route path="/veterinarian/injuries" element={<InjuryManagement />} />
+            <Route path="/veterinarian/injuries/new" element={<InjuryForm />} />
+            <Route path="/veterinarian/injuries/:id/edit" element={<InjuryForm />} />
+            <Route path="/veterinarian/treatments" element={<TreatmentPlanForm />} />
+            <Route path="/veterinarian/treatments/:id/edit" element={<TreatmentPlanForm />} />
+            <Route path="/veterinarian/prescriptions" element={<PrescriptionForm />} />
+            <Route path="/veterinarian/schedules" element={<MedicalSchedule />} />
+
+            {/* Legacy alias paths */}
+            <Route path="/health/records" element={<HorseHealthList />} />
+            <Route path="/health/treatments" element={<TreatmentPlanForm />} />
           </Route>
 
           {/* Groom core flow. */}

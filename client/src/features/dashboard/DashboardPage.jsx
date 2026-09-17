@@ -5,6 +5,7 @@ import { horsesApi } from '../horses/horsesApi';
 import { trainingSessionApi } from '../training/trainingApi';
 import { ROLE_LABELS, ROLES } from '../../constants/roles';
 import FitnessOverviewChart from './FitnessOverviewChart';
+import VeterinarianDashboard from '../../pages/veterinarian/VeterinarianDashboard';
 
 const { Title, Paragraph } = Typography;
 
@@ -18,6 +19,10 @@ const ROLE_WELCOME = {
 
 export default function DashboardPage() {
   const { user } = useSelector((state) => state.auth);
+
+  if (user?.role === ROLES.VETERINARIAN) {
+    return <VeterinarianDashboard />;
+  }
   const isHeadTrainer = user?.role === ROLES.HEAD_TRAINER;
   const { data } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const horses = data?.data || [];

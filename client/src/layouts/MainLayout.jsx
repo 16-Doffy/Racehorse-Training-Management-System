@@ -20,7 +20,16 @@ export default function MainLayout() {
   const location = useLocation();
 
   const menuItems = getMenuByRole(user?.role);
-  const selectedKey = menuItems.find((m) => m.path === location.pathname)?.key || menuItems[0]?.key;
+  const currentPath = location.pathname;
+
+  let activeItem = menuItems.find((m) => m.path === currentPath);
+  if (!activeItem) {
+    activeItem = menuItems.find((m) => m.path !== '/' && m.path !== '/veterinarian' && currentPath.startsWith(m.path));
+    if (!activeItem && (currentPath.startsWith('/veterinarian/examinations') || currentPath.startsWith('/horses'))) {
+      activeItem = menuItems.find((m) => m.key === 'horses');
+    }
+  }
+  const selectedKey = activeItem?.key || menuItems[0]?.key;
 
   const handleLogout = () => {
     disconnectSocket();

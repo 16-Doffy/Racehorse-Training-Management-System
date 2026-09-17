@@ -33,10 +33,12 @@ const MENUS = {
     { key: 'races', icon: <TrophyOutlined />, label: 'Đăng ký Giải đua', path: '/races' },
   ],
   [ROLES.VETERINARIAN]: [
-    { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
-    { key: 'horses', icon: <ProfileOutlined />, label: 'Sơ đồ Sức khỏe', path: '/horses' },
-    { key: 'health-records', icon: <MedicineBoxOutlined />, label: 'Hồ sơ Khám bệnh', path: '/health/records' },
-    { key: 'treatments', icon: <MedicineBoxOutlined />, label: 'Điều trị & Khóa Huấn luyện', path: '/health/treatments' },
+    { key: 'dashboard', icon: <DashboardOutlined />, label: 'Bảng Điều Khiển Thú Y', path: '/veterinarian' },
+    { key: 'horses', icon: <ProfileOutlined />, label: 'Sức Khỏe Chiến Mã', path: '/veterinarian/horses' },
+    { key: 'injuries', icon: <MedicineBoxOutlined />, label: 'Quản Lý Chấn Thương', path: '/veterinarian/injuries' },
+    { key: 'treatments', icon: <MedicineBoxOutlined />, label: 'Phác Đồ & Khóa Tập', path: '/veterinarian/treatments' },
+    { key: 'prescriptions', icon: <MedicineBoxOutlined />, label: 'Kê Đơn Thuốc', path: '/veterinarian/prescriptions' },
+    { key: 'schedules', icon: <ScheduleOutlined />, label: 'Lịch Y Tế & Móng', path: '/veterinarian/schedules' },
   ],
   [ROLES.GROOM]: [
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
