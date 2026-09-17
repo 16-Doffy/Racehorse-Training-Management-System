@@ -4,13 +4,17 @@ const { authorize } = require('../../middlewares/rbacMiddleware');
 const { ROLES } = require('../../constants/roles');
 const { listUsers, getUser, createUser, updateUser, deleteUser } = require('./users.controller');
 
-// Full user/RBAC management is the Club Manager's core flow.
-router.use(protect, authorize(ROLES.MANAGER));
+router.use(protect);
 
-router.get('/', listUsers);
-router.get('/:id', getUser);
-router.post('/', createUser);
-router.put('/:id', updateUser);
-router.delete('/:id', deleteUser);
+// Read access is broader than write on purpose: creating/editing accounts and assigning roles
+// (RBAC) is the Club Manager's exclusive job, but Head Trainer legitimately needs to look up the
+// Groom staff directory to assign daily tasks to them (see stable/dailyTask.controller.js) —
+// without this, GET /users?role=groom 403s for Head Trainer and their assignment dropdown has
+// nothing to show.
+router.get('/', authorize(ROLES.MANAGER, ROLES.HEAD_TRAINER), listUsers);
+router.get('/:id', authorize(ROLES.MANAGER, ROLES.HEAD_TRAINER), getUser);
+router.post('/', authorize(ROLES.MANAGER), createUser);
+router.put('/:id', authorize(ROLES.MANAGER), updateUser);
+router.delete('/:id', authorize(ROLES.MANAGER), deleteUser);
 
 module.exports = router;

@@ -351,7 +351,7 @@ module.exports = {
     '/users': {
       get: {
         tags: ['Users (Manager)'],
-        summary: 'List users',
+        summary: 'List users (Manager or Head Trainer — the latter needs this to look up Groom staff for task assignment)',
         parameters: [{ name: 'role', in: 'query', schema: { type: 'string' } }],
         responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/User' } }), 403: responses[403] },
       },
