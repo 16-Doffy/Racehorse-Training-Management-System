@@ -1,7 +1,6 @@
 const Horse = require('../models/Horse');
-const Notification = require('../models/Notification');
-const { getIO } = require('./socketServer');
 const { ROLES } = require('../constants/roles');
+const { pushNotification } = require('../modules/alerts/notification.service');
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly is plenty for day-granularity due dates
 const RENOTIFY_AFTER_MS = 24 * 60 * 60 * 1000; // don't re-notify for the same due date within 24h
@@ -29,8 +28,6 @@ function startCareScheduler() {
 
       if (horses.length === 0) return;
 
-      const io = getIO();
-
       for (const horse of horses) {
         for (const item of CARE_ITEMS) {
           const dueAt = horse.careSchedule?.[item.dueField];
@@ -40,7 +37,8 @@ function startCareScheduler() {
           if (notifiedAt && now - new Date(notifiedAt) < RENOTIFY_AFTER_MS) continue;
 
           const message = `Ngựa ${horse.name} đến hạn ${item.label} (hạn: ${dueAt.toLocaleDateString('vi-VN')}).`;
-          const notification = await Notification.create({
+          // eslint-disable-next-line no-await-in-loop
+          await pushNotification({
             recipientRole: ROLES.VETERINARIAN,
             horse: horse._id,
             type: item.type,
@@ -51,8 +49,6 @@ function startCareScheduler() {
           horse.careSchedule[item.notifiedField] = now;
           // eslint-disable-next-line no-await-in-loop
           await horse.save();
-
-          io.to(`role:${ROLES.VETERINARIAN}`).emit('care:due', { notification, horseId: horse._id, item: item.dueField });
         }
       }
     } catch (err) {

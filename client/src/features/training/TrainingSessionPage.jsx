@@ -13,10 +13,12 @@ import {
   Input,
   Segmented,
 } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { trainingSessionApi, trainingPlanApi } from './trainingApi';
 import { horsesApi } from '../horses/horsesApi';
+import { useLockedHorseIds } from './useLockedHorses';
 
 const { Title } = Typography;
 
@@ -31,15 +33,33 @@ export default function TrainingSessionPage() {
   const [createForm] = Form.useForm();
   const [evalForm] = Form.useForm();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const planFilter = searchParams.get('plan');
+  const horseFilter = searchParams.get('horse');
+  const lockedHorseIds = useLockedHorseIds();
 
   const { data: sessionsData, isLoading } = useQuery({
     // Re-fetches whenever the filter changes, letting the server do the filtering rather than
     // hiding rows client-side — keeps this consistent with every other list page in the app.
-    queryKey: ['training-sessions', typeFilter],
-    queryFn: () => trainingSessionApi.list(typeFilter === 'all' ? undefined : { sessionType: typeFilter }),
+    queryKey: ['training-sessions', typeFilter, planFilter, horseFilter],
+    queryFn: () =>
+      trainingSessionApi.list({
+        ...(typeFilter !== 'all' ? { sessionType: typeFilter } : {}),
+        ...(planFilter ? { trainingPlan: planFilter } : {}),
+        ...(horseFilter ? { horse: horseFilter } : {}),
+      }),
   });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
+
+  const filteredPlan = planFilter ? (plansData?.data || []).find((p) => p._id === planFilter) : null;
+  const filteredHorse = horseFilter ? (horsesData?.data || []).find((h) => h._id === horseFilter) : null;
+
+  const horseOptions = (horsesData?.data || []).map((h) => ({
+    value: h._id,
+    label: lockedHorseIds.has(h._id) ? `🔒 ${h.name} (đang bị khóa huấn luyện)` : h.name,
+    disabled: lockedHorseIds.has(h._id),
+  }));
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['training-sessions'] });
 
@@ -66,7 +86,21 @@ export default function TrainingSessionPage() {
   });
 
   const columns = [
-    { title: 'Ngựa', dataIndex: ['horse', 'name'], key: 'horse' },
+    {
+      title: 'Ngựa',
+      dataIndex: ['horse', 'name'],
+      key: 'horse',
+      render: (name, record) => (
+        <span>
+          <Link to={`/horses/${record.horse?._id}`}>{name}</Link>
+          {lockedHorseIds.has(record.horse?._id) && (
+            <Tag color="red" className="ml-2">
+              🔒 Đang khóa
+            </Tag>
+          )}
+        </span>
+      ),
+    },
     {
       title: 'Loại',
       dataIndex: 'sessionType',
@@ -125,6 +159,29 @@ export default function TrainingSessionPage() {
         </Button>
       </div>
 
+      {filteredPlan && (
+        <Tag
+          closable
+          closeIcon={<CloseCircleOutlined />}
+          onClose={() => setSearchParams({})}
+          color="blue"
+          className="mb-4"
+        >
+          Đang lọc theo giáo án: {filteredPlan.horse?.name} — {filteredPlan.phase}
+        </Tag>
+      )}
+      {filteredHorse && (
+        <Tag
+          closable
+          closeIcon={<CloseCircleOutlined />}
+          onClose={() => setSearchParams({})}
+          color="blue"
+          className="mb-4"
+        >
+          Đang lọc theo ngựa: {filteredHorse.name}
+        </Tag>
+      )}
+
       <Segmented
         className="mb-4"
         value={typeFilter}
@@ -157,7 +214,7 @@ export default function TrainingSessionPage() {
             <Select options={(plansData?.data || []).map((p) => ({ value: p._id, label: `${p.horse?.name} — ${p.phase}` }))} />
           </Form.Item>
           <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>
-            <Select options={(horsesData?.data || []).map((h) => ({ value: h._id, label: h.name }))} />
+            <Select options={horseOptions} />
           </Form.Item>
           <Form.Item name="sessionType" label="Loại buổi tập" initialValue="training">
             <Select options={Object.entries(SESSION_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />

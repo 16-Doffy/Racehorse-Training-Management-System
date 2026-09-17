@@ -1,6 +1,6 @@
-const Notification = require('../models/Notification');
-const { getIO } = require('./socketServer');
+const Horse = require('../models/Horse');
 const { ROLES } = require('../constants/roles');
+const { pushNotification } = require('../modules/alerts/notification.service');
 
 // Simple fixed thresholds for the demo. A later phase can make these per-horse/per-phase.
 const THRESHOLDS = {
@@ -14,30 +14,23 @@ const THRESHOLDS = {
  */
 async function evaluateMetrics({ horseId, sessionId, heartRate, speed }) {
   const exceeded = [];
-  if (heartRate > THRESHOLDS.maxHeartRate) exceeded.push(`heart rate ${heartRate} bpm`);
-  if (speed > THRESHOLDS.maxSpeed) exceeded.push(`speed ${speed} km/h`);
+  if (heartRate > THRESHOLDS.maxHeartRate) exceeded.push(`nhịp tim ${heartRate} bpm`);
+  if (speed > THRESHOLDS.maxSpeed) exceeded.push(`tốc độ ${speed} km/h`);
 
   if (exceeded.length === 0) return null;
 
-  const message = `Fitness threshold exceeded (${exceeded.join(', ')}) during session ${sessionId}.`;
-  const notification = await Notification.create({
+  const horse = await Horse.findById(horseId).select('name');
+  const horseName = horse?.name || 'Ngựa';
+  const message = `${horseName} vượt ngưỡng thể lực (${exceeded.join(', ')}) trong buổi tập đang diễn ra.`;
+
+  return pushNotification({
     recipientRole: ROLES.HEAD_TRAINER,
     horse: horseId,
     type: 'fitness_alert',
     severity: 'warning',
     message,
+    extraRooms: [`horse:${horseId}`],
   });
-
-  const io = getIO();
-  io.to(`role:${ROLES.HEAD_TRAINER}`).to(`horse:${horseId}`).emit('fitness:alert', {
-    notification,
-    horseId,
-    sessionId,
-    heartRate,
-    speed,
-  });
-
-  return notification;
 }
 
 module.exports = { evaluateMetrics, THRESHOLDS };

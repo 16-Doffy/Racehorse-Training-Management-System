@@ -1,13 +1,19 @@
 const Treatment = require('../../models/Treatment');
-const Notification = require('../../models/Notification');
+const Horse = require('../../models/Horse');
+const TrainingSession = require('../../models/TrainingSession');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
+const { pushNotification } = require('../alerts/notification.service');
 const { ROLES } = require('../../constants/roles');
 
 const listTreatments = asyncHandler(async (req, res) => {
-  const { horse } = req.query;
-  const filter = horse ? { horse } : {};
+  const { horse, isTrainingLocked, status } = req.query;
+  const filter = {};
+  if (horse) filter.horse = horse;
+  if (isTrainingLocked !== undefined) filter.isTrainingLocked = isTrainingLocked === 'true';
+  if (status) filter.status = status;
+
   const treatments = await Treatment.find(filter)
     .populate('horse', 'name healthStatus')
     .populate('prescribedBy', 'name')
@@ -21,18 +27,51 @@ const getTreatment = asyncHandler(async (req, res) => {
   return ok(res, treatment, 'Treatment fetched.');
 });
 
+// Cancels any not-yet-run session for a horse the moment it goes under a training lock — without
+// this, a session the Head Trainer scheduled *before* the lock existed just sits there as
+// "scheduled"/"in_progress" and nothing stops it from actually being run or evaluated. Returns
+// how many were cancelled so the caller can mention it in the notification.
+async function cancelPendingSessionsForLock(horseId, actorId) {
+  const result = await TrainingSession.updateMany(
+    { horse: horseId, status: { $in: ['scheduled', 'in_progress'] } },
+    { status: 'cancelled' }
+  );
+  if (result.modifiedCount > 0) {
+    await logAction({
+      actorId,
+      action: 'trainingSession.auto_cancelled_by_lock',
+      targetModel: 'Horse',
+      targetId: horseId,
+      metadata: { count: result.modifiedCount },
+    });
+  }
+  return result.modifiedCount;
+}
+
+async function notifyLockIssued({ horseId, lockReason, actorId }) {
+  const horse = await Horse.findById(horseId).select('name');
+  const horseName = horse?.name || 'Ngựa';
+  const cancelledCount = await cancelPendingSessionsForLock(horseId, actorId);
+
+  const cancelNote = cancelledCount > 0 ? ` Đã tự động hủy ${cancelledCount} buổi tập đã lên lịch trước đó.` : '';
+  const message = `🔒 ${horseName} bị khóa huấn luyện khẩn cấp: ${lockReason || 'chỉ định y tế'}.${cancelNote}`;
+
+  return pushNotification({
+    recipientRole: ROLES.HEAD_TRAINER,
+    horse: horseId,
+    type: 'injury_lock',
+    severity: 'critical',
+    message,
+    extraRooms: [`horse:${horseId}`],
+  });
+}
+
 const createTreatment = asyncHandler(async (req, res) => {
   const treatment = await Treatment.create({ ...req.body, prescribedBy: req.user._id });
   await logAction({ actorId: req.user._id, action: 'treatment.create', targetModel: 'Treatment', targetId: treatment._id });
 
   if (treatment.isTrainingLocked) {
-    await Notification.create({
-      recipientRole: ROLES.HEAD_TRAINER,
-      horse: treatment.horse,
-      type: 'injury_lock',
-      severity: 'critical',
-      message: `Training locked for horse ${treatment.horse}: ${treatment.lockReason || 'medical hold'}.`,
-    });
+    await notifyLockIssued({ horseId: treatment.horse, lockReason: treatment.lockReason, actorId: req.user._id });
   }
 
   return created(res, treatment, 'Treatment created.');
@@ -64,13 +103,7 @@ const setTrainingLock = asyncHandler(async (req, res) => {
   });
 
   if (isTrainingLocked) {
-    await Notification.create({
-      recipientRole: ROLES.HEAD_TRAINER,
-      horse: treatment.horse,
-      type: 'injury_lock',
-      severity: 'critical',
-      message: `Emergency training lock issued: ${lockReason || 'medical hold'}.`,
-    });
+    await notifyLockIssued({ horseId: treatment.horse, lockReason, actorId: req.user._id });
   }
 
   return ok(res, treatment, isTrainingLocked ? 'Training lock issued.' : 'Training lock lifted.');

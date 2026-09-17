@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Table, Button, Typography, Modal, Form, Select, InputNumber, DatePicker, Tag, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { trainingPlanApi } from './trainingApi';
 import { horsesApi } from '../horses/horsesApi';
+import { useLockedHorseIds } from './useLockedHorses';
 
 const { Title } = Typography;
 
@@ -22,9 +24,17 @@ export default function TrainingPlanPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: plansData, isLoading } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
+  const lockedHorseIds = useLockedHorseIds();
+
+  const horseOptions = (horsesData?.data || []).map((h) => ({
+    value: h._id,
+    label: lockedHorseIds.has(h._id) ? `🔒 ${h.name} (đang bị khóa huấn luyện)` : h.name,
+    disabled: lockedHorseIds.has(h._id),
+  }));
 
   const createMutation = useMutation({
     mutationFn: (payload) => trainingPlanApi.create(payload),
@@ -38,7 +48,16 @@ export default function TrainingPlanPage() {
   });
 
   const columns = [
-    { title: 'Ngựa', dataIndex: ['horse', 'name'], key: 'horse' },
+    {
+      title: 'Ngựa',
+      dataIndex: ['horse', 'name'],
+      key: 'horse',
+      render: (name, record) => (
+        <Link to={`/horses/${record.horse?._id}`} onClick={(e) => e.stopPropagation()}>
+          {name}
+        </Link>
+      ),
+    },
     { title: 'Giai đoạn', dataIndex: 'phase', key: 'phase', render: (p) => PHASE_LABELS[p] || p },
     { title: 'Cự ly mục tiêu (m)', dataIndex: 'distanceTarget', key: 'distanceTarget' },
     { title: 'Khối lượng (km/tuần)', dataIndex: 'weeklyVolumeKm', key: 'weeklyVolumeKm' },
@@ -51,9 +70,13 @@ export default function TrainingPlanPage() {
     { title: 'Mặt sân', dataIndex: 'surface', key: 'surface' },
     {
       title: 'Trạng thái',
-      dataIndex: 'status',
       key: 'status',
-      render: (s) => <Tag color={s === 'active' ? 'blue' : 'default'}>{s}</Tag>,
+      render: (_, record) =>
+        lockedHorseIds.has(record.horse?._id) ? (
+          <Tag color="red">🔒 Đang khóa</Tag>
+        ) : (
+          <Tag color={record.status === 'active' ? 'blue' : 'default'}>{record.status}</Tag>
+        ),
     },
   ];
 
@@ -68,7 +91,19 @@ export default function TrainingPlanPage() {
         </Button>
       </div>
 
-      <Table rowKey="_id" columns={columns} dataSource={plansData?.data} loading={isLoading} />
+      <Table
+        rowKey="_id"
+        columns={columns}
+        dataSource={plansData?.data}
+        loading={isLoading}
+        onRow={(record) => ({
+          onClick: () => navigate(`/training/sessions?plan=${record._id}`),
+          className: 'cursor-pointer',
+        })}
+      />
+      <Typography.Paragraph type="secondary" className="!mt-2 !mb-0 text-xs">
+        Nhấp vào một dòng để xem các buổi tập thuộc giáo án đó.
+      </Typography.Paragraph>
 
       <Modal
         title="Lập giáo án huấn luyện"
@@ -86,7 +121,7 @@ export default function TrainingPlanPage() {
           }
         >
           <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>
-            <Select options={(horsesData?.data || []).map((h) => ({ value: h._id, label: h.name }))} />
+            <Select options={horseOptions} />
           </Form.Item>
           <Form.Item name="phase" label="Giai đoạn" rules={[{ required: true }]}>
             <Select

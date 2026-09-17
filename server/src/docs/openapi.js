@@ -464,7 +464,12 @@ module.exports = {
       put: { tags: ['Health (Veterinarian)'], summary: 'Update health record', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/HealthRecord' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/HealthRecord' }), 404: responses[404] } },
     },
     '/health/treatments': {
-      get: { tags: ['Health (Veterinarian)'], summary: 'List treatments', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/Treatment' } }) } },
+      get: {
+        tags: ['Health (Veterinarian)'],
+        summary: 'List treatments — filter by isTrainingLocked/status to find horses currently under an active lock',
+        parameters: [horseQueryParam, { name: 'isTrainingLocked', in: 'query', schema: { type: 'boolean' } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['ongoing', 'completed'] } }],
+        responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/Treatment' } }) },
+      },
       post: { tags: ['Health (Veterinarian)'], summary: 'Create treatment (optionally with isTrainingLocked)', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Treatment' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/Treatment' }), 403: responses[403] } },
     },
     '/health/treatments/{id}': {
