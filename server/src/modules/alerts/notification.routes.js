@@ -23,6 +23,15 @@ router.get(
 );
 
 router.patch(
+  '/read-all',
+  protect,
+  asyncHandler(async (req, res) => {
+    const result = await Notification.updateMany({ ...myFilter(req.user), isRead: false }, { isRead: true });
+    return ok(res, { matched: result.matchedCount }, 'All notifications marked as read.');
+  })
+);
+
+router.patch(
   '/:id/read',
   protect,
   asyncHandler(async (req, res) => {

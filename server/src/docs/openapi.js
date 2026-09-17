@@ -582,6 +582,9 @@ module.exports = {
     '/notifications': {
       get: { tags: ['Notifications'], summary: 'List my notifications (addressed to me or to my role)', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/Notification' } }) } },
     },
+    '/notifications/read-all': {
+      patch: { tags: ['Notifications'], summary: 'Mark all of my notifications as read', responses: { 200: responses[200]({ type: 'object', properties: { matched: { type: 'integer' } } }) } },
+    },
     '/notifications/{id}/read': {
       patch: { tags: ['Notifications'], summary: 'Mark a notification as read', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/Notification' }), 404: responses[404] } },
     },
