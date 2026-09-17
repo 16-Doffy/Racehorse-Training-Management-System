@@ -20,6 +20,22 @@ const getPlan = asyncHandler(async (req, res) => {
 });
 
 const createPlan = asyncHandler(async (req, res) => {
+  const { horse } = req.body;
+  const Treatment = require('../../models/Treatment');
+  const Horse = require('../../models/Horse');
+
+  const activeLock = await Treatment.findOne({ horse, isTrainingLocked: true, status: 'ongoing' });
+  const targetHorse = await Horse.findById(horse);
+
+  if (activeLock || (targetHorse && (targetHorse.healthStatus === 'injured' || targetHorse.healthStatus === 'quarantined'))) {
+    const reason = activeLock?.lockReason || `bệnh lý y tế (${targetHorse?.healthStatus === 'injured' ? 'chấn thương' : 'cách ly'})`;
+    return fail(
+      res,
+      `Không thể lập giáo án: Chiến mã đang trong trạng thái bị khóa huấn luyện do y tế (${reason}).`,
+      409
+    );
+  }
+
   const plan = await TrainingPlan.create({ ...req.body, createdBy: req.user._id });
   await logAction({ actorId: req.user._id, action: 'trainingPlan.create', targetModel: 'TrainingPlan', targetId: plan._id });
   return created(res, plan, 'Training plan created.');

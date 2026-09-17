@@ -37,11 +37,19 @@ const createSession = asyncHandler(async (req, res) => {
   const plan = await TrainingPlan.findById(planId);
   if (!plan) return fail(res, 'Training plan not found.', 404);
 
+  const Horse = require('../../models/Horse');
   const activeLock = await Treatment.findOne({ horse, isTrainingLocked: true, status: 'ongoing' });
-  if (activeLock) {
+  const targetHorse = await Horse.findById(horse);
+
+  if (!targetHorse) return fail(res, 'Horse not found.', 404);
+
+  const isInjuredOrQuarantined = targetHorse.healthStatus === 'injured' || targetHorse.healthStatus === 'quarantined';
+
+  if (activeLock || isInjuredOrQuarantined) {
+    const reason = activeLock?.lockReason || `bệnh lý y tế (${targetHorse.healthStatus === 'injured' ? 'chấn thương' : 'cách ly'})`;
     return fail(
       res,
-      `Cannot schedule session: horse is under an active training lock (reason: ${activeLock.lockReason || 'medical'}).`,
+      `Không thể tạo buổi tập: Chiến mã đang trong trạng thái bị khóa huấn luyện do y tế (${reason}).`,
       409
     );
   }
