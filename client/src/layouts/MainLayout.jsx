@@ -55,14 +55,18 @@ export default function MainLayout() {
     // flex height chain (Layout -> Sider/Layout -> Header/Content) has to be exact, not just a
     // minimum, for the internal-scroll behavior to kick in.
     <Layout style={{ height: '100vh' }}>
-      <Sider 
-        theme="dark" 
-        collapsible 
-        collapsed={siderCollapsed} 
+      <Sider
+        theme="dark"
+        collapsible
+        collapsed={siderCollapsed}
         // onCollapse receives the new value for both the trigger click and the responsive
         // breakpoint (auto-collapse on phones, where grooms mostly use the app).
         onCollapse={(value) => dispatch(siderCollapsedSet(value))}
         breakpoint="md"
+        // AntD's own default (200px) isn't wide enough for the longer Vietnamese labels (e.g.
+        // "Buổi Tập & Đánh giá", "Quản lý Nhân sự & RBAC") once icon + padding are subtracted —
+        // they hit the Menu's built-in text-overflow:ellipsis and show as "Buổi Tập & Đánh ...".
+        width={232}
         className="!bg-[#022c22] border-r border-[#064e3b]"
         style={{ backgroundColor: '#022c22' }}
       >

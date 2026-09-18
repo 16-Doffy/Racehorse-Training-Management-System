@@ -41,3 +41,15 @@ body {
 .ant-layout-sider-trigger:hover {
   background-color: #047857 !important;
 }
+
+/* Sidebar menu: trims horizontal padding/icon gap so the longer Vietnamese labels ("Buổi Tập &
+   Đánh giá", "Quản lý Nhân sự & RBAC"...) fit within the Sider width instead of hitting AntD
+   Menu's default text-overflow:ellipsis and showing as "Buổi Tập & Đánh ...". */
+.prestige-menu.ant-menu-inline .ant-menu-item {
+  padding-inline: 16px !important;
+}
+.prestige-menu .ant-menu-item .ant-menu-item-icon + span,
+.prestige-menu .ant-menu-title-content {
+  margin-inline-start: 8px;
+  font-size: 13.5px;
+}
