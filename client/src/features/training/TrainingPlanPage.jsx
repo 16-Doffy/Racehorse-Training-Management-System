@@ -45,12 +45,12 @@ export default function TrainingPlanPage() {
   const createMutation = useMutation({
     mutationFn: (payload) => trainingPlanApi.create(payload),
     onSuccess: () => {
-      message.success('Đã tạo giáo án huấn luyện.');
+      message.success('Đã tạo kế hoạch huấn luyện.');
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
       setModalOpen(false);
       form.resetFields();
     },
-    onError: (err) => message.error(err.message || 'Tạo giáo án thất bại.'),
+    onError: (err) => message.error(err.message || 'Tạo kế hoạch thất bại.'),
   });
 
   const columns = [
@@ -91,15 +91,15 @@ export default function TrainingPlanPage() {
       <div className="flex justify-between items-start mb-4">
         <div>
           <Title level={3} className="!mb-0">
-            Giáo án Huấn luyện
+            Kế hoạch Huấn luyện
           </Title>
           <Typography.Text type="secondary" className="text-sm">
             Kế hoạch huấn luyện dài hạn cho từng ngựa — giai đoạn tập luyện, cường độ và mục tiêu cự
-            ly. Mỗi giáo án gồm nhiều buổi tập cụ thể (xem ở tab "Buổi Tập &amp; Đánh giá").
+            ly. Mỗi kế hoạch gồm nhiều buổi tập cụ thể (xem ở tab "Buổi Tập &amp; Đánh giá").
           </Typography.Text>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-          Lập giáo án mới
+          Lập kế hoạch mới
         </Button>
       </div>
 
@@ -108,18 +108,18 @@ export default function TrainingPlanPage() {
         columns={columns}
         dataSource={plansData?.data}
         loading={isLoading}
-        locale={{ emptyText: 'Chưa có giáo án huấn luyện nào. Nhấn "Lập giáo án mới" để bắt đầu.' }}
+        locale={{ emptyText: 'Chưa có kế hoạch huấn luyện nào. Nhấn "Lập kế hoạch mới" để bắt đầu.' }}
         onRow={(record) => ({
           onClick: () => navigate(`/training/sessions?plan=${record._id}`),
           className: 'cursor-pointer',
         })}
       />
       <Typography.Paragraph type="secondary" className="!mt-2 !mb-0 text-xs">
-        💡 Nhấp vào một dòng để xem các buổi tập thuộc giáo án đó.
+        💡 Nhấp vào một dòng để xem các buổi tập thuộc kế hoạch đó.
       </Typography.Paragraph>
 
       <Modal
-        title="Lập giáo án huấn luyện"
+        title="Lập kế hoạch huấn luyện"
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={() => form.submit()}

@@ -168,7 +168,7 @@ export default function TrainingSessionPage() {
             Buổi Tập &amp; Đánh giá
           </Title>
           <Typography.Text type="secondary" className="text-sm">
-            Từng buổi tập cụ thể thuộc một giáo án huấn luyện — theo dõi chỉ số thể lực ghi nhận
+            Từng buổi tập cụ thể thuộc một kế hoạch huấn luyện — theo dõi chỉ số thể lực ghi nhận
             được và ghi lại đánh giá chuyên môn sau mỗi buổi.
           </Typography.Text>
         </div>
@@ -185,7 +185,7 @@ export default function TrainingSessionPage() {
           color="blue"
           className="mb-4"
         >
-          Đang lọc theo giáo án: {filteredPlan.horse?.name} — {filteredPlan.phase}
+          Đang lọc theo kế hoạch: {filteredPlan.horse?.name} — {filteredPlan.phase}
         </Tag>
       )}
       {filteredHorse && (
@@ -216,7 +216,7 @@ export default function TrainingSessionPage() {
         columns={columns}
         dataSource={sessionsData?.data}
         loading={isLoading}
-        locale={{ emptyText: 'Chưa có buổi tập nào. Nhấn "Tạo buổi tập" để thêm buổi tập cho một giáo án.' }}
+        locale={{ emptyText: 'Chưa có buổi tập nào. Nhấn "Tạo buổi tập" để thêm buổi tập cho một kế hoạch.' }}
       />
 
       <Modal
@@ -234,7 +234,7 @@ export default function TrainingSessionPage() {
             createMutation.mutate({ ...values, scheduledAt: values.scheduledAt?.toISOString() })
           }
         >
-          <Form.Item name="trainingPlan" label="Giáo án" rules={[{ required: true }]}>
+          <Form.Item name="trainingPlan" label="Kế hoạch" rules={[{ required: true }]}>
             <Select options={(plansData?.data || []).map((p) => ({ value: p._id, label: `${p.horse?.name} — ${p.phase}` }))} />
           </Form.Item>
           <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>

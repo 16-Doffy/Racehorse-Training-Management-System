@@ -33,7 +33,7 @@ const MENUS = {
   [ROLES.HEAD_TRAINER]: [
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
     { key: 'horses', icon: <ProfileOutlined />, label: 'Danh sách Ngựa', path: '/horses' },
-    { key: 'training-plans', icon: <ScheduleOutlined />, label: 'Giáo án Huấn luyện', path: '/training/plans' },
+    { key: 'training-plans', icon: <ScheduleOutlined />, label: 'Kế hoạch Huấn luyện', path: '/training/plans' },
     { key: 'training-sessions', icon: <ScheduleOutlined />, label: 'Buổi Tập & Đánh giá', path: '/training/sessions' },
     { key: 'stable-tasks', icon: <HomeOutlined />, label: 'Phân công Chuồng trại', path: '/stable/tasks' },
     { key: 'races', icon: <TrophyOutlined />, label: 'Đăng ký Giải đua', path: '/races' },
