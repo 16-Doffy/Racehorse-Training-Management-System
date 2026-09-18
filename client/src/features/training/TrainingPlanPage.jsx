@@ -20,6 +20,12 @@ const PHASE_LABELS = {
 const INTENSITY_LABELS = { light: 'Nhẹ', moderate: 'Vừa', high: 'Cao' };
 const INTENSITY_COLORS = { light: 'green', moderate: 'gold', high: 'red' };
 
+const STATUS_LABELS = { draft: 'Nháp', active: 'Đang áp dụng', completed: 'Đã hoàn thành', cancelled: 'Đã hủy' };
+const STATUS_COLORS = { draft: 'default', active: 'blue', completed: 'green', cancelled: 'red' };
+
+const SURFACE_LABELS = { turf: 'Cỏ (Turf)', dirt: 'Đất (Dirt)', synthetic: 'Tổng hợp', sand: 'Cát' };
+const SURFACE_OPTIONS = Object.entries(SURFACE_LABELS).map(([value, label]) => ({ value, label }));
+
 export default function TrainingPlanPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
@@ -67,7 +73,7 @@ export default function TrainingPlanPage() {
       key: 'intensity',
       render: (v) => <Tag color={INTENSITY_COLORS[v]}>{INTENSITY_LABELS[v] || v}</Tag>,
     },
-    { title: 'Mặt sân', dataIndex: 'surface', key: 'surface' },
+    { title: 'Mặt sân', dataIndex: 'surface', key: 'surface', render: (v) => SURFACE_LABELS[v] || v },
     {
       title: 'Trạng thái',
       key: 'status',
@@ -75,17 +81,23 @@ export default function TrainingPlanPage() {
         lockedHorseIds.has(record.horse?._id) ? (
           <Tag color="red">🔒 Đang khóa</Tag>
         ) : (
-          <Tag color={record.status === 'active' ? 'blue' : 'default'}>{record.status}</Tag>
+          <Tag color={STATUS_COLORS[record.status]}>{STATUS_LABELS[record.status] || record.status}</Tag>
         ),
     },
   ];
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <Title level={3} className="!mb-0">
-          Giáo án Huấn luyện
-        </Title>
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <Title level={3} className="!mb-0">
+            Giáo án Huấn luyện
+          </Title>
+          <Typography.Text type="secondary" className="text-sm">
+            Kế hoạch huấn luyện dài hạn cho từng ngựa — giai đoạn tập luyện, cường độ và mục tiêu cự
+            ly. Mỗi giáo án gồm nhiều buổi tập cụ thể (xem ở tab "Buổi Tập &amp; Đánh giá").
+          </Typography.Text>
+        </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
           Lập giáo án mới
         </Button>
@@ -96,13 +108,14 @@ export default function TrainingPlanPage() {
         columns={columns}
         dataSource={plansData?.data}
         loading={isLoading}
+        locale={{ emptyText: 'Chưa có giáo án huấn luyện nào. Nhấn "Lập giáo án mới" để bắt đầu.' }}
         onRow={(record) => ({
           onClick: () => navigate(`/training/sessions?plan=${record._id}`),
           className: 'cursor-pointer',
         })}
       />
       <Typography.Paragraph type="secondary" className="!mt-2 !mb-0 text-xs">
-        Nhấp vào một dòng để xem các buổi tập thuộc giáo án đó.
+        💡 Nhấp vào một dòng để xem các buổi tập thuộc giáo án đó.
       </Typography.Paragraph>
 
       <Modal
@@ -138,14 +151,7 @@ export default function TrainingPlanPage() {
             <Select options={Object.entries(INTENSITY_LABELS).map(([value, label]) => ({ value, label }))} />
           </Form.Item>
           <Form.Item name="surface" label="Mặt sân" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { value: 'turf', label: 'Cỏ (Turf)' },
-                { value: 'dirt', label: 'Đất (Dirt)' },
-                { value: 'synthetic', label: 'Tổng hợp' },
-                { value: 'sand', label: 'Cát' },
-              ]}
-            />
+            <Select options={SURFACE_OPTIONS} />
           </Form.Item>
           <Form.Item name="startDate" label="Ngày bắt đầu" rules={[{ required: true }]}>
             <DatePicker className="w-full" />

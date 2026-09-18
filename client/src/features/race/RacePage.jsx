@@ -1,11 +1,20 @@
 import { useState } from 'react';
 import { Table, Button, Typography, Modal, Form, Select, DatePicker, InputNumber, Input, Tag, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { raceApi } from './raceApi';
 import { horsesApi } from '../horses/horsesApi';
 
 const { Title } = Typography;
+
+const STATUS_LABELS = {
+  registered: 'Đã đăng ký',
+  confirmed: 'Đã xác nhận tham gia',
+  completed: 'Đã thi đấu xong',
+  withdrawn: 'Đã rút lui',
+};
+const STATUS_COLORS = { registered: 'default', confirmed: 'blue', completed: 'green', withdrawn: 'red' };
 
 // Real scaffold CRUD wired up; leaderboard/results integration comes later.
 export default function RacePage() {
@@ -28,25 +37,57 @@ export default function RacePage() {
   });
 
   const columns = [
-    { title: 'Ngựa', dataIndex: ['horse', 'name'], key: 'horse' },
+    {
+      title: 'Ngựa',
+      dataIndex: ['horse', 'name'],
+      key: 'horse',
+      render: (name, record) => <Link to={`/horses/${record.horse?._id}`}>{name}</Link>,
+    },
     { title: 'Giải đua', dataIndex: 'raceName', key: 'raceName' },
-    { title: 'Ngày đua', dataIndex: 'raceDate', key: 'raceDate', render: (d) => new Date(d).toLocaleDateString() },
-    { title: 'Cự ly (m)', dataIndex: 'distance', key: 'distance' },
-    { title: 'Trạng thái', dataIndex: 'status', key: 'status', render: (s) => <Tag>{s}</Tag> },
+    {
+      title: 'Ngày đua',
+      dataIndex: 'raceDate',
+      key: 'raceDate',
+      render: (d) => new Date(d).toLocaleDateString('vi-VN'),
+    },
+    { title: 'Cự ly (m)', dataIndex: 'distance', key: 'distance', render: (v) => v ?? '—' },
+    {
+      title: 'Trạng thái',
+      dataIndex: 'status',
+      key: 'status',
+      render: (s) => <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s] || s}</Tag>,
+    },
+    {
+      title: 'Kết quả',
+      dataIndex: 'result',
+      key: 'result',
+      render: (v) => v || <span className="text-gray-400">Chưa có kết quả</span>,
+    },
   ];
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <Title level={3} className="!mb-0">
-          Đăng ký Giải đua
-        </Title>
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <Title level={3} className="!mb-0">
+            Đăng ký Giải đua
+          </Title>
+          <Typography.Text type="secondary" className="text-sm">
+            Đăng ký ngựa tham gia các giải đua và theo dõi kết quả sau khi thi đấu.
+          </Typography.Text>
+        </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           Đăng ký giải mới
         </Button>
       </div>
 
-      <Table rowKey="_id" columns={columns} dataSource={data?.data} loading={isLoading} />
+      <Table
+        rowKey="_id"
+        columns={columns}
+        dataSource={data?.data}
+        loading={isLoading}
+        locale={{ emptyText: 'Chưa có giải đua nào được đăng ký. Nhấn "Đăng ký giải mới" để bắt đầu.' }}
+      />
 
       <Modal
         title="Đăng ký giải đua"

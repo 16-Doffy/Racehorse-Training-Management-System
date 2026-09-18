@@ -22,7 +22,14 @@ import { useLockedHorseIds } from './useLockedHorses';
 
 const { Title } = Typography;
 
+const STATUS_LABELS = {
+  scheduled: 'Đã lên lịch',
+  in_progress: 'Đang diễn ra',
+  completed: 'Đã hoàn thành',
+  cancelled: 'Đã hủy',
+};
 const STATUS_COLORS = { scheduled: 'default', in_progress: 'processing', completed: 'success', cancelled: 'error' };
+const STATUS_OPTIONS = Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }));
 const SESSION_TYPE_LABELS = { training: 'Buổi tập thường', trial_run: 'Lượt chạy thử' };
 
 export default function TrainingSessionPage() {
@@ -111,20 +118,25 @@ export default function TrainingSessionPage() {
       title: 'Thời gian',
       dataIndex: 'scheduledAt',
       key: 'scheduledAt',
-      render: (d) => new Date(d).toLocaleString(),
+      render: (d) => new Date(d).toLocaleString('vi-VN'),
     },
     {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      render: (s) => <Tag color={STATUS_COLORS[s]}>{s}</Tag>,
+      render: (s) => <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s] || s}</Tag>,
     },
     {
       title: 'Nhịp tim TB / Tốc độ tối đa',
       key: 'metrics',
       render: (_, r) => `${r.metrics?.avgHeartRate ?? '—'} bpm / ${r.metrics?.maxSpeed ?? '—'} km/h`,
     },
-    { title: 'Đánh giá', dataIndex: 'performanceRating', key: 'performanceRating', render: (v) => v ?? '—' },
+    {
+      title: 'Điểm phong độ',
+      dataIndex: 'performanceRating',
+      key: 'performanceRating',
+      render: (v) => (v != null ? `${v} / 10` : 'Chưa đánh giá'),
+    },
     {
       title: '',
       key: 'actions',
@@ -150,10 +162,16 @@ export default function TrainingSessionPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <Title level={3} className="!mb-0">
-          Buổi Tập &amp; Đánh giá
-        </Title>
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <Title level={3} className="!mb-0">
+            Buổi Tập &amp; Đánh giá
+          </Title>
+          <Typography.Text type="secondary" className="text-sm">
+            Từng buổi tập cụ thể thuộc một giáo án huấn luyện — theo dõi chỉ số thể lực ghi nhận
+            được và ghi lại đánh giá chuyên môn sau mỗi buổi.
+          </Typography.Text>
+        </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
           Tạo buổi tập
         </Button>
@@ -193,7 +211,13 @@ export default function TrainingSessionPage() {
         ]}
       />
 
-      <Table rowKey="_id" columns={columns} dataSource={sessionsData?.data} loading={isLoading} />
+      <Table
+        rowKey="_id"
+        columns={columns}
+        dataSource={sessionsData?.data}
+        loading={isLoading}
+        locale={{ emptyText: 'Chưa có buổi tập nào. Nhấn "Tạo buổi tập" để thêm buổi tập cho một giáo án.' }}
+      />
 
       <Modal
         title="Tạo buổi tập mới"
@@ -226,7 +250,7 @@ export default function TrainingSessionPage() {
             <Select
               options={[
                 { value: 'scheduled', label: 'Đã lên lịch' },
-                { value: 'in_progress', label: 'Đang diễn ra (bật cảm biến realtime)' },
+                { value: 'in_progress', label: 'Đang diễn ra (bật cảm biến thể lực mô phỏng)' },
               ]}
             />
           </Form.Item>
@@ -247,20 +271,20 @@ export default function TrainingSessionPage() {
           onFinish={(values) => evalMutation.mutate({ id: activeSession._id, payload: values })}
         >
           <Form.Item name="status" label="Trạng thái">
-            <Select
-              options={[
-                { value: 'scheduled', label: 'Đã lên lịch' },
-                { value: 'in_progress', label: 'Đang diễn ra' },
-                { value: 'completed', label: 'Hoàn thành' },
-                { value: 'cancelled', label: 'Đã hủy' },
-              ]}
-            />
+            <Select options={STATUS_OPTIONS} />
           </Form.Item>
-          <Form.Item name="performanceRating" label="Điểm phong độ (1-10)">
-            <InputNumber min={1} max={10} className="w-full" />
+          <Form.Item
+            name="performanceRating"
+            label="Điểm phong độ (1 = kém, 10 = xuất sắc)"
+          >
+            <InputNumber min={1} max={10} className="w-full" placeholder="VD: 8" />
           </Form.Item>
-          <Form.Item name="trainerComment" label="Nhận xét chuyên môn">
-            <Input.TextArea rows={3} />
+          <Form.Item
+            name="trainerComment"
+            label="Nhận xét chuyên môn"
+            extra="Ghi lại quan sát của bạn về phong độ, kỹ thuật, hoặc bất thường trong buổi tập này."
+          >
+            <Input.TextArea rows={3} placeholder="VD: Ngựa chạy ổn định, nên tăng nhẹ cường độ tuần tới." />
           </Form.Item>
         </Form>
       </Modal>
