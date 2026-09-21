@@ -1,22 +1,13 @@
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Form, Input, Button, Typography, Alert } from 'antd';
 import { UserOutlined, LockOutlined, TrophyOutlined } from '@ant-design/icons';
 import { authApi } from './authApi';
 import { credentialsReceived } from './authSlice';
-import { ROLE_LABELS } from '../../constants/roles';
 import loginBg from '../../assets/login-bg.jpg';
 
-const { Title, Text, Paragraph } = Typography;
-
-const DEMO_ACCOUNTS = [
-  { email: 'manager@demo.com', role: 'manager' },
-  { email: 'trainer@demo.com', role: 'head_trainer' },
-  { email: 'vet@demo.com', role: 'veterinarian' },
-  { email: 'groom@demo.com', role: 'groom' },
-  { email: 'owner@demo.com', role: 'owner' },
-];
+const { Title, Paragraph } = Typography;
 
 export default function LoginPage() {
   const [error, setError] = useState('');
@@ -71,10 +62,10 @@ export default function LoginPage() {
 
         <Form layout="vertical" onFinish={onFinish} autoComplete="off" className="max-w-sm">
           <Form.Item name="email" label={<span className="text-white/90">Email</span>} rules={[{ required: true, message: 'Vui lòng nhập email' }]}>
-            <Input prefix={<UserOutlined className="text-white/70" />} placeholder="you@demo.com" size="large" className="login-glass-input" />
+            <Input prefix={<UserOutlined className="text-white/70" />} placeholder="you@demo.com" size="large" className="auth-glass-input" />
           </Form.Item>
           <Form.Item name="password" label={<span className="text-white/90">Mật khẩu</span>} rules={[{ required: true, message: 'Vui lòng nhập mật khẩu' }]}>
-            <Input.Password prefix={<LockOutlined className="text-white/70" />} placeholder="••••••" size="large" className="login-glass-input" />
+            <Input.Password prefix={<LockOutlined className="text-white/70" />} placeholder="••••••" size="large" className="auth-glass-input" />
           </Form.Item>
           <Form.Item className="!mb-4">
             <Button
@@ -90,42 +81,16 @@ export default function LoginPage() {
           </Form.Item>
         </Form>
 
-        <div className="text-xs text-white/70 max-w-sm">
-          <Text className="!text-white/90" strong>
-            Tài khoản demo (mật khẩu: 123456):
-          </Text>
-          <ul className="mt-1 space-y-0.5">
-            {DEMO_ACCOUNTS.map((acc) => (
-              <li key={acc.email}>
-                {acc.email} — {ROLE_LABELS[acc.role]}
-              </li>
-            ))}
-          </ul>
+        <div className="text-sm text-white/80 max-w-sm">
+          Chưa có tài khoản?{' '}
+          <Link to="/register" className="!text-[#eab308] font-semibold hover:!text-yellow-300">
+            Đăng ký tại đây
+          </Link>
+          <div className="text-xs text-white/60 mt-1">
+            Tài khoản mới cần được Club Manager duyệt trước khi đăng nhập.
+          </div>
         </div>
       </div>
-
-      {/* "Glass" input skin: translucent over the photo instead of Ant Design's default solid
-          white field, so the background image reads through the whole form. Done as a scoped
-          stylesheet rather than the `style` prop because AntD renders these as
-          .ant-input-affix-wrapper (for the prefix icon), and only a stylesheet rule can safely
-          override its own !important-free defaults for both the wrapper and its inner <input>
-          without the two fighting each other. */}
-      <style>{`
-        .login-glass-input.ant-input-affix-wrapper {
-          background: rgba(255,255,255,0.10);
-          border-color: rgba(255,255,255,0.35);
-        }
-        .login-glass-input.ant-input-affix-wrapper:hover,
-        .login-glass-input.ant-input-affix-wrapper-focused {
-          background: rgba(255,255,255,0.16);
-          border-color: #eab308 !important;
-        }
-        .login-glass-input .ant-input {
-          background: transparent;
-          color: #fff;
-        }
-        .login-glass-input .ant-input::placeholder { color: rgba(255,255,255,0.55); }
-      `}</style>
     </div>
   );
 }

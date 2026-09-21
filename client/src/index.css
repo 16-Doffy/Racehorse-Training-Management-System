@@ -42,6 +42,41 @@ body {
   background-color: #047857 !important;
 }
 
+/* "Glass" input skin for the login/register screens: translucent over the background photo
+   instead of Ant Design's default solid white field, so the image reads through the whole form.
+   Needs to be a stylesheet rule (not the `style` prop) because AntD renders these as
+   .ant-input-affix-wrapper for the prefix icon, and only a rule can override both the wrapper and
+   its inner <input> without the two fighting each other. Lives here rather than inside one page
+   so both auth screens share exactly the same skin. */
+.auth-glass-input.ant-input-affix-wrapper {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.auth-glass-input.ant-input-affix-wrapper:hover,
+.auth-glass-input.ant-input-affix-wrapper-focused {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: #eab308 !important;
+}
+.auth-glass-input .ant-input {
+  background: transparent;
+  color: #fff;
+}
+.auth-glass-input .ant-input::placeholder {
+  color: rgba(255, 255, 255, 0.55);
+}
+/* Select on the register form, skinned to match the glass inputs above. */
+.auth-glass-input.ant-select .ant-select-selector {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  color: #fff;
+}
+.auth-glass-input.ant-select .ant-select-selection-placeholder {
+  color: rgba(255, 255, 255, 0.55);
+}
+.auth-glass-input.ant-select .ant-select-arrow {
+  color: rgba(255, 255, 255, 0.7);
+}
+
 /* Sidebar menu: trims horizontal padding/icon gap so the longer Vietnamese labels ("Buổi Tập &
    Đánh giá", "Quản lý Nhân sự & RBAC"...) fit within the Sider width instead of hitting AntD
    Menu's default text-overflow:ellipsis and showing as "Buổi Tập & Đánh ...". */

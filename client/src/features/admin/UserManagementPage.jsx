@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Modal, Form, Select, Input, Tag, message, Switch } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { Table, Button, Typography, Modal, Form, Select, Input, Tag, message, Switch, Alert, Popconfirm, Space } from 'antd';
+import { PlusOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from './usersApi';
 import { ROLE_LABELS } from '../../constants/roles';
@@ -10,12 +10,26 @@ const { Title } = Typography;
 export default function UserManagementPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
+  const [roleOverrides, setRoleOverrides] = useState({});
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['users'] });
+
+  const allUsers = data?.data || [];
+  const pendingUsers = allUsers.filter((u) => u.approvalStatus === 'pending');
+  const decidedUsers = allUsers.filter((u) => u.approvalStatus !== 'pending');
+
+  const decideMutation = useMutation({
+    mutationFn: ({ id, approve, role }) => usersApi.decideRegistration(id, { approve, role }),
+    onSuccess: (_res, variables) => {
+      message.success(variables.approve ? 'Đã duyệt tài khoản.' : 'Đã từ chối tài khoản.');
+      invalidate();
+    },
+    onError: (err) => message.error(err.message || 'Thao tác thất bại.'),
+  });
 
   const createMutation = useMutation({
     mutationFn: (payload) => usersApi.create(payload),
@@ -40,6 +54,70 @@ export default function UserManagementPage() {
 
   const roleOptions = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }));
 
+  // Pending registrations get their own table: the Manager's decision here is what actually
+  // grants access, so it shouldn't be buried among already-decided accounts.
+  const pendingColumns = [
+    { title: 'Họ tên', dataIndex: 'name', key: 'name' },
+    { title: 'Email', dataIndex: 'email', key: 'email' },
+    { title: 'Điện thoại', dataIndex: 'phone', key: 'phone', render: (v) => v || '—' },
+    {
+      title: 'Vai trò đăng ký',
+      dataIndex: 'role',
+      key: 'role',
+      render: (r, record) => (
+        <Select
+          size="small"
+          // The applicant picked this themselves, so the Manager can correct it here before
+          // approving — nothing is saved until the Duyệt button is pressed.
+          value={roleOverrides[record._id] ?? r}
+          options={roleOptions}
+          style={{ minWidth: 190 }}
+          onChange={(newRole) => setRoleOverrides((prev) => ({ ...prev, [record._id]: newRole }))}
+        />
+      ),
+    },
+    {
+      title: 'Ngày đăng ký',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      render: (d) => new Date(d).toLocaleString('vi-VN'),
+    },
+    {
+      title: '',
+      key: 'actions',
+      render: (_, record) => (
+        <Space>
+          <Button
+            type="primary"
+            size="small"
+            icon={<CheckOutlined />}
+            loading={decideMutation.isPending}
+            onClick={() =>
+              decideMutation.mutate({
+                id: record._id,
+                approve: true,
+                role: roleOverrides[record._id] ?? record.role,
+              })
+            }
+          >
+            Duyệt
+          </Button>
+          <Popconfirm
+            title="Từ chối tài khoản này?"
+            description="Người dùng sẽ không đăng nhập được."
+            okText="Từ chối"
+            cancelText="Huỷ"
+            onConfirm={() => decideMutation.mutate({ id: record._id, approve: false })}
+          >
+            <Button danger size="small" icon={<CloseOutlined />}>
+              Từ chối
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
   const columns = [
     { title: 'Họ tên', dataIndex: 'name', key: 'name' },
     { title: 'Email', dataIndex: 'email', key: 'email' },
@@ -52,9 +130,11 @@ export default function UserManagementPage() {
     },
     {
       title: 'Trạng thái',
-      dataIndex: 'isActive',
       key: 'isActive',
-      render: (v) => <Tag color={v ? 'green' : 'default'}>{v ? 'Hoạt động' : 'Đã khóa'}</Tag>,
+      render: (_, record) => {
+        if (record.approvalStatus === 'rejected') return <Tag color="red">Đã từ chối</Tag>;
+        return <Tag color={record.isActive ? 'green' : 'default'}>{record.isActive ? 'Hoạt động' : 'Đã khóa'}</Tag>;
+      },
     },
     {
       title: '',
@@ -76,16 +156,53 @@ export default function UserManagementPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <Title level={3} className="!mb-0">
-          Quản lý Nhân sự &amp; Phân quyền (RBAC)
-        </Title>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
+        <div>
+          <Title level={3} className="!mb-0">
+            Quản lý Nhân sự &amp; Phân quyền (RBAC)
+          </Title>
+          <Typography.Text type="secondary" className="text-sm">
+            Duyệt tài khoản đăng ký mới, tạo tài khoản trực tiếp, và gán vai trò cho từng nhân sự
+            trong câu lạc bộ.
+          </Typography.Text>
+        </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
           Tạo tài khoản
         </Button>
       </div>
 
-      <Table rowKey="_id" columns={columns} dataSource={data?.data} loading={isLoading} />
+      {pendingUsers.length > 0 && (
+        <Alert
+          className="mb-3"
+          type="warning"
+          showIcon
+          message={`${pendingUsers.length} tài khoản đăng ký đang chờ bạn duyệt`}
+          description="Người đăng ký tự chọn vai trò — hãy kiểm tra và sửa lại vai trò nếu cần trước khi duyệt. Chỉ sau khi duyệt họ mới đăng nhập được."
+        />
+      )}
+
+      {pendingUsers.length > 0 && (
+        <Table
+          className="mb-8"
+          rowKey="_id"
+          title={() => <span className="font-semibold">Chờ duyệt ({pendingUsers.length})</span>}
+          columns={pendingColumns}
+          dataSource={pendingUsers}
+          loading={isLoading}
+          pagination={false}
+          scroll={{ x: 'max-content' }}
+        />
+      )}
+
+      <Table
+        rowKey="_id"
+        title={() => <span className="font-semibold">Nhân sự câu lạc bộ ({decidedUsers.length})</span>}
+        columns={columns}
+        dataSource={decidedUsers}
+        loading={isLoading}
+        scroll={{ x: 'max-content' }}
+        locale={{ emptyText: 'Chưa có tài khoản nào.' }}
+      />
 
       <Modal
         title="Tạo tài khoản mới"

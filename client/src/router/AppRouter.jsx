@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom';
 import ProtectedRoute from './ProtectedRoute';
 import MainLayout from '../layouts/MainLayout';
 import LoginPage from '../features/auth/LoginPage';
+import RegisterPage from '../features/auth/RegisterPage';
 import ForbiddenPage from '../pages/ForbiddenPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import RoleDashboard from '../features/dashboard/RoleDashboard';
@@ -27,6 +28,7 @@ import IncidentReportsPage from '../features/stable/IncidentReportsPage';
 import GroomSuppliesPage from '../features/inventory/GroomSuppliesPage';
 import UserManagementPage from '../features/admin/UserManagementPage';
 import AuditLogPage from '../features/admin/AuditLogPage';
+import ReportsOverviewPage from '../features/reports/ReportsOverviewPage';
 import FeedingPage from '../features/feeding/FeedingPage';
 import InventoryPage from '../features/inventory/InventoryPage';
 import RacePage from '../features/race/RacePage';
@@ -42,6 +44,7 @@ export default function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
       <Route path="/403" element={<ForbiddenPage />} />
 
       {/* Every authenticated role shares the shell; individual pages are further role-gated below. */}
@@ -91,6 +94,7 @@ export default function AppRouter() {
           {/* Club Manager core flow. */}
           <Route element={<ProtectedRoute allowedRoles={[ROLES.MANAGER]} />}>
             <Route path="/admin/users" element={<UserManagementPage />} />
+            <Route path="/admin/reports" element={<ReportsOverviewPage />} />
             <Route path="/admin/audit-logs" element={<AuditLogPage />} />
           </Route>
 
