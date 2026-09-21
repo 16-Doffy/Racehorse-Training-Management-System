@@ -90,14 +90,16 @@ export default function StableAssignPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-start mb-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
         <div>
           <Title level={3} className="!mb-0">
             Phân công Chuồng trại
           </Title>
           <Typography.Text type="secondary" className="text-sm">
-            Giao việc chăm sóc hàng ngày (cho ăn, vệ sinh, tắm rửa...) cho nhân viên chăm sóc. Cột
-            "Sự cố" hiện khi nhân viên báo cáo vấn đề bất thường trong lúc thực hiện.
+            Giao việc chăm sóc hàng ngày (vệ sinh, tắm rửa, ngâm chân...) cho nhân viên chăm sóc.
+            Riêng việc "Cho ăn" hàng ngày tự động phân theo Sơ đồ Chuồng trại, bạn không cần tạo
+            thủ công — chỉ cần phân công các việc phát sinh. Cột "Sự cố" hiện khi nhân viên báo cáo
+            vấn đề bất thường trong lúc thực hiện.
           </Typography.Text>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
@@ -110,6 +112,7 @@ export default function StableAssignPage() {
         columns={columns}
         dataSource={data?.data}
         loading={isLoading}
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: 'Chưa có công việc nào được phân công. Nhấn "Phân công công việc" để bắt đầu.' }}
       />
 

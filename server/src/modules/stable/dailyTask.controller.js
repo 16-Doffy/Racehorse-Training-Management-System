@@ -1,8 +1,8 @@
 const DailyTask = require('../../models/DailyTask');
-const Notification = require('../../models/Notification');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { ROLES } = require('../../constants/roles');
+const { pushNotification } = require('../alerts/notification.service');
 
 const listTasks = asyncHandler(async (req, res) => {
   const { horse, assignedTo, status, date } = req.query;
@@ -66,12 +66,17 @@ const reportIncident = asyncHandler(async (req, res) => {
   task.incidentReport = { description, severity: severity || 'medium', images, reportedAt: new Date() };
   await task.save();
 
-  await Notification.create({
-    recipientRole: ROLES.VETERINARIAN,
+  const Horse = require('../../models/Horse');
+  const horse = await Horse.findById(task.horse).select('name assignedVet');
+  const horseName = horse?.name || 'Ngựa';
+
+  await pushNotification({
+    recipientUser: horse?.assignedVet || undefined,
+    recipientRole: horse?.assignedVet ? undefined : ROLES.VETERINARIAN,
     horse: task.horse,
     type: 'incident_report',
     severity: severity === 'high' ? 'critical' : 'warning',
-    message: `Incident reported for horse: ${description}`,
+    message: `⚠️ Sự cố mới với ${horseName}: ${description}`,
   });
 
   return ok(res, task, 'Incident reported.');

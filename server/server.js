@@ -5,6 +5,7 @@ const { port, enableSensorSimulator } = require('./src/config/env');
 const { initSocket } = require('./src/realtime/socketServer');
 const { startSensorSimulator } = require('./src/realtime/sensorSimulator');
 const { startCareScheduler } = require('./src/realtime/careScheduler');
+const { startDailyTaskGenerator } = require('./src/realtime/dailyTaskGenerator');
 
 async function start() {
   await connectDB();
@@ -19,8 +20,9 @@ async function start() {
     } else {
       console.log('[simulator] disabled (set ENABLE_SENSOR_SIMULATOR=true to enable)');
     }
-    // Real feature, not tied to the fake-sensor demo flag: always on.
+    // Real features, not tied to the fake-sensor demo flag: always on.
     startCareScheduler();
+    startDailyTaskGenerator();
   });
 }
 
