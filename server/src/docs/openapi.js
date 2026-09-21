@@ -90,6 +90,8 @@ module.exports = {
           owner: { type: 'string', description: 'User id (populated as object on read)' },
           sire: { type: 'string', nullable: true },
           dam: { type: 'string', nullable: true },
+          assignedTrainer: { type: 'string', nullable: true, description: 'Head Trainer user id responsible for this horse (Manager-set). Null = visible to every Head Trainer until assigned.' },
+          assignedVet: { type: 'string', nullable: true, description: 'Veterinarian user id responsible for this horse (Manager-set). Null = visible to every Veterinarian until assigned.' },
           healthStatus: { type: 'string', enum: ['eligible', 'monitoring', 'injured', 'quarantined'] },
           weightKg: { type: 'number' },
           achievements: {
@@ -376,7 +378,7 @@ module.exports = {
     '/horses': {
       get: {
         tags: ['Horses'],
-        summary: 'List horses (Owner sees only their own; every other role sees all)',
+        summary: 'List horses (Owner: only their own; Head Trainer/Vet: only horses assigned to them plus any not yet assigned; Manager/Groom: all)',
         responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/Horse' } }) },
       },
       post: {

@@ -3,17 +3,22 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { ROLES } = require('../../constants/roles');
+const { getScopedHorseIds, isHorseInScope } = require('../../utils/horseScope');
 
 const populatePedigree = [
   { path: 'owner', select: 'name email phone' },
   { path: 'sire', select: 'name breed' },
   { path: 'dam', select: 'name breed' },
+  { path: 'assignedTrainer', select: 'name' },
+  { path: 'assignedVet', select: 'name' },
 ];
 
-// Horse Owners only ever see the horses they own; every other role sees the full roster
-// since training/health/stable operations span all horses in the club.
+// Horse Owners only see horses they own; Head Trainer/Veterinarian only see horses assigned to
+// them (plus any horse nobody has been assigned to yet — see horseScope.js); Manager/Groom see
+// the full roster (Groom's own worklist is scoped separately via DailyTask.assignedTo).
 const listHorses = asyncHandler(async (req, res) => {
-  const filter = req.user.role === ROLES.OWNER ? { owner: req.user._id } : {};
+  const scopedIds = await getScopedHorseIds(req.user);
+  const filter = scopedIds ? { _id: { $in: scopedIds } } : {};
   const horses = await Horse.find(filter).populate(populatePedigree).sort({ name: 1 });
   return ok(res, horses, 'Horses fetched.');
 });
@@ -24,6 +29,11 @@ const getHorse = asyncHandler(async (req, res) => {
 
   if (req.user.role === ROLES.OWNER && String(horse.owner?._id) !== String(req.user._id)) {
     return fail(res, 'Forbidden: you do not own this horse.', 403);
+  }
+
+  const scopedIds = await getScopedHorseIds(req.user);
+  if (req.user.role !== ROLES.OWNER && !isHorseInScope(scopedIds, horse._id)) {
+    return fail(res, 'Forbidden: this horse is not assigned to you.', 403);
   }
 
   return ok(res, horse, 'Horse fetched.');

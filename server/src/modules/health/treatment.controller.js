@@ -6,11 +6,17 @@ const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { pushNotification } = require('../alerts/notification.service');
 const { ROLES } = require('../../constants/roles');
+const { getScopedHorseIds, isHorseInScope } = require('../../utils/horseScope');
 
 const listTreatments = asyncHandler(async (req, res) => {
   const { horse, isTrainingLocked, status } = req.query;
+  const scopedIds = await getScopedHorseIds(req.user);
   const filter = {};
-  if (horse) filter.horse = horse;
+  if (horse) {
+    filter.horse = isHorseInScope(scopedIds, horse) ? horse : { $in: [] };
+  } else if (scopedIds) {
+    filter.horse = { $in: scopedIds };
+  }
   if (isTrainingLocked !== undefined) filter.isTrainingLocked = isTrainingLocked === 'true';
   if (status) filter.status = status;
 
@@ -67,6 +73,11 @@ async function notifyLockIssued({ horseId, lockReason, actorId }) {
 }
 
 const createTreatment = asyncHandler(async (req, res) => {
+  const scopedIds = await getScopedHorseIds(req.user);
+  if (!isHorseInScope(scopedIds, req.body.horse)) {
+    return fail(res, 'Forbidden: this horse is not assigned to you.', 403);
+  }
+
   const treatment = await Treatment.create({ ...req.body, prescribedBy: req.user._id });
   await logAction({ actorId: req.user._id, action: 'treatment.create', targetModel: 'Treatment', targetId: treatment._id });
 

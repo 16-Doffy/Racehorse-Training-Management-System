@@ -2,10 +2,17 @@ const TrainingPlan = require('../../models/TrainingPlan');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
+const { getScopedHorseIds, isHorseInScope } = require('../../utils/horseScope');
 
 const listPlans = asyncHandler(async (req, res) => {
   const { horse } = req.query;
-  const filter = horse ? { horse } : {};
+  const scopedIds = await getScopedHorseIds(req.user);
+  const filter = {};
+  if (horse) {
+    filter.horse = isHorseInScope(scopedIds, horse) ? horse : { $in: [] };
+  } else if (scopedIds) {
+    filter.horse = { $in: scopedIds };
+  }
   const plans = await TrainingPlan.find(filter)
     .populate('horse', 'name breed healthStatus')
     .populate('createdBy', 'name')
@@ -23,6 +30,11 @@ const createPlan = asyncHandler(async (req, res) => {
   const { horse } = req.body;
   const Treatment = require('../../models/Treatment');
   const Horse = require('../../models/Horse');
+
+  const scopedIds = await getScopedHorseIds(req.user);
+  if (!isHorseInScope(scopedIds, horse)) {
+    return fail(res, 'Forbidden: this horse is not assigned to you.', 403);
+  }
 
   const activeLock = await Treatment.findOne({ horse, isTrainingLocked: true, status: 'ongoing' });
   const targetHorse = await Horse.findById(horse);

@@ -18,6 +18,12 @@ const horseSchema = new mongoose.Schema(
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     sire: { type: mongoose.Schema.Types.ObjectId, ref: 'Horse', default: null },
     dam: { type: mongoose.Schema.Types.ObjectId, ref: 'Horse', default: null },
+    // Which Head Trainer/Veterinarian is responsible for this horse. Nullable on purpose: a horse
+    // with no assignment yet stays visible to every Head Trainer/Vet (see horseScope.js) so
+    // existing unassigned horses (all of them, until a Manager starts assigning) don't vanish from
+    // anyone's view the moment this field ships.
+    assignedTrainer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    assignedVet: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     healthStatus: {
       type: String,
       enum: ['eligible', 'monitoring', 'injured', 'quarantined'],

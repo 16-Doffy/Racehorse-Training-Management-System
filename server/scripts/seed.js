@@ -35,9 +35,13 @@ async function run() {
   const vet = await upsertUser({ name: 'Le Bac Si', email: 'vet@demo.com', role: ROLES.VETERINARIAN, phone: '0900000003' });
   const groom = await upsertUser({ name: 'Pham Cham Soc', email: 'groom@demo.com', role: ROLES.GROOM, phone: '0900000004' });
   const owner = await upsertUser({ name: 'Hoang Chu So Huu', email: 'owner@demo.com', role: ROLES.OWNER, phone: '0900000005' });
+  // Second trainer/vet so assignedTrainer/assignedVet scoping (horseScope.js) is actually
+  // exercised locally — with only one of each, every horse trivially "belongs" to them.
+  const trainer2 = await upsertUser({ name: 'Vu Huan Luyen Hai', email: 'trainer2@demo.com', role: ROLES.HEAD_TRAINER, phone: '0900000006' });
+  const vet2 = await upsertUser({ name: 'Do Bac Si Hai', email: 'vet2@demo.com', role: ROLES.VETERINARIAN, phone: '0900000007' });
 
   console.log('[seed] demo users ready (password for all: 123456):');
-  [manager, trainer, vet, groom, owner].forEach((u) => console.log(`  - ${u.role}: ${u.email}`));
+  [manager, trainer, vet, groom, owner, trainer2, vet2].forEach((u) => console.log(`  - ${u.role}: ${u.email}`));
 
   await TrainingPlan.deleteMany({});
   await TrainingSession.deleteMany({});
@@ -57,10 +61,16 @@ async function run() {
 
   const horses = [];
   for (const h of horseNames) {
+    // Thunder Bolt & Silver Arrow stay with the original trainer/vet (keeps all the existing plan/
+    // session/health-record seed data below consistent); Golden Wind & Midnight Star go to the
+    // second trainer/vet, so logging in as either pair demonstrably sees a different horse subset.
+    const useSecondStaff = horses.length >= 2;
     const horse = await Horse.create({
       ...h,
       dob: new Date('2021-03-15'),
       owner: owner._id,
+      assignedTrainer: useSecondStaff ? trainer2._id : trainer._id,
+      assignedVet: useSecondStaff ? vet2._id : vet._id,
       healthStatus: 'eligible',
       achievements: [{ race: 'Spring Derby 2025', result: '2nd', date: new Date('2025-04-10') }],
       careSchedule: {

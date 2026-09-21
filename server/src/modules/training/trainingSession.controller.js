@@ -4,11 +4,17 @@ const Treatment = require('../../models/Treatment');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
+const { getScopedHorseIds, isHorseInScope } = require('../../utils/horseScope');
 
 const listSessions = asyncHandler(async (req, res) => {
   const { horse, trainingPlan, status, sessionType } = req.query;
+  const scopedIds = await getScopedHorseIds(req.user);
   const filter = {};
-  if (horse) filter.horse = horse;
+  if (horse) {
+    filter.horse = isHorseInScope(scopedIds, horse) ? horse : { $in: [] };
+  } else if (scopedIds) {
+    filter.horse = { $in: scopedIds };
+  }
   if (trainingPlan) filter.trainingPlan = trainingPlan;
   if (status) filter.status = status;
   if (sessionType) filter.sessionType = sessionType;
@@ -33,6 +39,11 @@ const getSession = asyncHandler(async (req, res) => {
 // an active isTrainingLocked treatment cannot be scheduled for a new session.
 const createSession = asyncHandler(async (req, res) => {
   const { trainingPlan: planId, horse } = req.body;
+
+  const scopedIds = await getScopedHorseIds(req.user);
+  if (!isHorseInScope(scopedIds, horse)) {
+    return fail(res, 'Forbidden: this horse is not assigned to you.', 403);
+  }
 
   const plan = await TrainingPlan.findById(planId);
   if (!plan) return fail(res, 'Training plan not found.', 404);
