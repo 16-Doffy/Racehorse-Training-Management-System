@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Descriptions,
   Tag,
@@ -16,6 +17,11 @@ import {
   Timeline,
   Badge,
   Avatar,
+  Button,
+  Modal,
+  Form,
+  Input,
+  message,
 } from 'antd';
 import {
   UserOutlined,
@@ -123,12 +129,25 @@ export default function HorseDetailPage() {
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const isOwner = user?.role === ROLES.OWNER;
+  const canRequestExam = user?.role === ROLES.HEAD_TRAINER || user?.role === ROLES.MANAGER;
+  const [examModalOpen, setExamModalOpen] = useState(false);
+  const [examForm] = Form.useForm();
 
   const { data, isLoading } = useQuery({
     queryKey: ['horses', id],
     queryFn: () => horsesApi.getOne(id),
   });
   const horse = data?.data;
+
+  const requestExamMutation = useMutation({
+    mutationFn: (payload) => healthRecordApi.requestExam(payload),
+    onSuccess: () => {
+      message.success('Đã gửi yêu cầu khám tới bác sĩ thú y.');
+      setExamModalOpen(false);
+      examForm.resetFields();
+    },
+    onError: (err) => message.error(err.message || 'Gửi yêu cầu thất bại.'),
+  });
 
   // Health records for this horse (Owner view)
   const { data: healthData } = useQuery({
@@ -441,7 +460,14 @@ export default function HorseDetailPage() {
         className="mb-4"
         items={[{ title: <Link to="/horses">Danh sách Ngựa</Link> }, { title: horse.name }]}
       />
-      <Title level={3}>{horse.name}</Title>
+      <div className="flex justify-between items-center mb-2">
+        <Title level={3} className="!mb-0">{horse.name}</Title>
+        {canRequestExam && (
+          <Button icon={<MedicineBoxOutlined />} onClick={() => setExamModalOpen(true)}>
+            Yêu cầu bác sĩ kiểm tra
+          </Button>
+        )}
+      </div>
 
       <Card className="mb-4" title="Hồ sơ lý lịch">
         <Descriptions column={2} bordered size="small">
@@ -453,7 +479,9 @@ export default function HorseDetailPage() {
           <Descriptions.Item label="Cân nặng">{horse.weightKg ? `${horse.weightKg} kg` : '—'}</Descriptions.Item>
           <Descriptions.Item label="Chủ sở hữu">{horse.owner?.name || '—'}</Descriptions.Item>
           <Descriptions.Item label="Trạng thái sức khỏe">
-            <Tag color={STATUS_CONFIG[horse.healthStatus]?.color}>{horse.healthStatus}</Tag>
+            <Tag color={STATUS_CONFIG[horse.healthStatus]?.color}>
+              {STATUS_CONFIG[horse.healthStatus]?.label || horse.healthStatus}
+            </Tag>
           </Descriptions.Item>
         </Descriptions>
       </Card>
@@ -474,6 +502,30 @@ export default function HorseDetailPage() {
           locale={{ emptyText: 'Chưa có thành tích' }}
         />
       </Card>
+
+      {canRequestExam && (
+        <Modal
+          title={`Yêu cầu bác sĩ kiểm tra — ${horse.name}`}
+          open={examModalOpen}
+          onCancel={() => setExamModalOpen(false)}
+          onOk={() => examForm.submit()}
+          confirmLoading={requestExamMutation.isPending}
+          destroyOnHidden
+        >
+          <Form
+            form={examForm}
+            layout="vertical"
+            onFinish={(values) => requestExamMutation.mutate({ horse: horse._id, reason: values.reason })}
+          >
+            <Form.Item name="reason" label="Lý do">
+              <Input.TextArea
+                rows={3}
+                placeholder="VD: Ngựa có dấu hiệu khập khiễng sau buổi tập sáng nay."
+              />
+            </Form.Item>
+          </Form>
+        </Modal>
+      )}
     </div>
   );
 }

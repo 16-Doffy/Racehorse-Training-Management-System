@@ -13,6 +13,7 @@ export const TYPE_LABELS = {
   deworming_due: 'Nhắc lịch tẩy giun',
   farrier_due: 'Nhắc lịch kiểm tra móng',
   incident_report: 'Báo cáo sự cố',
+  exam_request: 'Yêu cầu khám bệnh',
   system: 'Thông báo hệ thống',
 };
 

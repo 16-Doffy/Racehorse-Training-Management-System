@@ -465,6 +465,25 @@ module.exports = {
       get: { tags: ['Health (Veterinarian)'], summary: 'Get health record', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/HealthRecord' }), 404: responses[404] } },
       put: { tags: ['Health (Veterinarian)'], summary: 'Update health record', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/HealthRecord' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/HealthRecord' }), 404: responses[404] } },
     },
+    '/health/exam-requests': {
+      post: {
+        tags: ['Health (Veterinarian)'],
+        summary: 'Head Trainer/Manager flags a horse for a vet check-up (Head Trainer, Manager only) — pushes a notification to the assigned vet, or the whole Veterinarian role if unassigned; does not create a HealthRecord',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['horse'],
+                properties: { horse: { type: 'string' }, reason: { type: 'string' } },
+              },
+            },
+          },
+        },
+        responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] },
+      },
+    },
     '/health/treatments': {
       get: {
         tags: ['Health (Veterinarian)'],

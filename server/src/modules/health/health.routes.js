@@ -14,6 +14,10 @@ router.get('/records/:id', recordCtrl.getRecord);
 router.post('/records', authorize(ROLES.VETERINARIAN), recordCtrl.createRecord);
 router.put('/records/:id', authorize(ROLES.VETERINARIAN), recordCtrl.updateRecord);
 
+// Head Trainer/Manager can flag a horse for a check-up; only the Vet can act on it by creating
+// an actual HealthRecord above.
+router.post('/exam-requests', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), recordCtrl.requestExam);
+
 // Treatments, including the emergency training-lock order.
 router.get('/treatments', treatmentCtrl.listTreatments);
 router.get('/treatments/:id', treatmentCtrl.getTreatment);

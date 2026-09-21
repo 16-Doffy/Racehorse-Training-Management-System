@@ -15,6 +15,7 @@ const notificationSchema = new mongoose.Schema(
         'deworming_due',
         'farrier_due',
         'incident_report',
+        'exam_request',
         'system',
       ],
       required: true,

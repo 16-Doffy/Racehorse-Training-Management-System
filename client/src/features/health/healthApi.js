@@ -1,7 +1,10 @@
 import axiosClient from '../../lib/axiosClient';
 import { createCrudApi } from '../../lib/createCrudApi';
 
-export const healthRecordApi = createCrudApi('/health/records');
+export const healthRecordApi = {
+  ...createCrudApi('/health/records'),
+  requestExam: (payload) => axiosClient.post('/health/exam-requests', payload),
+};
 
 export const treatmentApi = {
   ...createCrudApi('/health/treatments'),
