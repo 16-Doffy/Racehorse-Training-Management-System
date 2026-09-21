@@ -162,7 +162,7 @@ export default function TrainingSessionPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-start mb-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
         <div>
           <Title level={3} className="!mb-0">
             Buổi Tập &amp; Đánh giá
@@ -216,6 +216,7 @@ export default function TrainingSessionPage() {
         columns={columns}
         dataSource={sessionsData?.data}
         loading={isLoading}
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: 'Chưa có buổi tập nào. Nhấn "Tạo buổi tập" để thêm buổi tập cho một kế hoạch.' }}
       />
 

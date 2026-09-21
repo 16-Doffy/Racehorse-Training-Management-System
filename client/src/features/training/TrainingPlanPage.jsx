@@ -88,7 +88,7 @@ export default function TrainingPlanPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-start mb-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
         <div>
           <Title level={3} className="!mb-0">
             Kế hoạch Huấn luyện
@@ -108,6 +108,7 @@ export default function TrainingPlanPage() {
         columns={columns}
         dataSource={plansData?.data}
         loading={isLoading}
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: 'Chưa có kế hoạch huấn luyện nào. Nhấn "Lập kế hoạch mới" để bắt đầu.' }}
         onRow={(record) => ({
           onClick: () => navigate(`/training/sessions?plan=${record._id}`),
