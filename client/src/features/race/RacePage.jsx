@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Table, Button, Typography, Modal, Form, Select, DatePicker, InputNumber, Input, Tag, message } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { raceApi } from './raceApi';
@@ -16,10 +16,14 @@ const STATUS_LABELS = {
 };
 const STATUS_COLORS = { registered: 'default', confirmed: 'blue', completed: 'green', withdrawn: 'red' };
 
-// Real scaffold CRUD wired up; leaderboard/results integration comes later.
+// Registration + post-race result entry both wired up to real CRUD; a club-wide leaderboard
+// across all horses/races is still a later phase.
 export default function RacePage() {
   const [open, setOpen] = useState(false);
+  const [resultOpen, setResultOpen] = useState(false);
+  const [activeRace, setActiveRace] = useState(null);
   const [form] = Form.useForm();
+  const [resultForm] = Form.useForm();
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
@@ -34,6 +38,16 @@ export default function RacePage() {
       form.resetFields();
     },
     onError: (err) => message.error(err.message || 'Đăng ký thất bại.'),
+  });
+
+  const updateResultMutation = useMutation({
+    mutationFn: ({ id, payload }) => raceApi.update(id, payload),
+    onSuccess: () => {
+      message.success('Đã cập nhật kết quả.');
+      queryClient.invalidateQueries({ queryKey: ['races'] });
+      setResultOpen(false);
+    },
+    onError: (err) => message.error(err.message || 'Cập nhật thất bại.'),
   });
 
   const columns = [
@@ -63,11 +77,28 @@ export default function RacePage() {
       key: 'result',
       render: (v) => v || <span className="text-gray-400">Chưa có kết quả</span>,
     },
+    {
+      title: '',
+      key: 'actions',
+      render: (_, record) => (
+        <Button
+          size="small"
+          icon={<EditOutlined />}
+          onClick={() => {
+            setActiveRace(record);
+            resultForm.setFieldsValue({ status: record.status, result: record.result });
+            setResultOpen(true);
+          }}
+        >
+          Cập nhật kết quả
+        </Button>
+      ),
+    },
   ];
 
   return (
     <div>
-      <div className="flex justify-between items-start mb-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
         <div>
           <Title level={3} className="!mb-0">
             Đăng ký Giải đua
@@ -113,6 +144,28 @@ export default function RacePage() {
           </Form.Item>
           <Form.Item name="distance" label="Cự ly (m)">
             <InputNumber min={100} step={100} className="w-full" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Cập nhật kết quả — ${activeRace?.horse?.name || ''} tại ${activeRace?.raceName || ''}`}
+        open={resultOpen}
+        onCancel={() => setResultOpen(false)}
+        onOk={() => resultForm.submit()}
+        confirmLoading={updateResultMutation.isPending}
+        destroyOnHidden
+      >
+        <Form
+          form={resultForm}
+          layout="vertical"
+          onFinish={(values) => updateResultMutation.mutate({ id: activeRace._id, payload: values })}
+        >
+          <Form.Item name="status" label="Trạng thái" rules={[{ required: true }]}>
+            <Select options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))} />
+          </Form.Item>
+          <Form.Item name="result" label="Kết quả">
+            <Input placeholder="VD: Về nhất, Về nhì, DNF..." />
           </Form.Item>
         </Form>
       </Modal>
