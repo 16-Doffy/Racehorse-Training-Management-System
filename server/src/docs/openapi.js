@@ -76,6 +76,7 @@ module.exports = {
           role: { type: 'string', enum: ['head_trainer', 'veterinarian', 'groom', 'owner', 'manager'] },
           phone: { type: 'string' },
           isActive: { type: 'boolean' },
+          approvalStatus: { type: 'string', enum: ['pending', 'approved', 'rejected'], description: 'Distinguishes a self-registration awaiting a Manager decision from an existing member who was deactivated (both have isActive=false).' },
           ownedHorses: { type: 'array', items: { type: 'string' } },
         },
       },
@@ -338,13 +339,13 @@ module.exports = {
     '/auth/register': {
       post: {
         tags: ['Auth'],
-        summary: 'Self-register as a Horse Owner (every other role is provisioned by a Manager via /users)',
+        summary: 'Self-register for any role — the account is created inactive (approvalStatus=pending) and cannot log in until a Club Manager approves it via PATCH /users/{id}/approval. No token is returned.',
         security: [],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', required: ['name', 'email', 'password'], properties: { name: { type: 'string' }, email: { type: 'string' }, password: { type: 'string' }, phone: { type: 'string' } } } } },
+          content: { 'application/json': { schema: { type: 'object', required: ['name', 'email', 'password', 'role'], properties: { name: { type: 'string' }, email: { type: 'string' }, password: { type: 'string' }, phone: { type: 'string' }, role: { type: 'string', enum: ['head_trainer', 'veterinarian', 'groom', 'owner', 'manager'], description: 'Requested role — a request, not an entitlement: the Manager can change it when approving.' } } } } },
         },
-        responses: { 201: responses[201]({ type: 'object', properties: { token: { type: 'string' }, user: { $ref: '#/components/schemas/User' } } }), 409: responses[409] },
+        responses: { 201: responses[201]({ type: 'object', properties: { user: { $ref: '#/components/schemas/User' } } }), 400: responses[400], 409: responses[409] },
       },
     },
     '/auth/me': {
@@ -354,7 +355,11 @@ module.exports = {
       get: {
         tags: ['Users (Manager)'],
         summary: 'List users (Manager or Head Trainer — the latter needs this to look up Groom staff for task assignment)',
-        parameters: [{ name: 'role', in: 'query', schema: { type: 'string' } }],
+        parameters: [
+          { name: 'role', in: 'query', schema: { type: 'string' } },
+          { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+          { name: 'approvalStatus', in: 'query', schema: { type: 'string', enum: ['pending', 'approved', 'rejected'] }, description: 'Filter self-registrations awaiting a decision.' },
+        ],
         responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/User' } }), 403: responses[403] },
       },
       post: {
@@ -374,6 +379,18 @@ module.exports = {
         responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 404: responses[404] },
       },
       delete: { tags: ['Users (Manager)'], summary: 'Deactivate user (soft delete)', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 404: responses[404] } },
+    },
+    '/users/{id}/approval': {
+      patch: {
+        tags: ['Users (Manager)'],
+        summary: 'Approve or reject a self-registered account (Manager only). Approving is what actually lets the person log in; the Manager may correct the role they requested.',
+        parameters: [idParam('id')],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['approve'], properties: { approve: { type: 'boolean' }, role: { type: 'string', description: 'Optional override of the requested role, applied when approving.' } } } } },
+        },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
     },
     '/horses': {
       get: {

@@ -7,8 +7,12 @@ const { ok, fail } = require('../../utils/apiResponse');
 const crudFactory = require('../../utils/crudFactory');
 const InventoryItem = require('../../models/InventoryItem');
 
-// Scaffold module: full CRUD wired up now, procurement/approval workflow comes later.
-const ctrl = crudFactory(InventoryItem, { label: 'Inventory item' });
+// Restock requests are reviewed by name on the Manager's screen, so the requester is populated
+// here — otherwise the list hands back a raw ObjectId and the UI has nothing to show.
+const ctrl = crudFactory(InventoryItem, {
+  label: 'Inventory item',
+  populate: [{ path: 'restockRequests.requestedBy', select: 'name role' }],
+});
 
 const requestRestock = asyncHandler(async (req, res) => {
   const { quantity } = req.body;
