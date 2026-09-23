@@ -38,6 +38,41 @@ const createTask = asyncHandler(async (req, res) => {
   return created(res, task, 'Daily task created.');
 });
 
+// Whoever assigned the work can still change their mind: reassign it to a different Groom, move
+// the date, or correct the task type. Without this, a mis-assigned task could only ever be worked
+// around by creating a second one and leaving the wrong one sitting on someone's list forever.
+const updateTask = asyncHandler(async (req, res) => {
+  const { horse, assignedTo, taskType, scheduledDate } = req.body;
+  const task = await DailyTask.findById(req.params.id);
+  if (!task) return fail(res, 'Daily task not found.', 404);
+
+  if (task.status === 'completed') {
+    return fail(res, 'Không thể sửa công việc đã hoàn thành.', 409);
+  }
+
+  if (horse !== undefined) task.horse = horse;
+  if (assignedTo !== undefined) task.assignedTo = assignedTo;
+  if (taskType !== undefined) task.taskType = taskType;
+  if (scheduledDate !== undefined) task.scheduledDate = scheduledDate;
+
+  await task.save();
+  return ok(res, task, 'Daily task updated.');
+});
+
+// Cancelling an assignment outright (e.g. the horse left the stable, or the task was created by
+// mistake) — completed work is kept, since deleting it would erase the record that it was done.
+const deleteTask = asyncHandler(async (req, res) => {
+  const task = await DailyTask.findById(req.params.id);
+  if (!task) return fail(res, 'Daily task not found.', 404);
+
+  if (task.status === 'completed') {
+    return fail(res, 'Không thể xóa công việc đã hoàn thành — đây là bằng chứng công việc đã làm.', 409);
+  }
+
+  await task.deleteOne();
+  return ok(res, null, 'Daily task deleted.');
+});
+
 // Grooms may only act on tasks assigned to them, not on a colleague's worklist.
 const isAssignee = (task, user) => String(task.assignedTo) === String(user._id);
 
@@ -82,4 +117,4 @@ const reportIncident = asyncHandler(async (req, res) => {
   return ok(res, task, 'Incident reported.');
 });
 
-module.exports = { listTasks, getTask, createTask, completeTask, reportIncident };
+module.exports = { listTasks, getTask, createTask, updateTask, deleteTask, completeTask, reportIncident };

@@ -9,6 +9,8 @@ const FeedingSchedule = require('../../models/FeedingSchedule');
 const ctrl = crudFactory(FeedingSchedule, {
   populate: [{ path: 'horse', select: 'name' }, { path: 'approvedBy', select: 'name' }],
   label: 'Feeding schedule',
+  // An Owner should see their own horses' rations, not the whole stable's.
+  scopeByHorse: true,
 });
 
 router.use(protect);

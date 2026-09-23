@@ -275,7 +275,7 @@ module.exports = {
           recipientUser: { type: 'string', nullable: true },
           recipientRole: { type: 'string', nullable: true },
           horse: { type: 'string' },
-          type: { type: 'string', enum: ['fitness_alert', 'injury_lock', 'vaccination_due', 'deworming_due', 'farrier_due', 'incident_report', 'system'] },
+          type: { type: 'string', enum: ['fitness_alert', 'injury_lock', 'vaccination_due', 'deworming_due', 'farrier_due', 'incident_report', 'exam_request', 'restock_decision', 'system'] },
           severity: { type: 'string', enum: ['info', 'warning', 'critical'] },
           message: { type: 'string' },
           isRead: { type: 'boolean' },
@@ -529,6 +529,7 @@ module.exports = {
     },
     '/health/injury-markers/{id}': {
       put: { tags: ['Health (Veterinarian)'], summary: 'Update injury marker (e.g. recoveryStatus)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/InjuryMarker' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InjuryMarker' }), 404: responses[404] } },
+      delete: { tags: ['Health (Veterinarian)'], summary: 'Delete injury marker — for one placed on the wrong body part, which previously could only be edited, never removed', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
     },
     '/stable/tasks': {
       get: {
@@ -541,6 +542,19 @@ module.exports = {
     },
     '/stable/tasks/{id}': {
       get: { tags: ['Stable (Groom)'], summary: 'Get daily task', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 404: responses[404] } },
+      put: {
+        tags: ['Stable (Groom)'],
+        summary: 'Edit an assigned task — reassign to another Groom, move the date, or correct the type (Head Trainer / Manager). Refused with 409 once the task is completed.',
+        parameters: [idParam('id')],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { horse: { type: 'string' }, assignedTo: { type: 'string' }, taskType: { type: 'string', enum: ['feeding', 'cleaning', 'bathing', 'icing'] }, scheduledDate: { type: 'string', format: 'date-time' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+      delete: {
+        tags: ['Stable (Groom)'],
+        summary: 'Cancel an assigned task (Head Trainer / Manager). Completed tasks are kept — deleting one would erase the record that the work was done — so those return 409.',
+        parameters: [idParam('id')],
+        responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
     },
     '/stable/tasks/{id}/complete': {
       patch: { tags: ['Stable (Groom)'], summary: 'Mark task completed (Groom)', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404] } },

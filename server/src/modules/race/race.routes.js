@@ -10,6 +10,9 @@ const ctrl = crudFactory(RaceEntry, {
   populate: [{ path: 'horse', select: 'name' }, { path: 'registeredBy', select: 'name' }],
   defaultSort: { raceDate: -1 },
   label: 'Race entry',
+  // Same per-role visibility as training/health: an Owner sees their own horses' race entries,
+  // a Head Trainer those of horses assigned to them.
+  scopeByHorse: true,
 });
 
 router.use(protect);

@@ -12,6 +12,8 @@ router.use(protect);
 router.get('/tasks', taskCtrl.listTasks);
 router.get('/tasks/:id', taskCtrl.getTask);
 router.post('/tasks', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), taskCtrl.createTask);
+router.put('/tasks/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), taskCtrl.updateTask);
+router.delete('/tasks/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), taskCtrl.deleteTask);
 router.patch('/tasks/:id/complete', authorize(ROLES.GROOM), taskCtrl.completeTask);
 router.post(
   '/tasks/:id/incident',

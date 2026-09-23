@@ -1,15 +1,28 @@
 const asyncHandler = require('./asyncHandler');
 const { ok, created, fail } = require('./apiResponse');
+const { getScopedHorseIds, isHorseInScope } = require('./horseScope');
 
 /**
  * Generic CRUD controller factory for straightforward scaffold modules (feeding, inventory,
  * race, finance) that don't yet need bespoke business logic. Swap any handler out for a custom
  * one in the module's own controller once real requirements land.
+ *
+ * `scopeByHorse` applies the same per-role visibility rule the training/health modules use: an
+ * Owner sees only their own horses' records and a Head Trainer/Vet only those assigned to them.
+ * Leave it off for collection-wide data that isn't about one horse (inventory stock).
  */
-function crudFactory(Model, { populate = [], defaultSort = { createdAt: -1 }, label = 'Item' } = {}) {
+function crudFactory(Model, { populate = [], defaultSort = { createdAt: -1 }, label = 'Item', scopeByHorse = false } = {}) {
   const list = asyncHandler(async (req, res) => {
     const { horse } = req.query;
-    const filter = horse ? { horse } : {};
+    const filter = {};
+    const scopedIds = scopeByHorse ? await getScopedHorseIds(req.user) : null;
+
+    if (horse) {
+      filter.horse = !scopedIds || isHorseInScope(scopedIds, horse) ? horse : { $in: [] };
+    } else if (scopedIds) {
+      filter.horse = { $in: scopedIds };
+    }
+
     const items = await Model.find(filter).populate(populate).sort(defaultSort);
     return ok(res, items, `${label}s fetched.`);
   });

@@ -16,6 +16,7 @@ const notificationSchema = new mongoose.Schema(
         'farrier_due',
         'incident_report',
         'exam_request',
+        'restock_decision',
         'system',
       ],
       required: true,

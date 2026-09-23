@@ -6,6 +6,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ok, fail } = require('../../utils/apiResponse');
 const crudFactory = require('../../utils/crudFactory');
 const InventoryItem = require('../../models/InventoryItem');
+const { pushNotification } = require('../alerts/notification.service');
 
 // Restock requests are reviewed by name on the Manager's screen, so the requester is populated
 // here — otherwise the list hands back a raw ObjectId and the UI has nothing to show.
@@ -48,6 +49,18 @@ const reviewRestockRequest = asyncHandler(async (req, res) => {
     item.quantity += request.quantity;
   }
   await item.save();
+
+  // Close the loop back to whoever asked: without this the requester has no way to know their
+  // request was acted on except by reopening the supplies page and noticing the number changed.
+  await pushNotification({
+    recipientUser: request.requestedBy,
+    type: 'restock_decision',
+    severity: status === 'approved' ? 'info' : 'warning',
+    message:
+      status === 'approved'
+        ? `✅ Yêu cầu bổ sung ${request.quantity} ${item.unit} "${item.name}" đã được duyệt. Tồn kho hiện tại: ${item.quantity} ${item.unit}.`
+        : `❌ Yêu cầu bổ sung ${request.quantity} ${item.unit} "${item.name}" đã bị từ chối.`,
+  });
 
   return ok(res, item, `Restock request ${status}.`);
 });

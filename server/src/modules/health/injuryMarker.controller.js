@@ -23,4 +23,12 @@ const updateMarker = asyncHandler(async (req, res) => {
   return ok(res, marker, 'Injury marker updated.');
 });
 
-module.exports = { listMarkers, createMarker, updateMarker };
+// A marker placed on the wrong body part had no way to be removed — only edited — which left the
+// horse's injury map permanently wrong if the mistake wasn't caught before saving.
+const deleteMarker = asyncHandler(async (req, res) => {
+  const marker = await InjuryMarker.findByIdAndDelete(req.params.id);
+  if (!marker) return fail(res, 'Injury marker not found.', 404);
+  return ok(res, null, 'Injury marker deleted.');
+});
+
+module.exports = { listMarkers, createMarker, updateMarker, deleteMarker };

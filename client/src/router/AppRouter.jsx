@@ -109,7 +109,10 @@ export default function AppRouter() {
           <Route element={<ProtectedRoute allowedRoles={[ROLES.GROOM]} />}>
             <Route path="/feeding" element={<FeedingPage />} />
           </Route>
-          <Route element={<ProtectedRoute allowedRoles={[ROLES.GROOM, ROLES.MANAGER]} />}>
+          {/* Manager-only: this page is the approval side of the restock flow (its actions are
+              Manager-authorized on the server). Groom has their own supplies screen at
+              /stable/supplies for requesting, which is what their menu points to. */}
+          <Route element={<ProtectedRoute allowedRoles={[ROLES.MANAGER]} />}>
             <Route path="/inventory" element={<InventoryPage />} />
           </Route>
           <Route element={<ProtectedRoute allowedRoles={[ROLES.HEAD_TRAINER]} />}>

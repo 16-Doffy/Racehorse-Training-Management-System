@@ -14,6 +14,7 @@ export const TYPE_LABELS = {
   farrier_due: 'Nhắc lịch kiểm tra móng',
   incident_report: 'Báo cáo sự cố',
   exam_request: 'Yêu cầu khám bệnh',
+  restock_decision: 'Kết quả duyệt vật tư',
   system: 'Thông báo hệ thống',
 };
 

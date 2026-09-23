@@ -29,5 +29,6 @@ router.post('/treatments/:id/lock-training', authorize(ROLES.VETERINARIAN), trea
 router.get('/injury-markers', markerCtrl.listMarkers);
 router.post('/injury-markers', authorize(ROLES.VETERINARIAN), markerCtrl.createMarker);
 router.put('/injury-markers/:id', authorize(ROLES.VETERINARIAN), markerCtrl.updateMarker);
+router.delete('/injury-markers/:id', authorize(ROLES.VETERINARIAN), markerCtrl.deleteMarker);
 
 module.exports = router;
