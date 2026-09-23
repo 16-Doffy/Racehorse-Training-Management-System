@@ -77,7 +77,6 @@ module.exports = {
           phone: { type: 'string' },
           isActive: { type: 'boolean' },
           approvalStatus: { type: 'string', enum: ['pending', 'approved', 'rejected'], description: 'Distinguishes a self-registration awaiting a Manager decision from an existing member who was deactivated (both have isActive=false).' },
-          ownedHorses: { type: 'array', items: { type: 'string' } },
         },
       },
       Horse: {

@@ -18,7 +18,10 @@ const userSchema = new mongoose.Schema(
       enum: ['pending', 'approved', 'rejected'],
       default: 'approved',
     },
-    ownedHorses: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Horse' }],
+    // NOTE: there is deliberately no `ownedHorses` array here. Ownership lives on `Horse.owner`,
+    // which is what every query actually filters by (horseScope.js, finance's /mine). A second
+    // denormalized copy on the user had no writer outside the seed script and no reader at all,
+    // so it silently went stale the moment a Manager created a horse through the UI.
   },
   { timestamps: true }
 );

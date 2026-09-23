@@ -84,9 +84,6 @@ async function run() {
     horses.push(horse);
   }
 
-  owner.ownedHorses = horses.map((h) => h._id);
-  await owner.save();
-
   await Promise.all(
     horses.map((h, i) =>
       StableAssignment.create({
