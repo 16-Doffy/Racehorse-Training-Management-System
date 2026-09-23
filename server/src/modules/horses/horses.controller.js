@@ -4,6 +4,7 @@ const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { ROLES } = require('../../constants/roles');
 const { getScopedHorseIds, isHorseInScope } = require('../../utils/horseScope');
+const { pushNotification } = require('../alerts/notification.service');
 
 const populatePedigree = [
   { path: 'owner', select: 'name email phone' },
@@ -12,6 +13,32 @@ const populatePedigree = [
   { path: 'assignedTrainer', select: 'name' },
   { path: 'assignedVet', select: 'name' },
 ];
+
+// Being made responsible for a horse is something the person needs to be told, not something
+// they should discover by noticing a new row. Fires only for people who weren't already in that
+// slot, so re-saving a horse without changing its staffing doesn't re-notify anyone.
+const ASSIGNMENT_SLOTS = [
+  { field: 'owner', message: (name) => `🐎 Ngựa "${name}" đã được thêm vào câu lạc bộ dưới tên bạn.` },
+  { field: 'assignedTrainer', message: (name) => `🐎 Bạn được phân công huấn luyện ngựa "${name}".` },
+  { field: 'assignedVet', message: (name) => `🐎 Bạn được phân công theo dõi sức khỏe ngựa "${name}".` },
+];
+
+async function notifyNewAssignees(horse, previous = {}) {
+  for (const slot of ASSIGNMENT_SLOTS) {
+    const nextId = horse[slot.field];
+    if (!nextId) continue;
+    if (String(previous[slot.field] || '') === String(nextId)) continue;
+
+    // eslint-disable-next-line no-await-in-loop
+    await pushNotification({
+      recipientUser: nextId,
+      horse: horse._id,
+      type: 'horse_assigned',
+      severity: 'info',
+      message: slot.message(horse.name),
+    });
+  }
+}
 
 // Horse Owners only see horses they own; Head Trainer/Veterinarian only see horses assigned to
 // them (plus any horse nobody has been assigned to yet — see horseScope.js); Manager/Groom see
@@ -42,13 +69,22 @@ const getHorse = asyncHandler(async (req, res) => {
 const createHorse = asyncHandler(async (req, res) => {
   const horse = await Horse.create(req.body);
   await logAction({ actorId: req.user._id, action: 'horse.create', targetModel: 'Horse', targetId: horse._id });
+  await notifyNewAssignees(horse);
   return created(res, horse, 'Horse created.');
 });
 
 const updateHorse = asyncHandler(async (req, res) => {
+  // Read the current staffing first so only genuinely new assignees get notified.
+  const before = await Horse.findById(req.params.id).select('owner assignedTrainer assignedVet');
+  if (!before) return fail(res, 'Horse not found.', 404);
+
   const horse = await Horse.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-  if (!horse) return fail(res, 'Horse not found.', 404);
   await logAction({ actorId: req.user._id, action: 'horse.update', targetModel: 'Horse', targetId: horse._id });
+  await notifyNewAssignees(horse, {
+    owner: before.owner,
+    assignedTrainer: before.assignedTrainer,
+    assignedVet: before.assignedVet,
+  });
   return ok(res, horse, 'Horse updated.');
 });
 

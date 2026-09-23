@@ -274,7 +274,7 @@ module.exports = {
           recipientUser: { type: 'string', nullable: true },
           recipientRole: { type: 'string', nullable: true },
           horse: { type: 'string' },
-          type: { type: 'string', enum: ['fitness_alert', 'injury_lock', 'vaccination_due', 'deworming_due', 'farrier_due', 'incident_report', 'exam_request', 'restock_decision', 'system'] },
+          type: { type: 'string', enum: ['fitness_alert', 'injury_lock', 'vaccination_due', 'deworming_due', 'farrier_due', 'incident_report', 'exam_request', 'restock_decision', 'horse_assigned', 'system'] },
           severity: { type: 'string', enum: ['info', 'warning', 'critical'] },
           message: { type: 'string' },
           isRead: { type: 'boolean' },

@@ -17,6 +17,7 @@ const notificationSchema = new mongoose.Schema(
         'incident_report',
         'exam_request',
         'restock_decision',
+        'horse_assigned',
         'system',
       ],
       required: true,

@@ -42,11 +42,12 @@ export default function HorseListPage() {
   const { data, isLoading } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const horses = data?.data || [];
 
-  // A horse nobody is responsible for is invisible to every trainer and vet — only the Manager
-  // can see it, so only the Manager can notice and fix it.
-  const unassignedCount = isManager
-    ? horses.filter((h) => !h.assignedTrainer || !h.assignedVet).length
-    : 0;
+  // A horse with an empty slot is invisible to whoever should have been in it — no owner means
+  // its owner can't follow it, no trainer means no one plans its training, no vet means no one
+  // watches its health. Only the Manager can see the gap, so only the Manager can close it.
+  const incomplete = isManager
+    ? horses.filter((h) => !h.owner || !h.assignedTrainer || !h.assignedVet)
+    : [];
 
   // Assignee dropdowns — only fetched for the Manager, who is the only role that can assign.
   const { data: trainersData } = useQuery({
@@ -111,7 +112,14 @@ export default function HorseListPage() {
     { title: 'Tên ngựa', dataIndex: 'name', key: 'name' },
     { title: 'Giống', dataIndex: 'breed', key: 'breed' },
     { title: 'Màu lông', dataIndex: 'color', key: 'color' },
-    { title: 'Chủ sở hữu', dataIndex: ['owner', 'name'], key: 'owner', render: (v) => v || '—' },
+    {
+      title: 'Chủ sở hữu',
+      dataIndex: ['owner', 'name'],
+      key: 'owner',
+      // For the Manager this is an actionable gap, not just a blank — same treatment as the
+      // trainer/vet columns below.
+      render: (v) => v || (isManager ? <Tag>Chưa gán</Tag> : '—'),
+    },
     {
       title: 'Trạng thái sức khỏe',
       dataIndex: 'healthStatus',
@@ -176,13 +184,20 @@ export default function HorseListPage() {
         )}
       </div>
 
-      {unassignedCount > 0 && (
+      {incomplete.length > 0 && (
         <Alert
           className="mb-3"
           type="warning"
           showIcon
-          title={`${unassignedCount} ngựa chưa phân công đủ người phụ trách`}
-          description="Ngựa chưa gán HLV sẽ không hiển thị cho bất kỳ huấn luyện viên nào, và chưa gán bác sĩ thì không bác sĩ nào theo dõi được sức khỏe của nó. Bấm “Sửa” ở từng dòng để phân công."
+          title={`${incomplete.length} ngựa chưa đủ người phụ trách`}
+          description={
+            <>
+              Ngựa thiếu <b>chủ sở hữu</b> thì không chủ ngựa nào theo dõi được, thiếu <b>HLV</b>{' '}
+              thì không ai lập kế hoạch huấn luyện, thiếu <b>bác sĩ</b> thì không ai theo dõi sức
+              khỏe. Bấm “Sửa” ở các dòng bên dưới để bổ sung:{' '}
+              <b>{incomplete.map((h) => h.name).join(', ')}</b>.
+            </>
+          }
         />
       )}
 
