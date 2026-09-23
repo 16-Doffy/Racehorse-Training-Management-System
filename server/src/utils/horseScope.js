@@ -12,17 +12,17 @@ const SCOPE_FIELD_BY_ROLE = {
  * such restriction (Manager sees everything; Groom is scoped separately via DailyTask.assignedTo,
  * not through this horse-level mechanism).
  *
- * For Owner/Head Trainer/Veterinarian, "allowed" means horses assigned to them specifically PLUS
- * any horse nobody has been assigned to yet — so a horse stays visible to everyone in that role
- * until a Manager deliberately assigns it, instead of disappearing the moment this scoping field
- * exists on the schema (this matters for every horse already in the shared database today, none
- * of which has assignedTrainer/assignedVet set).
+ * Owner/Head Trainer/Veterinarian see ONLY the horses assigned to them — strictly. An unassigned
+ * horse is deliberately visible to nobody but the Manager: the Manager is the one who decides who
+ * handles which horse, and a horse quietly showing up on every trainer's screen until someone
+ * remembers to assign it would make the assignment step look like it does nothing. Manager's
+ * dashboard surfaces unassigned horses so they can't be forgotten instead.
  */
 async function getScopedHorseIds(user) {
   const field = SCOPE_FIELD_BY_ROLE[user.role];
   if (!field) return null;
 
-  const horses = await Horse.find({ $or: [{ [field]: user._id }, { [field]: null }] }).select('_id');
+  const horses = await Horse.find({ [field]: user._id }).select('_id');
   return horses.map((h) => h._id);
 }
 

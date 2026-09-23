@@ -8,11 +8,11 @@ import {
   Select,
   DatePicker,
   Tag,
-  message,
   InputNumber,
   Input,
   Segmented,
 } from 'antd';
+import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';

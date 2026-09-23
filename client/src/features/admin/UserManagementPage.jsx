@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Modal, Form, Select, Input, Tag, message, Switch, Alert, Popconfirm, Space } from 'antd';
+import { Table, Button, Typography, Modal, Form, Select, Input, Tag, Switch, Alert, Popconfirm, Space } from 'antd';
+import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from './usersApi';
@@ -28,7 +29,17 @@ export default function UserManagementPage() {
       message.success(variables.approve ? 'Đã duyệt tài khoản.' : 'Đã từ chối tài khoản.');
       invalidate();
     },
-    onError: (err) => message.error(err.message || 'Thao tác thất bại.'),
+    onError: (err) => {
+      // 409 means someone already decided this registration (another Manager, another tab, or a
+      // double-click). Nothing is wrong with the account — the list on screen is just stale, so
+      // refresh it instead of showing a failure the Manager can't act on.
+      if (err.status === 409) {
+        message.info('Tài khoản này đã được xử lý trước đó. Danh sách vừa được làm mới.');
+        invalidate();
+        return;
+      }
+      message.error(err.message || 'Thao tác thất bại.');
+    },
   });
 
   const createMutation = useMutation({
@@ -176,7 +187,7 @@ export default function UserManagementPage() {
           className="mb-3"
           type="warning"
           showIcon
-          message={`${pendingUsers.length} tài khoản đăng ký đang chờ bạn duyệt`}
+          title={`${pendingUsers.length} tài khoản đăng ký đang chờ bạn duyệt`}
           description="Người đăng ký tự chọn vai trò — hãy kiểm tra và sửa lại vai trò nếu cần trước khi duyệt. Chỉ sau khi duyệt họ mới đăng nhập được."
         />
       )}

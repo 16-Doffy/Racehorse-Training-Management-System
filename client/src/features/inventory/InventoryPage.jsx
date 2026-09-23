@@ -1,4 +1,5 @@
-import { Table, Typography, Tag, Button, Space, Alert, Popconfirm, message } from 'antd';
+import { Table, Typography, Tag, Button, Space, Alert, Popconfirm } from 'antd';
+import { message } from '../../lib/antdStatic';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi } from './inventoryApi';
@@ -145,7 +146,7 @@ export default function InventoryPage() {
             className="mb-3"
             type="warning"
             showIcon
-            message={`${pendingRequests.length} yêu cầu bổ sung vật tư đang chờ duyệt`}
+            title={`${pendingRequests.length} yêu cầu bổ sung vật tư đang chờ duyệt`}
           />
           <Table
             className="mb-8"

@@ -211,7 +211,7 @@ export default function ReportsOverviewPage() {
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card loading={isLoading}>
-            <Statistic title="Tổng chi phí vận hành" value={formatVnd(cost?.total)} valueStyle={{ fontSize: 22 }} />
+            <Statistic title="Tổng chi phí vận hành" value={formatVnd(cost?.total)} styles={{ content: { fontSize: 22 } }} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
@@ -219,7 +219,7 @@ export default function ReportsOverviewPage() {
             <Statistic
               title="Lợi nhuận (doanh thu − chi phí)"
               value={formatVnd(profit)}
-              valueStyle={{ fontSize: 22, color: profit >= 0 ? '#006300' : '#d03b3b' }}
+              styles={{ content: { fontSize: 22, color: profit >= 0 ? '#006300' : '#d03b3b' } }}
             />
           </Card>
         </Col>

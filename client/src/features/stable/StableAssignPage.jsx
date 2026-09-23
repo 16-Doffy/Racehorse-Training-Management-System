@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Modal, Form, Select, DatePicker, Tag, message, Popover } from 'antd';
+import { Table, Button, Typography, Modal, Form, Select, DatePicker, Tag, Popover } from 'antd';
+import { message } from '../../lib/antdStatic';
 import { PlusOutlined, WarningFilled } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';

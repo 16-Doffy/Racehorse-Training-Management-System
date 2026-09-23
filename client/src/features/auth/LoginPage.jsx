@@ -27,7 +27,7 @@ export default function LoginPage() {
       // the newly-logged-in user straight into a 403 instead of a working screen.
       navigate('/', { replace: true });
     } catch (err) {
-      setError(err.message || 'Login failed.');
+      setError(err.message || 'Đăng nhập thất bại.');
     } finally {
       setLoading(false);
     }
@@ -58,7 +58,7 @@ export default function LoginPage() {
           viên trưởng đến Bác sĩ thú y, Nhân viên chăm sóc, Chủ sở hữu và Ban quản lý.
         </Paragraph>
 
-        {error && <Alert type="error" message={error} className="mb-4 max-w-sm" showIcon />}
+        {error && <Alert type="error" title={error} className="mb-4 max-w-sm" showIcon />}
 
         <Form layout="vertical" onFinish={onFinish} autoComplete="off" className="max-w-sm">
           <Form.Item name="email" label={<span className="text-white/90">Email</span>} rules={[{ required: true, message: 'Vui lòng nhập email' }]}>

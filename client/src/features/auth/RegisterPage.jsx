@@ -78,7 +78,7 @@ export default function RegisterPage() {
               trước khi sử dụng được.
             </Paragraph>
 
-            {error && <Alert type="error" message={error} className="mb-4 max-w-sm" showIcon />}
+            {error && <Alert type="error" title={error} className="mb-4 max-w-sm" showIcon />}
 
             <Form layout="vertical" onFinish={onFinish} autoComplete="off" className="max-w-sm">
               <Form.Item

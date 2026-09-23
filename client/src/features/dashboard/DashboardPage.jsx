@@ -66,17 +66,17 @@ export default function DashboardPage() {
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card hoverable onClick={() => navigate('/horses')}>
-            <Statistic title="Đủ điều kiện" value={eligible} valueStyle={{ color: '#3f8600' }} />
+            <Statistic title="Đủ điều kiện" value={eligible} styles={{ content: { color: '#3f8600' } }} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card hoverable onClick={() => navigate('/horses')}>
-            <Statistic title="Cần theo dõi" value={monitoring} valueStyle={{ color: '#d4b106' }} />
+            <Statistic title="Cần theo dõi" value={monitoring} styles={{ content: { color: '#d4b106' } }} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card hoverable onClick={() => navigate('/horses')}>
-            <Statistic title="Chấn thương" value={injured} valueStyle={{ color: '#cf1322' }} />
+            <Statistic title="Chấn thương" value={injured} styles={{ content: { color: '#cf1322' } }} />
           </Card>
         </Col>
       </Row>
@@ -86,7 +86,7 @@ export default function DashboardPage() {
           className="mt-6"
           type="error"
           showIcon
-          message={`${lockedTreatments.length} ngựa đang bị bác sĩ thú y khóa huấn luyện`}
+          title={`${lockedTreatments.length} ngựa đang bị bác sĩ thú y khóa huấn luyện`}
           description={
             <List
               size="small"

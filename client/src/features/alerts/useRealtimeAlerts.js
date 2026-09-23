@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { notification as antdNotification } from 'antd';
+import { notification as antdNotification } from '../../lib/antdStatic';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getSocket } from '../../lib/socket';
 import { notificationsApi } from './notificationsApi';
@@ -49,7 +49,7 @@ export function useRealtimeAlerts() {
 
     const handleNotification = (notification) => {
       antdNotification[SEVERITY_TO_ANTD[notification.severity] || 'info']({
-        message: TYPE_LABELS[notification.type] || TYPE_LABELS.system,
+        title: TYPE_LABELS[notification.type] || TYPE_LABELS.system,
         description: notification.message,
         placement: 'topRight',
       });

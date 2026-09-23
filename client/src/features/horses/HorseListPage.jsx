@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Table, Tag, Typography, Button, Modal, Form, Input, InputNumber, Select, DatePicker, message } from 'antd';
+import { Table, Tag, Typography, Button, Modal, Form, Input, InputNumber, Select, DatePicker, Alert, Empty } from 'antd';
+import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -40,6 +41,12 @@ export default function HorseListPage() {
 
   const { data, isLoading } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const horses = data?.data || [];
+
+  // A horse nobody is responsible for is invisible to every trainer and vet — only the Manager
+  // can see it, so only the Manager can notice and fix it.
+  const unassignedCount = isManager
+    ? horses.filter((h) => !h.assignedTrainer || !h.assignedVet).length
+    : 0;
 
   // Assignee dropdowns — only fetched for the Manager, who is the only role that can assign.
   const { data: trainersData } = useQuery({
@@ -157,8 +164,8 @@ export default function HorseListPage() {
           </Title>
           {isManager && (
             <Typography.Text type="secondary" className="text-sm">
-              Thêm/sửa hồ sơ ngựa và gán Huấn luyện viên, Bác sĩ thú y phụ trách. Ngựa chưa gán sẽ
-              hiển thị cho tất cả HLV/bác sĩ cho tới khi bạn phân công cụ thể.
+              Thêm/sửa hồ sơ ngựa và gán Huấn luyện viên, Bác sĩ thú y phụ trách. Mỗi HLV/bác sĩ
+              chỉ thấy đúng những con ngựa bạn phân công cho họ.
             </Typography.Text>
           )}
         </div>
@@ -169,13 +176,37 @@ export default function HorseListPage() {
         )}
       </div>
 
+      {unassignedCount > 0 && (
+        <Alert
+          className="mb-3"
+          type="warning"
+          showIcon
+          title={`${unassignedCount} ngựa chưa phân công đủ người phụ trách`}
+          description="Ngựa chưa gán HLV sẽ không hiển thị cho bất kỳ huấn luyện viên nào, và chưa gán bác sĩ thì không bác sĩ nào theo dõi được sức khỏe của nó. Bấm “Sửa” ở từng dòng để phân công."
+        />
+      )}
+
       <Table
         rowKey="_id"
         columns={columns}
         dataSource={horses}
         loading={isLoading}
         scroll={{ x: 'max-content' }}
-        locale={{ emptyText: 'Chưa có ngựa nào trong danh mục.' }}
+        locale={{
+          emptyText: isManager ? (
+            'Chưa có ngựa nào trong danh mục. Nhấn "Thêm ngựa mới" để bắt đầu.'
+          ) : (
+            <Empty
+              description={
+                <span>
+                  Bạn chưa được phân công phụ trách con ngựa nào.
+                  <br />
+                  Liên hệ Quản lý Câu lạc bộ để được phân công.
+                </span>
+              }
+            />
+          ),
+        }}
         onRow={(record) => ({ onClick: () => navigate(`/horses/${record._id}`) })}
         rowClassName="cursor-pointer"
       />

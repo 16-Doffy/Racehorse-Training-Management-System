@@ -21,8 +21,8 @@ import {
   Modal,
   Form,
   Input,
-  message,
 } from 'antd';
+import { message } from '../../lib/antdStatic';
 import {
   UserOutlined,
   HeartOutlined,
