@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Card, Button, Badge, ButtonGroup } from 'react-bootstrap';
 import horse3DImg from '../../assets/horse-3d-anatomy-transparent.png';
 
@@ -14,32 +14,36 @@ export default function Horse3DAnatomyViewer({
   const [rotationX, setRotationX] = useState(0);
   const [highlightedInjury, setHighlightedInjury] = useState(null);
   const [hoveredPreset, setHoveredPreset] = useState(null);
+  const imageFrameRef = useRef(null);
 
-  // Anatomical hotspots presets calibrated precisely against the isolated 3D Horse Model
+  // Anatomical hotspots presets calibrated 100% precisely onto the 1376x768 3D Horse Image Canvas
   const anatomicalPresets = [
-    { id: 'head_jaw', name: 'Đầu & Xương Hàm (Cranium & Masseter)', x: 0.22, y: 0.16, region: 'Đầu & Hàm' },
-    { id: 'poll_cervical', name: 'Gáy & Đốt Sống Cổ (Cervical Spine)', x: 0.32, y: 0.18, region: 'Đốt sống cổ' },
-    { id: 'withers_scapula', name: 'Xương Bả Vai & Bướu Vai (Scapula & Withers)', x: 0.42, y: 0.32, region: 'Bả vai' },
-    { id: 'spine_dorsi', name: 'Xương Cột Sống (Vertebral Column)', x: 0.54, y: 0.28, region: 'Cột sống' },
-    { id: 'nerves_lumbar', name: 'Hệ Thần Kinh & Hông (Nerves & Lumbar)', x: 0.65, y: 0.30, region: 'Thần kinh hông' },
-    { id: 'heart_lungs', name: 'Tim & Phổi (Heart & Lungs)', x: 0.45, y: 0.44, region: 'Tim & Phổi' },
-    { id: 'digestive', name: 'Hệ Tiêu Hóa (Digestive System)', x: 0.54, y: 0.46, region: 'Hệ tiêu hóa' },
-    { id: 'musculature_thigh', name: 'Khối Cơ Bắp Đùi Sau (Musculature)', x: 0.68, y: 0.54, region: 'Cơ đùi sau' },
-    { id: 'foreleg_knee', name: 'Khớp Gối Trước (Knee Joint)', x: 0.41, y: 0.70, region: 'Khớp gối trước' },
-    { id: 'foreleg_fetlock', name: 'Khớp Bàn Chân & Móng (Fetlock Joint & Hoof)', x: 0.40, y: 0.88, region: 'Móng trước' },
-    { id: 'hind_nerves', name: 'Thần Kinh Chân Sau (Hind Nerves)', x: 0.70, y: 0.76, region: 'Thần kinh sau' },
-    { id: 'hind_fetlock', name: 'Khớp Bàn Chân Sau (Hind Fetlock & Hoof)', x: 0.70, y: 0.88, region: 'Móng sau' },
+    { id: 'head_jaw', name: 'Đầu & Xương Hàm (Cranium & Masseter)', x: 0.233, y: 0.228, region: 'Đầu & Hàm' },
+    { id: 'poll_cervical', name: 'Gáy & Đốt Sống Cổ (Cervical Spine)', x: 0.320, y: 0.208, region: 'Đốt sống cổ' },
+    { id: 'withers_scapula', name: 'Xương Bả Vai & Bướu Vai (Scapula & Withers)', x: 0.418, y: 0.319, region: 'Bả vai' },
+    { id: 'spine_dorsi', name: 'Xương Cột Sống (Vertebral Column)', x: 0.538, y: 0.280, region: 'Cột sống' },
+    { id: 'nerves_lumbar', name: 'Hệ Thần Kinh & Hông (Nerves & Lumbar)', x: 0.650, y: 0.300, region: 'Thần kinh hông' },
+    { id: 'heart_lungs', name: 'Tim & Phổi (Heart & Lungs)', x: 0.436, y: 0.436, region: 'Tim & Phổi' },
+    { id: 'digestive', name: 'Hệ Tiêu Hóa (Digestive System)', x: 0.538, y: 0.456, region: 'Hệ tiêu hóa' },
+    { id: 'musculature_thigh', name: 'Khối Cơ Bắp Đùi Sau (Musculature)', x: 0.679, y: 0.540, region: 'Cơ đùi sau' },
+    { id: 'foreleg_knee', name: 'Khớp Gối Trước (Knee Joint)', x: 0.407, y: 0.696, region: 'Khớp gối trước' },
+    { id: 'foreleg_fetlock', name: 'Khớp Bàn Chân & Móng (Fetlock Joint & Hoof)', x: 0.396, y: 0.879, region: 'Móng trước' },
+    { id: 'hind_nerves', name: 'Thần Kinh Chân Sau (Hind Nerves)', x: 0.698, y: 0.755, region: 'Thần kinh sau' },
+    { id: 'hind_fetlock', name: 'Khớp Bàn Chân Sau (Hind Fetlock & Hoof)', x: 0.698, y: 0.879, region: 'Móng sau' },
   ];
 
   const handleDiagramClick = (e) => {
     if (!isInteractive || !onPointSelect) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = Math.round(((e.clientX - rect.left) / rect.width) * 100) / 100;
-    const y = Math.round(((e.clientY - rect.top) / rect.height) * 100) / 100;
+    const target = imageFrameRef.current || e.currentTarget;
+    const rect = target.getBoundingClientRect();
+    const rawX = (e.clientX - rect.left) / rect.width;
+    const rawY = (e.clientY - rect.top) / rect.height;
+    const x = Math.round(Math.max(0, Math.min(1, rawX)) * 1000) / 1000;
+    const y = Math.round(Math.max(0, Math.min(1, rawY)) * 1000) / 1000;
 
     // Detect closest preset if near
     const nearby = anatomicalPresets.find(
-      (p) => Math.abs(p.x - x) < 0.06 && Math.abs(p.y - y) < 0.06
+      (p) => Math.abs(p.x - x) < 0.05 && Math.abs(p.y - y) < 0.05
     );
 
     onPointSelect({
@@ -124,16 +128,15 @@ export default function Horse3DAnatomyViewer({
         </ButtonGroup>
       </Card.Header>
 
-      {/* Main 3D Canvas Viewport */}
+      {/* Main 3D Canvas Viewport Container */}
       <div
-        className="position-relative overflow-hidden d-flex align-items-center justify-content-center user-select-none"
+        className="position-relative overflow-hidden d-flex align-items-center justify-content-center user-select-none py-3 px-2"
         style={{
           height,
           background: getBackgroundGradient(),
           cursor: isInteractive ? 'crosshair' : 'default',
           transition: 'background 0.4s ease',
         }}
-        onClick={handleDiagramClick}
       >
         {/* Hologram Sci-Fi Grid Overlay */}
         <div
@@ -183,26 +186,34 @@ export default function Horse3DAnatomyViewer({
           </div>
         </div>
 
-        {/* High-Definition 3D Anatomical Horse Illustration Frame */}
+        {/* Inner Frame with EXACT Image Aspect Ratio (1376 / 768) - All Hotspots scale perfectly with Image */}
         <div
-          className="position-relative w-100 h-100 d-flex align-items-center justify-content-center"
+          ref={imageFrameRef}
+          className="position-relative d-flex align-items-center justify-content-center"
           style={{
+            aspectRatio: '1376 / 768',
+            maxWidth: '100%',
+            maxHeight: '100%',
+            width: 'auto',
+            height: '100%',
             transform: `perspective(900px) rotateY(${rotationY}deg) rotateX(${rotationX}deg)`,
+            transformOrigin: '50% 50%',
             transition: 'transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1)',
           }}
+          onClick={handleDiagramClick}
         >
           {/* Main Pure Transparent 3D Horse Image */}
           <img
             src={horse3DImg}
             alt="Horse 3D Anatomy Model"
-            className="w-100 h-100 object-fit-contain pointer-events-none"
+            className="w-100 h-100 object-fit-contain pointer-events-none select-none"
             style={{
               filter: getImageFilter(),
               transition: 'filter 0.4s ease',
             }}
           />
 
-          {/* ANATOMICAL PRESET HOTSPOT NODES OVERLAY */}
+          {/* ANATOMICAL PRESET HOTSPOT NODES OVERLAY (Accurately Pinned on Image Bounds) */}
           {isInteractive &&
             anatomicalPresets.map((preset) => {
               const isHovered = hoveredPreset?.id === preset.id;
@@ -241,8 +252,8 @@ export default function Horse3DAnatomyViewer({
                   <div
                     className="rounded-circle d-flex align-items-center justify-content-center shadow-sm"
                     style={{
-                      width: isHovered ? '16px' : '10px',
-                      height: isHovered ? '16px' : '10px',
+                      width: isHovered ? '16px' : '11px',
+                      height: isHovered ? '16px' : '11px',
                       backgroundColor: isHovered ? '#ffffff' : activeColorTheme,
                       border: '2px solid #ffffff',
                       boxShadow: `0 0 10px ${activeColorTheme}`,
@@ -316,7 +327,7 @@ export default function Horse3DAnatomyViewer({
           {/* USER'S CURRENT SELECTED TARGET PIN */}
           {selectedPoint && (
             <div
-              className="position-absolute translate-middle"
+              className="position-absolute translate-middle pointer-events-none"
               style={{
                 left: `${selectedPoint.x * 100}%`,
                 top: `${selectedPoint.y * 100}%`,
