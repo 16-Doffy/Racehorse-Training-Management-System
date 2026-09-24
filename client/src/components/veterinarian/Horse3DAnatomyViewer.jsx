@@ -233,59 +233,68 @@ export default function Horse3DAnatomyViewer({
             </defs>
 
             {/* ======================================================== */}
-            {/* BASE ELEGANT THOROUGHBRED RACEHORSE SILHOUETTE           */}
+            {/* REALISTIC EQUINE SILHOUETTE & ANATOMY                    */}
             {/* ======================================================== */}
 
-            {/* Offside (Far Side) Legs for 3D Depth */}
-            <g opacity="0.55">
+            {/* Offside (Far Side) Legs for Realistic 3D Depth */}
+            <g opacity="0.45">
               {/* Offside Front Leg */}
               <path
-                d="M 345,340 L 340,450 L 335,465 L 332,565 L 325,585 L 340,585 L 345,565 L 350,465 Z"
-                fill={activeLayer === 'muscular' ? '#800a12' : activeLayer === 'skeletal' ? '#004d40' : '#101d24'}
-                stroke={activeLayer === 'muscular' ? '#d32f2f' : activeLayer === 'skeletal' ? '#00b0ff' : '#455a64'}
+                d="M 335,360 L 330,450 L 325,470 L 322,545 L 315,580 L 338,580 L 342,545 L 345,470 L 350,450 Z"
+                fill={activeLayer === 'muscular' ? '#60060d' : activeLayer === 'skeletal' ? '#00363a' : '#0a1218'}
+                stroke={activeLayer === 'muscular' ? '#b71c1c' : activeLayer === 'skeletal' ? '#00838f' : '#37474f'}
                 strokeWidth="1.5"
               />
               {/* Offside Hind Leg */}
               <path
-                d="M 720,340 L 705,430 L 725,480 L 715,565 L 708,585 L 725,585 L 730,565 L 738,480 Z"
-                fill={activeLayer === 'muscular' ? '#800a12' : activeLayer === 'skeletal' ? '#004d40' : '#101d24'}
-                stroke={activeLayer === 'muscular' ? '#d32f2f' : activeLayer === 'skeletal' ? '#00b0ff' : '#455a64'}
+                d="M 710,360 L 690,430 L 715,480 L 705,545 L 698,580 L 720,580 L 725,545 L 732,480 Z"
+                fill={activeLayer === 'muscular' ? '#60060d' : activeLayer === 'skeletal' ? '#00363a' : '#0a1218'}
+                stroke={activeLayer === 'muscular' ? '#b71c1c' : activeLayer === 'skeletal' ? '#00838f' : '#37474f'}
                 strokeWidth="1.5"
               />
             </g>
 
-            {/* Main Nearside Thoroughbred Body Silhouette */}
+            {/* Main Nearside Thoroughbred Horse Body Silhouette */}
             <path
               d="
-                M 90,215
-                C 85,200 100,185 125,170
-                C 145,158 175,145 195,115
-                C 202,90 208,65 218,65
-                C 225,65 222,82 225,95
-                C 230,75 238,70 245,78
-                C 242,95 240,110 245,120
-                C 270,122 330,135 390,158
-                C 415,168 430,182 445,185
-                C 480,192 550,196 620,200
-                C 660,202 710,198 760,212
-                C 795,222 820,248 820,295
-                C 820,335 810,380 798,425
-                C 792,448 802,465 798,485
-                C 792,525 788,565 792,585
-                C 792,592 782,594 768,594
-                C 760,594 762,582 764,565
-                C 768,525 765,482 748,460
-                C 730,435 700,418 670,415
-                C 610,412 540,422 470,402
-                C 445,395 425,420 412,460
-                C 405,485 395,530 398,565
-                C 398,592 388,594 372,594
-                C 365,594 366,582 368,565
-                C 372,525 378,480 385,455
-                C 392,425 385,392 360,365
-                C 335,340 300,310 260,285
-                C 220,260 180,242 150,240
-                C 125,238 98,235 90,215 Z
+                M 110,190
+                C 105,175 120,155 145,140
+                C 160,130 175,115 185,90
+                C 188,75 192,60 200,60
+                C 205,60 202,75 205,88
+                C 210,70 218,65 225,75
+                C 220,90 218,105 222,118
+                C 245,120 300,135 360,160
+                C 380,170 390,195 405,200
+                C 440,208 480,218 530,220
+                C 590,222 650,210 710,200
+                C 750,195 780,210 800,235
+                C 820,260 825,290 815,325
+                C 805,360 790,400 775,435
+                C 770,450 778,465 775,480
+                L 765,545
+                L 772,555
+                L 768,580
+                L 738,580
+                L 745,555
+                L 742,545
+                L 745,470
+                C 735,450 710,420 680,400
+                C 670,390 650,395 630,390
+                C 560,385 490,395 440,370
+                C 425,365 405,385 395,420
+                C 388,445 382,460 385,475
+                L 385,545
+                L 392,555
+                L 388,580
+                L 358,580
+                L 365,555
+                L 362,545
+                L 362,475
+                C 355,455 355,420 340,385
+                C 320,360 280,325 245,295
+                C 215,270 180,245 155,240
+                C 130,235 115,220 110,190 Z
               "
               fill={
                 activeLayer === 'muscular'
@@ -305,9 +314,10 @@ export default function Horse3DAnatomyViewer({
               filter="url(#neonGlow)"
             />
 
-            {/* Eye & Nostril Details */}
-            <circle cx="145" cy="155" r="4.5" fill={activeLayer === 'skeletal' ? '#00e5ff' : '#000'} stroke="#fff" strokeWidth="1" />
-            <ellipse cx="102" cy="208" rx="4" ry="7" transform="rotate(-20 102 208)" fill="#000" opacity="0.7" />
+            {/* Horse Facial Features (Eye, Nostril, Jawline) */}
+            <circle cx="152" cy="148" r="4.5" fill={activeLayer === 'skeletal' ? '#00e5ff' : '#000'} stroke="#fff" strokeWidth="1" />
+            <ellipse cx="118" cy="182" rx="3.5" ry="6" transform="rotate(-25 118 182)" fill="#000" opacity="0.75" />
+            <path d="M 140,205 Q 165,225 190,215" stroke="#ffffff" strokeWidth="1" strokeDasharray="3,3" fill="none" opacity="0.5" />
 
             {/* ======================================================== */}
             {/* LAYER 1: ANATOMICAL MUSCULAR SYSTEM                     */}
@@ -315,61 +325,42 @@ export default function Horse3DAnatomyViewer({
             {activeLayer === 'muscular' && (
               <g>
                 {/* Head & Jowl Muscles (Masseter & Nasolabial) */}
-                <path d="M 120,180 Q 150,205 180,200 Q 165,170 145,160 Z" fill="url(#muscleHighlightGrad)" stroke="#ff7875" strokeWidth="1.5" />
-                <circle cx="162" cy="195" r="15" fill="#ff4d4f" fillOpacity="0.45" stroke="#ff7875" strokeWidth="1.2" />
+                <path d="M 130,165 Q 158,195 185,188 Q 170,160 150,150 Z" fill="url(#muscleHighlightGrad)" stroke="#ff7875" strokeWidth="1.5" />
+                <circle cx="168" cy="182" r="14" fill="#ff4d4f" fillOpacity="0.45" stroke="#ff7875" strokeWidth="1.2" />
 
                 {/* Splenius & Cervical Rhomboideus (Upper Neck Crest) */}
-                <path d="M 195,120 C 250,132 315,148 375,168 C 345,210 285,200 220,170 Z" fill="#d32f2f" fillOpacity="0.65" stroke="#ff9c6e" strokeWidth="1.8" />
-                <path d="M 220,135 Q 280,152 350,178" stroke="#ffbb96" strokeWidth="1.2" strokeDasharray="5,3" fill="none" />
-                <path d="M 240,148 Q 295,165 360,192" stroke="#ffbb96" strokeWidth="1.2" strokeDasharray="5,3" fill="none" />
+                <path d="M 215,100 C 265,115 325,135 375,160 C 345,200 285,190 230,155 Z" fill="#d32f2f" fillOpacity="0.65" stroke="#ff9c6e" strokeWidth="1.8" />
+                <path d="M 235,115 Q 290,132 355,158" stroke="#ffbb96" strokeWidth="1.2" strokeDasharray="5,3" fill="none" />
 
                 {/* Brachiocephalicus & Sternocephalicus (Lower Neck) */}
-                <path d="M 175,210 C 220,240 270,275 305,315 C 270,305 230,265 185,232 Z" fill="#c62828" fillOpacity="0.7" stroke="#ff7875" strokeWidth="1.6" />
-                <path d="M 200,225 Q 245,262 285,302" stroke="#ffbb96" strokeWidth="1.2" strokeDasharray="4,4" fill="none" />
+                <path d="M 195,190 C 235,220 280,255 315,295 C 280,285 240,245 195,212 Z" fill="#c62828" fillOpacity="0.7" stroke="#ff7875" strokeWidth="1.6" />
 
                 {/* Scapula & Deltoid & Triceps Group (Shoulder) */}
                 <ellipse cx="340" cy="245" rx="42" ry="55" transform="rotate(-20 340 245)" fill="#e53935" fillOpacity="0.65" stroke="#ff7875" strokeWidth="2" />
                 <ellipse cx="355" cy="275" rx="28" ry="38" transform="rotate(15 355 275)" fill="#b71c1c" fillOpacity="0.8" stroke="#ffa39e" strokeWidth="1.5" />
-                <path d="M 320,215 C 345,260 365,300 375,345" stroke="#ffccc7" strokeWidth="2" fill="none" />
-
-                {/* Pectoralis Profundus (Chest) */}
-                <path d="M 310,320 C 330,350 360,365 385,360 C 365,335 340,315 310,320 Z" fill="#b71c1c" fillOpacity="0.85" stroke="#ff7875" strokeWidth="1.5" />
 
                 {/* Longissimus Dorsi & Spinalis (Back & Spine Muscle) */}
-                <path d="M 390,175 C 460,188 560,195 670,205 C 660,235 550,235 430,220 Z" fill="#e53935" fillOpacity="0.75" stroke="#ffa39e" strokeWidth="2" />
-                <path d="M 410,195 Q 535,205 660,215" stroke="#fff1f0" strokeWidth="1.5" strokeDasharray="6,4" fill="none" />
-                <path d="M 430,208 Q 545,220 655,228" stroke="#fff1f0" strokeWidth="1.5" strokeDasharray="6,4" fill="none" />
+                <path d="M 390,185 C 460,198 560,205 670,215 C 660,245 550,245 430,230 Z" fill="#e53935" fillOpacity="0.75" stroke="#ffa39e" strokeWidth="2" />
 
                 {/* External Abdominal Oblique & Latissimus (Ribs & Flank) */}
-                <path d="M 435,228 C 540,242 630,242 675,268 C 650,345 560,375 450,340 Z" fill="#c62828" fillOpacity="0.6" stroke="#ff7875" strokeWidth="1.8" />
-                <path d="M 460,248 C 490,283 510,318 525,348" stroke="#ffccc7" strokeWidth="1.4" fill="none" />
-                <path d="M 495,248 C 525,283 545,318 560,348" stroke="#ffccc7" strokeWidth="1.4" fill="none" />
-                <path d="M 530,248 C 560,283 580,318 595,343" stroke="#ffccc7" strokeWidth="1.4" fill="none" />
-                <path d="M 565,250 C 595,283 615,313 628,333" stroke="#ffccc7" strokeWidth="1.4" fill="none" />
+                <path d="M 435,238 C 540,252 630,252 675,278 C 650,355 560,385 450,350 Z" fill="#c62828" fillOpacity="0.6" stroke="#ff7875" strokeWidth="1.8" />
 
                 {/* Gluteus Medius & Superficialis (Croup & Rump) */}
-                <ellipse cx="710" cy="235" rx="65" ry="48" transform="rotate(-15 710 235)" fill="#e53935" fillOpacity="0.8" stroke="#ffa39e" strokeWidth="2.2" />
-                <path d="M 665,215 C 710,240 750,275 765,325" stroke="#fff1f0" strokeWidth="2" fill="none" />
+                <ellipse cx="730" cy="240" rx="60" ry="45" transform="rotate(-15 730 240)" fill="#e53935" fillOpacity="0.8" stroke="#ffa39e" strokeWidth="2.2" />
 
                 {/* Biceps Femoris & Semitendinosus (Thigh & Stifle & Hamstring) */}
-                <path d="M 705,270 C 785,295 800,370 780,440 C 750,430 725,380 690,340 Z" fill="#b71c1c" fillOpacity="0.85" stroke="#ff7875" strokeWidth="2" />
-                <path d="M 720,295 C 760,345 770,395 770,435" stroke="#ffccc7" strokeWidth="1.6" fill="none" />
+                <path d="M 715,275 C 795,300 805,375 785,445 C 755,435 730,385 695,345 Z" fill="#b71c1c" fillOpacity="0.85" stroke="#ff7875" strokeWidth="2" />
 
                 {/* Gastrocnemius & Gaskin Muscle */}
-                <ellipse cx="755" cy="435" rx="24" ry="45" transform="rotate(20 755 435)" fill="#d32f2f" fillOpacity="0.75" stroke="#ff9c6e" strokeWidth="1.8" />
+                <ellipse cx="760" cy="440" rx="22" ry="42" transform="rotate(20 760 440)" fill="#d32f2f" fillOpacity="0.75" stroke="#ff9c6e" strokeWidth="1.8" />
 
                 {/* High-Performance Equine Tendons & Ligaments (Glowing Gold) */}
-                {/* Forelimb Extensor / Flexor Tendons */}
-                <path d="M 380,365 L 392,460 L 388,575" stroke="url(#tendonGrad)" strokeWidth="3.5" strokeLinecap="round" fill="none" />
-                <path d="M 370,378 L 380,465 L 374,575" stroke="#fff566" strokeWidth="2" strokeDasharray="3,3" fill="none" />
-
-                {/* Hindlimb Common Digital Extensor & Deep Flexor Tendons */}
-                <path d="M 760,470 L 784,525 L 780,578" stroke="url(#tendonGrad)" strokeWidth="3.8" strokeLinecap="round" fill="none" />
-                <path d="M 740,450 L 768,525 L 764,578" stroke="#fff566" strokeWidth="2" strokeDasharray="3,3" fill="none" />
+                <path d="M 380,365 L 390,460 L 388,565" stroke="url(#tendonGrad)" strokeWidth="3.5" strokeLinecap="round" fill="none" />
+                <path d="M 760,470 L 780,525 L 775,568" stroke="url(#tendonGrad)" strokeWidth="3.8" strokeLinecap="round" fill="none" />
 
                 {/* Hoof Anchors */}
-                <polygon points="365,575 398,575 392,594 362,594" fill="#424242" stroke="#ff4d4f" strokeWidth="1.5" />
-                <polygon points="762,575 794,575 790,594 760,594" fill="#424242" stroke="#ff4d4f" strokeWidth="1.5" />
+                <polygon points="358,565 390,565 385,580 355,580" fill="#424242" stroke="#ff4d4f" strokeWidth="1.5" />
+                <polygon points="738,565 770,565 765,580 735,580" fill="#424242" stroke="#ff4d4f" strokeWidth="1.5" />
               </g>
             )}
 
@@ -379,71 +370,48 @@ export default function Horse3DAnatomyViewer({
             {activeLayer === 'skeletal' && (
               <g stroke="#ffffff" fill="none">
                 {/* Skull & Mandible */}
-                <path d="M 95,210 C 105,185 130,165 160,160 C 185,160 200,180 185,205 C 165,225 125,230 95,210 Z" fill="#00838f" fillOpacity="0.4" stroke="#80deea" strokeWidth="2.5" />
-                <circle cx="145" cy="175" r="7" fill="#00e5ff" /> {/* Orbit / Eye Socket */}
-                <path d="M 115,220 Q 150,225 175,208" stroke="#ffffff" strokeWidth="2" /> {/* Mandible */}
+                <path d="M 115,185 C 122,165 145,145 170,140 C 190,140 205,160 190,185 C 170,205 135,210 115,185 Z" fill="#00838f" fillOpacity="0.4" stroke="#80deea" strokeWidth="2.5" />
+                <circle cx="152" cy="152" r="7" fill="#00e5ff" />
+                <path d="M 130,200 Q 160,205 182,190" stroke="#ffffff" strokeWidth="2" />
 
                 {/* Cervical Vertebrae (Neck C1-C7 Spine) */}
-                <path d="M 180,170 C 220,185 280,220 330,255" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" strokeDasharray="14,4" />
+                <path d="M 185,150 C 225,165 285,200 335,235" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" strokeDasharray="14,4" />
 
-                {/* Scapula (Shoulder Blade) */}
-                <polygon points="350,200 380,220 335,290 315,265" fill="#00acc1" fillOpacity="0.45" stroke="#e0f7fa" strokeWidth="2.5" />
+                {/* Scapula & Foreleg Bones */}
+                <polygon points="350,180 380,200 335,270 315,245" fill="#00acc1" fillOpacity="0.45" stroke="#e0f7fa" strokeWidth="2.5" />
+                <line x1="335" y1="265" x2="365" y2="350" stroke="#ffffff" strokeWidth="5.5" strokeLinecap="round" />
+                <line x1="365" y1="350" x2="378" y2="440" stroke="#ffffff" strokeWidth="5" strokeLinecap="round" />
+                <rect x="370" y="440" width="16" height="18" rx="4" fill="#00e5ff" stroke="#ffffff" strokeWidth="2" />
+                <line x1="378" y1="458" x2="380" y2="530" stroke="#ffffff" strokeWidth="4.5" strokeLinecap="round" />
+                <polygon points="358,565 390,565 385,580 355,580" fill="#006064" stroke="#00e5ff" strokeWidth="2" />
 
-                {/* Humerus & Radius / Ulna (Foreleg Upper Bones) */}
-                <line x1="335" y1="285" x2="365" y2="370" stroke="#ffffff" strokeWidth="5.5" strokeLinecap="round" />
-                <line x1="365" y1="370" x2="378" y2="460" stroke="#ffffff" strokeWidth="5" strokeLinecap="round" />
-
-                {/* Carpal Bones (Front Knee Joint) */}
-                <rect x="370" y="460" width="16" height="18" rx="4" fill="#00e5ff" stroke="#ffffff" strokeWidth="2" />
-
-                {/* Metacarpus (Front Cannon Bone & Pastern) */}
-                <line x1="378" y1="478" x2="382" y2="550" stroke="#ffffff" strokeWidth="4.5" strokeLinecap="round" />
-                <line x1="382" y1="550" x2="378" y2="580" stroke="#80deea" strokeWidth="4" />
-                <polygon points="365,580 392,580 388,594 362,594" fill="#006064" stroke="#00e5ff" strokeWidth="2" />
-
-                {/* Thoracic & Lumbar Spine (T1-T18 & L1-L6) */}
-                <path d="M 330,255 Q 510,215 690,255" stroke="#ffffff" strokeWidth="7" strokeLinecap="round" strokeDasharray="16,4" />
-
-                {/* Ribcage Structure (18 Equine Costal Ribs) */}
+                {/* Spine & Ribs */}
+                <path d="M 335,235 Q 515,195 695,235" stroke="#ffffff" strokeWidth="7" strokeLinecap="round" strokeDasharray="16,4" />
                 <g stroke="#4dd0e1" strokeWidth="2.4" opacity="0.85">
-                  <path d="M 380,225 C 395,275 405,325 415,350" />
-                  <path d="M 415,225 C 430,280 440,330 450,360" />
-                  <path d="M 450,225 C 465,285 475,335 485,365" />
-                  <path d="M 485,227 C 500,285 510,335 520,367" />
-                  <path d="M 520,230 C 535,285 545,335 555,367" />
-                  <path d="M 555,235 C 570,285 580,330 590,360" />
-                  <path d="M 590,240 C 605,285 615,325 625,353" />
-                  <path d="M 625,247 C 638,285 645,320 655,343" />
+                  <path d="M 380,205 C 395,255 405,305 415,330" />
+                  <path d="M 415,205 C 430,260 440,310 450,340" />
+                  <path d="M 450,205 C 465,265 475,315 485,345" />
+                  <path d="M 485,207 C 500,265 510,315 520,347" />
+                  <path d="M 520,210 C 535,265 545,315 555,347" />
+                  <path d="M 555,215 C 570,265 580,310 590,340" />
+                  <path d="M 590,220 C 605,265 615,305 625,333" />
                 </g>
 
-                {/* Pelvis / Ilium / Sacrum */}
-                <polygon points="665,245 720,235 745,285 690,300" fill="#00838f" fillOpacity="0.5" stroke="#ffffff" strokeWidth="3" />
-
-                {/* Femur (Thigh Bone) */}
-                <line x1="700" y1="290" x2="675" y2="395" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" />
-
-                {/* Stifle Joint & Patella (Glowing Neon Node) */}
-                <circle cx="675" cy="395" r="11" fill="url(#jointGlowGrad)" stroke="#00e5ff" strokeWidth="2.5" />
-
-                {/* Tibia & Fibula (Gaskin Bone) */}
-                <line x1="675" y1="395" x2="750" y2="480" stroke="#ffffff" strokeWidth="5.5" strokeLinecap="round" />
-
-                {/* Hock / Tarsus Joint (Calcaneus Node) */}
-                <rect x="743" y="480" width="18" height="20" rx="4" fill="#00e5ff" stroke="#ffffff" strokeWidth="2" />
-
-                {/* Metatarsus (Hind Cannon Bone & Phalanges) */}
-                <line x1="753" y1="500" x2="766" y2="555" stroke="#ffffff" strokeWidth="4.5" strokeLinecap="round" />
-                <line x1="766" y1="555" x2="764" y2="580" stroke="#80deea" strokeWidth="4" />
-                <polygon points="750,580 778,580 775,594 745,594" fill="#006064" stroke="#00e5ff" strokeWidth="2" />
+                {/* Pelvis, Femur, Tibia & Hindleg Bones */}
+                <polygon points="670,225 725,215 750,265 695,280" fill="#00838f" fillOpacity="0.5" stroke="#ffffff" strokeWidth="3" />
+                <line x1="705" y1="270" x2="680" y2="375" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" />
+                <circle cx="680" cy="375" r="11" fill="url(#jointGlowGrad)" stroke="#00e5ff" strokeWidth="2.5" />
+                <line x1="680" y1="375" x2="755" y2="460" stroke="#ffffff" strokeWidth="5.5" strokeLinecap="round" />
+                <rect x="748" y="460" width="18" height="20" rx="4" fill="#00e5ff" stroke="#ffffff" strokeWidth="2" />
+                <line x1="758" y1="480" x2="764" y2="535" stroke="#ffffff" strokeWidth="4.5" strokeLinecap="round" />
+                <polygon points="738,565 770,565 765,580 735,580" fill="#006064" stroke="#00e5ff" strokeWidth="2" />
 
                 {/* Articular Joint Nodes Glow */}
-                <circle cx="335" cy="285" r="8" fill="#00e5ff" />
-                <circle cx="365" cy="370" r="9" fill="#00e5ff" />
-                <circle cx="370" cy="465" r="7" fill="#00e5ff" />
-                <circle cx="382" cy="552" r="6" fill="#00e5ff" />
-                <circle cx="700" cy="290" r="9" fill="#00e5ff" />
-                <circle cx="750" cy="485" r="8" fill="#00e5ff" />
-                <circle cx="766" cy="557" r="6" fill="#00e5ff" />
+                <circle cx="335" cy="265" r="8" fill="#00e5ff" />
+                <circle cx="365" cy="350" r="9" fill="#00e5ff" />
+                <circle cx="370" cy="445" r="7" fill="#00e5ff" />
+                <circle cx="705" cy="270" r="9" fill="#00e5ff" />
+                <circle cx="755" cy="465" r="8" fill="#00e5ff" />
               </g>
             )}
 
@@ -454,57 +422,56 @@ export default function Horse3DAnatomyViewer({
               <g>
                 {/* Surface Body Gloss Lighting */}
                 <path
-                  d="M 220,155 C 310,165 440,185 640,200 C 610,255 470,255 320,235 Z"
+                  d="M 220,135 C 310,145 440,165 640,180 C 610,235 470,235 320,215 Z"
                   fill="url(#glossGrad)"
                 />
 
                 {/* Athletic Muscle Tone Contours */}
                 <g stroke="#90a4ae" strokeWidth="1.5" fill="none" opacity="0.65">
-                  <path d="M 210,165 Q 250,225 280,280" />
-                  <path d="M 320,235 Q 360,285 370,355" />
-                  <path d="M 420,235 Q 530,255 640,245" />
-                  <path d="M 650,265 Q 710,325 730,405" />
-                  <path d="M 670,375 Q 710,435 730,485" />
+                  <path d="M 210,145 Q 250,205 280,260" />
+                  <path d="M 320,215 Q 360,265 370,335" />
+                  <path d="M 420,215 Q 530,235 640,225" />
+                  <path d="M 650,245 Q 710,305 730,385" />
                 </g>
 
-                {/* Racing Mane (Bờm Ngựa Đua Điêu Khắc) */}
+                {/* Racing Mane (Bờm Ngựa Đua) */}
                 <path
                   d="
-                    M 218,65
-                    C 230,85 220,105 240,95
-                    C 255,115 250,135 275,120
-                    C 295,145 290,160 320,140
-                    C 340,165 345,175 375,155
-                    C 395,170 405,160 420,130
-                    C 380,120 310,100 218,65 Z
+                    M 200,60
+                    C 215,80 205,100 225,90
+                    C 240,110 235,130 260,115
+                    C 280,140 275,155 305,135
+                    C 325,160 330,170 360,150
+                    C 380,165 390,155 405,125
+                    C 365,115 295,95 200,60 Z
                   "
                   fill="#ffc107"
-                  fillOpacity="0.8"
+                  fillOpacity="0.85"
                   stroke="#ffe082"
                   strokeWidth="1.5"
                 />
 
-                {/* Flowing Tail (Đuôi Ngựa Đua Chảy Dài Thanh Thoát) */}
+                {/* Flowing Tail (Đuôi Ngựa) */}
                 <path
                   d="
-                    M 800,240
-                    C 840,265 870,315 880,385
-                    C 890,455 875,525 855,585
-                    C 845,610 835,625 825,630
-                    C 835,585 840,525 830,465
-                    C 820,405 805,355 795,305
-                    C 790,275 792,255 800,240 Z
+                    M 800,235
+                    C 840,260 875,310 885,380
+                    C 895,450 880,520 860,580
+                    C 850,605 840,620 830,625
+                    C 840,580 845,520 835,460
+                    C 825,400 810,350 800,300
+                    C 795,270 797,250 800,235 Z
                   "
                   fill="#ffc107"
-                  fillOpacity="0.75"
+                  fillOpacity="0.8"
                   stroke="#ffe082"
                   strokeWidth="1.8"
                 />
 
                 {/* Leather Halter & Bridle Accent */}
-                <path d="M 125,170 L 155,245" stroke="#fa8c16" strokeWidth="2.5" fill="none" opacity="0.85" />
-                <path d="M 130,205 L 195,195" stroke="#fa8c16" strokeWidth="2" fill="none" opacity="0.85" />
-                <circle cx="155" cy="205" r="4" fill="#ffd591" stroke="#d4380d" strokeWidth="1.5" />
+                <path d="M 120,150 L 148,220" stroke="#fa8c16" strokeWidth="2.5" fill="none" opacity="0.85" />
+                <path d="M 125,180 L 190,170" stroke="#fa8c16" strokeWidth="2" fill="none" opacity="0.85" />
+                <circle cx="148" cy="180" r="4" fill="#ffd591" stroke="#d4380d" strokeWidth="1.5" />
               </g>
             )}
 
