@@ -63,12 +63,12 @@ export default function Horse3DAnatomyViewer({
   const getBackgroundGradient = () => {
     switch (activeLayer) {
       case 'muscular':
-        return 'radial-gradient(circle at 50% 45%, #2a080c 0%, #170406 50%, #080102 100%)';
+        return 'radial-gradient(circle at 50% 45%, #2a0a0d 0%, #120406 50%, #09090b 100%)';
       case 'skeletal':
-        return 'radial-gradient(circle at 50% 45%, #051a28 0%, #03101b 50%, #01060a 100%)';
+        return 'radial-gradient(circle at 50% 45%, #07202d 0%, #031018 50%, #09090b 100%)';
       case 'surface':
       default:
-        return 'radial-gradient(circle at 50% 45%, #182232 0%, #0e1622 50%, #060a10 100%)';
+        return 'radial-gradient(circle at 50% 45%, #161e2b 0%, #0e141d 50%, #09090b 100%)';
     }
   };
 
@@ -78,19 +78,19 @@ export default function Horse3DAnatomyViewer({
   const getImageFilter = () => {
     switch (activeLayer) {
       case 'muscular':
-        return 'saturate(1.4) contrast(1.15) hue-rotate(-10deg) drop-shadow(0 15px 25px rgba(255, 77, 79, 0.35))';
+        return 'saturate(1.35) contrast(1.15) hue-rotate(-10deg) drop-shadow(0 15px 25px rgba(255, 77, 79, 0.4))';
       case 'skeletal':
-        return 'contrast(1.25) brightness(1.08) hue-rotate(160deg) drop-shadow(0 15px 25px rgba(0, 229, 255, 0.4))';
+        return 'contrast(1.25) brightness(1.08) hue-rotate(160deg) drop-shadow(0 15px 25px rgba(0, 229, 255, 0.45))';
       case 'surface':
       default:
-        return 'brightness(1.02) contrast(1.05) drop-shadow(0 20px 30px rgba(0,0,0,0.85))';
+        return 'brightness(1.04) contrast(1.06) drop-shadow(0 20px 30px rgba(0,0,0,0.9))';
     }
   };
 
   return (
-    <Card className="border-0 shadow-lg overflow-hidden bg-dark text-white rounded-3">
+    <Card className="border-0 shadow-lg overflow-hidden text-white rounded-3" style={{ background: '#09090b' }}>
       {/* Top 3D Anatomy Control Bar */}
-      <Card.Header className="bg-black bg-opacity-80 py-2 px-3 border-secondary d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <Card.Header className="bg-black bg-opacity-90 py-2 px-3 border-secondary d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div className="d-flex align-items-center gap-2">
           <span className="badge bg-primary-subtle text-primary border border-primary px-2 py-1">
             <i className="bi bi-box-fill me-1"></i> 3D MEDICAL ANATOMY
@@ -137,10 +137,26 @@ export default function Horse3DAnatomyViewer({
       >
         {/* Hologram Sci-Fi Grid Overlay */}
         <div
-          className="position-absolute w-100 h-100 opacity-20 pointer-events-none"
+          className="position-absolute w-100 h-100 opacity-15 pointer-events-none"
           style={{
             backgroundImage: `linear-gradient(${activeColorTheme} 1px, transparent 1px), linear-gradient(90deg, ${activeColorTheme} 1px, transparent 1px)`,
             backgroundSize: '40px 40px',
+          }}
+        ></div>
+
+        {/* 3D Hologram Glow Spotlight Stage underneath the Horse */}
+        <div
+          className="position-absolute translate-middle pointer-events-none"
+          style={{
+            left: '50%',
+            top: '55%',
+            width: '65%',
+            height: '45%',
+            background: activeColorTheme,
+            borderRadius: '50%',
+            filter: 'blur(75px)',
+            opacity: 0.22,
+            transition: 'background 0.4s ease',
           }}
         ></div>
 
@@ -151,7 +167,7 @@ export default function Horse3DAnatomyViewer({
             height: '2px',
             background: `linear-gradient(90deg, transparent, ${activeColorTheme}, transparent)`,
             top: '25%',
-            opacity: 0.5,
+            opacity: 0.45,
             filter: 'blur(1px)',
             animation: 'scanline 4s linear infinite',
           }}
@@ -175,13 +191,15 @@ export default function Horse3DAnatomyViewer({
             transition: 'transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1)',
           }}
         >
-          {/* Main 3D Horse Image */}
+          {/* Main 3D Horse Image with Soft Radial Vignette Mask */}
           <img
             src={horse3DImg}
             alt="Horse 3D Anatomy Model"
             className="w-100 h-100 object-fit-contain pointer-events-none"
             style={{
               filter: getImageFilter(),
+              maskImage: 'radial-gradient(circle at 50% 50%, black 65%, transparent 98%)',
+              WebkitMaskImage: 'radial-gradient(circle at 50% 50%, black 65%, transparent 98%)',
               transition: 'filter 0.4s ease',
             }}
           />
