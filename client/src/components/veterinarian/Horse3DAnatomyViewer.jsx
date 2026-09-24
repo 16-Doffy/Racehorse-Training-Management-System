@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Card, Button, Badge, ButtonGroup } from 'react-bootstrap';
-import horse3DImg from '../../assets/horse-3d-anatomy.png';
+import horse3DImg from '../../assets/horse-3d-anatomy-transparent.png';
 
 export default function Horse3DAnatomyViewer({
   injuries = [],
@@ -191,15 +191,13 @@ export default function Horse3DAnatomyViewer({
             transition: 'transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1)',
           }}
         >
-          {/* Main 3D Horse Image with Soft Radial Vignette Mask */}
+          {/* Main Pure Transparent 3D Horse Image */}
           <img
             src={horse3DImg}
             alt="Horse 3D Anatomy Model"
             className="w-100 h-100 object-fit-contain pointer-events-none"
             style={{
               filter: getImageFilter(),
-              maskImage: 'radial-gradient(circle at 50% 50%, black 65%, transparent 98%)',
-              WebkitMaskImage: 'radial-gradient(circle at 50% 50%, black 65%, transparent 98%)',
               transition: 'filter 0.4s ease',
             }}
           />
