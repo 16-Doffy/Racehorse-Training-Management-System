@@ -15,20 +15,20 @@ export default function Horse3DAnatomyViewer({
   const [highlightedInjury, setHighlightedInjury] = useState(null);
   const [hoveredPreset, setHoveredPreset] = useState(null);
 
-  // Anatomical hotspots presets calibrated precisely against the 3D Medical Horse Anatomy Image
+  // Anatomical hotspots presets calibrated precisely against the isolated 3D Horse Model
   const anatomicalPresets = [
-    { id: 'head_jaw', name: 'Đầu & Xương Hàm (Cranium & Masseter)', x: 0.25, y: 0.20, region: 'Đầu & Hàm' },
-    { id: 'poll_cervical', name: 'Gáy & Đốt Sống Cổ (Cervical Spine)', x: 0.35, y: 0.22, region: 'Đốt sống cổ' },
-    { id: 'withers_scapula', name: 'Xương Bả Vai & Bướu Vai (Scapula & Withers)', x: 0.43, y: 0.36, region: 'Bả vai' },
-    { id: 'spine_dorsi', name: 'Xương Cột Sống (Vertebral Column)', x: 0.53, y: 0.28, region: 'Cột sống' },
+    { id: 'head_jaw', name: 'Đầu & Xương Hàm (Cranium & Masseter)', x: 0.22, y: 0.16, region: 'Đầu & Hàm' },
+    { id: 'poll_cervical', name: 'Gáy & Đốt Sống Cổ (Cervical Spine)', x: 0.32, y: 0.18, region: 'Đốt sống cổ' },
+    { id: 'withers_scapula', name: 'Xương Bả Vai & Bướu Vai (Scapula & Withers)', x: 0.42, y: 0.32, region: 'Bả vai' },
+    { id: 'spine_dorsi', name: 'Xương Cột Sống (Vertebral Column)', x: 0.54, y: 0.28, region: 'Cột sống' },
     { id: 'nerves_lumbar', name: 'Hệ Thần Kinh & Hông (Nerves & Lumbar)', x: 0.65, y: 0.30, region: 'Thần kinh hông' },
-    { id: 'heart_lungs', name: 'Tim & Phổi (Heart & Lungs)', x: 0.44, y: 0.44, region: 'Tim & Phổi' },
-    { id: 'digestive', name: 'Hệ Tiêu Hóa (Digestive System)', x: 0.54, y: 0.48, region: 'Hệ tiêu hóa' },
-    { id: 'musculature_thigh', name: 'Khối Cơ Bắp Đùi Sau (Musculature)', x: 0.67, y: 0.56, region: 'Cơ đùi sau' },
-    { id: 'foreleg_knee', name: 'Khớp Gối Trước (Knee Joint)', x: 0.42, y: 0.68, region: 'Khớp gối trước' },
-    { id: 'foreleg_fetlock', name: 'Khớp Bàn Chân & Móng (Fetlock Joint & Hoof)', x: 0.41, y: 0.84, region: 'Móng trước' },
-    { id: 'hind_nerves', name: 'Thần Kinh Chân Sau (Hind Nerves)', x: 0.68, y: 0.74, region: 'Thần kinh sau' },
-    { id: 'hind_fetlock', name: 'Khớp Bàn Chân Sau (Hind Fetlock & Hoof)', x: 0.68, y: 0.88, region: 'Móng sau' },
+    { id: 'heart_lungs', name: 'Tim & Phổi (Heart & Lungs)', x: 0.45, y: 0.44, region: 'Tim & Phổi' },
+    { id: 'digestive', name: 'Hệ Tiêu Hóa (Digestive System)', x: 0.54, y: 0.46, region: 'Hệ tiêu hóa' },
+    { id: 'musculature_thigh', name: 'Khối Cơ Bắp Đùi Sau (Musculature)', x: 0.68, y: 0.54, region: 'Cơ đùi sau' },
+    { id: 'foreleg_knee', name: 'Khớp Gối Trước (Knee Joint)', x: 0.41, y: 0.70, region: 'Khớp gối trước' },
+    { id: 'foreleg_fetlock', name: 'Khớp Bàn Chân & Móng (Fetlock Joint & Hoof)', x: 0.40, y: 0.88, region: 'Móng trước' },
+    { id: 'hind_nerves', name: 'Thần Kinh Chân Sau (Hind Nerves)', x: 0.70, y: 0.76, region: 'Thần kinh sau' },
+    { id: 'hind_fetlock', name: 'Khớp Bàn Chân Sau (Hind Fetlock & Hoof)', x: 0.70, y: 0.88, region: 'Móng sau' },
   ];
 
   const handleDiagramClick = (e) => {
