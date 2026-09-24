@@ -21,6 +21,7 @@ import InjuryForm from '../pages/veterinarian/InjuryForm';
 import TreatmentPlanForm from '../pages/veterinarian/TreatmentPlanForm';
 import PrescriptionForm from '../pages/veterinarian/PrescriptionForm';
 import MedicalSchedule from '../pages/veterinarian/MedicalSchedule';
+import MedicalInventoryPage from '../pages/veterinarian/MedicalInventoryPage';
 import DailyTaskPage from '../features/stable/DailyTaskPage';
 import StableAssignPage from '../features/stable/StableAssignPage';
 import StableMapPage from '../features/stable/StableMapPage';
@@ -76,6 +77,7 @@ export default function AppRouter() {
             <Route path="/veterinarian/treatments" element={<TreatmentPlanForm />} />
             <Route path="/veterinarian/treatments/:id/edit" element={<TreatmentPlanForm />} />
             <Route path="/veterinarian/prescriptions" element={<PrescriptionForm />} />
+            <Route path="/veterinarian/inventory" element={<MedicalInventoryPage />} />
             <Route path="/veterinarian/schedules" element={<MedicalSchedule />} />
 
             {/* Legacy alias paths */}

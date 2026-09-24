@@ -46,6 +46,7 @@ const MENUS = {
     { key: 'injuries', icon: <MedicineBoxOutlined />, label: 'Quản Lý Chấn Thương', path: '/veterinarian/injuries' },
     { key: 'treatments', icon: <MedicineBoxOutlined />, label: 'Phác Đồ & Khóa Tập', path: '/veterinarian/treatments' },
     { key: 'prescriptions', icon: <MedicineBoxOutlined />, label: 'Kê Đơn Thuốc', path: '/veterinarian/prescriptions' },
+    { key: 'inventory', icon: <ShoppingOutlined />, label: 'Vật Tư & Đề Xuất', path: '/veterinarian/inventory' },
     { key: 'schedules', icon: <ScheduleOutlined />, label: 'Lịch Y Tế & Móng', path: '/veterinarian/schedules' },
   ],
   [ROLES.GROOM]: [

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatDate } from '../../utils/formatDate';
 import { INJURY_SEVERITY_CONFIG, RECOVERY_STATUS_CONFIG } from '../../utils/healthStatus';
 
-export default function InjuryList({ injuries = [], horseId, onNewInjury, onEditInjury }) {
+export default function InjuryList({ injuries = [], horseId, onNewInjury, onEditInjury, onDeleteInjury }) {
   const navigate = useNavigate();
 
   return (
@@ -44,7 +44,7 @@ export default function InjuryList({ injuries = [], horseId, onNewInjury, onEdit
                 <th style={{ width: '150px' }}>Mức độ</th>
                 <th style={{ width: '160px' }}>Tiến độ hồi phục</th>
                 <th>Ghi chú chi tiết</th>
-                <th style={{ width: '100px' }} className="text-center">Thao tác</th>
+                <th style={{ width: '120px' }} className="text-center">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -85,6 +85,19 @@ export default function InjuryList({ injuries = [], horseId, onNewInjury, onEdit
                         title="Cập nhật tiến độ hồi phục"
                       >
                         <i className="bi bi-pencil"></i>
+                      </Button>
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        className="ms-1"
+                        onClick={() => {
+                          if (window.confirm('Bạn có chắc chắn muốn xóa điểm chấn thương đánh nhầm này?')) {
+                            if (onDeleteInjury) onDeleteInjury(injury._id);
+                          }
+                        }}
+                        title="Xóa điểm chấn thương đánh nhầm"
+                      >
+                        <i className="bi bi-trash"></i>
                       </Button>
                     </td>
                   </tr>

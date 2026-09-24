@@ -64,11 +64,16 @@ export function useRealtimeAlerts() {
     };
   }, [queryClient]);
 
+  const markOneRead = async (id) => {
+    await notificationsApi.markRead(id);
+    queryClient.invalidateQueries({ queryKey: ['notifications'] });
+  };
+
   const markAllRead = async () => {
     if (unreadCount === 0) return;
     await notificationsApi.markAllRead();
     queryClient.invalidateQueries({ queryKey: ['notifications'] });
   };
 
-  return { notifications, unreadCount, markAllRead };
+  return { notifications, unreadCount, markAllRead, markOneRead };
 }

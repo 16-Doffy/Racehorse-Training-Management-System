@@ -25,10 +25,15 @@ const SEVERITY_META = {
   info: { color: '#1677ff', icon: <InfoCircleFilled /> },
 };
 
-function NotificationRow({ item }) {
+function NotificationRow({ item, onMarkRead }) {
   const meta = SEVERITY_META[item.severity] || SEVERITY_META.info;
   return (
-    <List.Item className={`!px-4 !py-3 items-start ${!item.isRead ? 'bg-blue-50/60' : ''}`}>
+    <List.Item
+      className={`!px-4 !py-3 items-start cursor-pointer hover:bg-gray-50 transition-colors ${!item.isRead ? 'bg-blue-50/60' : ''}`}
+      onClick={() => {
+        if (!item.isRead && onMarkRead) onMarkRead(item._id);
+      }}
+    >
       <div className="flex gap-3 w-full">
         <div style={{ color: meta.color, fontSize: 18, marginTop: 2 }}>{meta.icon}</div>
         <div className="min-w-0 flex-1">
@@ -49,14 +54,14 @@ function NotificationRow({ item }) {
             {dayjs(item.createdAt).fromNow()}
           </Text>
         </div>
-        {!item.isRead && <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 shrink-0" />}
+        {!item.isRead && <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 shrink-0" title="Chưa đọc - Nhấp để đánh dấu đã đọc" />}
       </div>
     </List.Item>
   );
 }
 
 export default function AlertBell() {
-  const { notifications, unreadCount, markAllRead } = useRealtimeAlerts();
+  const { notifications, unreadCount, markAllRead, markOneRead } = useRealtimeAlerts();
 
   return (
     <Dropdown
@@ -66,13 +71,18 @@ export default function AlertBell() {
       }}
       popupRender={() => (
         <div className="bg-white rounded-lg shadow-lg w-96 max-h-[28rem] overflow-auto border border-gray-100">
-          <div className="px-4 py-2.5 border-b border-gray-100 font-medium text-sm sticky top-0 bg-white">
-            Thông báo
+          <div className="px-4 py-2.5 border-b border-gray-100 font-medium text-sm sticky top-0 bg-white flex justify-between items-center">
+            <span>Thông báo</span>
+            {unreadCount > 0 && (
+              <span className="text-xs text-blue-600 hover:underline cursor-pointer" onClick={markAllRead}>
+                Đánh dấu tất cả đã đọc
+              </span>
+            )}
           </div>
           <List
             dataSource={notifications}
             locale={{ emptyText: <Empty description="Không có thông báo" className="!py-6" /> }}
-            renderItem={(item) => <NotificationRow key={item._id} item={item} />}
+            renderItem={(item) => <NotificationRow key={item._id} item={item} onMarkRead={markOneRead} />}
           />
         </div>
       )}

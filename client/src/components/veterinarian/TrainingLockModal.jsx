@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Button, Form, Alert, Spinner, Row, Col } from 'react-bootstrap';
+import { Modal, Button, Form, Alert, Spinner, Row, Col, Badge } from 'react-bootstrap';
 import veterinarianApi from '../../api/veterinarianApi';
+import axiosClient from '../../api/axiosClient';
 
 export default function TrainingLockModal({
   show,
@@ -17,14 +18,30 @@ export default function TrainingLockModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const [trainingSessions, setTrainingSessions] = useState([]);
+  const [trainingPlans, setTrainingPlans] = useState([]);
+  const [loadingTrainingInfo, setLoadingTrainingInfo] = useState(false);
+
   useEffect(() => {
-    if (show) {
+    if (show && horse?._id) {
       setLockReason(currentTreatment?.lockReason || '');
       setTargetHealthStatus(isLocked ? 'eligible' : 'injured');
       setRecoveryNotes(isLocked ? 'Chiến mã đã hồi phục thể lực, đủ điều kiện an toàn để trở lại luyện tập.' : '');
       setError(null);
+
+      setLoadingTrainingInfo(true);
+      Promise.all([
+        axiosClient.get('/training/sessions', { params: { horse: horse._id } }),
+        axiosClient.get('/training/plans', { params: { horse: horse._id } }),
+      ])
+        .then(([sessionsRes, plansRes]) => {
+          setTrainingSessions(sessionsRes.data || []);
+          setTrainingPlans(plansRes.data || []);
+        })
+        .catch(() => {})
+        .finally(() => setLoadingTrainingInfo(false));
     }
-  }, [show, currentTreatment, isLocked]);
+  }, [show, horse, currentTreatment, isLocked]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -140,6 +157,49 @@ export default function TrainingLockModal({
                 {horse.healthStatus}
               </span>
             </div>
+          </div>
+
+          {/* Active Training Plans & Sessions Inspection */}
+          <div className="mb-3 p-3 bg-light border rounded">
+            <div className="fw-bold text-dark mb-2 d-flex align-items-center justify-content-between">
+              <span>
+                <i className="bi bi-calendar-event me-2 text-primary"></i>
+                Lịch Tập & Giáo Án Hiện Tại Của Chiến Mã ({trainingSessions.length} buổi tập, {trainingPlans.length} giáo án)
+              </span>
+              {loadingTrainingInfo && <Spinner animation="border" size="sm" />}
+            </div>
+
+            {trainingSessions.length === 0 && trainingPlans.length === 0 ? (
+              <div className="small text-muted italic">Hiện tại chiến mã chưa có buổi tập hoặc giáo án nào đăng ký.</div>
+            ) : (
+              <div className="small">
+                {trainingPlans.length > 0 && (
+                  <div className="mb-2">
+                    <strong>📋 Giáo án đang hoạt động:</strong>
+                    <ul className="mb-1 ps-3">
+                      {trainingPlans.map((p) => (
+                        <li key={p._id}>
+                          Giai đoạn: <strong>{p.phase}</strong> ({p.distanceTarget}m, {p.weeklyVolumeKm}km/tuần) - <Badge bg="info">{p.status}</Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {trainingSessions.length > 0 && (
+                  <div>
+                    <strong>🏃 Buổi tập sắp tới / đang diễn ra:</strong>
+                    <ul className="mb-0 ps-3">
+                      {trainingSessions.slice(0, 3).map((s) => (
+                        <li key={s._id}>
+                          {new Date(s.scheduledAt).toLocaleString('vi-VN')} ({s.sessionType === 'trial_run' ? 'Chạy thử' : 'Buổi tập'}) - <Badge bg={s.status === 'in_progress' ? 'danger' : 'secondary'}>{s.status}</Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {!isLocked ? (

@@ -294,6 +294,23 @@ export default function InjuryManagement() {
                             >
                               <i className="bi bi-eye"></i>
                             </Button>
+                            <Button
+                              variant="outline-danger"
+                              size="sm"
+                              title="Xóa điểm chấn thương đánh nhầm"
+                              onClick={async () => {
+                                if (window.confirm('Bạn có chắc chắn muốn xóa điểm chấn thương đánh nhầm này?')) {
+                                  try {
+                                    await veterinarianApi.deleteInjuryMarker(injury._id);
+                                    fetchData();
+                                  } catch (err) {
+                                    alert(err?.message || 'Lỗi khi xóa điểm chấn thương.');
+                                  }
+                                }
+                              }}
+                            >
+                              <i className="bi bi-trash"></i>
+                            </Button>
                           </div>
                         </td>
                       </tr>

@@ -26,6 +26,11 @@ export const veterinarianApi = {
   getInjuryMarkers: (params) => axiosClient.get('/health/injury-markers', { params }),
   createInjuryMarker: (payload) => axiosClient.post('/health/injury-markers', payload),
   updateInjuryMarker: (id, payload) => axiosClient.put(`/health/injury-markers/${id}`, payload),
+  deleteInjuryMarker: (id) => axiosClient.delete(`/health/injury-markers/${id}`),
+
+  // Inventory & Restock Request
+  getInventory: (params) => axiosClient.get('/inventory', { params }),
+  requestRestock: (id, quantity) => axiosClient.post(`/inventory/${id}/restock-request`, { quantity }),
 
   // Realtime / Role Notifications
   getNotifications: (params) => axiosClient.get('/notifications', { params }),

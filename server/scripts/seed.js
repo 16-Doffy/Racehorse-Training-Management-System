@@ -31,10 +31,17 @@ async function run() {
   console.log(`[seed] connected to ${mongoUri}`);
 
   const manager = await upsertUser({ name: 'Nguyen Van Quan Ly', email: 'manager@demo.com', role: ROLES.MANAGER, phone: '0900000001' });
-  const trainer = await upsertUser({ name: 'Tran Huan Luyen', email: 'trainer@demo.com', role: ROLES.HEAD_TRAINER, phone: '0900000002' });
-  const vet = await upsertUser({ name: 'Le Bac Si', email: 'vet@demo.com', role: ROLES.VETERINARIAN, phone: '0900000003' });
-  const groom = await upsertUser({ name: 'Pham Cham Soc', email: 'groom@demo.com', role: ROLES.GROOM, phone: '0900000004' });
-  const owner = await upsertUser({ name: 'Hoang Chu So Huu', email: 'owner@demo.com', role: ROLES.OWNER, phone: '0900000005' });
+  const trainer = await upsertUser({ name: 'Tran Huan Luyen', email: 'nvhuan@gmail.com', role: ROLES.HEAD_TRAINER, phone: '0900000002' });
+  const vet = await upsertUser({ name: 'Le Bac Si', email: 'nvy@gmail.com', role: ROLES.VETERINARIAN, phone: '0900000003' });
+  const groom = await upsertUser({ name: 'Pham Cham Soc', email: 'nvsoc@gmail.com', role: ROLES.GROOM, phone: '0900000004' });
+  const owner = await upsertUser({ name: 'Hoang Chu So Huu', email: 'nvchu@gmail.com', role: ROLES.OWNER, phone: '0900000005' });
+
+  // Legacy demo email aliases
+  await upsertUser({ name: 'Tran Huan Luyen', email: 'trainer@demo.com', role: ROLES.HEAD_TRAINER, phone: '0900000002' });
+  await upsertUser({ name: 'Le Bac Si', email: 'vet@demo.com', role: ROLES.VETERINARIAN, phone: '0900000003' });
+  await upsertUser({ name: 'Pham Cham Soc', email: 'groom@demo.com', role: ROLES.GROOM, phone: '0900000004' });
+  await upsertUser({ name: 'Hoang Chu So Huu', email: 'owner@demo.com', role: ROLES.OWNER, phone: '0900000005' });
+
   // Second trainer/vet so assignedTrainer/assignedVet scoping (horseScope.js) is actually
   // exercised locally — with only one of each, every horse trivially "belongs" to them.
   const trainer2 = await upsertUser({ name: 'Vu Huan Luyen Hai', email: 'trainer2@demo.com', role: ROLES.HEAD_TRAINER, phone: '0900000006' });

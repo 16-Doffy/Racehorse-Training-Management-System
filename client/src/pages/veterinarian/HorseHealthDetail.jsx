@@ -394,6 +394,14 @@ export default function HorseHealthDetail() {
                 injuries={injuries}
                 horseId={horse._id}
                 onNewInjury={() => navigate(`/veterinarian/injuries/new?horseId=${horse._id}`)}
+                onDeleteInjury={async (markerId) => {
+                  try {
+                    await veterinarianApi.deleteInjuryMarker(markerId);
+                    fetchHorseDetails();
+                  } catch (err) {
+                    alert(err?.message || 'Không thể xóa điểm chấn thương.');
+                  }
+                }}
               />
             </Tab>
 
