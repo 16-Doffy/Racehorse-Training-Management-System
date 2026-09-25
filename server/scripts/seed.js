@@ -37,10 +37,10 @@ async function run() {
   const owner = await upsertUser({ name: 'Hoang Chu So Huu', email: 'nvchu@gmail.com', role: ROLES.OWNER, phone: '0900000005' });
 
   // Legacy demo email aliases
-  await upsertUser({ name: 'Tran Huan Luyen', email: 'trainer@demo.com', role: ROLES.HEAD_TRAINER, phone: '0900000002' });
-  await upsertUser({ name: 'Le Bac Si', email: 'vet@demo.com', role: ROLES.VETERINARIAN, phone: '0900000003' });
-  await upsertUser({ name: 'Pham Cham Soc', email: 'groom@demo.com', role: ROLES.GROOM, phone: '0900000004' });
-  await upsertUser({ name: 'Hoang Chu So Huu', email: 'owner@demo.com', role: ROLES.OWNER, phone: '0900000005' });
+  const trainerAlias = await upsertUser({ name: 'Tran Huan Luyen', email: 'trainer@demo.com', role: ROLES.HEAD_TRAINER, phone: '0900000002' });
+  const vetAlias = await upsertUser({ name: 'Le Bac Si', email: 'vet@demo.com', role: ROLES.VETERINARIAN, phone: '0900000003' });
+  const groomAlias = await upsertUser({ name: 'Pham Cham Soc', email: 'groom@demo.com', role: ROLES.GROOM, phone: '0900000004' });
+  const ownerAlias = await upsertUser({ name: 'Hoang Chu So Huu', email: 'owner@demo.com', role: ROLES.OWNER, phone: '0900000005' });
 
   // Second trainer/vet so assignedTrainer/assignedVet scoping (horseScope.js) is actually
   // exercised locally — with only one of each, every horse trivially "belongs" to them.
@@ -48,7 +48,7 @@ async function run() {
   const vet2 = await upsertUser({ name: 'Do Bac Si Hai', email: 'vet2@demo.com', role: ROLES.VETERINARIAN, phone: '0900000007' });
 
   console.log('[seed] demo users ready (password for all: 123456):');
-  [manager, trainer, vet, groom, owner, trainer2, vet2].forEach((u) => console.log(`  - ${u.role}: ${u.email}`));
+  [manager, trainer, vet, groom, owner, trainerAlias, vetAlias, groomAlias, ownerAlias, trainer2, vet2].forEach((u) => console.log(`  - ${u.role}: ${u.email}`));
 
   await TrainingPlan.deleteMany({});
   await TrainingSession.deleteMany({});
@@ -68,16 +68,18 @@ async function run() {
 
   const horses = [];
   for (const h of horseNames) {
-    // Thunder Bolt & Silver Arrow stay with the original trainer/vet (keeps all the existing plan/
-    // session/health-record seed data below consistent); Golden Wind & Midnight Star go to the
-    // second trainer/vet, so logging in as either pair demonstrably sees a different horse subset.
-    const useSecondStaff = horses.length >= 2;
+    const idx = horses.length;
+    // Assign horses across demo accounts so both nvy@gmail.com and vet@demo.com see assigned horses
+    const assignedVetUser = idx === 0 || idx === 1 ? vet._id : idx === 2 ? vetAlias._id : vet2._id;
+    const assignedTrainerUser = idx === 0 || idx === 1 ? trainer._id : idx === 2 ? trainerAlias._id : trainer2._id;
+    const assignedOwnerUser = idx === 0 || idx === 1 ? owner._id : idx === 2 ? ownerAlias._id : owner._id;
+
     const horse = await Horse.create({
       ...h,
       dob: new Date('2021-03-15'),
-      owner: owner._id,
-      assignedTrainer: useSecondStaff ? trainer2._id : trainer._id,
-      assignedVet: useSecondStaff ? vet2._id : vet._id,
+      owner: assignedOwnerUser,
+      assignedTrainer: assignedTrainerUser,
+      assignedVet: assignedVetUser,
       healthStatus: 'eligible',
       achievements: [{ race: 'Spring Derby 2025', result: '2nd', date: new Date('2025-04-10') }],
       careSchedule: {
