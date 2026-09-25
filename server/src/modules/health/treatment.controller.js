@@ -94,6 +94,8 @@ const updateTreatment = asyncHandler(async (req, res) => {
   return ok(res, treatment, 'Treatment updated.');
 });
 
+const { syncHorseHealthStatus } = require('./injuryMarker.controller');
+
 // Dedicated emergency endpoint: set/lift the "lock training" order for a horse, independent of a
 // full treatment-record edit. This is the action the Vet reaches for in an urgent situation.
 const setTrainingLock = asyncHandler(async (req, res) => {
@@ -115,6 +117,8 @@ const setTrainingLock = asyncHandler(async (req, res) => {
 
   if (isTrainingLocked) {
     await notifyLockIssued({ horseId: treatment.horse, lockReason, actorId: req.user._id });
+  } else {
+    await syncHorseHealthStatus(treatment.horse);
   }
 
   return ok(res, treatment, isTrainingLocked ? 'Training lock issued.' : 'Training lock lifted.');
