@@ -14,6 +14,7 @@ const StableAssignment = require('../src/models/StableAssignment');
 const DailyTask = require('../src/models/DailyTask');
 const FeedingSchedule = require('../src/models/FeedingSchedule');
 const InventoryItem = require('../src/models/InventoryItem');
+const Notification = require('../src/models/Notification');
 
 const DEMO_PASSWORD = '123456';
 
@@ -51,6 +52,7 @@ async function run() {
   await DailyTask.deleteMany({});
   await FeedingSchedule.deleteMany({});
   await InventoryItem.deleteMany({});
+  await Notification.deleteMany({});
   await Horse.deleteMany({});
 
   const horseNames = [
@@ -82,6 +84,24 @@ async function run() {
       },
     });
     horses.push(horse);
+
+    // Seed assignment notifications so staff have unread alerts in their top-bar notification bell upon login
+    await Notification.create([
+      {
+        recipientUser: horse.assignedTrainer,
+        horse: horse._id,
+        type: 'horse_assigned',
+        severity: 'info',
+        message: `🐎 Bạn được phân công huấn luyện ngựa "${horse.name}".`,
+      },
+      {
+        recipientUser: horse.assignedVet,
+        horse: horse._id,
+        type: 'horse_assigned',
+        severity: 'info',
+        message: `🐎 Bạn được phân công theo dõi sức khỏe ngựa "${horse.name}".`,
+      },
+    ]);
   }
 
   await Promise.all(

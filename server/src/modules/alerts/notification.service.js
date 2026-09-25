@@ -21,12 +21,10 @@ async function pushNotification({ recipientUser, recipientRole, horse, type, sev
   const rooms = [...extraRooms];
   if (recipientRole) rooms.push(`role:${recipientRole}`);
   if (recipientUser) rooms.push(`user:${recipientUser}`);
-  if (horse) rooms.push(`horse:${horse}`);
 
-  if (rooms.length > 0) {
-    let target = io.to(rooms[0]);
-    for (const room of rooms.slice(1)) target = target.to(room);
-    target.emit('notification:new', populated);
+  const uniqueRooms = Array.from(new Set(rooms));
+  if (uniqueRooms.length > 0) {
+    io.to(uniqueRooms).emit('notification:new', populated);
   }
 
   return populated;
