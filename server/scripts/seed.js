@@ -30,25 +30,19 @@ async function run() {
   await mongoose.connect(mongoUri);
   console.log(`[seed] connected to ${mongoUri}`);
 
+  // Remove legacy gmail test accounts if present
+  await User.deleteMany({ email: { $in: ['nvy@gmail.com', 'nvhuan@gmail.com', 'nvsoc@gmail.com', 'nvchu@gmail.com'] } });
+
   const manager = await upsertUser({ name: 'Nguyen Van Quan Ly', email: 'manager@demo.com', role: ROLES.MANAGER, phone: '0900000001' });
-  const trainer = await upsertUser({ name: 'Tran Huan Luyen', email: 'nvhuan@gmail.com', role: ROLES.HEAD_TRAINER, phone: '0900000002' });
-  const vet = await upsertUser({ name: 'Le Bac Si', email: 'nvy@gmail.com', role: ROLES.VETERINARIAN, phone: '0900000003' });
-  const groom = await upsertUser({ name: 'Pham Cham Soc', email: 'nvsoc@gmail.com', role: ROLES.GROOM, phone: '0900000004' });
-  const owner = await upsertUser({ name: 'Hoang Chu So Huu', email: 'nvchu@gmail.com', role: ROLES.OWNER, phone: '0900000005' });
-
-  // Legacy demo email aliases
-  const trainerAlias = await upsertUser({ name: 'Tran Huan Luyen', email: 'trainer@demo.com', role: ROLES.HEAD_TRAINER, phone: '0900000002' });
-  const vetAlias = await upsertUser({ name: 'Le Bac Si', email: 'vet@demo.com', role: ROLES.VETERINARIAN, phone: '0900000003' });
-  const groomAlias = await upsertUser({ name: 'Pham Cham Soc', email: 'groom@demo.com', role: ROLES.GROOM, phone: '0900000004' });
-  const ownerAlias = await upsertUser({ name: 'Hoang Chu So Huu', email: 'owner@demo.com', role: ROLES.OWNER, phone: '0900000005' });
-
-  // Second trainer/vet so assignedTrainer/assignedVet scoping (horseScope.js) is actually
-  // exercised locally — with only one of each, every horse trivially "belongs" to them.
+  const trainer = await upsertUser({ name: 'Tran Huan Luyen', email: 'trainer@demo.com', role: ROLES.HEAD_TRAINER, phone: '0900000002' });
+  const vet = await upsertUser({ name: 'Le Bac Si', email: 'vet@demo.com', role: ROLES.VETERINARIAN, phone: '0900000003' });
+  const groom = await upsertUser({ name: 'Pham Cham Soc', email: 'groom@demo.com', role: ROLES.GROOM, phone: '0900000004' });
+  const owner = await upsertUser({ name: 'Hoang Chu So Huu', email: 'owner@demo.com', role: ROLES.OWNER, phone: '0900000005' });
   const trainer2 = await upsertUser({ name: 'Vu Huan Luyen Hai', email: 'trainer2@demo.com', role: ROLES.HEAD_TRAINER, phone: '0900000006' });
   const vet2 = await upsertUser({ name: 'Do Bac Si Hai', email: 'vet2@demo.com', role: ROLES.VETERINARIAN, phone: '0900000007' });
 
   console.log('[seed] demo users ready (password for all: 123456):');
-  [manager, trainer, vet, groom, owner, trainerAlias, vetAlias, groomAlias, ownerAlias, trainer2, vet2].forEach((u) => console.log(`  - ${u.role}: ${u.email}`));
+  [manager, trainer, vet, groom, owner, trainer2, vet2].forEach((u) => console.log(`  - ${u.role}: ${u.email}`));
 
   await TrainingPlan.deleteMany({});
   await TrainingSession.deleteMany({});
@@ -68,18 +62,15 @@ async function run() {
 
   const horses = [];
   for (const h of horseNames) {
-    const idx = horses.length;
-    // Assign horses across demo accounts so both nvy@gmail.com and vet@demo.com see assigned horses
-    const assignedVetUser = idx === 0 || idx === 1 ? vet._id : idx === 2 ? vetAlias._id : vet2._id;
-    const assignedTrainerUser = idx === 0 || idx === 1 ? trainer._id : idx === 2 ? trainerAlias._id : trainer2._id;
-    const assignedOwnerUser = idx === 0 || idx === 1 ? owner._id : idx === 2 ? ownerAlias._id : owner._id;
-
+    // Midnight Star is assigned to trainer2 and vet2 for RBAC scope testing;
+    // Golden Wind, Silver Arrow, and Thunder Bolt are assigned to trainer (Tran Huan Luyen) and vet (Le Bac Si).
+    const isSecondStaff = h.name === 'Midnight Star';
     const horse = await Horse.create({
       ...h,
       dob: new Date('2021-03-15'),
-      owner: assignedOwnerUser,
-      assignedTrainer: assignedTrainerUser,
-      assignedVet: assignedVetUser,
+      owner: owner._id,
+      assignedTrainer: isSecondStaff ? trainer2._id : trainer._id,
+      assignedVet: isSecondStaff ? vet2._id : vet._id,
       healthStatus: 'eligible',
       achievements: [{ race: 'Spring Derby 2025', result: '2nd', date: new Date('2025-04-10') }],
       careSchedule: {
