@@ -66,9 +66,9 @@ export default function AlertBell() {
   return (
     <Dropdown
       trigger={['click']}
-      onOpenChange={(open) => {
-        if (open) markAllRead();
-      }}
+      // Opening the bell deliberately does NOT mark everything read. Glancing at the list is not
+      // the same as having dealt with it — an unread training lock or incident report should
+      // survive until the reader clears it, either per-row or with the header action below.
       popupRender={() => (
         <div className="bg-white rounded-lg shadow-lg w-96 max-h-[28rem] overflow-auto border border-gray-100">
           <div className="px-4 py-2.5 border-b border-gray-100 font-medium text-sm sticky top-0 bg-white flex justify-between items-center">

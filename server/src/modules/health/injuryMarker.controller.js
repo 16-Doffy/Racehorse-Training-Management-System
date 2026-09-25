@@ -1,11 +1,23 @@
 const InjuryMarker = require('../../models/InjuryMarker');
 const Horse = require('../../models/Horse');
 const Treatment = require('../../models/Treatment');
+const HealthRecord = require('../../models/HealthRecord');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 
+// How serious each status is. healthStatus gates whether training may be scheduled
+// (trainingSession.controller.js), so "how far from fit to train" is the only ordering that
+// matters here.
+const STATUS_RANK = { eligible: 0, monitoring: 1, injured: 2, quarantined: 3 };
+
 /**
- * Automatically syncs a horse's healthStatus based on active injury markers and training locks.
+ * Recomputes a horse's healthStatus after its injury markers change.
+ *
+ * Two sources write this field: the Veterinarian's examination record — an explicit clinical
+ * judgement, written in healthRecord.controller.js — and the markers, which are derived. The rule
+ * between them is that markers may only ever raise the alarm, never lower it below what the vet
+ * concluded. Without that, clearing a minor marker would quietly downgrade (or fully clear) a horse
+ * the vet diagnosed as injured, and training would silently become schedulable again.
  */
 async function syncHorseHealthStatus(horseId) {
   if (!horseId) return;
@@ -13,29 +25,30 @@ async function syncHorseHealthStatus(horseId) {
   const horse = await Horse.findById(horseId);
   if (!horse) return;
 
-  const activeMarkers = await InjuryMarker.find({
-    horse: horseId,
-    recoveryStatus: { $ne: 'recovered' },
-  });
+  // Quarantine is an administrative decision, not something injury markers can express.
+  if (horse.healthStatus === 'quarantined') return;
 
-  const lockedTreatment = await Treatment.findOne({
-    horse: horseId,
-    isTrainingLocked: true,
-    status: 'ongoing',
-  });
+  const [activeMarkers, latestRecord, lockedTreatment] = await Promise.all([
+    InjuryMarker.find({ horse: horseId, recoveryStatus: { $ne: 'recovered' } }),
+    HealthRecord.findOne({ horse: horseId }).sort({ date: -1, createdAt: -1 }),
+    Treatment.findOne({ horse: horseId, isTrainingLocked: true, status: 'ongoing' }),
+  ]);
 
+  let target = 'eligible';
   if (activeMarkers.length > 0) {
-    const hasSevere = activeMarkers.some((m) => m.severity === 'severe');
-    const newStatus = hasSevere ? 'injured' : 'monitoring';
-    if (horse.healthStatus !== newStatus && horse.healthStatus !== 'quarantined') {
-      horse.healthStatus = newStatus;
-      await horse.save();
-    }
-  } else if (!lockedTreatment) {
-    if (horse.healthStatus === 'injured' || horse.healthStatus === 'monitoring') {
-      horse.healthStatus = 'eligible';
-      await horse.save();
-    }
+    target = activeMarkers.some((m) => m.severity === 'severe') ? 'injured' : 'monitoring';
+  }
+
+  // The vet's own conclusion is a floor the markers can't undercut.
+  const clinical = latestRecord?.resultStatus;
+  if (clinical && STATUS_RANK[clinical] > STATUS_RANK[target]) target = clinical;
+
+  // An active training lock means the horse is not cleared yet, whatever the markers say.
+  if (lockedTreatment && STATUS_RANK[horse.healthStatus] > STATUS_RANK[target]) return;
+
+  if (target !== horse.healthStatus) {
+    horse.healthStatus = target;
+    await horse.save();
   }
 }
 
