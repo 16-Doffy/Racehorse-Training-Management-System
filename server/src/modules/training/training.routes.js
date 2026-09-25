@@ -16,6 +16,9 @@ router.delete('/plans/:id', authorize(ROLES.HEAD_TRAINER), planCtrl.deletePlan);
 
 // Training sessions.
 router.get('/sessions', sessionCtrl.listSessions);
+// Must be declared before '/sessions/:id', otherwise "readiness" is swallowed as an id.
+// Open to every authenticated role: the vet, groom and owner screens show the same board.
+router.get('/sessions/readiness', sessionCtrl.getReadiness);
 router.get('/sessions/:id', sessionCtrl.getSession);
 router.post('/sessions', authorize(ROLES.HEAD_TRAINER), sessionCtrl.createSession);
 router.put('/sessions/:id', authorize(ROLES.HEAD_TRAINER), sessionCtrl.updateSession);

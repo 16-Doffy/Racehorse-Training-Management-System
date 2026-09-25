@@ -90,4 +90,66 @@ const requestExam = asyncHandler(async (req, res) => {
   return ok(res, null, 'Exam request sent.');
 });
 
-module.exports = { listRecords, getRecord, createRecord, updateRecord, requestExam };
+/**
+ * The Veterinarian's queue of outstanding exam requests.
+ *
+ * Requests are stored as notifications rather than as their own model, which meant that once the
+ * bell was cleared there was no list left to work from — the Head Trainer had no way of knowing
+ * whether anyone had picked their request up. This reads the same notifications back as a queue,
+ * so the request survives being glanced at.
+ */
+const listExamRequests = asyncHandler(async (req, res) => {
+  const Notification = require('../../models/Notification');
+
+  const requests = await Notification.find({
+    type: 'exam_request',
+    $or: [{ recipientUser: req.user._id }, { recipientRole: req.user.role }],
+  })
+    .populate('horse', 'name healthStatus')
+    .sort({ createdAt: -1 })
+    .limit(100);
+
+  return ok(res, requests, 'Exam requests fetched.');
+});
+
+/**
+ * Which horses are overdue a check-up, so the vet can work proactively instead of waiting to be
+ * asked. A hard training session needs an exam from within CLEARANCE_DAYS; this is the list of
+ * horses that would fail that gate (see modules/training/readiness.service.js).
+ */
+const listClearances = asyncHandler(async (req, res) => {
+  const { CLEARANCE_DAYS } = require('../training/readiness.service');
+  const DUE_SOON_DAYS = 3;
+
+  const scopedIds = await getScopedHorseIds(req.user);
+  const horses = await Horse.find(scopedIds ? { _id: { $in: scopedIds } } : {}).select('name healthStatus');
+
+  const rows = await Promise.all(
+    horses.map(async (horse) => {
+      const latest = await HealthRecord.findOne({ horse: horse._id })
+        .sort({ date: -1, createdAt: -1 })
+        .select('date resultStatus diagnosis');
+
+      if (!latest) {
+        return { horse, lastExam: null, ageDays: null, status: 'never', validUntil: null };
+      }
+
+      const ageDays = Math.floor((Date.now() - new Date(latest.date).getTime()) / (24 * 60 * 60 * 1000));
+      const validUntil = new Date(new Date(latest.date).getTime() + CLEARANCE_DAYS * 24 * 60 * 60 * 1000);
+
+      let status = 'valid';
+      if (ageDays > CLEARANCE_DAYS) status = 'expired';
+      else if (ageDays > CLEARANCE_DAYS - DUE_SOON_DAYS) status = 'due_soon';
+
+      return { horse, lastExam: latest, ageDays, status, validUntil };
+    })
+  );
+
+  // Worst first: the vet should see what's already lapsed before what's merely approaching.
+  const order = { never: 0, expired: 1, due_soon: 2, valid: 3 };
+  rows.sort((a, b) => order[a.status] - order[b.status] || (b.ageDays ?? 0) - (a.ageDays ?? 0));
+
+  return ok(res, { clearanceDays: CLEARANCE_DAYS, rows }, 'Clearance status fetched.');
+});
+
+module.exports = { listRecords, getRecord, createRecord, updateRecord, requestExam, listExamRequests, listClearances };

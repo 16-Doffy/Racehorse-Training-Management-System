@@ -17,6 +17,9 @@ router.put('/records/:id', authorize(ROLES.VETERINARIAN), recordCtrl.updateRecor
 // Head Trainer/Manager can flag a horse for a check-up; only the Vet can act on it by creating
 // an actual HealthRecord above.
 router.post('/exam-requests', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), recordCtrl.requestExam);
+// The Vet's working queue: requests waiting on them, and horses whose clearance has lapsed.
+router.get('/exam-requests', authorize(ROLES.VETERINARIAN, ROLES.MANAGER), recordCtrl.listExamRequests);
+router.get('/clearances', recordCtrl.listClearances);
 
 // Treatments, including the emergency training-lock order.
 router.get('/treatments', treatmentCtrl.listTreatments);

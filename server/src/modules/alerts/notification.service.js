@@ -13,8 +13,8 @@ const { getIO } = require('../../realtime/socketServer');
  * `rooms` lets a caller target more than the recipient alone (e.g. also `horse:<id>` so an Owner
  * watching that horse gets it too) — recipientRole/recipientUser are always included automatically.
  */
-async function pushNotification({ recipientUser, recipientRole, horse, type, severity = 'info', message, extraRooms = [] }) {
-  const notification = await Notification.create({ recipientUser, recipientRole, horse, type, severity, message });
+async function pushNotification({ recipientUser, recipientRole, horse, trainingSession, type, severity = 'info', message, extraRooms = [] }) {
+  const notification = await Notification.create({ recipientUser, recipientRole, horse, trainingSession, type, severity, message });
   const populated = await notification.populate('horse', 'name');
 
   const io = getIO();

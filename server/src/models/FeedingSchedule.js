@@ -13,6 +13,9 @@ const feedingScheduleSchema = new mongoose.Schema(
   {
     horse: { type: mongoose.Schema.Types.ObjectId, ref: 'Horse', required: true },
     mealTime: { type: String, enum: ['morning', 'noon', 'evening'], required: true },
+    // Clock time for the slot, "HH:mm". The three meal times used to be hard-coded in the client,
+    // which meant the server generating feeding tasks had no idea when a meal was actually due.
+    timeOfDay: { type: String, default: null },
     items: [feedingItemSchema],
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

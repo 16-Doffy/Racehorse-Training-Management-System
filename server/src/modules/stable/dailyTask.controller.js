@@ -42,7 +42,7 @@ const createTask = asyncHandler(async (req, res) => {
 // the date, or correct the task type. Without this, a mis-assigned task could only ever be worked
 // around by creating a second one and leaving the wrong one sitting on someone's list forever.
 const updateTask = asyncHandler(async (req, res) => {
-  const { horse, assignedTo, taskType, scheduledDate } = req.body;
+  const { horse, assignedTo, taskType, scheduledDate, note } = req.body;
   const task = await DailyTask.findById(req.params.id);
   if (!task) return fail(res, 'Daily task not found.', 404);
 
@@ -54,6 +54,7 @@ const updateTask = asyncHandler(async (req, res) => {
   if (assignedTo !== undefined) task.assignedTo = assignedTo;
   if (taskType !== undefined) task.taskType = taskType;
   if (scheduledDate !== undefined) task.scheduledDate = scheduledDate;
+  if (note !== undefined) task.note = note;
 
   await task.save();
   return ok(res, task, 'Daily task updated.');
@@ -76,14 +77,48 @@ const deleteTask = asyncHandler(async (req, res) => {
 // Grooms may only act on tasks assigned to them, not on a colleague's worklist.
 const isAssignee = (task, user) => String(task.assignedTo) === String(user._id);
 
+// Completing a task optionally carries what the groom observed while doing it. The body is
+// entirely optional — an empty PATCH behaves exactly as it always did — because this shipped
+// before the groom's screen had any field to collect it, and must not break that screen.
+//
+// It matters because the groom is the only person who sees the horse eat. Whether it cleaned up
+// its feed, and when, is what the training readiness check reads to decide if the horse is fit to
+// be worked (see modules/training/readiness.service.js).
 const completeTask = asyncHandler(async (req, res) => {
+  const { appetite, amountEatenPercent, behaviourNote } = req.body || {};
   const task = await DailyTask.findById(req.params.id);
   if (!task) return fail(res, 'Daily task not found.', 404);
   if (!isAssignee(task, req.user)) return fail(res, 'Forbidden: this task is assigned to someone else.', 403);
 
   task.status = 'completed';
   task.completedAt = new Date();
+
+  if (appetite !== undefined || amountEatenPercent !== undefined || behaviourNote !== undefined) {
+    task.observation = {
+      appetite: appetite ?? task.observation?.appetite ?? null,
+      amountEatenPercent: amountEatenPercent ?? task.observation?.amountEatenPercent,
+      behaviourNote: behaviourNote ?? task.observation?.behaviourNote,
+      recordedAt: new Date(),
+    };
+  }
+
   await task.save();
+
+  // A horse refusing its feed is one of the earliest signs something is wrong, and it should not
+  // wait for someone to notice a row in a list.
+  if (appetite === 'refused') {
+    const Horse = require('../../models/Horse');
+    const horse = await Horse.findById(task.horse).select('name assignedVet');
+    await pushNotification({
+      recipientUser: horse?.assignedVet || undefined,
+      recipientRole: horse?.assignedVet ? undefined : ROLES.VETERINARIAN,
+      horse: task.horse,
+      type: 'incident_report',
+      severity: 'warning',
+      message: `⚠️ ${horse?.name || 'Ngựa'} bỏ ăn trong bữa vừa rồi${behaviourNote ? `: ${behaviourNote}` : '.'}`,
+    });
+  }
+
   return ok(res, task, 'Task marked as completed.');
 });
 

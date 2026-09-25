@@ -111,6 +111,7 @@ async function run() {
     surface: 'dirt',
     startDate: new Date(),
     status: 'active',
+    goal: 'Đạt 1200m dưới 70 giây, sẵn sàng cho giải Spring Derby.',
     notes: 'Focus on final-furlong acceleration ahead of the Spring Derby.',
   });
 
@@ -120,6 +121,10 @@ async function run() {
       horse: horses[0]._id,
       assignedTo: trainer._id,
       sessionType: 'training',
+      objective: 'interval',
+      intensity: 'high',
+      prescription: { distanceM: 1200, reps: 3, restMinutes: 8, targetSpeedKmh: 62, targetHeartRateMax: 180, durationMinutes: 45 },
+      coachNote: 'Giữ nhịp đều 2 hiệp đầu, bung sức hiệp cuối. Chú ý chân trước phải.',
       scheduledAt: new Date(),
       status: 'in_progress',
       metrics: { avgHeartRate: 120, maxHeartRate: 140, maxSpeed: 45, distance: 800 },
@@ -129,11 +134,16 @@ async function run() {
       horse: horses[0]._id,
       assignedTo: trainer._id,
       sessionType: 'trial_run',
+      objective: 'race_simulation',
+      intensity: 'high',
+      prescription: { distanceM: 1200, targetSpeedKmh: 50, targetHeartRateMax: 175, durationMinutes: 30 },
+      coachNote: 'Chạy thử lấy thành tích để chốt suất đăng ký giải.',
       scheduledAt: new Date(Date.now() - 86400000),
       status: 'completed',
       metrics: { avgHeartRate: 110, maxHeartRate: 150, maxSpeed: 52, distance: 1200 },
       trainerComment: 'Strong finish, good recovery time.',
       performanceRating: 8,
+      outcome: { met: true, summary: 'Đạt mục tiêu — tốc độ 52/50 km/h, nhịp tim 110/175 bpm, cự ly 1200/1200 m.' },
     },
   ]);
 
@@ -227,6 +237,8 @@ async function run() {
       Object.entries(rations).map(([mealTime, items]) => ({
         horse: h._id,
         mealTime,
+        // Clock times the daily-task generator uses to schedule one task per meal.
+        timeOfDay: { morning: '06:00', noon: '11:30', evening: '17:30' }[mealTime],
         items,
         // Last horse's dinner is left unapproved so the "pending approval" state is visible.
         approvedBy: i === horses.length - 1 && mealTime === 'evening' ? undefined : trainer._id,

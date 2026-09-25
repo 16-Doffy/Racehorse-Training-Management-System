@@ -1,8 +1,10 @@
 const Horse = require('../models/Horse');
+const TrainingSession = require('../models/TrainingSession');
 const { ROLES } = require('../constants/roles');
 const { pushNotification } = require('../modules/alerts/notification.service');
+const { OBJECTIVE_LABELS } = require('../constants/training');
 
-// Simple fixed thresholds for the demo. A later phase can make these per-horse/per-phase.
+// Club-wide safety ceiling, used when the session didn't prescribe its own limits.
 const THRESHOLDS = {
   maxHeartRate: 180, // bpm — sustained above this suggests overexertion risk
   maxSpeed: 70, // km/h — above this on a training gallop is flagged for review
@@ -19,11 +21,24 @@ const lastAlertedAt = new Map();
  * Compares a live metrics reading against fitness thresholds. When exceeded, persists a
  * Notification and pushes it in realtime to the Head Trainer and to the horse's owner — at most
  * once per horse per COOLDOWN_MS, even if the condition keeps recurring across ticks.
+ *
+ * Thresholds come from the session's own prescription where one exists, falling back to the
+ * club-wide ceiling. A fixed 180 bpm can't tell the difference between a sprint, where that is
+ * the point, and a recovery trot, where it means something is wrong.
  */
 async function evaluateMetrics({ horseId, sessionId, heartRate, speed }) {
+  const session = sessionId
+    ? await TrainingSession.findById(sessionId).select('objective prescription')
+    : null;
+
+  const limits = {
+    maxHeartRate: session?.prescription?.targetHeartRateMax ?? THRESHOLDS.maxHeartRate,
+    maxSpeed: session?.prescription?.targetSpeedKmh ?? THRESHOLDS.maxSpeed,
+  };
+
   const exceeded = [];
-  if (heartRate > THRESHOLDS.maxHeartRate) exceeded.push(`nhịp tim ${heartRate} bpm`);
-  if (speed > THRESHOLDS.maxSpeed) exceeded.push(`tốc độ ${speed} km/h`);
+  if (heartRate > limits.maxHeartRate) exceeded.push(`nhịp tim ${heartRate}/${limits.maxHeartRate} bpm`);
+  if (speed > limits.maxSpeed) exceeded.push(`tốc độ ${speed}/${limits.maxSpeed} km/h`);
 
   if (exceeded.length === 0) return null;
 
@@ -34,11 +49,13 @@ async function evaluateMetrics({ horseId, sessionId, heartRate, speed }) {
 
   const horse = await Horse.findById(horseId).select('name');
   const horseName = horse?.name || 'Ngựa';
-  const message = `${horseName} vượt ngưỡng thể lực (${exceeded.join(', ')}) trong buổi tập đang diễn ra.`;
+  const context = session?.objective ? ` (buổi "${OBJECTIVE_LABELS[session.objective] || session.objective}")` : '';
+  const message = `${horseName} vượt ngưỡng thể lực (${exceeded.join(', ')}) trong buổi tập đang diễn ra${context}.`;
 
   return pushNotification({
     recipientRole: ROLES.HEAD_TRAINER,
     horse: horseId,
+    trainingSession: sessionId || undefined,
     type: 'fitness_alert',
     severity: 'warning',
     message,

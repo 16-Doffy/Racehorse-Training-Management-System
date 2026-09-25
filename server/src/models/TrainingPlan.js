@@ -15,6 +15,11 @@ const trainingPlanSchema = new mongoose.Schema(
     weeklyVolumeKm: { type: Number, required: true }, // total km of work planned per week
     intensity: { type: String, enum: ['light', 'moderate', 'high'], default: 'moderate' },
     surface: { type: String, enum: ['turf', 'dirt', 'synthetic', 'sand'], required: true },
+    // What the whole plan is working towards. `phase` says where in the cycle the horse is;
+    // these two say what the cycle is building for, so a plan reads as a sentence rather than
+    // as a row of settings.
+    goal: { type: String },
+    targetRace: { type: mongoose.Schema.Types.ObjectId, ref: 'RaceEntry', default: null },
     startDate: { type: Date, required: true },
     endDate: { type: Date },
     notes: { type: String },

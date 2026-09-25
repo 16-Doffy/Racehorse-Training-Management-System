@@ -6,6 +6,9 @@ const notificationSchema = new mongoose.Schema(
     recipientUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     recipientRole: { type: String, default: null },
     horse: { type: mongoose.Schema.Types.ObjectId, ref: 'Horse' },
+    // Set when the notification is about one specific session, so a fitness alert can be traced
+    // back to the workout that produced it instead of only to the horse.
+    trainingSession: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingSession', default: null },
     type: {
       type: String,
       enum: [
@@ -18,6 +21,8 @@ const notificationSchema = new mongoose.Schema(
         'exam_request',
         'restock_decision',
         'horse_assigned',
+        'session_completed',
+        'readiness_override',
         'system',
       ],
       required: true,
