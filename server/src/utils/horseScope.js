@@ -7,6 +7,8 @@ const SCOPE_FIELD_BY_ROLE = {
   [ROLES.VETERINARIAN]: 'assignedVet',
 };
 
+const FORBIDDEN_HORSE_MESSAGE = 'Forbidden: this horse is not assigned to you.';
+
 /**
  * Returns the set of horse ids a user is allowed to see/act on, or `null` when the role has no
  * such restriction (Manager sees everything; Groom is scoped separately via DailyTask.assignedTo,
@@ -32,4 +34,27 @@ function isHorseInScope(scopedIds, horseId) {
   return scopedIds.some((id) => String(id) === String(horseId));
 }
 
-module.exports = { getScopedHorseIds, isHorseInScope };
+/**
+ * The `horse` clause for a list query, honouring an optional `?horse=` filter. Returns undefined
+ * when there's nothing to filter by. An out-of-scope `?horse=` yields an empty result rather than
+ * a 403, so a list page never errors just because a stale filter is in the URL.
+ */
+async function horseFilter(user, requestedHorse) {
+  const scopedIds = await getScopedHorseIds(user);
+  if (requestedHorse) return isHorseInScope(scopedIds, requestedHorse) ? requestedHorse : { $in: [] };
+  return scopedIds ? { $in: scopedIds } : undefined;
+}
+
+/**
+ * Whether the user may act on one specific horse. Every by-id read and every write goes through
+ * this — list endpoints alone being scoped meant anyone who knew an id could still open, edit or
+ * delete another trainer's records.
+ */
+async function canAccessHorse(user, horseId) {
+  if (!horseId) return false;
+  const field = SCOPE_FIELD_BY_ROLE[user.role];
+  if (!field) return true;
+  return Boolean(await Horse.exists({ _id: horseId, [field]: user._id }));
+}
+
+module.exports = { getScopedHorseIds, isHorseInScope, horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE };

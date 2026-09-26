@@ -22,6 +22,8 @@ router.get('/sessions/readiness', sessionCtrl.getReadiness);
 router.get('/sessions/:id', sessionCtrl.getSession);
 router.post('/sessions', authorize(ROLES.HEAD_TRAINER), sessionCtrl.createSession);
 router.put('/sessions/:id', authorize(ROLES.HEAD_TRAINER), sessionCtrl.updateSession);
+// Start now: rechecks readiness against the current moment. Optional { overrideReason }.
+router.post('/sessions/:id/start', authorize(ROLES.HEAD_TRAINER), sessionCtrl.startSession);
 router.patch('/sessions/:id/evaluation', authorize(ROLES.HEAD_TRAINER), sessionCtrl.recordEvaluation);
 router.delete('/sessions/:id', authorize(ROLES.HEAD_TRAINER), sessionCtrl.deleteSession);
 

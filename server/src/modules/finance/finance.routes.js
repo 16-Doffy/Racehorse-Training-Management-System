@@ -14,6 +14,8 @@ const ctrl = crudFactory(FinancialRecord, {
   populate: [{ path: 'horse', select: 'name owner' }, { path: 'recordedBy', select: 'name' }],
   defaultSort: { date: -1 },
   label: 'Financial record',
+  // Recorded by whoever is logged in, not whoever the request body names.
+  stamp: (req, { isCreate }) => (isCreate ? { recordedBy: req.user._id } : {}),
 });
 
 const listMine = asyncHandler(async (req, res) => {

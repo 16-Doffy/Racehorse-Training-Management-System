@@ -122,74 +122,105 @@ async function vetClearanceGate(horse, options) {
   return gate;
 }
 
-async function nutritionGate(horse, scheduledAt) {
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MEAL_LABELS = { morning: 'Bữa sáng', noon: 'Bữa trưa', evening: 'Bữa chiều' };
+const mealLabel = (task) => MEAL_LABELS[task.mealSlot] || 'Bữa ăn trong ngày';
+
+function describeGap(minutes) {
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Is the horse fed the right amount of time before this session — not so recently that it would
+ * gallop on a full stomach, not so long ago that it has nothing left in it?
+ *
+ * Looks at the 24 hours before the session rather than the session's calendar day, so an early
+ * morning session sees last night's dinner. Meals still scheduled between now and the session
+ * count as eaten at their planned time: that is how a lunch at 11:30 ahead of a 12:30 gallop gets
+ * flagged when the session is booked, not when it's already too late to move lunch.
+ */
+async function nutritionGate(horse, when) {
   const gate = { key: 'nutrition', label: 'Dinh dưỡng', status: 'ok', detail: '' };
-  const when = new Date(scheduledAt);
+  const now = new Date();
+
+  // A session on a later day has no meals to judge yet; the check is repeated when it's started.
+  if (startOfDay(when) > startOfDay(now)) {
+    gate.detail = 'Buổi tập vào ngày khác — hệ thống sẽ kiểm tra lại giờ ăn khi bắt đầu buổi tập.';
+    return gate;
+  }
 
   const feedings = await DailyTask.find({
     horse: horse._id,
     taskType: 'feeding',
-    scheduledDate: { $gte: startOfDay(when), $lt: new Date(startOfDay(when).getTime() + 24 * 60 * 60 * 1000) },
+    scheduledDate: { $gte: new Date(when.getTime() - DAY_MS), $lte: when },
   }).sort({ scheduledDate: 1 });
 
   // The groom's own words take priority over any timing arithmetic — a horse that refused its
   // feed is a health signal, not a scheduling inconvenience.
-  const reported = feedings.find((t) => t.incidentReport?.description);
   const refused = feedings.find((t) => t.observation?.appetite === 'refused');
-  const partial = feedings.find((t) => t.observation?.appetite === 'partial');
-
   if (refused) {
     gate.status = 'caution';
-    gate.detail = 'Nhân viên chăm sóc ghi nhận ngựa BỎ ĂN — nên cho bác sĩ kiểm tra trước khi tập.';
+    gate.detail = `Nhân viên chăm sóc ghi nhận ngựa BỎ ĂN (${mealLabel(refused).toLowerCase()}) — nên cho bác sĩ kiểm tra trước khi tập.`;
     gate.action = 'request_exam';
     return gate;
   }
 
+  const reported = feedings.find((t) => t.incidentReport?.description);
   if (reported) {
     gate.status = 'caution';
-    gate.detail = `Có báo cáo sự cố trong bữa ăn hôm nay: "${reported.incidentReport.description}".`;
+    gate.detail = `Có báo cáo sự cố trong ${mealLabel(reported).toLowerCase()}: "${reported.incidentReport.description}".`;
     gate.action = 'request_exam';
     return gate;
   }
 
-  const completed = feedings.filter((t) => t.status === 'completed' && t.completedAt);
+  const eaten = feedings
+    .filter((t) => t.status === 'completed' && t.completedAt && t.completedAt <= when)
+    .map((t) => ({ task: t, at: t.completedAt, planned: false }));
+  const upcoming = feedings
+    .filter((t) => t.status === 'pending' && t.scheduledDate >= now)
+    .map((t) => ({ task: t, at: t.scheduledDate, planned: true }));
+  const lastEatenAt = eaten.length ? Math.max(...eaten.map((m) => m.at.getTime())) : 0;
 
-  if (feedings.length === 0) {
+  // A meal whose time has passed with nobody marking it done, after the last one that was.
+  const missed = feedings.find(
+    (t) => t.status === 'pending' && t.scheduledDate < now && t.scheduledDate.getTime() > lastEatenAt
+  );
+  if (missed) {
     gate.status = 'caution';
-    gate.detail = 'Chưa có việc cho ăn nào được lên cho ngựa này hôm nay.';
+    gate.detail = `${mealLabel(missed)} (${formatTime(missed.scheduledDate)}) chưa được đánh dấu đã cho ăn.`;
     return gate;
   }
 
-  if (completed.length === 0) {
+  const meals = [...eaten, ...upcoming];
+  if (meals.length === 0) {
     gate.status = 'caution';
-    gate.detail = 'Ngựa chưa được cho ăn hôm nay — tập khi đói sẽ không đủ sức.';
+    gate.detail = 'Không có bữa ăn nào trong 24 giờ trước giờ tập — tập khi đói ngựa sẽ không đủ sức.';
     return gate;
   }
 
-  const lastFed = completed.reduce((a, b) => (new Date(a.completedAt) > new Date(b.completedAt) ? a : b));
-  const gapMinutes = Math.round((when.getTime() - new Date(lastFed.completedAt).getTime()) / 60000);
-
-  if (gapMinutes < 0) {
-    gate.detail = `Bữa gần nhất lúc ${formatTime(lastFed.completedAt)}, sau giờ tập dự kiến.`;
-    return gate;
-  }
+  const last = meals.reduce((a, b) => (a.at > b.at ? a : b));
+  const gapMinutes = Math.round((when.getTime() - last.at.getTime()) / 60000);
+  const which = last.planned
+    ? `Theo lịch, ${mealLabel(last.task).toLowerCase()} lúc ${formatTime(last.at)}`
+    : `Ăn lần cuối lúc ${formatTime(last.at)}`;
 
   if (gapMinutes < MIN_DIGEST_MINUTES) {
     gate.status = 'caution';
-    gate.detail = `Vừa ăn xong lúc ${formatTime(lastFed.completedAt)}, chỉ cách giờ tập ${gapMinutes} phút (cần tối thiểu ${MIN_DIGEST_MINUTES} phút để tiêu hóa).`;
+    gate.detail = `${which}, chỉ cách giờ tập ${gapMinutes} phút — cần tối thiểu ${MIN_DIGEST_MINUTES} phút để tiêu hóa, chạy khi no dễ bị đau bụng.`;
     return gate;
   }
 
   if (gapMinutes > MAX_FAST_HOURS * 60) {
     gate.status = 'caution';
-    gate.detail = `Bữa gần nhất lúc ${formatTime(lastFed.completedAt)}, đã ${Math.floor(gapMinutes / 60)} giờ trước — ngựa có thể đã đói.`;
+    gate.detail = `${which}, đã ${describeGap(gapMinutes)} trước giờ tập — ngựa có thể đã đói.`;
     return gate;
   }
 
-  gate.detail = `Ăn lúc ${formatTime(lastFed.completedAt)}, cách giờ tập ${Math.floor(gapMinutes / 60)}h${String(gapMinutes % 60).padStart(2, '0')} — hợp lý.`;
+  gate.detail = `${which}, cách giờ tập ${describeGap(gapMinutes)} — hợp lý.`;
+  const partial = eaten.find((m) => m.task.observation?.appetite === 'partial');
   if (partial) {
     gate.status = 'caution';
-    gate.detail += ` Nhưng ngựa chỉ ăn ${partial.observation.amountEatenPercent ?? 'một phần'}% khẩu phần.`;
+    gate.detail += ` Nhưng có bữa ngựa chỉ ăn ${partial.task.observation.amountEatenPercent ?? 'một phần'}% khẩu phần.`;
   }
   return gate;
 }
@@ -218,14 +249,20 @@ async function careAssignmentGate(horse) {
 /**
  * Runs all four gates for a horse against a proposed session.
  * Returns `null` when the horse doesn't exist, so callers can 404 on their own terms.
+ * Throws a 400-coded error for an unparseable scheduledAt rather than computing gaps from NaN.
  */
 async function computeReadiness(horseId, { scheduledAt, intensity, sessionType, objective } = {}) {
+  const when = scheduledAt ? new Date(scheduledAt) : new Date();
+  if (Number.isNaN(when.getTime())) {
+    const err = new Error('scheduledAt không phải ngày giờ hợp lệ.');
+    err.statusCode = 400;
+    throw err;
+  }
+
   const horse = await Horse.findById(horseId).select('name healthStatus');
   if (!horse) return null;
 
-  const when = scheduledAt ? new Date(scheduledAt) : new Date();
   const options = { intensity, sessionType, objective };
-
   const gates = await Promise.all([
     medicalGate(horse),
     vetClearanceGate(horse, options),
@@ -251,9 +288,35 @@ function cautionGates(readiness) {
   return readiness.gates.filter((g) => g.status === 'caution');
 }
 
+/**
+ * Why this horse may not be trained at all right now, or null if nothing stops it. The single
+ * definition of "medically grounded", shared by plan creation, session creation and session start
+ * — each used to carry its own copy of the lock-or-injured check.
+ */
+async function getMedicalBlock(horseId) {
+  const horse = await Horse.findById(horseId).select('healthStatus');
+  if (!horse) return null;
+  const gate = await medicalGate(horse);
+  return gate.status === 'blocked' ? gate.detail : null;
+}
+
+/** Snapshot stored on a session: the gates as they stood when the decision was made. */
+function toSnapshot(readiness, { overrideReason, userId } = {}) {
+  const overridden = cautionGates(readiness).length > 0 && overrideReason;
+  return {
+    checkedAt: new Date(),
+    overall: readiness.overall,
+    gates: readiness.gates.map((g) => ({ key: g.key, status: g.status, detail: g.detail })),
+    overrideReason: overridden ? overrideReason : undefined,
+    overriddenBy: overridden ? userId : undefined,
+  };
+}
+
 module.exports = {
   computeReadiness,
   cautionGates,
+  getMedicalBlock,
+  toSnapshot,
   needsVetClearance,
   MIN_DIGEST_MINUTES,
   MAX_FAST_HOURS,

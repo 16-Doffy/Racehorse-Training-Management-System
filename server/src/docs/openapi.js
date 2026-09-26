@@ -351,7 +351,7 @@ module.exports = {
           recipientUser: { type: 'string', nullable: true },
           recipientRole: { type: 'string', nullable: true },
           horse: { type: 'string' },
-          type: { type: 'string', enum: ['fitness_alert', 'injury_lock', 'vaccination_due', 'deworming_due', 'farrier_due', 'incident_report', 'exam_request', 'restock_decision', 'horse_assigned', 'session_completed', 'readiness_override', 'system'] },
+          type: { type: 'string', enum: ['fitness_alert', 'injury_lock', 'vaccination_due', 'deworming_due', 'farrier_due', 'incident_report', 'exam_request', 'restock_decision', 'horse_assigned', 'session_completed', 'readiness_override', 'training_unlocked', 'system'] },
           trainingSession: { type: 'string', nullable: true, description: 'Set when the notification is about one specific session' },
           severity: { type: 'string', enum: ['info', 'warning', 'critical'] },
           message: { type: 'string' },
@@ -571,6 +571,20 @@ module.exports = {
       get: { tags: ['Training (Head Trainer)'], summary: 'Get training session', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 404: responses[404] } },
       put: { tags: ['Training (Head Trainer)'], summary: 'Update training session', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/TrainingSession' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 404: responses[404] } },
       delete: { tags: ['Training (Head Trainer)'], summary: 'Delete training session', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
+    },
+    '/training/sessions/{id}/start': {
+      post: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'Start a session now — rechecks readiness against the current moment',
+        description:
+          'Moves a scheduled session to in_progress. The readiness gates are re-run for *now*, not the booked time: ' +
+          'a horse locked since booking is refused (409), and one fed twenty minutes ago returns 409 with ' +
+          '`{ readiness, requiresOverride: true }` until `overrideReason` is sent. Completed and cancelled sessions ' +
+          'cannot be restarted.',
+        parameters: [idParam('id')],
+        requestBody: { required: false, content: { 'application/json': { schema: { type: 'object', properties: { overrideReason: { type: 'string' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
     },
     '/training/sessions/{id}/evaluation': {
       patch: {

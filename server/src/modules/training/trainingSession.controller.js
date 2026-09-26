@@ -1,164 +1,99 @@
 const TrainingSession = require('../../models/TrainingSession');
 const TrainingPlan = require('../../models/TrainingPlan');
-const Treatment = require('../../models/Treatment');
 const Horse = require('../../models/Horse');
 const DailyTask = require('../../models/DailyTask');
 const StableAssignment = require('../../models/StableAssignment');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
-const { getScopedHorseIds, isHorseInScope } = require('../../utils/horseScope');
+const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
+const pick = require('../../utils/pick');
 const { pushNotification } = require('../alerts/notification.service');
-const { computeReadiness, cautionGates } = require('./readiness.service');
+const { computeReadiness, cautionGates, toSnapshot } = require('./readiness.service');
 const { OBJECTIVE_LABELS } = require('../../constants/training');
 const { ROLES } = require('../../constants/roles');
 
-const listSessions = asyncHandler(async (req, res) => {
-  const { horse, trainingPlan, status, sessionType } = req.query;
-  const scopedIds = await getScopedHorseIds(req.user);
-  const filter = {};
-  if (horse) {
-    filter.horse = isHorseInScope(scopedIds, horse) ? horse : { $in: [] };
-  } else if (scopedIds) {
-    filter.horse = { $in: scopedIds };
+// What the trainer describes when booking a session. Status, metrics, rating, outcome and the
+// readiness snapshot are all server-owned or set through their own endpoints — accepting them
+// here let a client create a session that was already "completed" with a made-up result.
+const PLAN_FIELDS = ['sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'scheduledAt', 'assignedTo'];
+
+// How a session may move. Completed and cancelled are final: a session the vet's lock cancelled
+// must not be reopened into in_progress, which is what re-arms the sensor feed.
+const TRANSITIONS = {
+  scheduled: ['in_progress', 'completed', 'cancelled'],
+  in_progress: ['completed', 'cancelled'],
+  completed: [],
+  cancelled: [],
+};
+
+const STATUS_LABELS = {
+  scheduled: 'đã lên lịch',
+  in_progress: 'đang diễn ra',
+  completed: 'đã hoàn thành',
+  cancelled: 'đã hủy',
+};
+
+/** Loads a session the caller may act on, or sends the appropriate error and returns null. */
+async function loadSession(req, res) {
+  const session = await TrainingSession.findById(req.params.id);
+  if (!session) {
+    fail(res, 'Training session not found.', 404);
+    return null;
   }
-  if (trainingPlan) filter.trainingPlan = trainingPlan;
-  if (status) filter.status = status;
-  if (sessionType) filter.sessionType = sessionType;
+  if (!(await canAccessHorse(req.user, session.horse))) {
+    fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+    return null;
+  }
+  return session;
+}
 
-  const sessions = await TrainingSession.find(filter)
-    .populate('horse', 'name healthStatus')
-    .populate('assignedTo', 'name')
-    .sort({ scheduledAt: -1 });
-  return ok(res, sessions, 'Training sessions fetched.');
-});
-
-const getSession = asyncHandler(async (req, res) => {
-  const session = await TrainingSession.findById(req.params.id)
-    .populate('horse')
-    .populate('trainingPlan')
-    .populate('assignedTo', 'name');
-  if (!session) return fail(res, 'Training session not found.', 404);
-  return ok(res, session, 'Training session fetched.');
-});
+/** A trainer went ahead past an amber gate: put it on the record and tell the manager. */
+async function reportOverride({ session, readiness, reason, user, moment }) {
+  const cautions = cautionGates(readiness);
+  await logAction({
+    actorId: user._id,
+    action: 'trainingSession.readiness_override',
+    targetModel: 'TrainingSession',
+    targetId: session._id,
+    metadata: { reason, moment, gates: cautions.map((g) => g.key) },
+  });
+  await pushNotification({
+    recipientRole: ROLES.MANAGER,
+    horse: session.horse,
+    trainingSession: session._id,
+    type: 'readiness_override',
+    severity: 'warning',
+    message: `⚠️ ${user.name} vẫn ${moment === 'start' ? 'bắt đầu' : 'xếp'} buổi tập cho ${readiness.horse.name} dù có ${
+      cautions.length
+    } cảnh báo (${cautions.map((g) => g.label).join(', ')}). Lý do: ${reason}`,
+  });
+}
 
 /**
- * The readiness board: four gates, each owned by a different role (see readiness.service.js).
- * Exposed as its own endpoint so the trainer's scheduling form can show it live while they pick a
- * horse and a time — and so the vet's, groom's and owner's screens can render the same answer
- * without duplicating the rules.
+ * Runs the readiness gates for a decision point (booking or starting a session).
+ * Returns { readiness } when the decision may go ahead, or { error } describing the 409 to send:
+ * a vet's block is final, an amber gate needs the trainer to say why.
  */
-const getReadiness = asyncHandler(async (req, res) => {
-  const { horse, scheduledAt, intensity, sessionType, objective } = req.query;
-  if (!horse) return fail(res, 'horse is required.', 400);
+async function checkReadiness(horseId, context, overrideReason) {
+  const readiness = await computeReadiness(horseId, context);
+  if (!readiness) return { error: { status: 404, message: 'Horse not found.' } };
 
-  const scopedIds = await getScopedHorseIds(req.user);
-  if (!isHorseInScope(scopedIds, horse)) {
-    return fail(res, 'Forbidden: this horse is not assigned to you.', 403);
-  }
-
-  const readiness = await computeReadiness(horse, { scheduledAt, intensity, sessionType, objective });
-  if (!readiness) return fail(res, 'Horse not found.', 404);
-
-  return ok(res, readiness, 'Readiness computed.');
-});
-
-// This is where the Veterinarian's emergency "lock training" order takes effect: a horse under
-// an active isTrainingLocked treatment cannot be scheduled for a new session. Since the readiness
-// service now covers that same medical rule plus three others, the check runs through it.
-const createSession = asyncHandler(async (req, res) => {
-  const { trainingPlan: planId, horse, scheduledAt, intensity, sessionType, objective, overrideReason } = req.body;
-
-  const scopedIds = await getScopedHorseIds(req.user);
-  if (!isHorseInScope(scopedIds, horse)) {
-    return fail(res, 'Forbidden: this horse is not assigned to you.', 403);
-  }
-
-  const plan = await TrainingPlan.findById(planId);
-  if (!plan) return fail(res, 'Training plan not found.', 404);
-
-  const readiness = await computeReadiness(horse, { scheduledAt, intensity, sessionType, objective });
-  if (!readiness) return fail(res, 'Horse not found.', 404);
-
-  // A vet's lock is not the trainer's call — no override exists for it.
   const blocked = readiness.gates.find((g) => g.status === 'blocked');
-  if (blocked) {
-    return fail(res, `Không thể tạo buổi tập: ${blocked.detail}`, 409, { readiness });
-  }
+  if (blocked) return { error: { status: 409, message: blocked.detail, data: { readiness } } };
 
-  // Everything else is advisory: the trainer decides, but has to say why on the record.
   const cautions = cautionGates(readiness);
   if (cautions.length > 0 && !overrideReason) {
-    return fail(
-      res,
-      `Buổi tập này có ${cautions.length} cảnh báo cần xác nhận trước khi tạo.`,
-      409,
-      { readiness, requiresOverride: true }
-    );
+    return {
+      error: {
+        status: 409,
+        message: `Buổi tập này có ${cautions.length} cảnh báo cần xác nhận.`,
+        data: { readiness, requiresOverride: true },
+      },
+    };
   }
-
-  const session = await TrainingSession.create({
-    ...req.body,
-    readiness: {
-      checkedAt: new Date(),
-      overall: readiness.overall,
-      gates: readiness.gates.map((g) => ({ key: g.key, status: g.status, detail: g.detail })),
-      overrideReason: cautions.length > 0 ? overrideReason : undefined,
-      overriddenBy: cautions.length > 0 ? req.user._id : undefined,
-    },
-  });
-
-  await logAction({ actorId: req.user._id, action: 'trainingSession.create', targetModel: 'TrainingSession', targetId: session._id });
-
-  if (cautions.length > 0) {
-    // The manager owns club-level oversight, so an override is reported upward rather than just
-    // buried in the audit log where nobody looks.
-    const horseDoc = await Horse.findById(horse).select('name');
-    await logAction({
-      actorId: req.user._id,
-      action: 'trainingSession.readiness_override',
-      targetModel: 'TrainingSession',
-      targetId: session._id,
-      metadata: { reason: overrideReason, gates: cautions.map((g) => g.key) },
-    });
-    await pushNotification({
-      recipientRole: ROLES.MANAGER,
-      horse,
-      trainingSession: session._id,
-      type: 'readiness_override',
-      severity: 'warning',
-      message: `⚠️ ${req.user.name} vẫn xếp buổi tập cho ${horseDoc?.name || 'ngựa'} dù có ${cautions.length} cảnh báo (${cautions
-        .map((g) => g.label)
-        .join(', ')}). Lý do: ${overrideReason}`,
-    });
-  }
-
-  return created(res, session, 'Training session created.');
-});
-
-const updateSession = asyncHandler(async (req, res) => {
-  const existing = await TrainingSession.findById(req.params.id);
-  if (!existing) return fail(res, 'Training session not found.', 404);
-
-  // Starting a session is a second decision point, not a formality: a horse can be perfectly fine
-  // when the session is booked on Monday and locked by the vet on Wednesday. Without this, an
-  // already-scheduled session could still be flipped to in_progress and re-arm the sensor feed
-  // for a horse the vet had grounded.
-  if (req.body.status === 'in_progress' && existing.status !== 'in_progress') {
-    const activeLock = await Treatment.findOne({ horse: existing.horse, isTrainingLocked: true, status: 'ongoing' });
-    const horse = await Horse.findById(existing.horse).select('healthStatus');
-    const grounded = horse && (horse.healthStatus === 'injured' || horse.healthStatus === 'quarantined');
-
-    if (activeLock || grounded) {
-      const reason = activeLock?.lockReason || `tình trạng sức khỏe (${horse.healthStatus === 'injured' ? 'chấn thương' : 'cách ly'})`;
-      return fail(res, `Không thể bắt đầu buổi tập: chiến mã đang bị khóa huấn luyện do y tế (${reason}).`, 409);
-    }
-  }
-
-  const session = await TrainingSession.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-  await logAction({ actorId: req.user._id, action: 'trainingSession.update', targetModel: 'TrainingSession', targetId: session._id });
-  return ok(res, session, 'Training session updated.');
-});
+  return { readiness };
+}
 
 /**
  * Did the session do what it set out to do? Compares what was actually measured against what was
@@ -189,7 +124,7 @@ function computeOutcome(session) {
 /**
  * A hard session leaves a horse that needs cooling down and its legs iced, and the person who does
  * that is the groom, not the trainer. Rather than relying on the trainer to remember to assign it,
- * finishing the session creates the work.
+ * finishing the session creates the work. Idempotent per session.
  */
 async function createPostSessionCare(session) {
   const isHard = session.intensity === 'high' || session.objective === 'race_simulation';
@@ -198,23 +133,18 @@ async function createPostSessionCare(session) {
   const assignment = await StableAssignment.findOne({ horse: session.horse });
   if (!assignment?.assignedCaretaker) return 0;
 
-  const objectiveLabel = OBJECTIVE_LABELS[session.objective] || 'buổi tập';
-  const distance = session.prescription?.distanceM ? ` ${session.prescription.distanceM}m` : '';
-
+  const what = `${(OBJECTIVE_LABELS[session.objective] || 'buổi tập').toLowerCase()}${
+    session.prescription?.distanceM ? ` ${session.prescription.distanceM}m` : ''
+  }`;
   const wanted = [
-    { taskType: 'icing', note: `Sau buổi ${objectiveLabel.toLowerCase()}${distance} — ngâm chân hạ nhiệt gân.` },
-    { taskType: 'bathing', note: `Sau buổi ${objectiveLabel.toLowerCase()}${distance} — tắm và lau khô.` },
+    { taskType: 'icing', note: `Sau buổi ${what} — ngâm chân hạ nhiệt gân.` },
+    { taskType: 'bathing', note: `Sau buổi ${what} — tắm và lau khô.` },
   ];
 
   let createdCount = 0;
   for (const item of wanted) {
-    // Idempotent per session, so re-filing an evaluation doesn't pile up duplicate chores.
     // eslint-disable-next-line no-await-in-loop
-    const exists = await DailyTask.findOne({
-      horse: session.horse,
-      taskType: item.taskType,
-      trainingSession: session._id,
-    });
+    const exists = await DailyTask.exists({ horse: session.horse, taskType: item.taskType, trainingSession: session._id });
     if (exists) continue;
 
     // eslint-disable-next-line no-await-in-loop
@@ -229,46 +159,223 @@ async function createPostSessionCare(session) {
     });
     createdCount += 1;
   }
-
   return createdCount;
 }
 
-// Trainer's post-session evaluation: performance rating + professional comment on the session log.
-const recordEvaluation = asyncHandler(async (req, res) => {
-  const { trainerComment, performanceRating, metrics, status } = req.body;
-  const session = await TrainingSession.findById(req.params.id);
-  if (!session) return fail(res, 'Training session not found.', 404);
+/** Everything that follows a session reaching "completed" for the first time. */
+async function onCompleted(session) {
+  const careTasksCreated = await createPostSessionCare(session);
 
-  const wasCompleted = session.status === 'completed';
+  // The owner pays for this horse and never sees the training screens — closing the loop back to
+  // them is the difference between "my horse trains somewhere" and knowing how it went.
+  const horse = await Horse.findById(session.horse).select('name owner');
+  if (horse?.owner) {
+    await pushNotification({
+      recipientUser: horse.owner,
+      horse: horse._id,
+      trainingSession: session._id,
+      type: 'session_completed',
+      severity: 'info',
+      message: `🏇 ${horse.name} đã hoàn thành buổi tập "${OBJECTIVE_LABELS[session.objective] || 'huấn luyện'}".${
+        session.outcome?.met === null || session.outcome?.met === undefined ? '' : ` ${session.outcome.summary}`
+      }`,
+    });
+  }
+  return careTasksCreated;
+}
+
+/**
+ * The one place a session's status changes. Every route that can move a session (update, start,
+ * evaluation) goes through here, so no route can skip the lock and readiness checks — the
+ * evaluation endpoint used to set in_progress without either.
+ *
+ * Mutates `session` (unsaved) and returns { error } or { effects } for the caller to finish.
+ */
+async function applyStatusChange(session, next, { user, overrideReason }) {
+  const current = session.status;
+  if (!next || next === current) return { effects: {} };
+
+  if (!TRANSITIONS[current]?.includes(next)) {
+    return {
+      error: { status: 409, message: `Không thể chuyển buổi tập từ "${STATUS_LABELS[current]}" sang "${STATUS_LABELS[next]}".` },
+    };
+  }
+
+  const effects = {};
+  if (next === 'in_progress') {
+    // Starting is a second decision point: a horse fine on Monday can be locked by Wednesday, or
+    // have been fed twenty minutes ago. Checked against *now*, not the booked time.
+    const context = { scheduledAt: new Date(), intensity: session.intensity, sessionType: session.sessionType, objective: session.objective };
+    const { readiness, error } = await checkReadiness(session.horse, context, overrideReason);
+    if (error) return { error };
+
+    const snapshot = toSnapshot(readiness, { overrideReason, userId: user._id });
+    // Keep a booking-time override on record if starting raised nothing new.
+    if (!snapshot.overrideReason && session.readiness?.overrideReason) {
+      snapshot.overrideReason = session.readiness.overrideReason;
+      snapshot.overriddenBy = session.readiness.overriddenBy;
+    }
+    session.readiness = snapshot;
+    if (cautionGates(readiness).length > 0) effects.override = { readiness, reason: overrideReason, moment: 'start' };
+  }
+
+  session.status = next;
+  if (next === 'completed') effects.completed = true;
+  return { effects };
+}
+
+/** Saves a session after applyStatusChange and runs the side effects it asked for. */
+async function finishStatusChange(session, effects, user) {
+  if (effects.completed) session.outcome = computeOutcome(session);
+  await session.save();
+  if (effects.override) await reportOverride({ session, user, ...effects.override });
+  return effects.completed ? onCompleted(session) : 0;
+}
+
+/* -------------------------------------------------------------------------- */
+
+const listSessions = asyncHandler(async (req, res) => {
+  const { trainingPlan, status, sessionType } = req.query;
+  const filter = {};
+  const horse = await horseFilter(req.user, req.query.horse);
+  if (horse !== undefined) filter.horse = horse;
+  if (trainingPlan) filter.trainingPlan = trainingPlan;
+  if (status) filter.status = status;
+  if (sessionType) filter.sessionType = sessionType;
+
+  const sessions = await TrainingSession.find(filter)
+    .populate('horse', 'name healthStatus')
+    .populate('assignedTo', 'name')
+    .sort({ scheduledAt: -1 });
+  return ok(res, sessions, 'Training sessions fetched.');
+});
+
+const getSession = asyncHandler(async (req, res) => {
+  const session = await loadSession(req, res);
+  if (!session) return undefined;
+  await session.populate([{ path: 'horse' }, { path: 'trainingPlan' }, { path: 'assignedTo', select: 'name' }]);
+  return ok(res, session, 'Training session fetched.');
+});
+
+/**
+ * The readiness board: four gates, each owned by a different role (see readiness.service.js).
+ * Its own endpoint so the trainer's form can show it live, and so the vet's, groom's and owner's
+ * screens can render the same answer without duplicating the rules.
+ */
+const getReadiness = asyncHandler(async (req, res) => {
+  const { horse, scheduledAt, intensity, sessionType, objective } = req.query;
+  if (!horse) return fail(res, 'horse is required.', 400);
+  if (!(await canAccessHorse(req.user, horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+
+  const readiness = await computeReadiness(horse, { scheduledAt, intensity, sessionType, objective });
+  if (!readiness) return fail(res, 'Horse not found.', 404);
+  return ok(res, readiness, 'Readiness computed.');
+});
+
+// This is where the Veterinarian's emergency "lock training" order takes effect for new
+// sessions, along with the three advisory gates (see readiness.service.js).
+const createSession = asyncHandler(async (req, res) => {
+  const { trainingPlan: planId, horse, overrideReason } = req.body;
+  const status = req.body.status === 'in_progress' ? 'in_progress' : 'scheduled';
+
+  if (!(await canAccessHorse(req.user, horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+
+  const plan = await TrainingPlan.findById(planId);
+  if (!plan) return fail(res, 'Training plan not found.', 404);
+  // Two independent pickers in the form meant a session could be filed under a different horse's
+  // plan, which then showed up in the wrong plan's session list.
+  if (String(plan.horse) !== String(horse)) return fail(res, 'Kế hoạch đã chọn không thuộc ngựa này.', 400);
+  if (['completed', 'cancelled'].includes(plan.status)) {
+    return fail(res, 'Kế hoạch này đã kết thúc hoặc bị hủy — không thể thêm buổi tập.', 409);
+  }
+
+  const body = pick(req.body, PLAN_FIELDS);
+  const { readiness, error } = await checkReadiness(
+    horse,
+    { scheduledAt: body.scheduledAt, intensity: body.intensity, sessionType: body.sessionType, objective: body.objective },
+    overrideReason
+  );
+  if (error) {
+    const prefix = error.data?.requiresOverride ? '' : 'Không thể tạo buổi tập: ';
+    return fail(res, `${prefix}${error.message}`, error.status, error.data);
+  }
+
+  const session = await TrainingSession.create({
+    ...body,
+    trainingPlan: plan._id,
+    horse,
+    status,
+    readiness: toSnapshot(readiness, { overrideReason, userId: req.user._id }),
+  });
+
+  await logAction({ actorId: req.user._id, action: 'trainingSession.create', targetModel: 'TrainingSession', targetId: session._id });
+  if (cautionGates(readiness).length > 0) {
+    await reportOverride({ session, readiness, reason: overrideReason, user: req.user, moment: 'create' });
+  }
+  return created(res, session, 'Training session created.');
+});
+
+// Editing the booking itself (time, content, briefing). Allowed only while it's still scheduled;
+// a status in the body goes through the same transition rules as everywhere else.
+const updateSession = asyncHandler(async (req, res) => {
+  const session = await loadSession(req, res);
+  if (!session) return undefined;
+
+  const changes = pick(req.body, PLAN_FIELDS);
+  if (Object.keys(changes).length > 0 && session.status !== 'scheduled') {
+    return fail(res, 'Chỉ sửa được nội dung buổi tập khi buổi tập còn ở trạng thái "đã lên lịch".', 409);
+  }
+  Object.assign(session, changes);
+
+  const { effects, error } = await applyStatusChange(session, req.body.status, {
+    user: req.user,
+    overrideReason: req.body.overrideReason,
+  });
+  if (error) return fail(res, error.message, error.status, error.data);
+
+  await finishStatusChange(session, effects, req.user);
+  await logAction({ actorId: req.user._id, action: 'trainingSession.update', targetModel: 'TrainingSession', targetId: session._id });
+  return ok(res, session, 'Training session updated.');
+});
+
+// "Start now": the explicit version of moving a session to in_progress, rechecking readiness
+// against the current moment (a horse fed twenty minutes ago is flagged here, not at booking).
+const startSession = asyncHandler(async (req, res) => {
+  const session = await loadSession(req, res);
+  if (!session) return undefined;
+
+  const { effects, error } = await applyStatusChange(session, 'in_progress', {
+    user: req.user,
+    overrideReason: req.body?.overrideReason,
+  });
+  if (error) return fail(res, error.message, error.status, error.data);
+
+  await finishStatusChange(session, effects, req.user);
+  await logAction({ actorId: req.user._id, action: 'trainingSession.start', targetModel: 'TrainingSession', targetId: session._id });
+  return ok(res, session, 'Training session started.');
+});
+
+// Trainer's post-session evaluation: performance rating, professional comment, measured metrics.
+const recordEvaluation = asyncHandler(async (req, res) => {
+  const { trainerComment, performanceRating, metrics, status, overrideReason } = req.body;
+  const session = await loadSession(req, res);
+  if (!session) return undefined;
+
+  const { effects, error } = await applyStatusChange(session, status, { user: req.user, overrideReason });
+  if (error) return fail(res, error.message, error.status, error.data);
+
+  // A score describes a finished session; rating one that hasn't happened yet means nothing.
+  if (performanceRating !== undefined && performanceRating !== null && session.status !== 'completed') {
+    return fail(res, 'Chỉ chấm điểm phong độ khi buổi tập đã hoàn thành.', 400);
+  }
 
   if (trainerComment !== undefined) session.trainerComment = trainerComment;
   if (performanceRating !== undefined) session.performanceRating = performanceRating;
   if (metrics !== undefined) session.metrics = { ...session.metrics.toObject(), ...metrics };
-  if (status !== undefined) session.status = status;
+  // Re-judged whenever the numbers change on a finished session, not only at the moment it ends.
+  if (session.status === 'completed' && !effects.completed) session.outcome = computeOutcome(session);
 
-  session.outcome = computeOutcome(session);
-  await session.save();
-
-  let careTasksCreated = 0;
-  if (session.status === 'completed' && !wasCompleted) {
-    careTasksCreated = await createPostSessionCare(session);
-
-    // The owner pays for this horse and never sees the training screens — closing the loop back to
-    // them is the difference between "my horse trains somewhere" and knowing how it went.
-    const horse = await Horse.findById(session.horse).select('name owner');
-    if (horse?.owner) {
-      const verdict = session.outcome.met === null ? '' : ` ${session.outcome.summary}`;
-      await pushNotification({
-        recipientUser: horse.owner,
-        horse: horse._id,
-        trainingSession: session._id,
-        type: 'session_completed',
-        severity: 'info',
-        message: `🏇 ${horse.name} đã hoàn thành buổi tập "${OBJECTIVE_LABELS[session.objective] || 'huấn luyện'}".${verdict}`,
-      });
-    }
-  }
-
+  const careTasksCreated = await finishStatusChange(session, effects, req.user);
   await logAction({
     actorId: req.user._id,
     action: 'trainingSession.evaluate',
@@ -276,14 +383,29 @@ const recordEvaluation = asyncHandler(async (req, res) => {
     targetId: session._id,
     metadata: { outcome: session.outcome?.met, careTasksCreated },
   });
-
   return ok(res, session, 'Session evaluation recorded.');
 });
 
+// A finished session is the record of work done and what came of it; only bookings that never
+// happened can be removed.
 const deleteSession = asyncHandler(async (req, res) => {
-  const session = await TrainingSession.findByIdAndDelete(req.params.id);
-  if (!session) return fail(res, 'Training session not found.', 404);
+  const session = await loadSession(req, res);
+  if (!session) return undefined;
+  if (['completed', 'in_progress'].includes(session.status)) {
+    return fail(res, 'Không xoá được buổi tập đang diễn ra hoặc đã hoàn thành — đó là hồ sơ huấn luyện.', 409);
+  }
+  await session.deleteOne();
+  await logAction({ actorId: req.user._id, action: 'trainingSession.delete', targetModel: 'TrainingSession', targetId: session._id });
   return ok(res, null, 'Training session deleted.');
 });
 
-module.exports = { listSessions, getSession, getReadiness, createSession, updateSession, recordEvaluation, deleteSession };
+module.exports = {
+  listSessions,
+  getSession,
+  getReadiness,
+  createSession,
+  updateSession,
+  startSession,
+  recordEvaluation,
+  deleteSession,
+};

@@ -47,6 +47,10 @@ const register = asyncHandler(async (req, res) => {
     return fail(res, 'name, email, password và role là bắt buộc.', 400);
   }
 
+  if (String(password).length < 6) {
+    return fail(res, 'Mật khẩu tối thiểu 6 ký tự.', 400);
+  }
+
   if (!ALL_ROLES.includes(role)) {
     return fail(res, `role không hợp lệ. Giá trị cho phép: ${ALL_ROLES.join(', ')}.`, 400);
   }

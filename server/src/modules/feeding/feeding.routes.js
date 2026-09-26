@@ -4,28 +4,24 @@ const { authorize } = require('../../middlewares/rbacMiddleware');
 const { ROLES } = require('../../constants/roles');
 const crudFactory = require('../../utils/crudFactory');
 const FeedingSchedule = require('../../models/FeedingSchedule');
+const { ensureFeedingTasks } = require('../../realtime/dailyTaskGenerator');
 
-// Scaffold module: full CRUD wired up now, detailed nutrition-planning UI/logic comes later.
 const ctrl = crudFactory(FeedingSchedule, {
   populate: [{ path: 'horse', select: 'name' }, { path: 'approvedBy', select: 'name' }],
   label: 'Feeding schedule',
-  // An Owner should see their own horses' rations, not the whole stable's.
   scopeByHorse: true,
+  // Only the Head Trainer or Manager may write a ration, so whoever saves it is its approver.
+  // Without this, rations created through the UI stayed "pending" forever.
+  stamp: (req) => ({ approvedBy: req.user._id }),
+  // The groom should see the new meal on their list now, not after the next hourly run.
+  afterWrite: (item) => ensureFeedingTasks({ horseIds: [item.horse], onlyUpcoming: true }),
 });
-
-// A ration saved by the Head Trainer or Manager is approved by that person — they are the only
-// roles allowed to author one. Without this, rations created through the UI stayed "pending"
-// forever, since no screen or endpoint ever set approvedBy.
-const stampApprover = (req, _res, next) => {
-  req.body.approvedBy = req.user._id;
-  next();
-};
 
 router.use(protect);
 router.get('/', ctrl.list);
 router.get('/:id', ctrl.getOne);
-router.post('/', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), stampApprover, ctrl.createOne);
-router.put('/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), stampApprover, ctrl.updateOne);
+router.post('/', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), ctrl.createOne);
+router.put('/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), ctrl.updateOne);
 router.delete('/:id', authorize(ROLES.MANAGER), ctrl.removeOne);
 
 module.exports = router;

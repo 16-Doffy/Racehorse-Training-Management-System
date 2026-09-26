@@ -23,13 +23,18 @@ const notificationSchema = new mongoose.Schema(
         'horse_assigned',
         'session_completed',
         'readiness_override',
+        'training_unlocked',
         'system',
       ],
       required: true,
     },
     severity: { type: String, enum: ['info', 'warning', 'critical'], default: 'info' },
     message: { type: String, required: true },
+    // Read state for a notification addressed to one user.
     isRead: { type: Boolean, default: false },
+    // Read state for a notification addressed to a whole role. A single isRead flag was shared by
+    // everyone in the role, so the first trainer to open the bell cleared it for all the others.
+    readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   },
   { timestamps: true }
 );

@@ -1,6 +1,5 @@
 const Horse = require('../models/Horse');
-const { ROLES } = require('../constants/roles');
-const { pushNotification } = require('../modules/alerts/notification.service');
+const { notifyHorseStaff } = require('../modules/alerts/notification.service');
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly is plenty for day-granularity due dates
 const RENOTIFY_AFTER_MS = 24 * 60 * 60 * 1000; // don't re-notify for the same due date within 24h
@@ -12,7 +11,7 @@ const CARE_ITEMS = [
 ];
 
 /**
- * Automatic reminders for the Veterinarian: periodically checks every horse's recurring care
+ * Automatic reminders for the horse's Veterinarian: periodically checks every horse's recurring care
  * schedule (vaccination / deworming / farrier) and fires a Notification + realtime push once a
  * due date has arrived, without re-spamming the same reminder every check.
  */
@@ -38,8 +37,9 @@ function startCareScheduler() {
 
           const message = `Ngựa ${horse.name} đến hạn ${item.label} (hạn: ${dueAt.toLocaleDateString('vi-VN')}).`;
           // eslint-disable-next-line no-await-in-loop
-          await pushNotification({
-            recipientRole: ROLES.VETERINARIAN,
+          // The horse's own vet; other vets can't even open this horse under per-horse scoping.
+          await notifyHorseStaff({
+            staff: 'vet',
             horse: horse._id,
             type: item.type,
             severity: 'warning',

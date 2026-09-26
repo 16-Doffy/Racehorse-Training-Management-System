@@ -4,6 +4,8 @@ const Treatment = require('../../models/Treatment');
 const HealthRecord = require('../../models/HealthRecord');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
+const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
+const pick = require('../../utils/pick');
 
 // How serious each status is. healthStatus gates whether training may be scheduled
 // (trainingSession.controller.js), so "how far from fit to train" is the only ordering that
@@ -56,27 +58,47 @@ async function syncHorseHealthStatus(horseId) {
   }
 }
 
+const MARKER_FIELDS = ['horse', 'healthRecord', 'bodyPart', 'coordinates', 'severity', 'recoveryStatus', 'notes'];
+
 const listMarkers = asyncHandler(async (req, res) => {
-  const { horse } = req.query;
-  const filter = horse ? { horse } : {};
+  const filter = {};
+  const horse = await horseFilter(req.user, req.query.horse);
+  if (horse !== undefined) filter.horse = horse;
   const markers = await InjuryMarker.find(filter).sort({ createdAt: -1 });
   return ok(res, markers, 'Injury markers fetched.');
 });
 
 const createMarker = asyncHandler(async (req, res) => {
-  const marker = await InjuryMarker.create({ ...req.body, markedBy: req.user._id });
-  if (marker.horse) {
-    await syncHorseHealthStatus(marker.horse);
-  }
+  const body = pick(req.body, MARKER_FIELDS);
+  if (!(await canAccessHorse(req.user, body.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+
+  const marker = await InjuryMarker.create({ ...body, markedBy: req.user._id });
+  await syncHorseHealthStatus(marker.horse);
   return created(res, marker, 'Injury marker created.');
 });
 
-const updateMarker = asyncHandler(async (req, res) => {
-  const marker = await InjuryMarker.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-  if (!marker) return fail(res, 'Injury marker not found.', 404);
-  if (marker.horse) {
-    await syncHorseHealthStatus(marker.horse);
+async function loadMarker(req, res) {
+  const marker = await InjuryMarker.findById(req.params.id);
+  if (!marker) {
+    fail(res, 'Injury marker not found.', 404);
+    return null;
   }
+  if (!(await canAccessHorse(req.user, marker.horse))) {
+    fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+    return null;
+  }
+  return marker;
+}
+
+const updateMarker = asyncHandler(async (req, res) => {
+  const marker = await loadMarker(req, res);
+  if (!marker) return undefined;
+
+  // A marker stays on the horse it was placed on.
+  const { horse, ...changes } = pick(req.body, MARKER_FIELDS);
+  Object.assign(marker, changes);
+  await marker.save();
+  await syncHorseHealthStatus(marker.horse);
   return ok(res, marker, 'Injury marker updated.');
 });
 
@@ -84,11 +106,10 @@ const updateMarker = asyncHandler(async (req, res) => {
 // horse's injury map permanently wrong if the mistake wasn't caught before saving.
 // Deleting a mis-marked injury marker automatically recalculates the horse's health status.
 const deleteMarker = asyncHandler(async (req, res) => {
-  const marker = await InjuryMarker.findByIdAndDelete(req.params.id);
-  if (!marker) return fail(res, 'Injury marker not found.', 404);
-  if (marker.horse) {
-    await syncHorseHealthStatus(marker.horse);
-  }
+  const marker = await loadMarker(req, res);
+  if (!marker) return undefined;
+  await marker.deleteOne();
+  await syncHorseHealthStatus(marker.horse);
   return ok(res, null, 'Injury marker deleted.');
 });
 

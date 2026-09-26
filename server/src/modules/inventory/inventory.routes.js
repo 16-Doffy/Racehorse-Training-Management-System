@@ -16,7 +16,13 @@ const ctrl = crudFactory(InventoryItem, {
 });
 
 const requestRestock = asyncHandler(async (req, res) => {
-  const { quantity } = req.body;
+  const quantity = Number(req.body.quantity);
+  // Approving adds this number to stock, so a zero, negative or non-numeric request would quietly
+  // shrink or corrupt the count the moment a Manager clicked approve.
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    return fail(res, 'Số lượng đề xuất phải là số dương.', 400);
+  }
+
   const item = await InventoryItem.findById(req.params.id);
   if (!item) return fail(res, 'Inventory item not found.', 404);
 

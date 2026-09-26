@@ -1,7 +1,6 @@
 const Horse = require('../models/Horse');
 const TrainingSession = require('../models/TrainingSession');
-const { ROLES } = require('../constants/roles');
-const { pushNotification } = require('../modules/alerts/notification.service');
+const { notifyHorseStaff } = require('../modules/alerts/notification.service');
 const { OBJECTIVE_LABELS } = require('../constants/training');
 
 // Club-wide safety ceiling, used when the session didn't prescribe its own limits.
@@ -52,8 +51,10 @@ async function evaluateMetrics({ horseId, sessionId, heartRate, speed }) {
   const context = session?.objective ? ` (buổi "${OBJECTIVE_LABELS[session.objective] || session.objective}")` : '';
   const message = `${horseName} vượt ngưỡng thể lực (${exceeded.join(', ')}) trong buổi tập đang diễn ra${context}.`;
 
-  return pushNotification({
-    recipientRole: ROLES.HEAD_TRAINER,
+  // The trainer responsible for this horse (all trainers only if nobody is assigned), plus the
+  // owner through the horse's room.
+  return notifyHorseStaff({
+    staff: 'trainer',
     horse: horseId,
     trainingSession: sessionId || undefined,
     type: 'fitness_alert',

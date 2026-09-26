@@ -39,6 +39,8 @@ const trainingSessionSchema = new mongoose.Schema(
       maxHeartRate: { type: Number },
       maxSpeed: { type: Number }, // km/h
       distance: { type: Number }, // meters
+      // How many sensor readings avgHeartRate averages over, so each new reading can be folded in.
+      sampleCount: { type: Number, default: 0 },
     },
     trainerComment: { type: String },
     performanceRating: { type: Number, min: 1, max: 10 },
