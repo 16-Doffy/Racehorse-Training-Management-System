@@ -11,13 +11,13 @@ const { ok, created, fail } = require('../../utils/apiResponse');
 const STATUS_RANK = { eligible: 0, monitoring: 1, injured: 2, quarantined: 3 };
 
 /**
- * Recomputes a horse's healthStatus after its injury markers change.
+ * Recomputes a horse's healthStatus after its injury markers change, or after a lock is lifted.
  *
- * Two sources write this field: the Veterinarian's examination record — an explicit clinical
- * judgement, written in healthRecord.controller.js — and the markers, which are derived. The rule
- * between them is that markers may only ever raise the alarm, never lower it below what the vet
- * concluded. Without that, clearing a minor marker would quietly downgrade (or fully clear) a horse
- * the vet diagnosed as injured, and training would silently become schedulable again.
+ * While active markers remain, they set the status and the vet's latest diagnosis acts as a floor.
+ * Once every marker is resolved the horse returns to eligible — unless a training lock is still in
+ * force. A lock is a separate, explicit order that may have nothing to do with the markers (a
+ * fever, colic), so resolving markers must never undo it, and lifting a lock stays an explicit,
+ * audited action through setTrainingLock rather than a side effect of editing the injury map.
  */
 async function syncHorseHealthStatus(horseId) {
   if (!horseId) return;
@@ -41,16 +41,14 @@ async function syncHorseHealthStatus(horseId) {
     if (clinical && clinical !== 'quarantined' && STATUS_RANK[clinical] > STATUS_RANK[target]) {
       target = clinical;
     }
-  } else {
-    // When no active markers remain (all deleted or recovered), the horse is cleared/eligible.
-    target = 'eligible';
-
-    // Automatically lift any ongoing medical training locks for this horse.
-    await Treatment.updateMany(
-      { horse: horseId, isTrainingLocked: true },
-      { isTrainingLocked: false }
-    );
   }
+
+  // Marker changes can raise the alarm freely, but may not lower it while a lock is in force:
+  // deleting a mis-placed scratch must not clear a horse the vet grounded for a fever. This used to
+  // lift every lock on the horse with an updateMany — unrelated locks included, with no audit entry
+  // and no word to the trainer — which also meant lifting one of two locks silently lifted both.
+  const lockedTreatment = await Treatment.findOne({ horse: horseId, isTrainingLocked: true, status: 'ongoing' });
+  if (lockedTreatment && STATUS_RANK[target] < STATUS_RANK[horse.healthStatus]) return;
 
   if (target !== horse.healthStatus) {
     horse.healthStatus = target;
