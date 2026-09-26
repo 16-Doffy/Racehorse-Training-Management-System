@@ -105,7 +105,8 @@ async function vetClearanceGate(horse, options) {
     return gate;
   }
 
-  gate.detail = `Đã khám ${ageDays} ngày trước, kết luận "${HEALTH_STATUS_LABELS[latest.resultStatus] || latest.resultStatus}".`;
+  const when = ageDays === 0 ? 'hôm nay' : `${ageDays} ngày trước`;
+  gate.detail = `Đã khám ${when}, kết luận "${HEALTH_STATUS_LABELS[latest.resultStatus] || latest.resultStatus}".`;
   return gate;
 }
 

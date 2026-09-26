@@ -16,12 +16,16 @@ const listPlans = asyncHandler(async (req, res) => {
   const plans = await TrainingPlan.find(filter)
     .populate('horse', 'name breed healthStatus')
     .populate('createdBy', 'name')
+    .populate('targetRace', 'raceName raceDate distance status')
     .sort({ createdAt: -1 });
   return ok(res, plans, 'Training plans fetched.');
 });
 
 const getPlan = asyncHandler(async (req, res) => {
-  const plan = await TrainingPlan.findById(req.params.id).populate('horse').populate('createdBy', 'name');
+  const plan = await TrainingPlan.findById(req.params.id)
+    .populate('horse')
+    .populate('createdBy', 'name')
+    .populate('targetRace', 'raceName raceDate distance status');
   if (!plan) return fail(res, 'Training plan not found.', 404);
   return ok(res, plan, 'Training plan fetched.');
 });
@@ -43,7 +47,7 @@ const createPlan = asyncHandler(async (req, res) => {
     const reason = activeLock?.lockReason || `bệnh lý y tế (${targetHorse?.healthStatus === 'injured' ? 'chấn thương' : 'cách ly'})`;
     return fail(
       res,
-      `Không thể lập giáo án: Chiến mã đang trong trạng thái bị khóa huấn luyện do y tế (${reason}).`,
+      `Không thể lập kế hoạch huấn luyện: Chiến mã đang trong trạng thái bị khóa huấn luyện do y tế (${reason}).`,
       409
     );
   }

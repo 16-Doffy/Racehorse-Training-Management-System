@@ -3,15 +3,27 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { ROLES } = require('../../constants/roles');
 const { pushNotification } = require('../alerts/notification.service');
+const { getScopedHorseIds, isHorseInScope } = require('../../utils/horseScope');
 
 const listTasks = asyncHandler(async (req, res) => {
   const { horse, assignedTo, status, date } = req.query;
   const filter = {};
-  if (horse) filter.horse = horse;
+
+  // Same per-horse scoping as training and health: a Head Trainer or Vet sees the care work for
+  // the horses assigned to them, not the whole club's worklist.
+  const scopedIds = await getScopedHorseIds(req.user);
+  if (horse) {
+    filter.horse = isHorseInScope(scopedIds, horse) ? horse : { $in: [] };
+  } else if (scopedIds) {
+    filter.horse = { $in: scopedIds };
+  }
+
   if (status) filter.status = status;
-  // Grooms typically only need their own worklist; other roles can pass assignedTo explicitly.
-  filter.assignedTo = assignedTo || (req.user.role === ROLES.GROOM ? req.user._id : undefined);
-  if (filter.assignedTo === undefined) delete filter.assignedTo;
+
+  // A Groom always gets their own worklist. Previously an explicit ?assignedTo= won over the role
+  // default, which let one groom read a colleague's list by changing a query parameter.
+  if (req.user.role === ROLES.GROOM) filter.assignedTo = req.user._id;
+  else if (assignedTo) filter.assignedTo = assignedTo;
   if (date) {
     const day = new Date(date);
     const nextDay = new Date(day);
@@ -34,6 +46,11 @@ const getTask = asyncHandler(async (req, res) => {
 
 // Assigning daily task lists to the care team is the Head Trainer's job; Club Manager can too.
 const createTask = asyncHandler(async (req, res) => {
+  const scopedIds = await getScopedHorseIds(req.user);
+  if (!isHorseInScope(scopedIds, req.body.horse)) {
+    return fail(res, 'Forbidden: this horse is not assigned to you.', 403);
+  }
+
   const task = await DailyTask.create(req.body);
   return created(res, task, 'Daily task created.');
 });

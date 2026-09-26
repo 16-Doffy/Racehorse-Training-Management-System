@@ -23,7 +23,7 @@ const getOverview = asyncHandler(async (req, res) => {
   const financeFilter = range ? { date: range } : {};
   const raceFilter = range ? { raceDate: range } : {};
 
-  const [sessionStats, ratingAgg, financeAgg, raceStats] = await Promise.all([
+  const [sessionStats, ratingAgg, financeAgg, raceStats, overrideRows, outcomeAgg] = await Promise.all([
     TrainingSession.aggregate([
       { $match: sessionFilter },
       { $group: { _id: '$status', count: { $sum: 1 } } },
@@ -39,6 +39,19 @@ const getOverview = asyncHandler(async (req, res) => {
     RaceEntry.aggregate([
       { $match: raceFilter },
       { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]),
+    // Sessions the trainer went ahead with despite an amber readiness gate. This is the manager's
+    // view of whether the safety checks are being respected or routinely waved through.
+    TrainingSession.find({ ...sessionFilter, 'readiness.overrideReason': { $ne: null } })
+      .populate('horse', 'name')
+      .populate('readiness.overriddenBy', 'name')
+      .select('horse scheduledAt objective readiness')
+      .sort({ scheduledAt: -1 })
+      .limit(20),
+    // How often sessions actually hit the targets they were set.
+    TrainingSession.aggregate([
+      { $match: { ...sessionFilter, 'outcome.met': { $ne: null } } },
+      { $group: { _id: '$outcome.met', count: { $sum: 1 } } },
     ]),
   ]);
 
@@ -64,6 +77,20 @@ const getOverview = asyncHandler(async (req, res) => {
         sessionsByStatus,
         avgPerformanceRating: ratingAgg[0] ? Math.round(ratingAgg[0].avgRating * 10) / 10 : null,
         ratedSessionCount: ratingAgg[0]?.ratedCount || 0,
+        targetsMet: outcomeAgg.find((o) => o._id === true)?.count || 0,
+        targetsMissed: outcomeAgg.find((o) => o._id === false)?.count || 0,
+      },
+      readinessOverrides: {
+        count: overrideRows.length,
+        recent: overrideRows.map((s) => ({
+          _id: s._id,
+          horse: s.horse?.name,
+          scheduledAt: s.scheduledAt,
+          objective: s.objective,
+          reason: s.readiness?.overrideReason,
+          by: s.readiness?.overriddenBy?.name,
+          gates: (s.readiness?.gates || []).filter((g) => g.status === 'caution').map((g) => g.key),
+        })),
       },
       operatingCost: buildFinanceSummary('cost'),
       raceRevenue: buildFinanceSummary('revenue'),

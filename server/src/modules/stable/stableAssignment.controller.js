@@ -4,7 +4,7 @@ const { ok, created, fail } = require('../../utils/apiResponse');
 
 const listAssignments = asyncHandler(async (req, res) => {
   const assignments = await StableAssignment.find()
-    .populate('horse', 'name')
+    .populate('horse', 'name healthStatus')
     .populate('assignedCaretaker', 'name')
     .sort({ stableBlock: 1 });
   return ok(res, assignments, 'Stable assignments fetched.');
