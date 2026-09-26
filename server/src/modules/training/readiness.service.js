@@ -106,7 +106,19 @@ async function vetClearanceGate(horse, options) {
   }
 
   const when = ageDays === 0 ? 'hôm nay' : `${ageDays} ngày trước`;
-  gate.detail = `Đã khám ${when}, kết luận "${HEALTH_STATUS_LABELS[latest.resultStatus] || latest.resultStatus}".`;
+  const conclusion = HEALTH_STATUS_LABELS[latest.resultStatus] || latest.resultStatus;
+
+  // A recent exam only counts as clearance if it cleared the horse. The health status can return
+  // to eligible without a fresh exam — resolving every injury marker does that — which is fine for
+  // light work, but a hard session should have a vet confirm the recovery first.
+  if (latest.resultStatus === 'injured' || latest.resultStatus === 'quarantined') {
+    gate.status = 'caution';
+    gate.detail = `Lần khám gần nhất (${when}) kết luận "${conclusion}" — buổi nặng cần bác sĩ khám lại xác nhận đã hồi phục.`;
+    gate.action = 'request_exam';
+    return gate;
+  }
+
+  gate.detail = `Đã khám ${when}, kết luận "${conclusion}".`;
   return gate;
 }
 
