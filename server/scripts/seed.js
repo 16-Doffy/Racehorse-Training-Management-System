@@ -14,6 +14,7 @@ const StableAssignment = require('../src/models/StableAssignment');
 const DailyTask = require('../src/models/DailyTask');
 const FeedingSchedule = require('../src/models/FeedingSchedule');
 const InventoryItem = require('../src/models/InventoryItem');
+const Notification = require('../src/models/Notification');
 
 const DEMO_PASSWORD = '123456';
 
@@ -30,20 +31,14 @@ async function run() {
   await mongoose.connect(mongoUri);
   console.log(`[seed] connected to ${mongoUri}`);
 
+  // Remove legacy gmail test accounts if present
+  await User.deleteMany({ email: { $in: ['nvy@gmail.com', 'nvhuan@gmail.com', 'nvsoc@gmail.com', 'nvchu@gmail.com'] } });
+
   const manager = await upsertUser({ name: 'Nguyen Van Quan Ly', email: 'manager@demo.com', role: ROLES.MANAGER, phone: '0900000001' });
-  const trainer = await upsertUser({ name: 'Tran Huan Luyen', email: 'nvhuan@gmail.com', role: ROLES.HEAD_TRAINER, phone: '0900000002' });
-  const vet = await upsertUser({ name: 'Le Bac Si', email: 'nvy@gmail.com', role: ROLES.VETERINARIAN, phone: '0900000003' });
-  const groom = await upsertUser({ name: 'Pham Cham Soc', email: 'nvsoc@gmail.com', role: ROLES.GROOM, phone: '0900000004' });
-  const owner = await upsertUser({ name: 'Hoang Chu So Huu', email: 'nvchu@gmail.com', role: ROLES.OWNER, phone: '0900000005' });
-
-  // Legacy demo email aliases
-  await upsertUser({ name: 'Tran Huan Luyen', email: 'trainer@demo.com', role: ROLES.HEAD_TRAINER, phone: '0900000002' });
-  await upsertUser({ name: 'Le Bac Si', email: 'vet@demo.com', role: ROLES.VETERINARIAN, phone: '0900000003' });
-  await upsertUser({ name: 'Pham Cham Soc', email: 'groom@demo.com', role: ROLES.GROOM, phone: '0900000004' });
-  await upsertUser({ name: 'Hoang Chu So Huu', email: 'owner@demo.com', role: ROLES.OWNER, phone: '0900000005' });
-
-  // Second trainer/vet so assignedTrainer/assignedVet scoping (horseScope.js) is actually
-  // exercised locally — with only one of each, every horse trivially "belongs" to them.
+  const trainer = await upsertUser({ name: 'Tran Huan Luyen', email: 'trainer@demo.com', role: ROLES.HEAD_TRAINER, phone: '0900000002' });
+  const vet = await upsertUser({ name: 'Le Bac Si', email: 'vet@demo.com', role: ROLES.VETERINARIAN, phone: '0900000003' });
+  const groom = await upsertUser({ name: 'Pham Cham Soc', email: 'groom@demo.com', role: ROLES.GROOM, phone: '0900000004' });
+  const owner = await upsertUser({ name: 'Hoang Chu So Huu', email: 'owner@demo.com', role: ROLES.OWNER, phone: '0900000005' });
   const trainer2 = await upsertUser({ name: 'Vu Huan Luyen Hai', email: 'trainer2@demo.com', role: ROLES.HEAD_TRAINER, phone: '0900000006' });
   const vet2 = await upsertUser({ name: 'Do Bac Si Hai', email: 'vet2@demo.com', role: ROLES.VETERINARIAN, phone: '0900000007' });
 
@@ -57,6 +52,7 @@ async function run() {
   await DailyTask.deleteMany({});
   await FeedingSchedule.deleteMany({});
   await InventoryItem.deleteMany({});
+  await Notification.deleteMany({});
   await Horse.deleteMany({});
 
   const horseNames = [
@@ -68,16 +64,15 @@ async function run() {
 
   const horses = [];
   for (const h of horseNames) {
-    // Thunder Bolt & Silver Arrow stay with the original trainer/vet (keeps all the existing plan/
-    // session/health-record seed data below consistent); Golden Wind & Midnight Star go to the
-    // second trainer/vet, so logging in as either pair demonstrably sees a different horse subset.
-    const useSecondStaff = horses.length >= 2;
+    // Midnight Star is assigned to trainer2 and vet2 for RBAC scope testing;
+    // Golden Wind, Silver Arrow, and Thunder Bolt are assigned to trainer (Tran Huan Luyen) and vet (Le Bac Si).
+    const isSecondStaff = h.name === 'Midnight Star';
     const horse = await Horse.create({
       ...h,
       dob: new Date('2021-03-15'),
       owner: owner._id,
-      assignedTrainer: useSecondStaff ? trainer2._id : trainer._id,
-      assignedVet: useSecondStaff ? vet2._id : vet._id,
+      assignedTrainer: isSecondStaff ? trainer2._id : trainer._id,
+      assignedVet: isSecondStaff ? vet2._id : vet._id,
       healthStatus: 'eligible',
       achievements: [{ race: 'Spring Derby 2025', result: '2nd', date: new Date('2025-04-10') }],
       careSchedule: {
@@ -89,6 +84,24 @@ async function run() {
       },
     });
     horses.push(horse);
+
+    // Seed assignment notifications so staff have unread alerts in their top-bar notification bell upon login
+    await Notification.create([
+      {
+        recipientUser: horse.assignedTrainer,
+        horse: horse._id,
+        type: 'horse_assigned',
+        severity: 'info',
+        message: `🐎 Bạn được phân công huấn luyện ngựa "${horse.name}".`,
+      },
+      {
+        recipientUser: horse.assignedVet,
+        horse: horse._id,
+        type: 'horse_assigned',
+        severity: 'info',
+        message: `🐎 Bạn được phân công theo dõi sức khỏe ngựa "${horse.name}".`,
+      },
+    ]);
   }
 
   await Promise.all(

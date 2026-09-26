@@ -28,23 +28,29 @@ async function syncHorseHealthStatus(horseId) {
   // Quarantine is an administrative decision, not something injury markers can express.
   if (horse.healthStatus === 'quarantined') return;
 
-  const [activeMarkers, latestRecord, lockedTreatment] = await Promise.all([
-    InjuryMarker.find({ horse: horseId, recoveryStatus: { $ne: 'recovered' } }),
-    HealthRecord.findOne({ horse: horseId }).sort({ date: -1, createdAt: -1 }),
-    Treatment.findOne({ horse: horseId, isTrainingLocked: true, status: 'ongoing' }),
-  ]);
+  const activeMarkers = await InjuryMarker.find({ horse: horseId, recoveryStatus: { $ne: 'recovered' } });
 
   let target = 'eligible';
+
   if (activeMarkers.length > 0) {
     target = activeMarkers.some((m) => m.severity === 'severe') ? 'injured' : 'monitoring';
+
+    // The vet's own conclusion is a floor only while active markers remain.
+    const latestRecord = await HealthRecord.findOne({ horse: horseId }).sort({ date: -1, createdAt: -1 });
+    const clinical = latestRecord?.resultStatus;
+    if (clinical && clinical !== 'quarantined' && STATUS_RANK[clinical] > STATUS_RANK[target]) {
+      target = clinical;
+    }
+  } else {
+    // When no active markers remain (all deleted or recovered), the horse is cleared/eligible.
+    target = 'eligible';
+
+    // Automatically lift any ongoing medical training locks for this horse.
+    await Treatment.updateMany(
+      { horse: horseId, isTrainingLocked: true },
+      { isTrainingLocked: false }
+    );
   }
-
-  // The vet's own conclusion is a floor the markers can't undercut.
-  const clinical = latestRecord?.resultStatus;
-  if (clinical && STATUS_RANK[clinical] > STATUS_RANK[target]) target = clinical;
-
-  // An active training lock means the horse is not cleared yet, whatever the markers say.
-  if (lockedTreatment && STATUS_RANK[horse.healthStatus] > STATUS_RANK[target]) return;
 
   if (target !== horse.healthStatus) {
     horse.healthStatus = target;
@@ -88,4 +94,4 @@ const deleteMarker = asyncHandler(async (req, res) => {
   return ok(res, null, 'Injury marker deleted.');
 });
 
-module.exports = { listMarkers, createMarker, updateMarker, deleteMarker };
+module.exports = { listMarkers, createMarker, updateMarker, deleteMarker, syncHorseHealthStatus };
