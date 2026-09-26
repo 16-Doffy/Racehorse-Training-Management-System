@@ -66,8 +66,17 @@ const getHorse = asyncHandler(async (req, res) => {
   return ok(res, horse, 'Horse fetched.');
 });
 
+// healthStatus is a clinical conclusion owned by the Veterinarian (health records, injury markers,
+// training locks). It gates whether a horse may be trained, so letting the horse-registry endpoints
+// write it would let a non-vet clear a horse the vet grounded. Stripped here rather than trusted to
+// the UI not sending it.
+function withoutClinicalFields(body) {
+  const { healthStatus, careSchedule, ...rest } = body || {};
+  return rest;
+}
+
 const createHorse = asyncHandler(async (req, res) => {
-  const horse = await Horse.create(req.body);
+  const horse = await Horse.create(withoutClinicalFields(req.body));
   await logAction({ actorId: req.user._id, action: 'horse.create', targetModel: 'Horse', targetId: horse._id });
   await notifyNewAssignees(horse);
   return created(res, horse, 'Horse created.');
@@ -78,7 +87,10 @@ const updateHorse = asyncHandler(async (req, res) => {
   const before = await Horse.findById(req.params.id).select('owner assignedTrainer assignedVet');
   if (!before) return fail(res, 'Horse not found.', 404);
 
-  const horse = await Horse.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+  const horse = await Horse.findByIdAndUpdate(req.params.id, withoutClinicalFields(req.body), {
+    new: true,
+    runValidators: true,
+  });
   await logAction({ actorId: req.user._id, action: 'horse.update', targetModel: 'Horse', targetId: horse._id });
   await notifyNewAssignees(horse, {
     owner: before.owner,

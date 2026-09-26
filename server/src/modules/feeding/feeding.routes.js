@@ -13,11 +13,19 @@ const ctrl = crudFactory(FeedingSchedule, {
   scopeByHorse: true,
 });
 
+// A ration saved by the Head Trainer or Manager is approved by that person — they are the only
+// roles allowed to author one. Without this, rations created through the UI stayed "pending"
+// forever, since no screen or endpoint ever set approvedBy.
+const stampApprover = (req, _res, next) => {
+  req.body.approvedBy = req.user._id;
+  next();
+};
+
 router.use(protect);
 router.get('/', ctrl.list);
 router.get('/:id', ctrl.getOne);
-router.post('/', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), ctrl.createOne);
-router.put('/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), ctrl.updateOne);
+router.post('/', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), stampApprover, ctrl.createOne);
+router.put('/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), stampApprover, ctrl.updateOne);
 router.delete('/:id', authorize(ROLES.MANAGER), ctrl.removeOne);
 
 module.exports = router;

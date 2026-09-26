@@ -100,7 +100,6 @@ export default function HorseListPage() {
       color: record.color,
       dob: record.dob ? dayjs(record.dob) : null,
       weightKg: record.weightKg,
-      healthStatus: record.healthStatus,
       owner: record.owner?._id || record.owner,
       assignedTrainer: record.assignedTrainer?._id || record.assignedTrainer,
       assignedVet: record.assignedVet?._id || record.assignedVet,
@@ -284,7 +283,7 @@ export default function HorseListPage() {
                 allowClear
                 showSearch
                 optionFilterProp="label"
-                placeholder="Chưa gán — mọi HLV đều thấy"
+                placeholder="Chưa gán — chưa HLV nào thấy ngựa này"
                 options={activeOptions(trainersData)}
               />
             </Form.Item>
@@ -298,15 +297,10 @@ export default function HorseListPage() {
                 allowClear
                 showSearch
                 optionFilterProp="label"
-                placeholder="Chưa gán — mọi bác sĩ đều thấy"
+                placeholder="Chưa gán — chưa bác sĩ nào thấy ngựa này"
                 options={activeOptions(vetsData)}
               />
             </Form.Item>
-            {editTarget && (
-              <Form.Item name="healthStatus" label="Trạng thái sức khỏe" className="!mb-0">
-                <Select options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))} />
-              </Form.Item>
-            )}
           </Form>
         </Modal>
       )}
