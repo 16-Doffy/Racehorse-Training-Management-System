@@ -27,6 +27,7 @@ const MENUS = {
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
     { key: 'users', icon: <TeamOutlined />, label: 'Quản lý Nhân sự & RBAC', path: '/admin/users' },
     { key: 'horses', icon: <ProfileOutlined />, label: 'Danh mục Ngựa', path: '/horses' },
+    { key: 'stables', icon: <HomeOutlined />, label: 'Chuồng trại & NV chăm sóc', path: '/admin/stables' },
     { key: 'reports', icon: <BarChartOutlined />, label: 'Báo cáo Tổng quan', path: '/admin/reports' },
     { key: 'inventory', icon: <ShoppingOutlined />, label: 'Vật tư & Thức ăn', path: '/inventory' },
     { key: 'finance', icon: <DollarOutlined />, label: 'Báo cáo Tài chính', path: '/finance' },
@@ -37,7 +38,7 @@ const MENUS = {
     { key: 'horses', icon: <ProfileOutlined />, label: 'Danh sách Ngựa', path: '/horses' },
     { key: 'training-plans', icon: <ScheduleOutlined />, label: 'Kế hoạch Huấn luyện', path: '/training/plans' },
     { key: 'training-sessions', icon: <ScheduleOutlined />, label: 'Buổi Tập & Đánh giá', path: '/training/sessions' },
-    { key: 'stable-tasks', icon: <HomeOutlined />, label: 'Phân công Chuồng trại', path: '/stable/tasks' },
+    { key: 'stable-tasks', icon: <HomeOutlined />, label: 'Chuồng trại & Chăm sóc', path: '/stable/tasks' },
     { key: 'races', icon: <TrophyOutlined />, label: 'Đăng ký Giải đua', path: '/races' },
   ],
   [ROLES.VETERINARIAN]: [

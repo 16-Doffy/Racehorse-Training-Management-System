@@ -24,6 +24,7 @@ import MedicalSchedule from '../pages/veterinarian/MedicalSchedule';
 import MedicalInventoryPage from '../pages/veterinarian/MedicalInventoryPage';
 import DailyTaskPage from '../features/stable/DailyTaskPage';
 import StableAssignPage from '../features/stable/StableAssignPage';
+import StableAssignmentPage from '../features/stable/StableAssignmentPage';
 import StableMapPage from '../features/stable/StableMapPage';
 import IncidentReportsPage from '../features/stable/IncidentReportsPage';
 import GroomSuppliesPage from '../features/inventory/GroomSuppliesPage';
@@ -98,6 +99,7 @@ export default function AppRouter() {
             <Route path="/admin/users" element={<UserManagementPage />} />
             <Route path="/admin/reports" element={<ReportsOverviewPage />} />
             <Route path="/admin/audit-logs" element={<AuditLogPage />} />
+            <Route path="/admin/stables" element={<StableAssignmentPage />} />
           </Route>
 
           {/* Horse Owner core flow. */}

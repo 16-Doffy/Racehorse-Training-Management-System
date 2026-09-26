@@ -16,6 +16,8 @@ export const TYPE_LABELS = {
   exam_request: 'Yêu cầu khám bệnh',
   restock_decision: 'Kết quả duyệt vật tư',
   horse_assigned: 'Phân công ngựa',
+  session_completed: 'Buổi tập hoàn thành',
+  readiness_override: 'Ghi đè cảnh báo sẵn sàng',
   system: 'Thông báo hệ thống',
 };
 

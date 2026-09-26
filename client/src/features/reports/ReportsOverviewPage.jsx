@@ -43,6 +43,14 @@ const RACE_STATUS_COLORS = {
   withdrawn: 'red',
 };
 
+// Mirrors the gate keys returned by the training readiness service.
+const GATE_LABELS = {
+  medical: 'Y tế',
+  vet_clearance: 'Giấy khám hết hạn',
+  nutrition: 'Dinh dưỡng',
+  care_assignment: 'Người chăm sóc',
+};
+
 const PRESETS = {
   '30d': { label: '30 ngày qua', days: 30 },
   '90d': { label: '90 ngày qua', days: 90 },
@@ -159,6 +167,7 @@ export default function ReportsOverviewPage() {
 
   const report = data?.data;
   const training = report?.trainingPerformance;
+  const overrides = report?.readinessOverrides;
   const cost = report?.operatingCost;
   const revenue = report?.raceRevenue;
   const races = report?.raceParticipation;
@@ -195,13 +204,13 @@ export default function ReportsOverviewPage() {
       </div>
 
       <Row gutter={[16, 16]} className="mb-4">
-        <Col xs={24} sm={12} lg={6}>
-          <Card loading={isLoading}>
+        <Col xs={24} sm={12} flex="1 1 220px">
+          <Card loading={isLoading} className="h-full">
             <Statistic title="Tổng buổi tập" value={training?.totalSessions ?? 0} />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card loading={isLoading}>
+        <Col xs={24} sm={12} flex="1 1 220px">
+          <Card loading={isLoading} className="h-full">
             <Statistic
               title={`Điểm phong độ TB (${training?.ratedSessionCount ?? 0} buổi đã chấm)`}
               value={training?.avgPerformanceRating ?? '—'}
@@ -209,13 +218,22 @@ export default function ReportsOverviewPage() {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card loading={isLoading}>
+        <Col xs={24} sm={12} flex="1 1 220px">
+          <Card loading={isLoading} className="h-full">
+            <Statistic
+              title="Buổi tập đạt mục tiêu (trên số buổi có đặt mục tiêu)"
+              value={training?.targetsMet ?? 0}
+              suffix={`/ ${(training?.targetsMet ?? 0) + (training?.targetsMissed ?? 0)}`}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} flex="1 1 220px">
+          <Card loading={isLoading} className="h-full">
             <Statistic title="Tổng chi phí vận hành" value={formatVnd(cost?.total)} styles={{ content: { fontSize: 22 } }} />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card loading={isLoading}>
+        <Col xs={24} sm={12} flex="1 1 220px">
+          <Card loading={isLoading} className="h-full">
             <Statistic
               title="Lợi nhuận (doanh thu − chi phí)"
               value={formatVnd(profit)}
@@ -264,6 +282,45 @@ export default function ReportsOverviewPage() {
           />
         </Col>
       </Row>
+
+      {/* Oversight: sessions run despite a readiness warning. The point of the readiness gates is
+          lost if nobody ever looks at how often they get waved through. */}
+      <Card
+        title={`Buổi tập vẫn chạy dù có cảnh báo (${overrides?.count ?? 0})`}
+        className="mt-4"
+        loading={isLoading}
+      >
+        <Typography.Paragraph type="secondary" className="!text-xs !mb-3">
+          Huấn luyện viên có quyền quyết định cuối cùng, nhưng phải nêu lý do. Nếu con số này cao
+          bất thường, hoặc cùng một cảnh báo bị bỏ qua liên tục, đó là dấu hiệu quy trình chăm sóc
+          hoặc khám sức khỏe đang có vấn đề.
+        </Typography.Paragraph>
+        <Table
+          size="small"
+          rowKey="_id"
+          pagination={false}
+          scroll={{ x: 'max-content' }}
+          locale={{ emptyText: 'Không có buổi tập nào bị ghi đè cảnh báo trong kỳ — tốt.' }}
+          columns={[
+            { title: 'Ngựa', dataIndex: 'horse', key: 'horse' },
+            {
+              title: 'Thời gian',
+              dataIndex: 'scheduledAt',
+              key: 'scheduledAt',
+              render: (d) => new Date(d).toLocaleString('vi-VN'),
+            },
+            {
+              title: 'Cảnh báo bị bỏ qua',
+              dataIndex: 'gates',
+              key: 'gates',
+              render: (gates) => (gates || []).map((g) => <Tag key={g}>{GATE_LABELS[g] || g}</Tag>),
+            },
+            { title: 'Người quyết định', dataIndex: 'by', key: 'by' },
+            { title: 'Lý do', dataIndex: 'reason', key: 'reason' },
+          ]}
+          dataSource={overrides?.recent || []}
+        />
+      </Card>
 
       {/* Table view of the same numbers, so nothing depends on reading the bars. */}
       <Card title="Bảng số liệu chi tiết" className="mt-4">

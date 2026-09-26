@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Modal, Form, Select, InputNumber, DatePicker, Tag, message } from 'antd';
+import { Table, Button, Typography, Modal, Form, Select, InputNumber, DatePicker, Tag, Input } from 'antd';
+import { message } from '../../lib/antdStatic';
 import { PlusOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { trainingPlanApi } from './trainingApi';
 import { horsesApi } from '../horses/horsesApi';
+import { raceApi } from '../race/raceApi';
 import { useLockedHorseIds } from './useLockedHorses';
 
 const { Title } = Typography;
@@ -34,6 +36,7 @@ export default function TrainingPlanPage() {
 
   const { data: plansData, isLoading } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
+  const { data: racesData } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
   const lockedHorseIds = useLockedHorseIds();
 
   const horseOptions = (horsesData?.data || []).map((h) => ({
@@ -62,6 +65,22 @@ export default function TrainingPlanPage() {
         <Link to={`/horses/${record.horse?._id}`} onClick={(e) => e.stopPropagation()}>
           {name}
         </Link>
+      ),
+    },
+    {
+      title: 'Hướng tới',
+      key: 'goal',
+      render: (_, r) => (
+        <div className="min-w-[220px]">
+          <Typography.Text className="!text-sm">
+            {r.goal || <span className="text-gray-400">Chưa nêu mục tiêu</span>}
+          </Typography.Text>
+          {r.targetRace && (
+            <Tag color="magenta" className="!mt-1 !block !w-fit">
+              🏁 {r.targetRace.raceName} — {new Date(r.targetRace.raceDate).toLocaleDateString('vi-VN')}
+            </Tag>
+          )}
+        </div>
       ),
     },
     { title: 'Giai đoạn', dataIndex: 'phase', key: 'phase', render: (p) => PHASE_LABELS[p] || p },
@@ -94,8 +113,9 @@ export default function TrainingPlanPage() {
             Kế hoạch Huấn luyện
           </Title>
           <Typography.Text type="secondary" className="text-sm">
-            Kế hoạch huấn luyện dài hạn cho từng ngựa — giai đoạn tập luyện, cường độ và mục tiêu cự
-            ly. Mỗi kế hoạch gồm nhiều buổi tập cụ thể (xem ở tab "Buổi Tập &amp; Đánh giá").
+            Kế hoạch huấn luyện dài hạn cho từng ngựa: hướng tới giải đua nào, qua giai đoạn nào,
+            cường độ và cự ly ra sao. Mỗi kế hoạch gồm nhiều buổi tập, mỗi buổi có mục đích riêng
+            (xem ở tab "Buổi Tập &amp; Đánh giá").
           </Typography.Text>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
@@ -140,6 +160,28 @@ export default function TrainingPlanPage() {
           <Form.Item name="phase" label="Giai đoạn" rules={[{ required: true }]}>
             <Select
               options={Object.entries(PHASE_LABELS).map(([value, label]) => ({ value, label }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="goal"
+            label="Mục tiêu của kế hoạch"
+            rules={[{ required: true, message: 'Nêu rõ kế hoạch này nhằm đạt điều gì' }]}
+            extra="Viết bằng lời, để người đọc hiểu ngay kế hoạch này phục vụ mục đích gì."
+          >
+            <Input placeholder="VD: Đạt 1200m dưới 70 giây, sẵn sàng cho giải Spring Derby." />
+          </Form.Item>
+          <Form.Item
+            name="targetRace"
+            label="Giải đua hướng tới"
+            extra="Không bắt buộc — chọn nếu kế hoạch này chuẩn bị cho một giải cụ thể."
+          >
+            <Select
+              allowClear
+              placeholder="Chưa nhắm giải nào"
+              options={(racesData?.data || []).map((r) => ({
+                value: r._id,
+                label: `${r.raceName} — ${new Date(r.raceDate).toLocaleDateString('vi-VN')} (${r.horse?.name || '?'})`,
+              }))}
             />
           </Form.Item>
           <Form.Item name="distanceTarget" label="Cự ly mục tiêu (m)" rules={[{ required: true }]}>
