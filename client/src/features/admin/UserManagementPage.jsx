@@ -3,6 +3,7 @@ import { Table, Button, Typography, Modal, Form, Select, Input, Tag, Switch, Ale
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSelector } from 'react-redux';
 import { usersApi } from './usersApi';
 import { ROLE_LABELS } from '../../constants/roles';
 
@@ -15,6 +16,8 @@ export default function UserManagementPage() {
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
   const queryClient = useQueryClient();
+  const currentUserId = useSelector((state) => state.auth.user?._id);
+  const editingSelf = editTarget && String(editTarget._id) === String(currentUserId);
 
   const { data, isLoading } = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -55,8 +58,9 @@ export default function UserManagementPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }) => usersApi.update(id, payload),
-    onSuccess: () => {
-      message.success('Đã cập nhật tài khoản.');
+    onSuccess: (res) => {
+      if (res?.data?.uncoveredHorses?.length) message.warning(res.message, 8);
+      else message.success('Đã cập nhật tài khoản.');
       invalidate();
       setEditTarget(null);
     },
@@ -261,13 +265,29 @@ export default function UserManagementPage() {
           <Form.Item name="phone" label="Điện thoại">
             <Input />
           </Form.Item>
-          <Form.Item name="role" label="Vai trò (RBAC)" rules={[{ required: true }]}>
-            <Select options={roleOptions} />
+          {/* The server refuses a Manager demoting or disabling their own account; the controls
+              say so up front instead of failing on save. */}
+          <Form.Item
+            name="role"
+            label="Vai trò (RBAC)"
+            rules={[{ required: true }]}
+            extra={editingSelf ? 'Không thể tự đổi vai trò của chính mình.' : null}
+          >
+            <Select options={roleOptions} disabled={editingSelf} />
           </Form.Item>
-          <Form.Item name="isActive" label="Hoạt động" valuePropName="checked">
-            <Switch />
+          <Form.Item
+            name="isActive"
+            label="Hoạt động"
+            valuePropName="checked"
+            extra={editingSelf ? 'Không thể tự khóa tài khoản của chính mình.' : 'Tắt sẽ khóa đăng nhập; các ngựa người này phụ trách sẽ cần người thay.'}
+          >
+            <Switch disabled={editingSelf} />
           </Form.Item>
-          <Form.Item name="password" label="Đặt lại mật khẩu (để trống nếu không đổi)">
+          <Form.Item
+            name="password"
+            label="Đặt lại mật khẩu (để trống nếu không đổi)"
+            rules={[{ min: 6, message: 'Mật khẩu tối thiểu 6 ký tự' }]}
+          >
             <Input.Password />
           </Form.Item>
         </Form>

@@ -8,16 +8,10 @@ import { stableAssignmentApi } from './stableApi';
 import { horsesApi } from '../horses/horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { ROLES } from '../../constants/roles';
+import { HEALTH_LABELS, HEALTH_COLORS } from '../../constants/health';
 
 const { Title, Text } = Typography;
 
-const HEALTH_LABELS = {
-  eligible: 'Đủ điều kiện',
-  monitoring: 'Cần theo dõi',
-  injured: 'Chấn thương',
-  quarantined: 'Cách ly',
-};
-const HEALTH_COLORS = { eligible: 'green', monitoring: 'gold', injured: 'red', quarantined: 'volcano' };
 
 /**
  * Manager assigns each horse a stall and the groom responsible for it.

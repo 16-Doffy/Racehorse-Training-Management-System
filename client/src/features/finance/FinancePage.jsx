@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
-import { Table, Typography, Tag, Button, Modal, Form, Select, InputNumber, Input, message } from 'antd';
+import { Table, Typography, Tag, Button, Modal, Form, Select, InputNumber, Input } from 'antd';
+import { message } from '../../lib/antdStatic';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { financeApi } from './financeApi';

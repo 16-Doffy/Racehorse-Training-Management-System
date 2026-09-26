@@ -8,25 +8,18 @@ import { trainingPlanApi } from './trainingApi';
 import { horsesApi } from '../horses/horsesApi';
 import { raceApi } from '../race/raceApi';
 import { useLockedHorseIds } from './useLockedHorses';
+import {
+  PHASE_LABELS,
+  INTENSITY_LABELS,
+  INTENSITY_COLORS,
+  SURFACE_LABELS,
+  phaseOptions,
+  intensityOptions,
+  surfaceOptions,
+  planStatusOptions,
+} from './trainingVocab';
 
 const { Title } = Typography;
-
-const PHASE_LABELS = {
-  base_building: 'Xây nền',
-  strength: 'Sức mạnh',
-  speed: 'Tốc độ',
-  peak: 'Đỉnh cao',
-  recovery: 'Phục hồi',
-};
-
-const INTENSITY_LABELS = { light: 'Nhẹ', moderate: 'Vừa', high: 'Cao' };
-const INTENSITY_COLORS = { light: 'green', moderate: 'gold', high: 'red' };
-
-const STATUS_LABELS = { draft: 'Nháp', active: 'Đang áp dụng', completed: 'Đã hoàn thành', cancelled: 'Đã hủy' };
-const STATUS_COLORS = { draft: 'default', active: 'blue', completed: 'green', cancelled: 'red' };
-
-const SURFACE_LABELS = { turf: 'Cỏ (Turf)', dirt: 'Đất (Dirt)', synthetic: 'Tổng hợp', sand: 'Cát' };
-const SURFACE_OPTIONS = Object.entries(SURFACE_LABELS).map(([value, label]) => ({ value, label }));
 
 export default function TrainingPlanPage() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -54,6 +47,17 @@ export default function TrainingPlanPage() {
       form.resetFields();
     },
     onError: (err) => message.error(err.message || 'Tạo kế hoạch thất bại.'),
+  });
+
+  // Plans used to be created as "draft" and stay there forever: nothing on screen could change a
+  // plan's status, and the server now refuses new sessions on finished or cancelled plans.
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }) => trainingPlanApi.update(id, { status }),
+    onSuccess: () => {
+      message.success('Đã cập nhật trạng thái kế hoạch.');
+      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+    },
+    onError: (err) => message.error(err.message || 'Cập nhật thất bại.'),
   });
 
   const columns = [
@@ -96,12 +100,20 @@ export default function TrainingPlanPage() {
     {
       title: 'Trạng thái',
       key: 'status',
-      render: (_, record) =>
-        lockedHorseIds.has(record.horse?._id) ? (
-          <Tag color="red">🔒 Đang khóa</Tag>
-        ) : (
-          <Tag color={STATUS_COLORS[record.status]}>{STATUS_LABELS[record.status] || record.status}</Tag>
-        ),
+      render: (_, record) => (
+        // Row click opens the plan's sessions; the selector must not trigger that.
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <Select
+            size="small"
+            value={record.status}
+            options={planStatusOptions}
+            style={{ width: 150 }}
+            loading={statusMutation.isPending && statusMutation.variables?.id === record._id}
+            onChange={(status) => statusMutation.mutate({ id: record._id, status })}
+          />
+          {lockedHorseIds.has(record.horse?._id) && <Tag color="red">🔒 Đang khóa</Tag>}
+        </div>
+      ),
     },
   ];
 
@@ -151,7 +163,7 @@ export default function TrainingPlanPage() {
           form={form}
           layout="vertical"
           onFinish={(values) =>
-            createMutation.mutate({ ...values, startDate: values.startDate?.toISOString() })
+            createMutation.mutate({ ...values, status: 'active', startDate: values.startDate?.toISOString() })
           }
         >
           <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>
@@ -159,7 +171,7 @@ export default function TrainingPlanPage() {
           </Form.Item>
           <Form.Item name="phase" label="Giai đoạn" rules={[{ required: true }]}>
             <Select
-              options={Object.entries(PHASE_LABELS).map(([value, label]) => ({ value, label }))}
+              options={phaseOptions}
             />
           </Form.Item>
           <Form.Item
@@ -191,10 +203,10 @@ export default function TrainingPlanPage() {
             <InputNumber min={1} step={1} className="w-full" />
           </Form.Item>
           <Form.Item name="intensity" label="Cường độ" initialValue="moderate">
-            <Select options={Object.entries(INTENSITY_LABELS).map(([value, label]) => ({ value, label }))} />
+            <Select options={intensityOptions} />
           </Form.Item>
           <Form.Item name="surface" label="Mặt sân" rules={[{ required: true }]}>
-            <Select options={SURFACE_OPTIONS} />
+            <Select options={surfaceOptions} />
           </Form.Item>
           <Form.Item name="startDate" label="Ngày bắt đầu" rules={[{ required: true }]}>
             <DatePicker className="w-full" />

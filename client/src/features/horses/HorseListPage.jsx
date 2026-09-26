@@ -9,22 +9,10 @@ import dayjs from 'dayjs';
 import { horsesApi } from './horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { ROLES } from '../../constants/roles';
+import { HEALTH_LABELS, HEALTH_COLORS } from '../../constants/health';
 
 const { Title } = Typography;
 
-const STATUS_COLORS = {
-  eligible: 'green',
-  monitoring: 'gold',
-  injured: 'red',
-  quarantined: 'volcano',
-};
-
-const STATUS_LABELS = {
-  eligible: 'Đủ điều kiện',
-  monitoring: 'Cần theo dõi',
-  injured: 'Chấn thương',
-  quarantined: 'Cách ly',
-};
 
 export default function HorseListPage() {
   const navigate = useNavigate();
@@ -123,7 +111,7 @@ export default function HorseListPage() {
       title: 'Trạng thái sức khỏe',
       dataIndex: 'healthStatus',
       key: 'healthStatus',
-      render: (status) => <Tag color={STATUS_COLORS[status]}>{STATUS_LABELS[status] || status}</Tag>,
+      render: (status) => <Tag color={HEALTH_COLORS[status]}>{HEALTH_LABELS[status] || status}</Tag>,
     },
   ];
 

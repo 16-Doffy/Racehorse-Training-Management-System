@@ -12,4 +12,6 @@ export const trainingSessionApi = {
   // The four readiness gates for a proposed session (medical, vet clearance, nutrition, care
   // assignment). Open to every role, so other screens can show the same board.
   readiness: (params) => axiosClient.get('/training/sessions/readiness', { params }),
+  // Start now; rechecks readiness for the current moment. Payload: { overrideReason? }.
+  start: (id, payload) => axiosClient.post(`/training/sessions/${id}/start`, payload),
 };

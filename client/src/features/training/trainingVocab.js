@@ -46,3 +46,13 @@ export const objectiveOptions = Object.entries(OBJECTIVE_LABELS).map(([value, la
 }));
 
 export const intensityOptions = Object.entries(INTENSITY_LABELS).map(([value, label]) => ({ value, label }));
+
+export const SURFACE_LABELS = { turf: 'Cỏ (Turf)', dirt: 'Đất (Dirt)', synthetic: 'Tổng hợp', sand: 'Cát' };
+export const surfaceOptions = Object.entries(SURFACE_LABELS).map(([value, label]) => ({ value, label }));
+
+// A plan's lifecycle. Only draft/active plans accept new sessions (enforced by the server).
+export const PLAN_STATUS_LABELS = { draft: 'Nháp', active: 'Đang áp dụng', completed: 'Đã hoàn thành', cancelled: 'Đã hủy' };
+export const PLAN_STATUS_COLORS = { draft: 'default', active: 'blue', completed: 'green', cancelled: 'red' };
+export const planStatusOptions = Object.entries(PLAN_STATUS_LABELS).map(([value, label]) => ({ value, label }));
+
+export const phaseOptions = Object.entries(PHASE_LABELS).map(([value, label]) => ({ value, label }));

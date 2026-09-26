@@ -18,6 +18,7 @@ export const TYPE_LABELS = {
   horse_assigned: 'Phân công ngựa',
   session_completed: 'Buổi tập hoàn thành',
   readiness_override: 'Ghi đè cảnh báo sẵn sàng',
+  training_unlocked: 'Đã gỡ khóa huấn luyện',
   system: 'Thông báo hệ thống',
 };
 

@@ -16,9 +16,10 @@ import {
   Alert,
   Divider,
   Tooltip,
+  Space,
 } from 'antd';
-import { message, modal } from '../../lib/antdStatic';
-import { PlusOutlined, EditOutlined, CloseCircleOutlined, AimOutlined } from '@ant-design/icons';
+import { message } from '../../lib/antdStatic';
+import { PlusOutlined, EditOutlined, CloseCircleOutlined, AimOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { trainingSessionApi, trainingPlanApi } from './trainingApi';
@@ -26,6 +27,7 @@ import { horsesApi } from '../horses/horsesApi';
 import { healthRecordApi } from '../health/healthApi';
 import { useLockedHorseIds } from './useLockedHorses';
 import ReadinessPanel from './ReadinessPanel';
+import confirmReadinessOverride, { needsOverride } from './confirmReadinessOverride';
 import {
   OBJECTIVE_LABELS,
   OBJECTIVE_DESCRIPTIONS,
@@ -46,7 +48,11 @@ const STATUS_LABELS = {
   cancelled: 'Đã hủy',
 };
 const STATUS_COLORS = { scheduled: 'default', in_progress: 'processing', completed: 'success', cancelled: 'error' };
-const STATUS_OPTIONS = Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }));
+// Mirrors the server's allowed transitions (trainingSession.controller.js). Starting a session goes
+// through the "Bắt đầu" button, which rechecks readiness, so it isn't offered here.
+const NEXT_STATUSES = { scheduled: ['completed', 'cancelled'], in_progress: ['completed', 'cancelled'], completed: [], cancelled: [] };
+const statusOptionsFor = (current) =>
+  [current, ...(NEXT_STATUSES[current] || [])].map((value) => ({ value, label: STATUS_LABELS[value] }));
 const SESSION_TYPE_LABELS = { training: 'Buổi tập thường', trial_run: 'Lượt chạy thử' };
 
 /** Renders the prescribed workout as a sentence a reader can follow without knowing the schema. */
@@ -68,6 +74,7 @@ export default function TrainingSessionPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [createForm] = Form.useForm();
   const [evalForm] = Form.useForm();
+  const evalStatus = Form.useWatch('status', evalForm);
   const [examForm] = Form.useForm();
   const [examOpen, setExamOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -130,54 +137,39 @@ export default function TrainingSessionPage() {
       setDraft({});
     },
     onError: (err) => {
-      // Two different 409s come back from here. A blocked medical gate is final. An amber gate is
-      // the trainer's call, so we show what the warnings are and ask them to put a reason on the
-      // record rather than silently refusing or silently allowing.
-      if (err.status === 409 && err.data?.requiresOverride) {
-        const gates = err.data.readiness.gates.filter((g) => g.status === 'caution');
+      // A blocked medical gate is final. An amber gate is the trainer's call: show the warnings and
+      // ask for a reason for the record, rather than silently refusing or silently allowing.
+      if (needsOverride(err)) {
         const values = createForm.getFieldsValue();
-        modal.confirm({
-          title: 'Buổi tập này có cảnh báo',
-          width: 560,
+        confirmReadinessOverride({
+          readiness: err.data.readiness,
           okText: 'Vẫn tạo buổi tập',
-          cancelText: 'Để tôi xem lại',
-          content: (
-            <div>
-              <div className="flex flex-col gap-2 my-3">
-                {gates.map((g) => (
-                  <div key={g.key} className="bg-amber-50 rounded px-3 py-2">
-                    <Text strong className="!text-sm">
-                      {g.label}
-                    </Text>
-                    <Text className="block !text-xs text-gray-700">{g.detail}</Text>
-                  </div>
-                ))}
-              </div>
-              <Text className="!text-sm">
-                Bạn là người quyết định cuối cùng. Nhập lý do để lưu vào hồ sơ buổi tập — Quản lý
-                CLB sẽ nhận được thông báo.
-              </Text>
-              <Input.TextArea
-                id="readiness-override-reason"
-                rows={2}
-                className="!mt-2"
-                placeholder="VD: Ngựa sẽ được cho ăn trước giờ tập, tôi trực tiếp giám sát."
-              />
-            </div>
-          ),
-          onOk: () => {
-            const reason = document.getElementById('readiness-override-reason')?.value?.trim();
-            if (!reason) {
-              message.warning('Vui lòng nhập lý do trước khi tiếp tục.');
-              return Promise.reject(new Error('missing reason'));
-            }
-            submitCreate(values, reason);
-            return undefined;
-          },
+          onConfirm: (reason) => submitCreate(values, reason),
         });
         return;
       }
       message.error(err.message || 'Không thể tạo buổi tập.');
+    },
+  });
+
+  // Starting is checked again against the current moment: the horse may have been fed or locked
+  // since the session was booked.
+  const startMutation = useMutation({
+    mutationFn: ({ id, overrideReason }) => trainingSessionApi.start(id, overrideReason ? { overrideReason } : {}),
+    onSuccess: () => {
+      message.success('Buổi tập đã bắt đầu.');
+      invalidate();
+    },
+    onError: (err, variables) => {
+      if (needsOverride(err)) {
+        confirmReadinessOverride({
+          readiness: err.data.readiness,
+          okText: 'Vẫn bắt đầu',
+          onConfirm: (reason) => startMutation.mutate({ id: variables.id, overrideReason: reason }),
+        });
+        return;
+      }
+      message.error(err.message || 'Không thể bắt đầu buổi tập.');
     },
   });
 
@@ -223,7 +215,7 @@ export default function TrainingSessionPage() {
       title: 'Mục đích buổi tập',
       key: 'objective',
       render: (_, r) => (
-        <div className="min-w-[220px]">
+        <div className="min-w-[220px] max-w-[300px] whitespace-normal">
           <Tooltip title={OBJECTIVE_DESCRIPTIONS[r.objective]}>
             <Tag color={OBJECTIVE_COLORS[r.objective] || 'default'} className="!mr-1">
               {OBJECTIVE_LABELS[r.objective] || '—'}
@@ -297,27 +289,42 @@ export default function TrainingSessionPage() {
     {
       title: '',
       key: 'actions',
+      // Pinned so Start/Evaluate stay reachable without scrolling the wide table sideways.
+      fixed: 'right',
       render: (_, record) => (
-        <Button
-          size="small"
-          icon={<EditOutlined />}
-          onClick={() => {
-            setActiveSession(record);
-            evalForm.setFieldsValue({
-              trainerComment: record.trainerComment,
-              performanceRating: record.performanceRating,
-              status: record.status,
-              metrics: {
-                avgHeartRate: record.metrics?.avgHeartRate,
-                maxSpeed: record.metrics?.maxSpeed,
-                distance: record.metrics?.distance,
-              },
-            });
-            setEvalOpen(true);
-          }}
-        >
-          Đánh giá
-        </Button>
+        <Space size={4}>
+          {record.status === 'scheduled' && (
+            <Button
+              size="small"
+              type="primary"
+              icon={<PlayCircleOutlined />}
+              loading={startMutation.isPending && startMutation.variables?.id === record._id}
+              onClick={() => startMutation.mutate({ id: record._id })}
+            >
+              Bắt đầu
+            </Button>
+          )}
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => {
+              setActiveSession(record);
+              evalForm.setFieldsValue({
+                trainerComment: record.trainerComment,
+                performanceRating: record.performanceRating,
+                status: record.status,
+                metrics: {
+                  avgHeartRate: record.metrics?.avgHeartRate,
+                  maxSpeed: record.metrics?.maxSpeed,
+                  distance: record.metrics?.distance,
+                },
+              });
+              setEvalOpen(true);
+            }}
+          >
+            Đánh giá
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -604,7 +611,7 @@ export default function TrainingSessionPage() {
           onFinish={(values) => evalMutation.mutate({ id: activeSession._id, payload: values })}
         >
           <Form.Item name="status" label="Trạng thái">
-            <Select options={STATUS_OPTIONS} />
+            <Select options={statusOptionsFor(activeSession?.status)} />
           </Form.Item>
 
           <Divider titlePlacement="left" className="!my-2 !text-sm">
@@ -644,8 +651,12 @@ export default function TrainingSessionPage() {
             </Col>
           </Row>
 
-          <Form.Item name="performanceRating" label="Điểm phong độ (1 = kém, 10 = xuất sắc)">
-            <InputNumber min={1} max={10} className="w-full" placeholder="VD: 8" />
+          <Form.Item
+            name="performanceRating"
+            label="Điểm phong độ (1 = kém, 10 = xuất sắc)"
+            extra={evalStatus !== 'completed' ? 'Chấm điểm khi chuyển buổi tập sang "Đã hoàn thành".' : null}
+          >
+            <InputNumber min={1} max={10} className="w-full" placeholder="VD: 8" disabled={evalStatus !== 'completed'} />
           </Form.Item>
           <Form.Item
             name="trainerComment"
