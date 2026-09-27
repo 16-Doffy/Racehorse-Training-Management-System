@@ -11,6 +11,8 @@ export const veterinarianApi = {
   getHealthRecordById: (id) => axiosClient.get(`/health/records/${id}`),
   createHealthRecord: (payload) => axiosClient.post('/health/records', payload),
   updateHealthRecord: (id, payload) => axiosClient.put(`/health/records/${id}`, payload),
+  getExamRequests: (params) => axiosClient.get('/health/exam-requests', { params }),
+  getClearances: () => axiosClient.get('/health/clearances'),
 
   // Treatment Plans & Prescriptions
   getTreatments: (params) => axiosClient.get('/health/treatments', { params }),
@@ -34,8 +36,6 @@ export const veterinarianApi = {
 
   // Realtime / Role Notifications
   getNotifications: (params) => axiosClient.get('/notifications', { params }),
-  markNotificationAsRead: (id) => axiosClient.patch(`/notifications/${id}/read`),
-  markAllNotificationsAsRead: () => axiosClient.patch('/notifications/read-all'),
 };
 
 export default veterinarianApi;

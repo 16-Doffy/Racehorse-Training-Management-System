@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Button, DatePicker, Segmented, Progress, Popconfirm, Tag, Empty, Alert, Spin, message } from 'antd';
+import { Button, DatePicker, Segmented, Progress, Popconfirm, Tag, Empty, Alert, Spin, Modal, Form, Select, Input } from 'antd';
+import { message } from '../../lib/antdStatic';
 import {
   CheckOutlined,
   CheckCircleFilled,
@@ -25,16 +26,20 @@ export default function DailyTaskPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [groupBy, setGroupBy] = useState('horse');
   const [incidentTask, setIncidentTask] = useState(null);
+  const [completingTask, setCompletingTask] = useState(null);
+  const [completeForm] = Form.useForm();
   const queryClient = useQueryClient();
 
   const { tasks, isLoading } = useMyTasks();
   const { assignmentByHorseId, horseById } = useStableOverview();
 
   const completeMutation = useMutation({
-    mutationFn: (id) => dailyTaskApi.complete(id),
+    mutationFn: ({ id, payload }) => dailyTaskApi.complete(id, payload),
     onSuccess: () => {
       message.success('Đã đánh dấu hoàn thành.');
       queryClient.invalidateQueries({ queryKey: ['my-daily-tasks'] });
+      setCompletingTask(null);
+      completeForm.resetFields();
     },
     onError: (err) => message.error(err.message || 'Thao tác thất bại.'),
   });
@@ -189,8 +194,8 @@ export default function DailyTaskPage() {
               horse={horseById.get(group.key)}
               assignment={assignmentByHorseId.get(group.key)}
               assignmentByHorseId={assignmentByHorseId}
-              onComplete={(id) => completeMutation.mutate(id)}
-              completingId={completeMutation.isPending ? completeMutation.variables : null}
+              onComplete={(task) => setCompletingTask(task)}
+              completingId={completingTask?._id || (completeMutation.isPending ? completeMutation.variables?.id : null)}
               onReport={setIncidentTask}
             />
           ))}
@@ -198,6 +203,74 @@ export default function DailyTaskPage() {
       )}
 
       <IncidentReportModal task={incidentTask} open={!!incidentTask} onClose={() => setIncidentTask(null)} />
+
+      <Modal
+        title="Hoàn thành công việc & Báo cáo Quan sát"
+        open={!!completingTask}
+        onCancel={() => {
+          setCompletingTask(null);
+          completeForm.resetFields();
+        }}
+        onOk={() => completeForm.submit()}
+        confirmLoading={completeMutation.isPending}
+        okText="Hoàn thành"
+        cancelText="Hủy"
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          className="mb-4"
+          showIcon
+          title="Ghi nhận sinh hiệu (Observation) để hệ thống đánh giá dinh dưỡng và sức khỏe cho ngựa."
+        />
+        <Form
+          form={completeForm}
+          layout="vertical"
+          initialValues={{
+            appetite: 'Bình thường',
+            manure: 'Bình thường',
+            waterIntake: 'Bình thường'
+          }}
+          onFinish={(values) => {
+            const payload = {
+              observation: {
+                appetite: values.appetite,
+                manure: values.manure,
+                waterIntake: values.waterIntake
+              },
+              notes: values.notes
+            };
+            completeMutation.mutate({ id: completingTask._id, payload });
+          }}
+        >
+          <Form.Item label="Khẩu vị (Appetite)" name="appetite" rules={[{ required: true }]}>
+            <Select>
+              <Select.Option value="Bình thường">Bình thường</Select.Option>
+              <Select.Option value="Tốt">Tốt (Ăn nhiều)</Select.Option>
+              <Select.Option value="Kém">Kém (Bỏ mả)</Select.Option>
+              <Select.Option value="Bỏ ăn">Bỏ ăn hoàn toàn</Select.Option>
+            </Select>
+          </Form.Item>
+          <Form.Item label="Phân (Manure)" name="manure" rules={[{ required: true }]}>
+            <Select>
+              <Select.Option value="Bình thường">Bình thường</Select.Option>
+              <Select.Option value="Khô / Táo bón">Khô / Táo bón</Select.Option>
+              <Select.Option value="Lỏng / Tiêu chảy">Lỏng / Tiêu chảy</Select.Option>
+              <Select.Option value="Không thấy phân">Không thấy phân</Select.Option>
+            </Select>
+          </Form.Item>
+          <Form.Item label="Lượng nước uống (Water Intake)" name="waterIntake" rules={[{ required: true }]}>
+            <Select>
+              <Select.Option value="Bình thường">Bình thường</Select.Option>
+              <Select.Option value="Uống nhiều">Uống nhiều</Select.Option>
+              <Select.Option value="Uống ít">Uống ít</Select.Option>
+            </Select>
+          </Form.Item>
+          <Form.Item label="Ghi chú thêm" name="notes">
+            <Input.TextArea rows={2} placeholder="Nhập ghi chú nếu có..." />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }
@@ -272,23 +345,16 @@ function TaskGroupCard({ group, groupBy, horse, assignment, assignmentByHorseId,
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {task.status === 'pending' && (
-                    <Popconfirm
-                      title="Xác nhận hoàn thành?"
-                      description={`${cfg.label} — ${task.horse?.name || ''}`}
-                      okText="Hoàn thành"
-                      cancelText="Huỷ"
-                      onConfirm={() => onComplete(task._id)}
-                    >
                       <Button
                         type="primary"
                         size="small"
                         icon={<CheckOutlined />}
                         loading={completingId === task._id}
                         className="!rounded-full"
+                        onClick={() => onComplete(task)}
                       >
                         Xong
                       </Button>
-                    </Popconfirm>
                   )}
                   {task.status === 'skipped' && <Tag color={status.color}>{status.label}</Tag>}
                   <Button

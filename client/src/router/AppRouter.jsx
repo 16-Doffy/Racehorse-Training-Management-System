@@ -38,6 +38,8 @@ import FinancePage from '../features/finance/FinancePage';
 import OwnerHealthPage from '../features/horses/OwnerHealthPage';
 import OwnerTrainingPage from '../features/horses/OwnerTrainingPage';
 import OwnerEvaluationsPage from '../features/horses/OwnerEvaluationsPage';
+import OwnerRacesPage from '../features/horses/OwnerRacesPage';
+import OwnerStablePage from '../features/horses/OwnerStablePage';
 import { ROLES } from '../constants/roles';
 
 const ALL_ROLES = Object.values(ROLES);
@@ -106,6 +108,8 @@ export default function AppRouter() {
           <Route element={<ProtectedRoute allowedRoles={[ROLES.OWNER]} />}>
             <Route path="/owner/health" element={<OwnerHealthPage />} />
             <Route path="/owner/training" element={<OwnerTrainingPage />} />
+            <Route path="/owner/races" element={<OwnerRacesPage />} />
+            <Route path="/owner/stable" element={<OwnerStablePage />} />
             <Route path="/owner/evaluations" element={<OwnerEvaluationsPage />} />
           </Route>
 

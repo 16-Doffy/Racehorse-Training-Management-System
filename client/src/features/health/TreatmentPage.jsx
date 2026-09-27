@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Modal, Form, Select, Input, Tag, message, Popconfirm } from 'antd';
+import { Table, Button, Typography, Modal, Form, Select, Input, Tag, Popconfirm } from 'antd';
+import { message } from '../../lib/antdStatic';
 import { PlusOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { treatmentApi, healthRecordApi } from './healthApi';

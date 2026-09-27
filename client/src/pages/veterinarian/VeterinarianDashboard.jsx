@@ -41,6 +41,8 @@ export default function VeterinarianDashboard() {
     treatments,
     injuryMarkers,
     notifications,
+    examRequests,
+    clearances,
     refreshData,
   } = useVeterinarianData();
 
@@ -161,6 +163,61 @@ export default function VeterinarianDashboard() {
           <Button variant="outline-danger" size="sm" onClick={() => navigate('/veterinarian/horses')}>
             Xem danh sách bị khóa
           </Button>
+        </div>
+      )}
+
+      {/* Pending Exam Requests */}
+      {examRequests && examRequests.filter(req => req.status === 'pending').length > 0 && (
+        <div className="alert alert-warning shadow-sm mb-4">
+          <div className="d-flex align-items-center mb-2 border-bottom border-warning pb-2">
+            <i className="bi bi-envelope-exclamation-fill fs-4 me-2 text-warning"></i>
+            <strong className="fs-6">Hàng Đợi Khám Bệnh ({examRequests.filter(req => req.status === 'pending').length} yêu cầu chờ xử lý)</strong>
+          </div>
+          <div className="d-flex flex-column gap-2 mt-2">
+            {examRequests.filter(req => req.status === 'pending').map(req => (
+              <div key={req._id} className="d-flex justify-content-between align-items-center bg-white p-2 rounded border border-warning-subtle">
+                <div>
+                  <strong>{req.horse?.name || 'Ngựa'}</strong>
+                  <span className="text-muted small ms-2">Yêu cầu bởi: {req.requestedBy?.name || 'HLV'}</span>
+                  <div className="small mt-1">
+                    <span className="badge bg-danger me-1">{req.priority === 'urgent' ? 'Khẩn cấp' : (req.priority === 'high' ? 'Cao' : 'Bình thường')}</span>
+                    Lý do: {req.reason}
+                  </div>
+                </div>
+                <Button variant="primary" size="sm" onClick={() => navigate(`/veterinarian/horses/${req.horse?._id || req.horse}`)}>
+                  Tiến hành khám
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Clearance Queue */}
+      {clearances && clearances.length > 0 && (
+        <div className="alert alert-info shadow-sm mb-4">
+          <div className="d-flex align-items-center mb-2 border-bottom border-info pb-2">
+            <i className="bi bi-clipboard2-check-fill fs-4 me-2 text-info"></i>
+            <strong className="fs-6">Hàng Đợi Đánh Giá Phục Hồi / Clearance ({clearances.length} ngựa cần tái khám)</strong>
+          </div>
+          <div className="d-flex flex-column gap-2 mt-2">
+            {clearances.map((item, idx) => {
+              const horse = item.horse || item; // Handle both schemas
+              return (
+                <div key={horse._id || idx} className="d-flex justify-content-between align-items-center bg-white p-2 rounded border border-info-subtle">
+                  <div>
+                    <strong>{horse.name || 'Ngựa'}</strong>
+                    <div className="small mt-1 text-muted">
+                      Ngựa này đã quá hạn khám hoặc cần được đánh giá lại để quyết định trạng thái thi đấu / luyện tập.
+                    </div>
+                  </div>
+                  <Button variant="info" className="text-white" size="sm" onClick={() => handleOpenLockModal(horse)}>
+                    Đánh giá & Cấp phép
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

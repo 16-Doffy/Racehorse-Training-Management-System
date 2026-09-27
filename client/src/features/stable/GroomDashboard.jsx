@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Progress, Popconfirm, Tag, Empty, Timeline, Alert, message } from 'antd';
+import { Button, Progress, Popconfirm, Tag, Empty, Timeline, Alert } from 'antd';
+import { message } from '../../lib/antdStatic';
 import {
   CarryOutOutlined,
   CheckOutlined,

@@ -8,9 +8,9 @@ export default function TrainingLockModal({
   onHide,
   horse,
   currentTreatment,
-  onSuccess,
 }) {
-  const isLocked = currentTreatment?.isTrainingLocked;
+  const isLocked = currentTreatment?.isTrainingLocked || (horse && horse.healthStatus !== 'eligible');
+  const hasLock = currentTreatment?.isTrainingLocked;
   const [lockReason, setLockReason] = useState('');
   const [targetHealthStatus, setTargetHealthStatus] = useState('eligible');
   const [markInjuriesRecovered, setMarkInjuriesRecovered] = useState(true);
@@ -59,7 +59,7 @@ export default function TrainingLockModal({
       if (isLocked) {
         // UNLOCK FLOW:
         // 1. Lift the training lock order
-        if (currentTreatment?._id) {
+        if (hasLock && currentTreatment?._id) {
           await veterinarianApi.setTrainingLock(currentTreatment._id, {
             isTrainingLocked: false,
             lockReason: '',
@@ -248,9 +248,11 @@ export default function TrainingLockModal({
           ) : (
             <>
               <Alert variant="success" className="mb-3">
-                <div className="fw-bold mb-1"><i className="bi bi-check-circle-fill me-1"></i> Xác nhận mở khóa huấn luyện</div>
+                <div className="fw-bold mb-1"><i className="bi bi-check-circle-fill me-1"></i> Xác nhận đánh giá phục hồi & cấp phép (Clearance)</div>
                 <div className="small">
-                  Ngựa hiện đang bị khóa với lý do: <em>"{currentTreatment?.lockReason || 'Chỉ định y tế'}"</em>. Mở khóa sẽ cho phép Huấn Luyện Viên Trưởng lên lịch bài tập trở lại.
+                  {hasLock 
+                    ? `Ngựa hiện đang bị khóa với lý do: "${currentTreatment?.lockReason || 'Chỉ định y tế'}". Mở khóa sẽ cho phép Huấn Luyện Viên Trưởng lên lịch bài tập trở lại.`
+                    : `Ngựa hiện đang có trạng thái "${horse?.healthStatus}". Cấp phép sẽ chuyển trạng thái của ngựa về bình thường và cho phép thi đấu / huấn luyện.`}
                 </div>
               </Alert>
 

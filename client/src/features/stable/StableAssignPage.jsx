@@ -14,9 +14,10 @@ import {
   Space,
   TimePicker,
   Tooltip,
+  Popconfirm,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { PlusOutlined, WarningFilled, RobotOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, WarningFilled, RobotOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -53,6 +54,7 @@ const FEED_TYPE_LABELS = Object.fromEntries(FEED_TYPE_OPTIONS.map((o) => [o.valu
 
 function TaskList() {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
 
@@ -63,16 +65,42 @@ function TaskList() {
     queryFn: () => usersApi.list({ role: ROLES.GROOM }),
   });
 
-  const createMutation = useMutation({
-    mutationFn: (payload) => dailyTaskApi.create(payload),
+  const saveMutation = useMutation({
+    mutationFn: ({ id, payload }) => (id ? dailyTaskApi.update(id, payload) : dailyTaskApi.create(payload)),
     onSuccess: () => {
-      message.success('Đã phân công công việc.');
+      message.success(editing ? 'Đã cập nhật công việc.' : 'Đã phân công công việc.');
       queryClient.invalidateQueries({ queryKey: ['daily-tasks-all'] });
       setOpen(false);
+      setEditing(null);
       form.resetFields();
     },
-    onError: (err) => message.error(err.message || 'Phân công thất bại.'),
+    onError: (err) => message.error(err.message || 'Thao tác thất bại.'),
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => dailyTaskApi.remove(id),
+    onSuccess: () => {
+      message.success('Đã xoá công việc.');
+      queryClient.invalidateQueries({ queryKey: ['daily-tasks-all'] });
+    },
+    onError: (err) => message.error(err.message || 'Xoá thất bại.'),
+  });
+
+  const openModal = (record) => {
+    setEditing(record || null);
+    form.setFieldsValue(
+      record
+        ? {
+            horse: record.horse?._id || record.horse,
+            assignedTo: record.assignedTo?._id || record.assignedTo,
+            taskType: record.taskType,
+            scheduledDate: record.scheduledDate ? dayjs(record.scheduledDate) : null,
+            note: record.note,
+          }
+        : { scheduledDate: dayjs() }
+    );
+    setOpen(true);
+  };
 
   const columns = [
     {
@@ -155,6 +183,27 @@ function TaskList() {
         );
       },
     },
+    {
+      title: 'Thao tác',
+      key: 'actions',
+      render: (_, r) => (
+        <Space>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openModal(r)}>
+            Sửa
+          </Button>
+          <Popconfirm
+            title="Bạn có chắc chắn muốn xoá?"
+            onConfirm={() => deleteMutation.mutate(r._id)}
+            okText="Xoá"
+            cancelText="Huỷ"
+          >
+            <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMutation.isPending && deleteMutation.variables === r._id}>
+              Xoá
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
   ];
 
   return (
@@ -166,7 +215,7 @@ function TaskList() {
           giao thêm những việc phát sinh. Ghi nhận của nhân viên về việc ăn uống sẽ quay lại ảnh
           hưởng tới điều kiện xếp lịch tập.
         </Typography.Text>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
           Giao việc phát sinh
         </Button>
       </div>
@@ -181,18 +230,21 @@ function TaskList() {
       />
 
       <Modal
-        title="Giao việc phát sinh"
+        title={editing ? "Sửa công việc" : "Giao việc phát sinh"}
         open={open}
-        onCancel={() => setOpen(false)}
+        onCancel={() => { setOpen(false); setEditing(null); form.resetFields(); }}
         onOk={() => form.submit()}
-        confirmLoading={createMutation.isPending}
+        confirmLoading={saveMutation.isPending}
         destroyOnHidden
       >
         <Form
           form={form}
           layout="vertical"
           onFinish={(values) =>
-            createMutation.mutate({ ...values, scheduledDate: values.scheduledDate?.toISOString() })
+            saveMutation.mutate({ 
+              id: editing?._id, 
+              payload: { ...values, scheduledDate: values.scheduledDate?.toISOString() } 
+            })
           }
         >
           <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>
