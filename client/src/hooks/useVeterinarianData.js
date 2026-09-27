@@ -14,17 +14,21 @@ export function useVeterinarianData() {
   const [treatments, setTreatments] = useState([]);
   const [injuryMarkers, setInjuryMarkers] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [examRequests, setExamRequests] = useState([]);
+  const [clearances, setClearances] = useState([]);
 
   const refreshData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [horsesRes, recordsRes, treatmentsRes, markersRes, notifsRes] = await Promise.allSettled([
+      const [horsesRes, recordsRes, treatmentsRes, markersRes, notifsRes, examRequestsRes, clearancesRes] = await Promise.allSettled([
         veterinarianApi.getHorses(),
         veterinarianApi.getHealthRecords(),
         veterinarianApi.getTreatments(),
         veterinarianApi.getInjuryMarkers(),
         veterinarianApi.getNotifications(),
+        veterinarianApi.getExamRequests(),
+        veterinarianApi.getClearances(),
       ]);
 
       let fetchedHorses = [];
@@ -47,6 +51,12 @@ export function useVeterinarianData() {
       }
       if (notifsRes.status === 'fulfilled' && notifsRes.value?.data) {
         setNotifications(notifsRes.value.data);
+      }
+      if (examRequestsRes.status === 'fulfilled' && examRequestsRes.value?.data) {
+        setExamRequests(examRequestsRes.value.data);
+      }
+      if (clearancesRes.status === 'fulfilled' && clearancesRes.value?.data) {
+        setClearances(clearancesRes.value.data);
       }
 
       // Compute active injuries and locked horses
@@ -84,6 +94,8 @@ export function useVeterinarianData() {
     treatments,
     injuryMarkers,
     notifications,
+    examRequests,
+    clearances,
     refreshData,
   };
 }

@@ -4,7 +4,9 @@ export const dailyTaskApi = {
   list: (params) => axiosClient.get('/stable/tasks', { params }),
   getOne: (id) => axiosClient.get(`/stable/tasks/${id}`),
   create: (payload) => axiosClient.post('/stable/tasks', payload),
-  complete: (id) => axiosClient.patch(`/stable/tasks/${id}/complete`),
+  update: (id, payload) => axiosClient.put(`/stable/tasks/${id}`, payload),
+  remove: (id) => axiosClient.delete(`/stable/tasks/${id}`),
+  complete: (id, payload) => axiosClient.patch(`/stable/tasks/${id}/complete`, payload),
   reportIncident: (id, formData) =>
     axiosClient.post(`/stable/tasks/${id}/incident`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

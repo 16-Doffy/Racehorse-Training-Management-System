@@ -10,7 +10,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { horsesApi } from './horsesApi';
-import { healthRecordApi } from '../health/healthApi';
+import { healthRecordApi, treatmentApi, injuryMarkerApi } from '../health/healthApi';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import dayjs from 'dayjs';
 
@@ -38,6 +38,18 @@ export default function OwnerHealthPage() {
   });
   const allRecords = healthData?.data || [];
 
+  const { data: treatmentsData } = useQuery({
+    queryKey: ['treatments'],
+    queryFn: () => treatmentApi.list(),
+  });
+  const allTreatments = treatmentsData?.data || [];
+
+  const { data: injuriesData } = useQuery({
+    queryKey: ['injuries'],
+    queryFn: () => injuryMarkerApi.list(),
+  });
+  const allInjuries = injuriesData?.data || [];
+
   // Count by status
   const statusCounts = horses.reduce(
     (acc, h) => {
@@ -52,6 +64,18 @@ export default function OwnerHealthPage() {
     ? allRecords
         .filter((r) => r.horse?._id === selectedHorse || r.horse === selectedHorse)
         .sort((a, b) => new Date(b.date) - new Date(a.date))
+    : [];
+
+  const horseTreatments = selectedHorse
+    ? allTreatments
+        .filter((t) => t.horse?._id === selectedHorse || t.horse === selectedHorse)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    : [];
+
+  const horseInjuries = selectedHorse
+    ? allInjuries
+        .filter((i) => i.horse?._id === selectedHorse || i.horse === selectedHorse)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     : [];
 
   // Vital signs chart data
@@ -100,6 +124,40 @@ export default function OwnerHealthPage() {
       key: 'weightKg',
       render: (w) => (w ? `${w} kg` : '—'),
     },
+  ];
+
+  const treatmentColumns = [
+    { title: 'Ngày tạo', dataIndex: 'createdAt', key: 'createdAt', render: (d) => dayjs(d).format('DD/MM/YYYY') },
+    { title: 'Trạng thái', dataIndex: 'status', key: 'status', render: (st) => (
+      <Tag color={st === 'ongoing' ? 'blue' : st === 'completed' ? 'green' : 'default'}>
+        {st === 'ongoing' ? 'Đang điều trị' : st === 'completed' ? 'Hoàn thành' : 'Đã hủy'}
+      </Tag>
+    )},
+    { title: 'Khóa tập (Y tế)', dataIndex: 'isTrainingLocked', key: 'locked', render: (locked, record) => (
+      locked ? <Tag color="red" icon={<StopOutlined />}>Đang khóa tập ({record.lockReason})</Tag> : <Tag color="green">Bình thường</Tag>
+    )},
+    { title: 'Thuốc / Ghi chú', key: 'meds', render: (_, record) => {
+      const meds = record.medications?.length > 0 
+        ? record.medications.map(m => `${m.name} (${m.dosage})`).join(', ') 
+        : 'Không kê thuốc';
+      return <span className="text-gray-600">{meds}</span>;
+    }}
+  ];
+
+  const injuryColumns = [
+    { title: 'Ngày bị', dataIndex: 'createdAt', key: 'createdAt', render: (d) => dayjs(d).format('DD/MM/YYYY') },
+    { title: 'Vị trí', dataIndex: 'bodyPart', key: 'bodyPart', render: (val) => <span className="font-semibold text-gray-800">{val}</span> },
+    { title: 'Mức độ', dataIndex: 'severity', key: 'severity', render: (sev) => {
+      const colors = { minor: 'blue', moderate: 'orange', severe: 'red', critical: 'purple' };
+      const labels = { minor: 'Nhẹ', moderate: 'Vừa', severe: 'Nghiêm trọng', critical: 'Nguy kịch' };
+      return <Tag color={colors[sev] || 'default'}>{labels[sev] || sev}</Tag>;
+    }},
+    { title: 'Hồi phục', dataIndex: 'recoveryStatus', key: 'recoveryStatus', render: (rec) => {
+      const colors = { newly_reported: 'red', treating: 'blue', recovering: 'orange', recovered: 'green' };
+      const labels = { newly_reported: 'Mới bị', treating: 'Đang điều trị', recovering: 'Đang hồi phục', recovered: 'Đã khỏi' };
+      return <Tag color={colors[rec] || 'default'}>{labels[rec] || rec}</Tag>;
+    }},
+    { title: 'Ghi chú', dataIndex: 'notes', key: 'notes' }
   ];
 
   return (
@@ -249,6 +307,38 @@ export default function OwnerHealthPage() {
                 ) : (
                   <Empty description="Chưa có lịch chăm sóc" />
                 )}
+              </div>
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 16]} className="mb-6">
+            <Col xs={24}>
+              <div className="premium-card p-5 h-full">
+                <h4 className="font-bold text-[#022c22] mb-3 border-b pb-2">Phác đồ điều trị & Y lệnh</h4>
+                <Table 
+                  columns={treatmentColumns} 
+                  dataSource={horseTreatments} 
+                  rowKey="_id" 
+                  pagination={{ pageSize: 5 }} 
+                  size="small"
+                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Ngựa không có phác đồ điều trị nào" /> }}
+                />
+              </div>
+            </Col>
+          </Row>
+          
+          <Row gutter={[16, 16]} className="mb-6">
+            <Col xs={24}>
+              <div className="premium-card p-5 h-full">
+                <h4 className="font-bold text-[#022c22] mb-3 border-b pb-2">Hồ sơ chấn thương</h4>
+                <Table 
+                  columns={injuryColumns} 
+                  dataSource={horseInjuries} 
+                  rowKey="_id" 
+                  pagination={{ pageSize: 5 }} 
+                  size="small"
+                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Ngựa chưa từng ghi nhận chấn thương" /> }}
+                />
               </div>
             </Col>
           </Row>

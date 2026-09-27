@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Table, Tag, Segmented, Switch, Input, Button, Modal, Form, InputNumber, Empty, Tooltip, message } from 'antd';
+import { Table, Tag, Segmented, Switch, Input, Button, Modal, Form, InputNumber, Empty, Tooltip } from 'antd';
+import { message } from '../../lib/antdStatic';
 import { ShoppingOutlined, WarningOutlined, StopOutlined, ClockCircleOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';

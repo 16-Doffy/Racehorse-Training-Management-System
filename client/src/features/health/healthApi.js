@@ -2,12 +2,18 @@ import axiosClient from '../../lib/axiosClient';
 import { createCrudApi } from '../../lib/createCrudApi';
 
 export const healthRecordApi = {
-  ...createCrudApi('/health/records'),
+  list: (params) => axiosClient.get('/health/records', { params }),
+  getOne: (id) => axiosClient.get(`/health/records/${id}`),
+  create: (payload) => axiosClient.post('/health/records', payload),
+  update: (id, payload) => axiosClient.put(`/health/records/${id}`, payload),
   requestExam: (payload) => axiosClient.post('/health/exam-requests', payload),
 };
 
 export const treatmentApi = {
-  ...createCrudApi('/health/treatments'),
+  list: (params) => axiosClient.get('/health/treatments', { params }),
+  getOne: (id) => axiosClient.get(`/health/treatments/${id}`),
+  create: (payload) => axiosClient.post('/health/treatments', payload),
+  update: (id, payload) => axiosClient.put(`/health/treatments/${id}`, payload),
   setTrainingLock: (id, payload) => axiosClient.post(`/health/treatments/${id}/lock-training`, payload),
 };
 

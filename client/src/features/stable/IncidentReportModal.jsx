@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Modal, Form, Input, Radio, Upload, Tag, Alert, Button, message } from 'antd';
+import { Modal, Form, Input, Radio, Upload, Tag, Alert, Button } from 'antd';
+import { message } from '../../lib/antdStatic';
 import { CameraOutlined, WarningFilled } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
