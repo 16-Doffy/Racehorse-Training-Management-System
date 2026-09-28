@@ -24,7 +24,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { trainingSessionApi, trainingPlanApi } from './trainingApi';
 import { horsesApi } from '../horses/horsesApi';
-import { healthRecordApi } from '../health/healthApi';
+import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
 import { useLockedHorseIds } from './useLockedHorses';
 import ReadinessPanel from './ReadinessPanel';
 import confirmReadinessOverride, { needsOverride } from './confirmReadinessOverride';
@@ -695,8 +695,11 @@ export default function TrainingSessionPage() {
         <Form
           form={examForm}
           layout="vertical"
-          onFinish={(values) => examMutation.mutate({ horse: draft.horse, reason: values.reason })}
+          onFinish={(values) => examMutation.mutate({ horse: draft.horse, reason: values.reason, priority: values.priority })}
         >
+          <Form.Item name="priority" label="Mức độ" initialValue="normal">
+            <Select options={EXAM_PRIORITY_OPTIONS} />
+          </Form.Item>
           <Form.Item
             name="reason"
             label="Lý do"

@@ -1,10 +1,12 @@
 const HealthRecord = require('../../models/HealthRecord');
 const Horse = require('../../models/Horse');
+const ExamRequest = require('../../models/ExamRequest');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { getScopedHorseIds, horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
-const { notifyHorseStaff } = require('../alerts/notification.service');
+const { notifyHorseStaff, pushNotification } = require('../alerts/notification.service');
+const { ROLES } = require('../../constants/roles');
 const pick = require('../../utils/pick');
 
 const RECORD_FIELDS = ['horse', 'date', 'diagnosis', 'vitalSigns', 'resultStatus', 'notes'];
@@ -46,6 +48,7 @@ const createRecord = asyncHandler(async (req, res) => {
     await Horse.findByIdAndUpdate(record.horse, { healthStatus: record.resultStatus });
   }
   await logAction({ actorId: req.user._id, action: 'healthRecord.create', targetModel: 'HealthRecord', targetId: record._id });
+  await closeRequestsWithRecord(record, req.user);
 
   return created(res, record, 'Health record created.');
 });
@@ -70,58 +73,121 @@ const updateRecord = asyncHandler(async (req, res) => {
   return ok(res, record, 'Health record updated.');
 });
 
+const PRIORITY_LABELS = { normal: '', high: ' [ƯU TIÊN CAO]', urgent: ' [KHẨN CẤP]' };
+
 // Lets a Head Trainer or Manager flag that a horse needs a vet's attention (e.g. after noticing
 // repeated fitness alerts or a performance drop) without them being able to create a HealthRecord
-// themselves — that stays Veterinarian-only. Goes to the horse's assigned vet, or to every vet if
-// nobody is assigned yet.
+// themselves — that stays Veterinarian-only. Stored as a request with a status, and announced to
+// the horse's assigned vet (or every vet if nobody is assigned yet).
 const requestExam = asyncHandler(async (req, res) => {
   const { horse: horseId, reason } = req.body;
+  const priority = ['normal', 'high', 'urgent'].includes(req.body.priority) ? req.body.priority : 'normal';
   if (!horseId) return fail(res, 'horse is required.', 400);
   if (!(await canAccessHorse(req.user, horseId))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
 
   const horse = await Horse.findById(horseId).select('name');
   if (!horse) return fail(res, 'Horse not found.', 404);
 
+  const request = await ExamRequest.create({ horse: horse._id, requestedBy: req.user._id, reason, priority });
+
   await notifyHorseStaff({
     staff: 'vet',
     horse: horse._id,
     type: 'exam_request',
-    severity: 'warning',
-    message: `🩺 ${req.user.name} yêu cầu kiểm tra sức khỏe cho ${horse.name}${reason ? `: ${reason}` : '.'}`,
+    severity: priority === 'normal' ? 'warning' : 'critical',
+    message: `🩺${PRIORITY_LABELS[priority]} ${req.user.name} yêu cầu kiểm tra sức khỏe cho ${horse.name}${reason ? `: ${reason}` : '.'}`,
   });
 
   await logAction({
     actorId: req.user._id,
     action: 'healthRecord.request_exam',
-    targetModel: 'Horse',
-    targetId: horse._id,
-    metadata: { reason },
+    targetModel: 'ExamRequest',
+    targetId: request._id,
+    metadata: { reason, priority },
   });
 
-  return ok(res, null, 'Exam request sent.');
+  return created(res, request, 'Exam request sent.');
 });
 
 /**
- * The Veterinarian's queue of outstanding exam requests.
- *
- * Requests are stored as notifications rather than as their own model, which meant that once the
- * bell was cleared there was no list left to work from — the Head Trainer had no way of knowing
- * whether anyone had picked their request up. This reads the same notifications back as a queue,
- * so the request survives being glanced at.
+ * Exam requests, as each role needs them: a vet sees the requests for the horses they look after
+ * (their working queue); a Head Trainer sees the requests they sent, so they can tell whether
+ * anyone has acted on them; the Manager sees all. Optional ?status= (pending | done | cancelled).
  */
 const listExamRequests = asyncHandler(async (req, res) => {
-  const Notification = require('../../models/Notification');
+  const filter = {};
+  if (req.user.role === ROLES.VETERINARIAN) {
+    const horse = await horseFilter(req.user, req.query.horse);
+    if (horse !== undefined) filter.horse = horse;
+  } else if (req.user.role === ROLES.HEAD_TRAINER) {
+    filter.requestedBy = req.user._id;
+  }
+  if (req.query.status) filter.status = req.query.status;
 
-  const requests = await Notification.find({
-    type: 'exam_request',
-    $or: [{ recipientUser: req.user._id }, { recipientRole: req.user.role }],
-  })
+  const requests = await ExamRequest.find(filter)
     .populate('horse', 'name healthStatus')
-    .sort({ createdAt: -1 })
+    .populate('requestedBy', 'name role')
+    .populate('resolvedBy', 'name')
+    .populate('healthRecord', 'resultStatus diagnosis date')
+    .sort({ status: -1, createdAt: -1 })
     .limit(100);
 
   return ok(res, requests, 'Exam requests fetched.');
 });
+
+/** A vet closing a request without filing an exam (duplicate, already handled, not needed). */
+const resolveExamRequest = asyncHandler(async (req, res) => {
+  const request = await ExamRequest.findById(req.params.id).populate('horse', 'name');
+  if (!request) return fail(res, 'Exam request not found.', 404);
+  if (!(await canAccessHorse(req.user, request.horse._id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+  if (request.status !== 'pending') return fail(res, 'Yêu cầu này đã được xử lý.', 409);
+
+  const status = req.body.status === 'done' ? 'done' : 'cancelled';
+  Object.assign(request, { status, resolvedBy: req.user._id, resolvedAt: new Date(), resolutionNote: req.body.note });
+  await request.save();
+
+  await pushNotification({
+    recipientUser: request.requestedBy,
+    horse: request.horse._id,
+    type: 'exam_request',
+    severity: 'info',
+    message: `🩺 Bác sĩ ${req.user.name} đã ${status === 'done' ? 'xử lý' : 'đóng'} yêu cầu khám ${request.horse.name}${
+      req.body.note ? `: ${req.body.note}` : '.'
+    }`,
+  });
+  return ok(res, request, 'Exam request resolved.');
+});
+
+const CONCLUSION_LABELS = { eligible: 'đủ điều kiện', monitoring: 'cần theo dõi', injured: 'chấn thương', quarantined: 'cách ly' };
+
+/**
+ * Filing an exam answers every request still open for that horse, and each requester is told what
+ * the vet concluded — the trainer who asked is the person most waiting on that answer.
+ */
+async function closeRequestsWithRecord(record, vet) {
+  const open = await ExamRequest.find({ horse: record.horse, status: 'pending' });
+  if (open.length === 0) return;
+
+  await ExamRequest.updateMany(
+    { _id: { $in: open.map((r) => r._id) } },
+    { status: 'done', resolvedBy: vet._id, resolvedAt: new Date(), healthRecord: record._id }
+  );
+
+  const horse = await Horse.findById(record.horse).select('name');
+  const requesters = [...new Set(open.map((r) => String(r.requestedBy)))];
+  for (const userId of requesters) {
+    // eslint-disable-next-line no-await-in-loop
+    await pushNotification({
+      recipientUser: userId,
+      horse: record.horse,
+      type: 'exam_request',
+      severity: record.resultStatus === 'eligible' ? 'info' : 'warning',
+      message: `🩺 Bác sĩ ${vet.name} đã khám ${horse?.name || 'ngựa'} theo yêu cầu của bạn — kết luận: ${
+        CONCLUSION_LABELS[record.resultStatus]
+      }. Chẩn đoán: ${record.diagnosis}`,
+    });
+  }
+}
 
 /**
  * Which horses are overdue a check-up, so the vet can work proactively instead of waiting to be
@@ -160,7 +226,19 @@ const listClearances = asyncHandler(async (req, res) => {
   const order = { never: 0, expired: 1, due_soon: 2, valid: 3 };
   rows.sort((a, b) => order[a.status] - order[b.status] || (b.ageDays ?? 0) - (a.ageDays ?? 0));
 
-  return ok(res, { clearanceDays: CLEARANCE_DAYS, rows }, 'Clearance status fetched.');
+  // A queue by default: the horses that need an exam. ?all=true also includes horses whose
+  // clearance is still valid. Each row carries clearanceDays so no second request is needed.
+  const visible = req.query.all === 'true' ? rows : rows.filter((r) => r.status !== 'valid');
+  return ok(res, visible.map((r) => ({ ...r, clearanceDays: CLEARANCE_DAYS })), 'Clearance status fetched.');
 });
 
-module.exports = { listRecords, getRecord, createRecord, updateRecord, requestExam, listExamRequests, listClearances };
+module.exports = {
+  listRecords,
+  getRecord,
+  createRecord,
+  updateRecord,
+  requestExam,
+  listExamRequests,
+  resolveExamRequest,
+  listClearances,
+};

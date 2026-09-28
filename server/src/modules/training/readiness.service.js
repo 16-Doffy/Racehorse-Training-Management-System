@@ -165,6 +165,23 @@ async function nutritionGate(horse, when) {
     return gate;
   }
 
+  // Droppings are the other early warning the groom sees: loose or none at all points to a gut
+  // problem, and dry droppings with little drinking is the classic early colic picture. Galloping a
+  // horse in that state is how colic becomes an emergency.
+  const gut = feedings.find(
+    (t) =>
+      t.observation?.manure === 'loose' ||
+      t.observation?.manure === 'none' ||
+      (t.observation?.manure === 'dry' && t.observation?.waterIntake === 'low')
+  );
+  if (gut) {
+    const what = { loose: 'phân lỏng', none: 'không thấy phân', dry: 'phân khô, uống ít nước' }[gut.observation.manure];
+    gate.status = 'caution';
+    gate.detail = `Nhân viên chăm sóc ghi nhận ${what} (${mealLabel(gut).toLowerCase()}) — dấu hiệu rối loạn tiêu hóa, nên cho bác sĩ kiểm tra trước khi tập.`;
+    gate.action = 'request_exam';
+    return gate;
+  }
+
   const reported = feedings.find((t) => t.incidentReport?.description);
   if (reported) {
     gate.status = 'caution';

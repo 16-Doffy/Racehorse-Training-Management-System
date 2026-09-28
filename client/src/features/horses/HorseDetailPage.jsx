@@ -21,6 +21,7 @@ import {
   Modal,
   Form,
   Input,
+  Select,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
 import {
@@ -35,7 +36,7 @@ import {
   StopOutlined,
 } from '@ant-design/icons';
 import { horsesApi } from './horsesApi';
-import { healthRecordApi } from '../health/healthApi';
+import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
 import { trainingSessionApi } from '../training/trainingApi';
 import { ROLES } from '../../constants/roles';
 import dayjs from 'dayjs';
@@ -515,8 +516,11 @@ export default function HorseDetailPage() {
           <Form
             form={examForm}
             layout="vertical"
-            onFinish={(values) => requestExamMutation.mutate({ horse: horse._id, reason: values.reason })}
+            onFinish={(values) => requestExamMutation.mutate({ horse: horse._id, reason: values.reason, priority: values.priority })}
           >
+            <Form.Item name="priority" label="Mức độ" initialValue="normal">
+              <Select options={EXAM_PRIORITY_OPTIONS} />
+            </Form.Item>
             <Form.Item name="reason" label="Lý do">
               <Input.TextArea
                 rows={3}

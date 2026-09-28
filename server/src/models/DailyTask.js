@@ -35,6 +35,9 @@ const dailyTaskSchema = new mongoose.Schema(
     observation: {
       appetite: { type: String, enum: ['full', 'partial', 'refused'], default: null },
       amountEatenPercent: { type: Number, min: 0, max: 100 },
+      // Droppings and drinking are the earliest signs of colic, which is why the groom records them.
+      manure: { type: String, enum: ['normal', 'dry', 'loose', 'none'], default: null },
+      waterIntake: { type: String, enum: ['normal', 'high', 'low'], default: null },
       behaviourNote: { type: String },
       recordedAt: { type: Date },
     },

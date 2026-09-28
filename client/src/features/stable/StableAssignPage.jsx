@@ -17,7 +17,7 @@ import {
   Popconfirm,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { PlusOutlined, WarningFilled, RobotOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, WarningFilled, RobotOutlined, EditOutlined, DeleteOutlined, StopOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -84,6 +84,17 @@ function TaskList() {
       queryClient.invalidateQueries({ queryKey: ['daily-tasks-all'] });
     },
     onError: (err) => message.error(err.message || 'Xoá thất bại.'),
+  });
+
+  // Meals are recreated by the hourly generator if deleted, so calling one off is a "skip": the
+  // record stays, the groom sees it was cancelled, and the readiness check knows the horse didn't eat.
+  const skipMutation = useMutation({
+    mutationFn: (id) => dailyTaskApi.update(id, { status: 'skipped' }),
+    onSuccess: () => {
+      message.success('Đã cho bỏ bữa này.');
+      queryClient.invalidateQueries({ queryKey: ['daily-tasks-all'] });
+    },
+    onError: (err) => message.error(err.message || 'Thao tác thất bại.'),
   });
 
   const openModal = (record) => {
@@ -186,23 +197,42 @@ function TaskList() {
     {
       title: 'Thao tác',
       key: 'actions',
-      render: (_, r) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openModal(r)}>
-            Sửa
-          </Button>
-          <Popconfirm
-            title="Bạn có chắc chắn muốn xoá?"
-            onConfirm={() => deleteMutation.mutate(r._id)}
-            okText="Xoá"
-            cancelText="Huỷ"
-          >
-            <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMutation.isPending && deleteMutation.variables === r._id}>
-              Xoá
+      render: (_, r) => {
+        // Done or called-off work is a record, not something to edit (the server refuses too).
+        if (r.status !== 'pending') return <span className="text-gray-400">—</span>;
+        const isMeal = r.taskType === 'feeding';
+        return (
+          <Space>
+            <Button size="small" icon={<EditOutlined />} onClick={() => openModal(r)}>
+              Sửa
             </Button>
-          </Popconfirm>
-        </Space>
-      ),
+            {isMeal ? (
+              <Popconfirm
+                title="Cho ngựa bỏ bữa này?"
+                description="Nhân viên sẽ thấy bữa đã bị hủy; hệ thống không tạo lại."
+                onConfirm={() => skipMutation.mutate(r._id)}
+                okText="Bỏ bữa"
+                cancelText="Huỷ"
+              >
+                <Button size="small" icon={<StopOutlined />} loading={skipMutation.isPending && skipMutation.variables === r._id}>
+                  Bỏ bữa
+                </Button>
+              </Popconfirm>
+            ) : (
+              <Popconfirm
+                title="Xoá công việc này?"
+                onConfirm={() => deleteMutation.mutate(r._id)}
+                okText="Xoá"
+                cancelText="Huỷ"
+              >
+                <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMutation.isPending && deleteMutation.variables === r._id}>
+                  Xoá
+                </Button>
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 

@@ -131,6 +131,21 @@ module.exports = {
           status: { type: 'string', enum: ['draft', 'active', 'completed', 'cancelled'] },
         },
       },
+      ExamRequest: {
+        type: 'object',
+        properties: {
+          _id: { type: 'string' },
+          horse: { type: 'string' },
+          requestedBy: { type: 'string' },
+          reason: { type: 'string' },
+          priority: { type: 'string', enum: ['normal', 'high', 'urgent'] },
+          status: { type: 'string', enum: ['pending', 'done', 'cancelled'] },
+          resolvedBy: { type: 'string', nullable: true },
+          resolvedAt: { type: 'string', format: 'date-time', nullable: true },
+          healthRecord: { type: 'string', nullable: true, description: 'The exam that answered the request' },
+          resolutionNote: { type: 'string' },
+        },
+      },
       Readiness: {
         type: 'object',
         description:
@@ -624,7 +639,11 @@ module.exports = {
               schema: {
                 type: 'object',
                 required: ['horse'],
-                properties: { horse: { type: 'string' }, reason: { type: 'string' } },
+                properties: {
+                  horse: { type: 'string' },
+                  reason: { type: 'string' },
+                  priority: { type: 'string', enum: ['normal', 'high', 'urgent'], default: 'normal' },
+                },
               },
             },
           },
@@ -633,11 +652,22 @@ module.exports = {
       },
       get: {
         tags: ['Health (Veterinarian)'],
-        summary: "The vet's queue of outstanding exam requests (Veterinarian, Manager)",
+        summary: 'Exam requests with their status — the vet\'s queue, or the requests a trainer sent',
         description:
-          'Requests are stored as notifications; this reads them back as a working list so a request survives being ' +
-          'glanced at in the bell. `isRead` doubles as "already picked up".',
-        responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/Notification' } }), 403: responses[403] },
+          'Veterinarian: requests for the horses assigned to them. Head Trainer: the requests they sent, so they can ' +
+          'see whether and how each was answered. Manager: all. Filing a health record for a horse closes its pending ' +
+          'requests (status done, healthRecord set) and notifies each requester of the conclusion.',
+        parameters: [horseQueryParam, { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'done', 'cancelled'] } }],
+        responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/ExamRequest' } }), 403: responses[403] },
+      },
+    },
+    '/health/exam-requests/{id}': {
+      patch: {
+        tags: ['Health (Veterinarian)'],
+        summary: 'Close a request without filing an exam (Veterinarian)',
+        parameters: [idParam('id')],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string', enum: ['done', 'cancelled'] }, note: { type: 'string' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/ExamRequest' }), 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
     '/health/clearances': {
@@ -646,24 +676,20 @@ module.exports = {
         summary: 'Which horses are overdue a check-up',
         description:
           'A hard training session requires an exam from within `clearanceDays`; these are the horses that would fail ' +
-          'that gate. Sorted worst first (never examined, then expired, then due soon). Scoped by horse assignment.',
+          'that gate. Sorted worst first (never examined, then expired, then due soon). Scoped by horse assignment. ' +
+          'Returns only horses needing an exam unless ?all=true.',
         responses: {
           200: responses[200]({
-            type: 'object',
-            properties: {
-              clearanceDays: { type: 'integer', example: 14 },
-              rows: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    horse: { $ref: '#/components/schemas/Horse' },
-                    lastExam: { $ref: '#/components/schemas/HealthRecord' },
-                    ageDays: { type: 'integer', nullable: true },
-                    status: { type: 'string', enum: ['never', 'expired', 'due_soon', 'valid'] },
-                    validUntil: { type: 'string', format: 'date-time', nullable: true },
-                  },
-                },
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                horse: { $ref: '#/components/schemas/Horse' },
+                lastExam: { $ref: '#/components/schemas/HealthRecord' },
+                ageDays: { type: 'integer', nullable: true },
+                status: { type: 'string', enum: ['never', 'expired', 'due_soon', 'valid'] },
+                validUntil: { type: 'string', format: 'date-time', nullable: true },
+                clearanceDays: { type: 'integer', example: 14 },
               },
             },
           }),
@@ -742,9 +768,13 @@ module.exports = {
               schema: {
                 type: 'object',
                 properties: {
-                  appetite: { type: 'string', enum: ['full', 'partial', 'refused'] },
+                  appetite: { type: 'string', description: 'full | partial | refused, or the groom screen labels (Bình thường, Tốt, Kém, Bỏ ăn)' },
                   amountEatenPercent: { type: 'number', minimum: 0, maximum: 100 },
+                  manure: { type: 'string', description: 'normal | dry | loose | none, or the Vietnamese labels' },
+                  waterIntake: { type: 'string', description: 'normal | high | low, or the Vietnamese labels' },
                   behaviourNote: { type: 'string' },
+                  observation: { type: 'object', description: 'The same fields may instead be nested here' },
+                  notes: { type: 'string', description: 'Alias of behaviourNote' },
                 },
               },
             },

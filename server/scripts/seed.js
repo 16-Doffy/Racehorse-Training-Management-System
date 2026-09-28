@@ -7,6 +7,10 @@ const { ROLES } = require('../src/constants/roles');
 
 const User = require('../src/models/User');
 const Horse = require('../src/models/Horse');
+const RaceEntry = require('../src/models/RaceEntry');
+const InjuryMarker = require('../src/models/InjuryMarker');
+const Treatment = require('../src/models/Treatment');
+const ExamRequest = require('../src/models/ExamRequest');
 const TrainingPlan = require('../src/models/TrainingPlan');
 const TrainingSession = require('../src/models/TrainingSession');
 const HealthRecord = require('../src/models/HealthRecord');
@@ -53,6 +57,11 @@ async function run() {
   await FeedingSchedule.deleteMany({});
   await InventoryItem.deleteMany({});
   await Notification.deleteMany({});
+  // Everything that points at a horse goes too, or it is left referring to horses that no longer exist.
+  await ExamRequest.deleteMany({});
+  await Treatment.deleteMany({});
+  await InjuryMarker.deleteMany({});
+  await RaceEntry.deleteMany({});
   await Horse.deleteMany({});
 
   const horseNames = [

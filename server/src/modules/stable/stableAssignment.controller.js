@@ -4,12 +4,20 @@ const User = require('../../models/User');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
-const { canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
+const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { ROLES } = require('../../constants/roles');
 const { ensureFeedingTasks } = require('../../realtime/dailyTaskGenerator');
 
+// Owners, trainers and vets see the stalls of their own horses; the Manager and grooms see the
+// whole stable (a groom's map shows neighbouring stalls too). This used to return every horse's
+// stall and caretaker to anyone logged in — an owner's page filtered them out on screen, but the
+// API still handed over other owners' data.
 const listAssignments = asyncHandler(async (req, res) => {
-  const assignments = await StableAssignment.find()
+  const filter = {};
+  const horse = await horseFilter(req.user, req.query.horse);
+  if (horse !== undefined) filter.horse = horse;
+
+  const assignments = await StableAssignment.find(filter)
     .populate('horse', 'name healthStatus')
     .populate('assignedCaretaker', 'name')
     .sort({ stableBlock: 1 });

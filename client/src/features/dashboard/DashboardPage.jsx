@@ -7,6 +7,7 @@ import { trainingSessionApi } from '../training/trainingApi';
 import { treatmentApi } from '../health/healthApi';
 import { ROLE_LABELS, ROLES } from '../../constants/roles';
 import FitnessOverviewChart from './FitnessOverviewChart';
+import ExamRequestsCard from './ExamRequestsCard';
 
 const { Title, Paragraph } = Typography;
 
@@ -114,6 +115,8 @@ export default function DashboardPage() {
           }
         />
       )}
+
+      {isHeadTrainer && <ExamRequestsCard />}
 
       {isHeadTrainer && (
         <div className="mt-6">

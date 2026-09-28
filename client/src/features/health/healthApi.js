@@ -1,5 +1,4 @@
 import axiosClient from '../../lib/axiosClient';
-import { createCrudApi } from '../../lib/createCrudApi';
 
 export const healthRecordApi = {
   list: (params) => axiosClient.get('/health/records', { params }),
@@ -7,6 +6,8 @@ export const healthRecordApi = {
   create: (payload) => axiosClient.post('/health/records', payload),
   update: (id, payload) => axiosClient.put(`/health/records/${id}`, payload),
   requestExam: (payload) => axiosClient.post('/health/exam-requests', payload),
+  // Vet: their queue. Head Trainer: the requests they sent, with status.
+  listExamRequests: (params) => axiosClient.get('/health/exam-requests', { params }),
 };
 
 export const treatmentApi = {
@@ -22,3 +23,9 @@ export const injuryMarkerApi = {
   create: (payload) => axiosClient.post('/health/injury-markers', payload),
   update: (id, payload) => axiosClient.put(`/health/injury-markers/${id}`, payload),
 };
+
+export const EXAM_PRIORITY_OPTIONS = [
+  { value: 'normal', label: 'Bình thường' },
+  { value: 'high', label: 'Ưu tiên cao' },
+  { value: 'urgent', label: 'Khẩn cấp' },
+];
