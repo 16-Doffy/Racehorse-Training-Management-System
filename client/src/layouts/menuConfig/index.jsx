@@ -13,6 +13,7 @@ import {
   HeartOutlined,
   CalendarOutlined,
   StarOutlined,
+  MobileOutlined,
   AppstoreOutlined,
   CarryOutOutlined,
   WarningOutlined,
@@ -50,14 +51,9 @@ const MENUS = {
     { key: 'inventory', icon: <ShoppingOutlined />, label: 'Vật Tư & Đề Xuất', path: '/veterinarian/inventory' },
     { key: 'schedules', icon: <ScheduleOutlined />, label: 'Lịch Y Tế & Móng', path: '/veterinarian/schedules' },
   ],
-  [ROLES.GROOM]: [
-    { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
-    { key: 'stable-map', icon: <AppstoreOutlined />, label: 'Sơ đồ Chuồng trại', path: '/stable/map' },
-    { key: 'my-tasks', icon: <CarryOutOutlined />, label: 'Việc Hàng ngày', path: '/stable/my-tasks' },
-    { key: 'feeding', icon: <AppleOutlined />, label: 'Khẩu phần Ăn', path: '/feeding' },
-    { key: 'incidents', icon: <WarningOutlined />, label: 'Báo cáo Sự cố', path: '/stable/incidents' },
-    { key: 'supplies', icon: <ShoppingOutlined />, label: 'Vật tư Khu vực', path: '/stable/supplies' },
-  ],
+  // Groom / Stable Hand works from the Expo mobile app (/mobile), so the web menu only carries
+  // the notice that points there.
+  [ROLES.GROOM]: [{ key: 'dashboard', icon: <MobileOutlined />, label: 'Dùng trên điện thoại', path: '/' }],
   [ROLES.OWNER]: [
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
     { key: 'my-horses', icon: <ProfileOutlined />, label: 'Ngựa của tôi', path: '/horses' },

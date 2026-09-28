@@ -1,0 +1,109 @@
+import { useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  feedingApi,
+  healthApi,
+  horseApi,
+  inventoryApi,
+  notificationApi,
+  stableApi,
+  taskApi,
+  trainingApi,
+} from '../api/endpoints';
+import { useAuth } from '../auth/AuthContext';
+import { isSameDay, parseStableBlock, refId } from '../utils/groom';
+
+const list = (query) => query.data?.data || [];
+
+/** The groom's own worklist — the API already filters it to the signed-in user. */
+export function useTasks() {
+  const query = useQuery({ queryKey: ['tasks'], queryFn: () => taskApi.list() });
+  return { ...query, tasks: list(query) };
+}
+
+export function useFeedings() {
+  const query = useQuery({ queryKey: ['feeding'], queryFn: () => feedingApi.list() });
+  return { ...query, feedings: list(query) };
+}
+
+export function useInventory() {
+  const query = useQuery({ queryKey: ['inventory'], queryFn: () => inventoryApi.list() });
+  return { ...query, items: list(query) };
+}
+
+export function useNotifications() {
+  const query = useQuery({ queryKey: ['notifications'], queryFn: () => notificationApi.list() });
+  return { ...query, notifications: list(query) };
+}
+
+export function useSessions() {
+  const query = useQuery({ queryKey: ['sessions'], queryFn: () => trainingApi.sessions() });
+  return { ...query, sessions: list(query) };
+}
+
+export function useHorse(id) {
+  return useQuery({ queryKey: ['horse', id], queryFn: () => horseApi.getOne(id), enabled: !!id });
+}
+
+export function useHealthRecords(horseId) {
+  const query = useQuery({
+    queryKey: ['health-records', horseId],
+    queryFn: () => healthApi.records({ horse: horseId }),
+    enabled: !!horseId,
+  });
+  return { ...query, records: list(query) };
+}
+
+/**
+ * Stalls + horses joined together: which horses this groom looks after, which stall each is in,
+ * and which are under a vet training lock. Every screen needs some of this.
+ */
+export function useStableOverview() {
+  const { user } = useAuth();
+  const assignmentsQuery = useQuery({ queryKey: ['assignments'], queryFn: () => stableApi.assignments() });
+  const horsesQuery = useQuery({ queryKey: ['horses'], queryFn: () => horseApi.list() });
+  const treatmentsQuery = useQuery({ queryKey: ['treatments'], queryFn: () => healthApi.treatments() });
+
+  const derived = useMemo(() => {
+    const assignments = assignmentsQuery.data?.data || [];
+    const horses = horsesQuery.data?.data || [];
+    const treatments = treatmentsQuery.data?.data || [];
+
+    const horseById = new Map(horses.map((h) => [h._id, h]));
+    const assignmentByHorseId = new Map(assignments.map((a) => [refId(a.horse), a]));
+    const myAssignments = assignments.filter((a) => refId(a.assignedCaretaker) === user?._id);
+    const myHorseIds = new Set(myAssignments.map((a) => refId(a.horse)));
+    const myBlocks = [...new Set(myAssignments.map((a) => parseStableBlock(a.stableBlock).block))];
+    const lockedHorseIds = new Set(
+      treatments.filter((t) => t.isTrainingLocked && t.status === 'ongoing').map((t) => refId(t.horse))
+    );
+
+    return { assignments, horses, horseById, assignmentByHorseId, myAssignments, myHorseIds, myBlocks, lockedHorseIds };
+  }, [assignmentsQuery.data, horsesQuery.data, treatmentsQuery.data, user?._id]);
+
+  return { ...derived, isLoading: assignmentsQuery.isLoading || horsesQuery.isLoading };
+}
+
+/** Today's tasks, split the way the screens need them. */
+export function useToday() {
+  const { tasks, isLoading, refetch } = useTasks();
+  return useMemo(() => {
+    const today = tasks.filter((t) => isSameDay(t.scheduledDate, new Date()));
+    return {
+      isLoading,
+      refetch,
+      allTasks: tasks,
+      todayTasks: today,
+      done: today.filter((t) => t.status === 'completed'),
+      pending: today.filter((t) => t.status === 'pending'),
+      overdue: tasks.filter((t) => t.status === 'pending' && new Date(t.scheduledDate) < new Date(new Date().setHours(0, 0, 0, 0))),
+      incidents: tasks.filter((t) => t.incidentReport),
+    };
+  }, [tasks, isLoading, refetch]);
+}
+
+/** Refetch everything the screens show — used by pull-to-refresh. */
+export function useRefreshAll() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries();
+}

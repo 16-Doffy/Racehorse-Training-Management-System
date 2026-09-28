@@ -22,16 +22,11 @@ import TreatmentPlanForm from '../pages/veterinarian/TreatmentPlanForm';
 import PrescriptionForm from '../pages/veterinarian/PrescriptionForm';
 import MedicalSchedule from '../pages/veterinarian/MedicalSchedule';
 import MedicalInventoryPage from '../pages/veterinarian/MedicalInventoryPage';
-import DailyTaskPage from '../features/stable/DailyTaskPage';
 import StableAssignPage from '../features/stable/StableAssignPage';
 import StableAssignmentPage from '../features/stable/StableAssignmentPage';
-import StableMapPage from '../features/stable/StableMapPage';
-import IncidentReportsPage from '../features/stable/IncidentReportsPage';
-import GroomSuppliesPage from '../features/inventory/GroomSuppliesPage';
 import UserManagementPage from '../features/admin/UserManagementPage';
 import AuditLogPage from '../features/admin/AuditLogPage';
 import ReportsOverviewPage from '../features/reports/ReportsOverviewPage';
-import FeedingPage from '../features/feeding/FeedingPage';
 import InventoryPage from '../features/inventory/InventoryPage';
 import RacePage from '../features/race/RacePage';
 import FinancePage from '../features/finance/FinancePage';
@@ -88,13 +83,7 @@ export default function AppRouter() {
             <Route path="/health/treatments" element={<TreatmentPlanForm />} />
           </Route>
 
-          {/* Groom core flow. */}
-          <Route element={<ProtectedRoute allowedRoles={[ROLES.GROOM]} />}>
-            <Route path="/stable/my-tasks" element={<DailyTaskPage />} />
-            <Route path="/stable/map" element={<StableMapPage />} />
-            <Route path="/stable/incidents" element={<IncidentReportsPage />} />
-            <Route path="/stable/supplies" element={<GroomSuppliesPage />} />
-          </Route>
+          {/* Groom / Stable Hand has no web screens: that role runs in the Expo app under /mobile. */}
 
           {/* Club Manager core flow. */}
           <Route element={<ProtectedRoute allowedRoles={[ROLES.MANAGER]} />}>
@@ -114,12 +103,8 @@ export default function AppRouter() {
           </Route>
 
           {/* Scaffold modules, shared by whichever roles the menu exposes them to. */}
-          <Route element={<ProtectedRoute allowedRoles={[ROLES.GROOM]} />}>
-            <Route path="/feeding" element={<FeedingPage />} />
-          </Route>
           {/* Manager-only: this page is the approval side of the restock flow (its actions are
-              Manager-authorized on the server). Groom has their own supplies screen at
-              /stable/supplies for requesting, which is what their menu points to. */}
+              Manager-authorized on the server). Grooms request restocks from the mobile app. */}
           <Route element={<ProtectedRoute allowedRoles={[ROLES.MANAGER]} />}>
             <Route path="/inventory" element={<InventoryPage />} />
           </Route>

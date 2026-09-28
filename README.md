@@ -8,8 +8,9 @@ Horse Owner, Club Manager.
 
 ```
 WDP301/
-├── client/   # React + Vite + Ant Design + Tailwind
-└── server/   # Node + Express + MongoDB (Mongoose) + Socket.io
+├── client/   # React + Vite + Ant Design + Tailwind (4 vai trò chạy trên web)
+├── mobile/   # React Native + Expo — ứng dụng riêng cho Nhân viên Chăm sóc (Groom)
+└── server/   # Node + Express + MongoDB (Mongoose) + Socket.io — dùng chung cho cả web và mobile
 ```
 
 Xem chi tiết kiến trúc, data model và phạm vi triển khai từng giai đoạn tại kế hoạch đã lưu
@@ -65,7 +66,7 @@ trên Swagger UI (dán JWT lấy từ `POST /auth/login`) để gọi thử tr�
 | Club Manager | Quản lý tài khoản & phân quyền (RBAC) — `/admin/users` |
 | Head Trainer | Giáo án + Buổi tập + đánh giá phong độ — `/training/plans`, `/training/sessions` |
 | Veterinarian | Hồ sơ khám bệnh + Điều trị + **Khóa huấn luyện khẩn cấp** — `/health/records`, `/health/treatments` |
-| Groom | Tổng quan ca làm, sơ đồ chuồng + lịch sinh hoạt từng ngựa, công việc hàng ngày, khẩu phần ăn theo bữa, báo cáo sự cố kèm ảnh, vật tư khu vực + đề xuất bổ sung — `/`, `/stable/map`, `/stable/my-tasks`, `/feeding`, `/stable/incidents`, `/stable/supplies` |
+| Groom | **Chạy trên ứng dụng di động** (`mobile/`): tổng quan ca làm, sơ đồ chuồng + chi tiết từng ngựa, việc hàng ngày (ghi nhận ăn uống khi hoàn thành), khẩu phần ăn theo bữa, báo cáo sự cố kèm ảnh chụp, vật tư khu vực + đề xuất bổ sung. Trên web, tài khoản groom chỉ thấy thông báo chuyển sang dùng app. |
 | Horse Owner | Hồ sơ/pedigree/thành tích ngựa — `/horses` |
 
 Các module còn lại (khẩu phần ăn, vật tư, đăng ký giải đua, báo cáo tài chính, sơ đồ chấn thương
