@@ -26,6 +26,7 @@ import { horsesApi } from '../horses/horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { feedingApi } from '../feeding/feedingApi';
 import { ROLES } from '../../constants/roles';
+import { APPETITE_LABELS, APPETITE_COLORS } from '../../constants/care';
 
 const { Title, Text } = Typography;
 const TASK_LABELS = { feeding: 'Cho ăn', cleaning: 'Vệ sinh chuồng', bathing: 'Tắm rửa', icing: 'Ngâm chân nước đá' };
@@ -35,8 +36,6 @@ const SEVERITY_LABELS = { low: 'Nhẹ', medium: 'Trung bình', high: 'Nghiêm tr
 const SEVERITY_COLORS = { low: 'gold', medium: 'orange', high: 'red' };
 const MEAL_LABELS = { morning: 'Bữa sáng', noon: 'Bữa trưa', evening: 'Bữa chiều' };
 const DEFAULT_MEAL_TIMES = { morning: '06:00', noon: '11:30', evening: '17:30' };
-const APPETITE_LABELS = { full: 'Ăn hết', partial: 'Ăn dở', refused: 'Bỏ ăn' };
-const APPETITE_COLORS = { full: 'green', partial: 'gold', refused: 'red' };
 
 const FEED_TYPE_OPTIONS = [
   { value: 'grain', label: 'Cám / ngũ cốc' },
