@@ -9,3 +9,7 @@ uploads/
 
 # Local working notes: session/progress tracking, not committed to git.
 PROJECT_STATUS.md
+
+# Expo
+mobile/.expo/
+mobile/dist/

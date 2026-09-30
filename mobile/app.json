@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Racehorse TMS — Chăm sóc",
+    "slug": "racehorse-tms-groom",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "rtmsgroom",
+    "splash": {
+      "backgroundColor": "#022c22",
+      "resizeMode": "contain",
+      "image": "./assets/splash-icon.png"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Chụp ảnh hiện trường khi báo cáo sự cố tại chuồng.",
+        "NSPhotoLibraryUsageDescription": "Chọn ảnh sự cố từ thư viện để gửi kèm báo cáo."
+      }
+    },
+    "android": {
+      "package": "com.racehorsetms.groom",
+      "adaptiveIcon": {
+        "backgroundColor": "#022c22",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cho phép chọn ảnh sự cố từ thư viện.",
+          "cameraPermission": "Cho phép chụp ảnh hiện trường khi báo cáo sự cố."
+        }
+      ]
+    ]
+  }
+}
