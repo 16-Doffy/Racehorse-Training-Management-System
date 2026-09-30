@@ -11,10 +11,22 @@ process.env.TZ = process.env.APP_TIMEZONE || 'Asia/Ho_Chi_Minh';
 // CLIENT_URL may be a single origin or a comma-separated list — teammates each run their own
 // local Vite dev server (normally all on http://localhost:5173, so one value is usually enough),
 // but this also covers adding a deployed frontend origin later without code changes.
-const clientOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
+const listedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+
+// The frontend is deployed on Vercel, which gives every deployment its own hostname
+// (…-client-m846akoni.vercel.app, …-git-<hash>-<team>.vercel.app) alongside the production
+// alias. An exact-match list would lock out the next deploy, so any Vercel hostname that starts
+// with this project's name is accepted. Override the pattern with CLIENT_URL_PATTERN if the
+// project is ever renamed or moved to another host.
+const deployedFrontendPattern = new RegExp(
+  process.env.CLIENT_URL_PATTERN || '^https://racehorse-training-management[a-z0-9-]*\\.vercel\\.app$'
+);
+
+// Both `cors` and Socket.io accept a mix of exact strings and patterns.
+const clientOrigins = [...listedOrigins, deployedFrontendPattern];
 
 module.exports = {
   port: process.env.PORT || 5000,
