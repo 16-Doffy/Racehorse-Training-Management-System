@@ -36,6 +36,7 @@ import {
   StopOutlined,
 } from '@ant-design/icons';
 import { horsesApi } from './horsesApi';
+import HorseTimeline from './HorseTimeline';
 import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
 import { trainingSessionApi } from '../training/trainingApi';
 import { ROLES } from '../../constants/roles';
@@ -486,6 +487,8 @@ export default function HorseDetailPage() {
           </Descriptions.Item>
         </Descriptions>
       </Card>
+
+      <HorseTimeline horseId={horse._id} />
 
       <Card className="mb-4" title="Dòng dõi (Pedigree)">
         <Descriptions column={2} bordered size="small">

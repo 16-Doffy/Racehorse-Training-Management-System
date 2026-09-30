@@ -64,6 +64,7 @@ function sessionEvents(sessions) {
         s.trainerComment && `Nhận xét: ${s.trainerComment}`,
       ]),
       severity: s.status === 'cancelled' || s.outcome?.met === false || s.readiness?.overrideReason ? 'warning' : 'info',
+      upcoming: s.status === 'scheduled' && new Date(s.scheduledAt) > new Date(),
       refId: s._id,
     };
   });
@@ -158,6 +159,7 @@ function raceEvents(entries) {
     title: `Giải đua "${e.raceName}" — ${RACE_STATUS[e.status] || e.status}`,
     detail: join([e.distance && `${e.distance} m`, e.result && `Kết quả: ${e.result}`]),
     severity: 'info',
+    upcoming: ['registered', 'confirmed'].includes(e.status) && new Date(e.raceDate) > new Date(),
     refId: e._id,
   }));
 }
