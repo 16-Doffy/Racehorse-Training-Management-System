@@ -27,6 +27,7 @@ import { horsesApi } from '../horses/horsesApi';
 import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
 import { useLockedHorseIds } from './useLockedHorses';
 import ReadinessPanel from './ReadinessPanel';
+import SessionOutcome from './SessionOutcome';
 import confirmReadinessOverride, { needsOverride } from './confirmReadinessOverride';
 import {
   OBJECTIVE_LABELS,
@@ -259,32 +260,7 @@ export default function TrainingSessionPage() {
     {
       title: 'Kết quả',
       key: 'outcome',
-      render: (_, r) => {
-        const actual = `${r.metrics?.avgHeartRate ?? '—'} bpm · ${r.metrics?.maxSpeed ?? '—'} km/h`;
-        const rating = r.performanceRating != null ? `Phong độ ${r.performanceRating}/10` : null;
-        return (
-          <div className="min-w-[200px] max-w-[280px] whitespace-normal">
-            {r.outcome?.met == null ? (
-              <Text type="secondary" className="!text-xs">
-                {r.prescription ? 'Chưa đánh giá' : 'Không đặt mục tiêu'}
-              </Text>
-            ) : (
-              <Tag color={r.outcome.met ? 'success' : 'warning'}>
-                {r.outcome.met ? 'Đạt mục tiêu' : 'Chưa đạt'}
-              </Tag>
-            )}
-            <Text type="secondary" className="block !text-xs mt-1">
-              {actual}
-              {rating ? ` · ${rating}` : ''}
-            </Text>
-            {r.outcome?.summary && (
-              <Text type="secondary" className="block !text-xs">
-                {r.outcome.summary}
-              </Text>
-            )}
-          </div>
-        );
-      },
+      render: (_, r) => <SessionOutcome session={r} />,
     },
     {
       title: '',
