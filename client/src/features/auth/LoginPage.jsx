@@ -6,12 +6,14 @@ import { UserOutlined, LockOutlined, TrophyOutlined } from '@ant-design/icons';
 import { authApi } from './authApi';
 import { credentialsReceived } from './authSlice';
 import loginBg from '../../assets/login-bg.jpg';
+import { useServerStatus } from '../../lib/serverWake';
 
 const { Title, Paragraph } = Typography;
 
 export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const serverStatus = useServerStatus();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -58,6 +60,27 @@ export default function LoginPage() {
           viên trưởng đến Bác sĩ thú y, Nhân viên chăm sóc, Chủ sở hữu và Ban quản lý.
         </Paragraph>
 
+        {/* The backend sleeps when idle on its free host. Saying so is kinder than letting the
+            first attempt fail with a bare "Network Error" — and the sign-in below waits for it. */}
+        {serverStatus === 'waking' && (
+          <Alert
+            type="info"
+            showIcon
+            className="mb-4 max-w-sm"
+            title="Máy chủ đang khởi động"
+            description="Mất khoảng 30 giây sau một thời gian không dùng. Bạn cứ nhập thông tin và bấm Đăng nhập — hệ thống sẽ tự vào ngay khi máy chủ sẵn sàng."
+          />
+        )}
+        {serverStatus === 'down' && (
+          <Alert
+            type="warning"
+            showIcon
+            className="mb-4 max-w-sm"
+            title="Chưa kết nối được máy chủ"
+            description="Kiểm tra kết nối mạng rồi tải lại trang."
+          />
+        )}
+
         {error && <Alert type="error" title={error} className="mb-4 max-w-sm" showIcon />}
 
         <Form layout="vertical" onFinish={onFinish} autoComplete="off" className="max-w-sm">
@@ -76,7 +99,7 @@ export default function LoginPage() {
               loading={loading}
               className="!bg-[#eab308] hover:!bg-yellow-400 !border-none !text-[#022c22] !font-semibold"
             >
-              Đăng nhập
+              {loading && serverStatus === 'waking' ? 'Đang chờ máy chủ…' : 'Đăng nhập'}
             </Button>
           </Form.Item>
         </Form>
