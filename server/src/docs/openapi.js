@@ -348,6 +348,7 @@ module.exports = {
           title: { type: 'string' },
           detail: { type: 'string' },
           severity: { type: 'string', enum: ['info', 'warning', 'critical'] },
+          upcoming: { type: 'boolean', description: 'A session or race still booked for the future' },
           refId: { type: 'string', description: 'Id of the underlying record' },
         },
       },
@@ -1002,6 +1003,8 @@ module.exports = {
         responses: { 200: responses[200]({ type: 'object', properties: { items: { type: 'array', items: { $ref: '#/components/schemas/AuditLog' } }, total: { type: 'integer' }, page: { type: 'integer' }, limit: { type: 'integer' } } }), 403: responses[403] },
       },
     },
+    // careCoordination in the response: incidents { reported, byStatus, avgHoursToResolve },
+    // vetCareTasks { assigned, completed, pending }, autoExamRequests.
     '/reports/overview': {
       get: {
         tags: ['Reports (Manager)'],

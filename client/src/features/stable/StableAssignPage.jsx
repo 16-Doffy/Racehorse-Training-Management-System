@@ -17,7 +17,15 @@ import {
   Popconfirm,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { PlusOutlined, WarningFilled, RobotOutlined, EditOutlined, DeleteOutlined, StopOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  WarningFilled,
+  RobotOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  StopOutlined,
+  MedicineBoxOutlined,
+} from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -26,10 +34,16 @@ import { horsesApi } from '../horses/horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { feedingApi } from '../feeding/feedingApi';
 import { ROLES } from '../../constants/roles';
-import { APPETITE_LABELS, APPETITE_COLORS } from '../../constants/care';
+import {
+  APPETITE_LABELS,
+  APPETITE_COLORS,
+  TASK_TYPE_LABELS as TASK_LABELS,
+  MANUAL_TASK_TYPES,
+  INCIDENT_STATUS_META,
+  incidentStatusOf,
+} from '../../constants/care';
 
 const { Title, Text } = Typography;
-const TASK_LABELS = { feeding: 'Cho ăn', cleaning: 'Vệ sinh chuồng', bathing: 'Tắm rửa', icing: 'Ngâm chân nước đá' };
 const STATUS_LABELS = { pending: 'Chưa thực hiện', completed: 'Đã hoàn thành', skipped: 'Đã bỏ qua' };
 const STATUS_COLORS = { pending: 'default', completed: 'green', skipped: 'orange' };
 const SEVERITY_LABELS = { low: 'Nhẹ', medium: 'Trung bình', high: 'Nghiêm trọng' };
@@ -128,6 +142,15 @@ function TaskList() {
           <Space size={4} wrap>
             <span>{TASK_LABELS[r.taskType] || r.taskType}</span>
             {r.mealSlot && <Tag>{MEAL_LABELS[r.mealSlot]}</Tag>}
+            {r.source === 'vet' && (
+              // The vet's care order, created from a treatment — shown here so the trainer sees
+              // the horse is under treatment, but not theirs to change.
+              <Tooltip title="Bác sĩ chỉ định qua phác đồ điều trị">
+                <Tag color="magenta" icon={<MedicineBoxOutlined />}>
+                  Y lệnh bác sĩ
+                </Tag>
+              </Tooltip>
+            )}
             {r.trainingSession && (
               // Distinguishes work the system created from a finished hard session from work the
               // trainer assigned by hand, so nobody wonders where a task came from.
@@ -173,6 +196,7 @@ function TaskList() {
       render: (_, record) => {
         const incident = record.incidentReport;
         if (!incident) return <span className="text-gray-400">—</span>;
+        const state = INCIDENT_STATUS_META[incidentStatusOf(incident)];
         return (
           <Popover
             title="Chi tiết sự cố"
@@ -183,11 +207,12 @@ function TaskList() {
                 {incident.images?.length > 0 && (
                   <p className="text-xs text-gray-400 mt-1 mb-0">{incident.images.length} ảnh đính kèm</p>
                 )}
+                {incident.response && <p className="mt-2 mb-0">Bác sĩ: {incident.response}</p>}
               </div>
             }
           >
-            <Tag color="red" icon={<WarningFilled />} className="cursor-pointer">
-              Có sự cố
+            <Tag color={state.color} icon={<WarningFilled />} className="cursor-pointer">
+              {state.label}
             </Tag>
           </Popover>
         );
@@ -199,6 +224,8 @@ function TaskList() {
       render: (_, r) => {
         // Done or called-off work is a record, not something to edit (the server refuses too).
         if (r.status !== 'pending') return <span className="text-gray-400">—</span>;
+        // The vet's orders change through the treatment, not from here (the server refuses too).
+        if (r.source === 'vet') return <Text type="secondary" className="!text-xs">Do bác sĩ quản lý</Text>;
         const isMeal = r.taskType === 'feeding';
         return (
           <Space>
@@ -240,8 +267,8 @@ function TaskList() {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
         <Typography.Text type="secondary" className="text-sm max-w-3xl">
           Việc cho ăn được tự động tạo theo khẩu phần đã duyệt (xem tab bên cạnh), và việc chăm sóc
-          sau buổi tập nặng — ngâm chân, tắm — cũng tự sinh khi bạn kết thúc buổi tập. Bạn chỉ cần
-          giao thêm những việc phát sinh. Ghi nhận của nhân viên về việc ăn uống sẽ quay lại ảnh
+          sau buổi tập nặng — ngâm chân, tắm — cũng tự sinh khi bạn kết thúc buổi tập. Việc dùng thuốc
+          và theo dõi do bác sĩ chỉ định qua phác đồ điều trị. Bạn chỉ cần giao thêm những việc phát sinh. Ghi nhận của nhân viên về việc ăn uống sẽ quay lại ảnh
           hưởng tới điều kiện xếp lịch tập.
         </Typography.Text>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
@@ -283,7 +310,7 @@ function TaskList() {
             <Select options={(groomsData?.data || []).map((u) => ({ value: u._id, label: u.name }))} />
           </Form.Item>
           <Form.Item name="taskType" label="Loại công việc" rules={[{ required: true }]}>
-            <Select options={Object.entries(TASK_LABELS).map(([value, label]) => ({ value, label }))} />
+            <Select options={MANUAL_TASK_TYPES.map((value) => ({ value, label: TASK_LABELS[value] }))} />
           </Form.Item>
           <Form.Item name="scheduledDate" label="Ngày thực hiện" rules={[{ required: true }]}>
             <DatePicker className="w-full" />

@@ -1,6 +1,8 @@
 const TrainingSession = require('../../models/TrainingSession');
 const FinancialRecord = require('../../models/FinancialRecord');
 const RaceEntry = require('../../models/RaceEntry');
+const DailyTask = require('../../models/DailyTask');
+const ExamRequest = require('../../models/ExamRequest');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok } = require('../../utils/apiResponse');
 
@@ -10,6 +12,51 @@ function dateRangeFilter(from, to) {
   if (from) range.$gte = new Date(from);
   if (to) range.$lte = new Date(to);
   return Object.keys(range).length ? range : null;
+}
+
+/**
+ * How well the hand-offs between trainer, vet and groom are working: are the grooms' incident
+ * reports being answered and how fast, are the vet's care orders being carried out, and how often
+ * a session's numbers made the system ask for an exam on its own.
+ */
+async function buildCareCoordination(range) {
+  const [incidentTasks, vetTasks, autoExamRequests] = await Promise.all([
+    DailyTask.find({
+      'incidentReport.description': { $exists: true },
+      ...(range ? { 'incidentReport.reportedAt': range } : {}),
+    }).select('incidentReport'),
+    DailyTask.aggregate([
+      { $match: { source: 'vet', ...(range ? { scheduledDate: range } : {}) } },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]),
+    ExamRequest.countDocuments({ trainingSession: { $ne: null }, ...(range ? { createdAt: range } : {}) }),
+  ]);
+
+  const byStatus = { open: 0, acknowledged: 0, resolved: 0 };
+  const hoursToResolve = [];
+  for (const { incidentReport: r } of incidentTasks) {
+    byStatus[r.status || 'open'] += 1;
+    if (r.status === 'resolved' && r.resolvedAt && r.reportedAt) {
+      hoursToResolve.push((r.resolvedAt - r.reportedAt) / (60 * 60 * 1000));
+    }
+  }
+  const vetByStatus = Object.fromEntries(vetTasks.map((t) => [t._id, t.count]));
+
+  return {
+    incidents: {
+      reported: incidentTasks.length,
+      byStatus,
+      avgHoursToResolve: hoursToResolve.length
+        ? Number((hoursToResolve.reduce((a, b) => a + b, 0) / hoursToResolve.length).toFixed(1))
+        : null,
+    },
+    vetCareTasks: {
+      assigned: vetTasks.reduce((sum, t) => sum + t.count, 0),
+      completed: vetByStatus.completed || 0,
+      pending: vetByStatus.pending || 0,
+    },
+    autoExamRequests,
+  };
 }
 
 // Club Manager's "báo cáo tổng quan": training performance, operating costs, and race
@@ -55,6 +102,7 @@ const getOverview = asyncHandler(async (req, res) => {
     ]),
   ]);
 
+  const careCoordination = await buildCareCoordination(range);
   const sessionsByStatus = Object.fromEntries(sessionStats.map((s) => [s._id, s.count]));
   const totalSessions = sessionStats.reduce((sum, s) => sum + s.count, 0);
 
@@ -92,6 +140,7 @@ const getOverview = asyncHandler(async (req, res) => {
           gates: (s.readiness?.gates || []).filter((g) => g.status === 'caution').map((g) => g.key),
         })),
       },
+      careCoordination,
       operatingCost: buildFinanceSummary('cost'),
       raceRevenue: buildFinanceSummary('revenue'),
       raceParticipation: {

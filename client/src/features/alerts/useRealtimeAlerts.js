@@ -19,6 +19,10 @@ export const TYPE_LABELS = {
   session_completed: 'Buổi tập hoàn thành',
   readiness_override: 'Ghi đè cảnh báo sẵn sàng',
   training_unlocked: 'Đã gỡ khóa huấn luyện',
+  task_assigned: 'Công việc chăm sóc',
+  care_order: 'Y lệnh của bác sĩ',
+  session_scheduled: 'Buổi tập sắp tới',
+  incident_update: 'Cập nhật sự cố',
   system: 'Thông báo hệ thống',
 };
 

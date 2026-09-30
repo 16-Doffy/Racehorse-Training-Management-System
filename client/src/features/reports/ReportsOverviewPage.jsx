@@ -168,6 +168,7 @@ export default function ReportsOverviewPage() {
   const report = data?.data;
   const training = report?.trainingPerformance;
   const overrides = report?.readinessOverrides;
+  const care = report?.careCoordination;
   const cost = report?.operatingCost;
   const revenue = report?.raceRevenue;
   const races = report?.raceParticipation;
@@ -282,6 +283,47 @@ export default function ReportsOverviewPage() {
           />
         </Col>
       </Row>
+
+      {/* Whether the hand-offs between the three operational roles actually complete. */}
+      <Card title="Phối hợp HLV – Bác sĩ – Nhân viên chăm sóc" className="mt-4" loading={isLoading}>
+        <Typography.Paragraph type="secondary" className="!text-xs !mb-3">
+          Sự cố do nhân viên chăm sóc báo phải được bác sĩ kết luận; y lệnh của bác sĩ phải được chuồng trại
+          thực hiện. Sự cố tồn đọng hoặc y lệnh bị bỏ dở là chỗ quy trình đang đứt.
+        </Typography.Paragraph>
+        <Row gutter={[16, 16]}>
+          <Col xs={12} lg={6}>
+            <Statistic title="Sự cố được báo" value={care?.incidents?.reported ?? 0} />
+          </Col>
+          <Col xs={12} lg={6}>
+            <Statistic
+              title="Sự cố chưa được kết luận"
+              value={(care?.incidents?.byStatus?.open ?? 0) + (care?.incidents?.byStatus?.acknowledged ?? 0)}
+              styles={{
+                content: {
+                  color: (care?.incidents?.byStatus?.open ?? 0) + (care?.incidents?.byStatus?.acknowledged ?? 0) > 0 ? '#d4380d' : undefined,
+                },
+              }}
+            />
+          </Col>
+          <Col xs={12} lg={6}>
+            <Statistic
+              title="Thời gian xử lý sự cố (TB)"
+              value={care?.incidents?.avgHoursToResolve ?? '—'}
+              suffix={care?.incidents?.avgHoursToResolve != null ? 'giờ' : null}
+            />
+          </Col>
+          <Col xs={12} lg={6}>
+            <Statistic
+              title="Y lệnh bác sĩ đã thực hiện"
+              value={care?.vetCareTasks?.completed ?? 0}
+              suffix={`/ ${care?.vetCareTasks?.assigned ?? 0}`}
+            />
+          </Col>
+        </Row>
+        <Typography.Text type="secondary" className="!text-xs block mt-3">
+          Yêu cầu khám do hệ thống tự tạo vì buổi tập vượt ngưỡng nhịp tim: {care?.autoExamRequests ?? 0}
+        </Typography.Text>
+      </Card>
 
       {/* Oversight: sessions run despite a readiness warning. The point of the readiness gates is
           lost if nobody ever looks at how often they get waved through. */}

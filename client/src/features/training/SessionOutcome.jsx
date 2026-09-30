@@ -1,5 +1,5 @@
 import { Tag, Typography } from 'antd';
-import { CheckCircleFilled, CloseCircleFilled, StarFilled } from '@ant-design/icons';
+import { CheckCircleFilled, CloseCircleFilled, StarFilled, PlayCircleOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 
@@ -65,7 +65,7 @@ function MetricRow({ row, judged }) {
  * reader parse a sentence.
  */
 export default function SessionOutcome({ session }) {
-  const { status, outcome, performanceRating } = session;
+  const { status, outcome, performanceRating, videoUrl } = session;
 
   if (status === 'cancelled') return <Text type="secondary" className="!text-xs">Buổi tập đã hủy</Text>;
   if (status === 'scheduled') return <Text type="secondary" className="!text-xs">Chưa diễn ra</Text>;
@@ -102,6 +102,12 @@ export default function SessionOutcome({ session }) {
             <MetricRow key={row.key} row={row} judged={judged} />
           ))}
         </div>
+      )}
+
+      {videoUrl && (
+        <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs mt-1.5">
+          <PlayCircleOutlined /> Xem video
+        </a>
       )}
     </div>
   );

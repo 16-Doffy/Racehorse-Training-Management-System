@@ -8,6 +8,7 @@ import { treatmentApi } from '../health/healthApi';
 import { ROLE_LABELS, ROLES } from '../../constants/roles';
 import FitnessOverviewChart from './FitnessOverviewChart';
 import ExamRequestsCard from './ExamRequestsCard';
+import OpenIncidentsCard from './OpenIncidentsCard';
 
 const { Title, Paragraph } = Typography;
 
@@ -117,6 +118,10 @@ export default function DashboardPage() {
       )}
 
       {isHeadTrainer && <ExamRequestsCard />}
+
+      {/* Both roles this dashboard serves (Head Trainer, Manager) need to see what the grooms
+          reported and whether a vet has answered. */}
+      <OpenIncidentsCard />
 
       {isHeadTrainer && (
         <div className="mt-6">
