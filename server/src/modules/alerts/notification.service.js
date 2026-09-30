@@ -1,5 +1,6 @@
 const Notification = require('../../models/Notification');
 const Horse = require('../../models/Horse');
+const StableAssignment = require('../../models/StableAssignment');
 const { getIO } = require('../../realtime/socketServer');
 const { ROLES } = require('../../constants/roles');
 
@@ -42,6 +43,7 @@ const STAFF_SLOTS = {
  * club — including ones who, under per-horse scoping, can't even open that horse.
  */
 async function notifyHorseStaff({ horse, staff, ...payload }) {
+  if (staff === 'groom') return notifyCaretaker({ horse, ...payload });
   const slot = STAFF_SLOTS[staff];
   const doc = await Horse.findById(horse).select(slot.field);
   const assignee = doc?.[slot.field];
@@ -54,4 +56,17 @@ async function notifyHorseStaff({ horse, staff, ...payload }) {
   });
 }
 
-module.exports = { pushNotification, notifyHorseStaff };
+/**
+ * Notifies the groom who looks after one horse (the caretaker on its stall assignment).
+ *
+ * Unlike the trainer and vet, there is no fallback to the whole role: a groom who isn't assigned
+ * to the horse has nothing to do with it, so a horse with no caretaker simply notifies nobody —
+ * the readiness board already flags that gap to the trainer and manager. Returns null then.
+ */
+async function notifyCaretaker({ horse, ...payload }) {
+  const assignment = await StableAssignment.findOne({ horse }).select('assignedCaretaker');
+  if (!assignment?.assignedCaretaker) return null;
+  return pushNotification({ ...payload, horse, recipientUser: assignment.assignedCaretaker });
+}
+
+module.exports = { pushNotification, notifyHorseStaff, notifyCaretaker };

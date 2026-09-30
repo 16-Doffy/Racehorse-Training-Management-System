@@ -20,6 +20,9 @@ const examRequestSchema = new mongoose.Schema(
     // The exam that answered the request, when it was closed by one.
     healthRecord: { type: mongoose.Schema.Types.ObjectId, ref: 'HealthRecord', default: null },
     resolutionNote: { type: String },
+    // Set when the request was raised by a session's numbers (heart rate well past its limit)
+    // rather than typed by a person.
+    trainingSession: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingSession', default: null },
   },
   { timestamps: true }
 );

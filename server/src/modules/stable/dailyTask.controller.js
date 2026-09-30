@@ -4,11 +4,38 @@ const User = require('../../models/User');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { ROLES } = require('../../constants/roles');
-const { notifyHorseStaff } = require('../alerts/notification.service');
+const { notifyHorseStaff, pushNotification } = require('../alerts/notification.service');
+const { logAction } = require('../audit/audit.service');
+const { announceIncidentUpdate } = require('./incident.service');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
 
 const TASK_FIELDS = ['horse', 'assignedTo', 'taskType', 'mealSlot', 'scheduledDate', 'note'];
+
+// What a trainer or manager may hand out by hand. Medication and monitoring are the vet's care
+// orders: they come from a treatment, not from this form.
+const MANUAL_TASK_TYPES = ['feeding', 'cleaning', 'bathing', 'icing'];
+const TASK_LABELS = {
+  feeding: 'cho ăn',
+  cleaning: 'vệ sinh chuồng',
+  bathing: 'tắm rửa',
+  icing: 'ngâm chân nước đá',
+  medication: 'cho dùng thuốc',
+  monitoring: 'theo dõi theo y lệnh',
+};
+const VET_ORDER_MESSAGE = 'Đây là y lệnh của bác sĩ — chỉ bác sĩ thay đổi được qua phác đồ điều trị.';
+
+/** Tells the groom a task is theirs (or no longer needs doing). They see nothing else change. */
+async function tellGroom(task, user, describe) {
+  const horse = await Horse.findById(task.horse).select('name');
+  await pushNotification({
+    recipientUser: task.assignedTo,
+    horse: task.horse,
+    type: 'task_assigned',
+    severity: 'info',
+    message: describe({ who: user.name, horse: horse?.name || 'ngựa', what: TASK_LABELS[task.taskType] || task.taskType }),
+  });
+}
 
 /** Work can only be handed to an active groom — not to a trainer, and not to a disabled account. */
 async function isActiveGroom(userId) {
@@ -76,7 +103,16 @@ const createTask = asyncHandler(async (req, res) => {
   if (!(await canAccessHorse(req.user, body.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
   if (!(await isActiveGroom(body.assignedTo))) return fail(res, 'Người được giao phải là nhân viên chăm sóc đang hoạt động.', 400);
 
-  const task = await DailyTask.create(body);
+  if (!MANUAL_TASK_TYPES.includes(body.taskType)) {
+    return fail(res, 'Loại công việc không hợp lệ. Việc dùng thuốc/theo dõi do bác sĩ chỉ định qua phác đồ điều trị.', 400);
+  }
+
+  const task = await DailyTask.create({ ...body, source: 'trainer' });
+  await tellGroom(
+    task,
+    req.user,
+    ({ who, horse, what }) => `📋 ${who} giao việc mới: ${what} cho ${horse}${task.note ? ` — ${task.note}` : '.'}`
+  );
   return created(res, task, 'Daily task created.');
 });
 
@@ -87,8 +123,11 @@ const updateTask = asyncHandler(async (req, res) => {
   const task = await loadTask(req, res);
   if (!task) return undefined;
   if (task.status === 'completed') return fail(res, 'Không thể sửa công việc đã hoàn thành.', 409);
+  if (task.source === 'vet') return fail(res, VET_ORDER_MESSAGE, 409);
 
   const changes = pick(req.body, TASK_FIELDS);
+  if (changes.taskType && !MANUAL_TASK_TYPES.includes(changes.taskType)) return fail(res, 'Loại công việc không hợp lệ.', 400);
+  const previousAssignee = String(task.assignedTo);
   if (changes.horse && !(await canAccessHorse(req.user, changes.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
 
   // "Skipped" is how an assigner calls off a meal or a chore on purpose (e.g. fasting a horse
@@ -104,6 +143,13 @@ const updateTask = asyncHandler(async (req, res) => {
 
   Object.assign(task, changes);
   await task.save();
+
+  // The groom only learns of a change to their list if someone tells them.
+  if (changes.status === 'skipped') {
+    await tellGroom(task, req.user, ({ who, horse, what }) => `🚫 ${who} cho bỏ qua việc ${what} của ${horse} hôm nay.`);
+  } else if (String(task.assignedTo) !== previousAssignee) {
+    await tellGroom(task, req.user, ({ who, horse, what }) => `📋 ${who} chuyển cho bạn việc ${what} của ${horse}.`);
+  }
   return ok(res, task, 'Daily task updated.');
 });
 
@@ -117,6 +163,7 @@ const deleteTask = asyncHandler(async (req, res) => {
   }
   // Deleting a meal only lasts until the next hourly run, which sees the slot empty and creates it
   // again. Skipping it keeps the slot filled, and records that the meal was deliberately missed.
+  if (task.source === 'vet') return fail(res, VET_ORDER_MESSAGE, 409);
   if (task.taskType === 'feeding') {
     return fail(res, 'Việc cho ăn không xoá được vì hệ thống sẽ tự tạo lại — hãy chọn "Bỏ bữa".', 409);
   }
@@ -227,16 +274,89 @@ const reportIncident = asyncHandler(async (req, res) => {
   task.incidentReport = { description, severity: severity || 'medium', images, reportedAt: new Date() };
   await task.save();
 
+  // The vet has to act on it; the trainer has to know before working the horse.
   const horse = await Horse.findById(task.horse).select('name');
-  await notifyHorseStaff({
-    staff: 'vet',
+  const alert = {
     horse: task.horse,
     type: 'incident_report',
     severity: severity === 'high' ? 'critical' : 'warning',
-    message: `⚠️ Sự cố mới với ${horse?.name || 'Ngựa'}: ${description}`,
-  });
+    message: `⚠️ ${req.user.name} báo sự cố với ${horse?.name || 'Ngựa'}: ${description}`,
+  };
+  await notifyHorseStaff({ ...alert, staff: 'vet' });
+  await notifyHorseStaff({ ...alert, staff: 'trainer' });
 
   return ok(res, task, 'Incident reported.');
 });
 
-module.exports = { listTasks, getTask, createTask, updateTask, deleteTask, completeTask, reportIncident };
+/**
+ * Incident reports as a working list rather than a line in the notification bell: a vet sees the
+ * ones on their horses, a trainer likewise, a groom the ones they filed, the manager all of them.
+ * ?status=open|acknowledged|resolved, or ?status=unresolved for everything still waiting on a vet.
+ */
+const listIncidents = asyncHandler(async (req, res) => {
+  const filter = { 'incidentReport.description': { $exists: true } };
+  const horse = await horseFilter(req.user, req.query.horse);
+  if (horse !== undefined) filter.horse = horse;
+  if (req.user.role === ROLES.GROOM) filter.assignedTo = req.user._id;
+
+  const { status } = req.query;
+  // Reports filed before incidents had a status carry none, and count as open.
+  if (status === 'unresolved') filter['incidentReport.status'] = { $ne: 'resolved' };
+  else if (status === 'open') filter['incidentReport.status'] = { $nin: ['acknowledged', 'resolved'] };
+  else if (status) filter['incidentReport.status'] = status;
+
+  const tasks = await DailyTask.find(filter)
+    .populate('horse', 'name healthStatus')
+    .populate('assignedTo', 'name')
+    .populate('incidentReport.handledBy', 'name')
+    .populate('incidentReport.healthRecord', 'diagnosis resultStatus date')
+    .sort({ 'incidentReport.reportedAt': -1 })
+    .limit(200);
+  return ok(res, tasks, 'Incidents fetched.');
+});
+
+/**
+ * The vet's answer to a report: "acknowledged" (I've seen it, I'm on it) or "resolved", with what
+ * they found. Filing an exam for the horse resolves its open reports too (incident.service.js).
+ */
+const handleIncident = asyncHandler(async (req, res) => {
+  const task = await loadTask(req, res);
+  if (!task) return undefined;
+  if (!task.incidentReport?.description) return fail(res, 'Công việc này không có báo cáo sự cố.', 404);
+  if (task.incidentReport.status === 'resolved') return fail(res, 'Sự cố này đã được xử lý.', 409);
+
+  const status = req.body.status === 'acknowledged' ? 'acknowledged' : 'resolved';
+  const response = typeof req.body.response === 'string' ? req.body.response.trim() : '';
+  if (status === 'resolved' && !response) return fail(res, 'Hãy ghi rõ đã xử lý thế nào.', 400);
+
+  Object.assign(task.incidentReport, {
+    status,
+    handledBy: req.user._id,
+    response: response || task.incidentReport.response,
+    resolvedAt: status === 'resolved' ? new Date() : null,
+  });
+  await task.save();
+
+  const horse = await Horse.findById(task.horse).select('name');
+  await announceIncidentUpdate(task, { vetName: req.user.name, horseName: horse?.name || 'ngựa' });
+  await logAction({
+    actorId: req.user._id,
+    action: `incident.${status}`,
+    targetModel: 'DailyTask',
+    targetId: task._id,
+    metadata: { response },
+  });
+  return ok(res, task, 'Incident updated.');
+});
+
+module.exports = {
+  listTasks,
+  getTask,
+  createTask,
+  updateTask,
+  deleteTask,
+  completeTask,
+  reportIncident,
+  listIncidents,
+  handleIncident,
+};

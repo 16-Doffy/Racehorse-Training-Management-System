@@ -22,6 +22,10 @@ router.post(
   taskCtrl.reportIncident
 );
 
+// Incident reports as a list with a lifecycle: the groom files one, the vet picks it up and closes it.
+router.get('/incidents', taskCtrl.listIncidents);
+router.patch('/incidents/:id', authorize(ROLES.VETERINARIAN), taskCtrl.handleIncident);
+
 // Stable/stall assignment map.
 router.get('/assignments', assignmentCtrl.listAssignments);
 router.post('/assignments', authorize(ROLES.MANAGER, ROLES.HEAD_TRAINER), assignmentCtrl.upsertAssignment);

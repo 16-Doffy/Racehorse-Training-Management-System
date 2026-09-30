@@ -3,6 +3,7 @@ const Treatment = require('../../models/Treatment');
 const HealthRecord = require('../../models/HealthRecord');
 const DailyTask = require('../../models/DailyTask');
 const StableAssignment = require('../../models/StableAssignment');
+const { findOpenIncident } = require('../stable/incident.service');
 
 /**
  * "Is this horse fit to do this particular piece of work, right now?"
@@ -73,6 +74,18 @@ async function medicalGate(horse) {
   if (horse.healthStatus === 'monitoring') {
     gate.status = 'caution';
     gate.detail = 'Ngựa đang trong diện theo dõi — cân nhắc giảm cường độ.';
+  }
+
+  // Something the groom saw and reported, that no vet has answered yet. Whatever task it was
+  // filed on: a lame horse reported while mucking out is as unfit to gallop as one that left its
+  // feed. It stays amber until the vet closes the report or examines the horse.
+  const incident = await findOpenIncident(horse._id);
+  if (incident) {
+    const waiting = incident.status === 'acknowledged' ? 'bác sĩ đã tiếp nhận nhưng chưa kết luận' : 'bác sĩ chưa xử lý';
+    const note = `Nhân viên chăm sóc báo sự cố: "${incident.description}" — ${waiting}.`;
+    gate.detail = gate.status === 'caution' ? `${gate.detail} ${note}` : note;
+    gate.status = 'caution';
+    gate.action = 'request_exam';
   }
 
   return gate;
@@ -178,14 +191,6 @@ async function nutritionGate(horse, when) {
     const what = { loose: 'phân lỏng', none: 'không thấy phân', dry: 'phân khô, uống ít nước' }[gut.observation.manure];
     gate.status = 'caution';
     gate.detail = `Nhân viên chăm sóc ghi nhận ${what} (${mealLabel(gut).toLowerCase()}) — dấu hiệu rối loạn tiêu hóa, nên cho bác sĩ kiểm tra trước khi tập.`;
-    gate.action = 'request_exam';
-    return gate;
-  }
-
-  const reported = feedings.find((t) => t.incidentReport?.description);
-  if (reported) {
-    gate.status = 'caution';
-    gate.detail = `Có báo cáo sự cố trong ${mealLabel(reported).toLowerCase()}: "${reported.incidentReport.description}".`;
     gate.action = 'request_exam';
     return gate;
   }

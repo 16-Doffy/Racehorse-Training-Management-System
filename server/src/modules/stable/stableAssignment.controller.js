@@ -6,6 +6,10 @@ const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { ROLES } = require('../../constants/roles');
+const Treatment = require('../../models/Treatment');
+const Horse = require('../../models/Horse');
+const { syncCareTasks } = require('../health/treatmentCare.service');
+const { pushNotification } = require('../alerts/notification.service');
 const { ensureFeedingTasks } = require('../../realtime/dailyTaskGenerator');
 
 // Owners, trainers and vets see the stalls of their own horses; the Manager and grooms see the
@@ -65,12 +69,30 @@ const upsertAssignment = asyncHandler(async (req, res) => {
         assignedTo: previous.assignedCaretaker,
         status: 'pending',
         scheduledDate: { $gte: today },
-        $or: [{ taskType: 'feeding' }, { trainingSession: { $ne: null } }],
+        $or: [{ taskType: 'feeding' }, { trainingSession: { $ne: null } }, { treatment: { $ne: null } }],
       },
       { assignedTo: assignment.assignedCaretaker }
     );
   }
-  if (assignment.assignedCaretaker) await ensureFeedingTasks({ horseIds: [horse], onlyUpcoming: true });
+  if (assignment.assignedCaretaker) {
+    await ensureFeedingTasks({ horseIds: [horse], onlyUpcoming: true });
+    // A horse already under treatment brings its care orders to whoever now looks after it.
+    const treatments = await Treatment.find({ horse, status: 'ongoing' });
+    for (const treatment of treatments) {
+      // eslint-disable-next-line no-await-in-loop
+      await syncCareTasks(treatment);
+    }
+    if (changedCaretaker) {
+      const horseDoc = await Horse.findById(horse).select('name');
+      await pushNotification({
+        recipientUser: assignment.assignedCaretaker,
+        horse,
+        type: 'task_assigned',
+        severity: 'info',
+        message: `🐴 Bạn được phân công chăm sóc ${horseDoc?.name || 'ngựa'} tại ${block}. Việc hàng ngày của ngựa đã có trong danh sách của bạn.`,
+      });
+    }
+  }
 
   await logAction({
     actorId: req.user._id,

@@ -15,6 +15,9 @@ const treatmentSchema = new mongoose.Schema(
     horse: { type: mongoose.Schema.Types.ObjectId, ref: 'Horse', required: true },
     prescribedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     medications: [medicationSchema],
+    // What the stable has to do for this horse while it is being treated (box rest, no hard feed,
+    // watch the swelling). Together with the medications this becomes the groom's daily care tasks.
+    careInstructions: { type: String, trim: true },
     // Emergency "lock training" order: while true, the training module refuses new sessions for this horse.
     isTrainingLocked: { type: Boolean, default: false },
     lockReason: { type: String },
