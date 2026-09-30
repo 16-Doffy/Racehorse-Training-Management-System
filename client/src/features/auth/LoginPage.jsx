@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useNavigate, Link } from 'react-router-dom';
 import { Form, Input, Button, Typography, Alert } from 'antd';
-import { UserOutlined, LockOutlined, TrophyOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, TrophyOutlined, LoadingOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { authApi } from './authApi';
 import { credentialsReceived } from './authSlice';
 import loginBg from '../../assets/login-bg.jpg';
@@ -60,27 +60,6 @@ export default function LoginPage() {
           viên trưởng đến Bác sĩ thú y, Nhân viên chăm sóc, Chủ sở hữu và Ban quản lý.
         </Paragraph>
 
-        {/* The backend sleeps when idle on its free host. Saying so is kinder than letting the
-            first attempt fail with a bare "Network Error" — and the sign-in below waits for it. */}
-        {serverStatus === 'waking' && (
-          <Alert
-            type="info"
-            showIcon
-            className="mb-4 max-w-sm"
-            title="Máy chủ đang khởi động"
-            description="Mất khoảng 30 giây sau một thời gian không dùng. Bạn cứ nhập thông tin và bấm Đăng nhập — hệ thống sẽ tự vào ngay khi máy chủ sẵn sàng."
-          />
-        )}
-        {serverStatus === 'down' && (
-          <Alert
-            type="warning"
-            showIcon
-            className="mb-4 max-w-sm"
-            title="Chưa kết nối được máy chủ"
-            description="Kiểm tra kết nối mạng rồi tải lại trang."
-          />
-        )}
-
         {error && <Alert type="error" title={error} className="mb-4 max-w-sm" showIcon />}
 
         <Form layout="vertical" onFinish={onFinish} autoComplete="off" className="max-w-sm">
@@ -103,6 +82,24 @@ export default function LoginPage() {
             </Button>
           </Form.Item>
         </Form>
+
+        {/* The backend sleeps when idle on its free host and takes ~30s to answer again. One quiet
+            line says so — a boxed alert here fought with the photo and the glass inputs. Sits under
+            the button so it never pushes the form around when it appears. */}
+        {serverStatus === 'waking' && (
+          <div className="auth-server-status max-w-sm" role="status">
+            <LoadingOutlined className="text-[#eab308]" />
+            <span>
+              Máy chủ đang khởi động, khoảng 30 giây. Bạn cứ bấm Đăng nhập — hệ thống tự vào khi sẵn sàng.
+            </span>
+          </div>
+        )}
+        {serverStatus === 'down' && (
+          <div className="auth-server-status max-w-sm" role="status">
+            <ExclamationCircleOutlined className="text-[#fbbf24]" />
+            <span>Chưa kết nối được máy chủ. Kiểm tra mạng rồi tải lại trang.</span>
+          </div>
+        )}
 
         <div className="text-sm text-white/80 max-w-sm">
           Chưa có tài khoản?{' '}

@@ -64,6 +64,25 @@ body {
 .auth-glass-input .ant-input::placeholder {
   color: rgba(255, 255, 255, 0.55);
 }
+/* Server-status line on the login page: same translucent glass as the inputs, small and quiet. */
+.auth-server-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: -4px 0 14px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+}
+.auth-server-status .anticon {
+  margin-top: 2px;
+  font-size: 13px;
+}
 /* Select on the register form, skinned to match the glass inputs above. */
 .auth-glass-input.ant-select .ant-select-selector {
   background: rgba(255, 255, 255, 0.1) !important;
