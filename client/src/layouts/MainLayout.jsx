@@ -1,5 +1,15 @@
-import { Layout, Menu, Avatar, Dropdown, Typography } from 'antd';
-import { UserOutlined, LogoutOutlined } from '@ant-design/icons';
+import { Layout, Menu, Avatar, Dropdown, Typography, Button } from 'antd';
+import { 
+  UserOutlined, 
+  LogoutOutlined, 
+  PlusOutlined, 
+  MailOutlined,
+  AppstoreFilled,
+  SettingOutlined,
+  MoonOutlined,
+  GithubOutlined,
+  EllipsisOutlined
+} from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { loggedOut } from '../features/auth/authSlice';
@@ -11,15 +21,6 @@ import { disconnectSocket } from '../lib/socket';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
-
-// Small caption above the role name in the header.
-const ROLE_GROUPS = {
-  [ROLES.OWNER]: 'Hội đồng Chủ ngựa',
-  [ROLES.GROOM]: 'Đội Chăm sóc & Chuồng trại',
-  [ROLES.HEAD_TRAINER]: 'Ban Huấn luyện',
-  [ROLES.VETERINARIAN]: 'Phòng Thú y',
-  [ROLES.MANAGER]: 'Ban Quản lý CLB',
-};
 
 export default function MainLayout() {
   const { user } = useSelector((state) => state.auth);
@@ -47,82 +48,113 @@ export default function MainLayout() {
   };
 
   return (
-    // Fixed-height app shell: the outer Layout is exactly one viewport tall and never scrolls
-    // itself. Only <Content> scrolls internally. Without this, a page taller than the viewport
-    // makes the whole body scroll, and Ant Design's Sider collapse trigger (which is
-    // position:fixed to the *window* bottom) visually detaches from the Sider's own background —
-    // the "empty gap + floating arrow" bug. Sizing is done with inline styles here because the
-    // flex height chain (Layout -> Sider/Layout -> Header/Content) has to be exact, not just a
-    // minimum, for the internal-scroll behavior to kick in.
-    <Layout style={{ height: '100vh' }}>
+    <Layout style={{ height: '100vh', backgroundColor: '#FAFAFA' }}>
+      {/* SIDEBAR */}
       <Sider
-        theme="dark"
+        theme="light"
         collapsible
         collapsed={siderCollapsed}
-        // onCollapse receives the new value for both the trigger click and the responsive
-        // breakpoint (auto-collapse on phones, where grooms mostly use the app).
         onCollapse={(value) => dispatch(siderCollapsedSet(value))}
         breakpoint="md"
-        // AntD's own default (200px) isn't wide enough for the longer Vietnamese labels (e.g.
-        // "Buổi Tập & Đánh giá", "Quản lý Nhân sự & RBAC") once icon + padding are subtracted —
-        // they hit the Menu's built-in text-overflow:ellipsis and show as "Buổi Tập & Đánh ...".
-        width={232}
-        className="!bg-[#022c22] border-r border-[#064e3b]"
-        style={{ backgroundColor: '#022c22' }}
+        width={260}
+        className="!bg-white border-r border-gray-200 custom-sider"
+        trigger={null}
       >
-        <div className="h-16 flex flex-col items-center justify-center border-b border-[#064e3b] px-4">
-          <div className="text-[#eab308] font-bold text-lg tracking-wider">
-            {siderCollapsed ? 'RTM' : 'Racehorse TMS'}
-          </div>
-          {!siderCollapsed && <div className="text-[10px] text-gray-400 uppercase tracking-widest mt-1">Prestige Athletic</div>}
+        {/* Logo Area */}
+        <div className="h-16 flex items-center px-6 shrink-0 pt-4">
+          <AppstoreFilled className="text-xl mr-2 text-gray-800" />
+          {!siderCollapsed && <span className="font-bold text-lg text-gray-900 tracking-tight">Racehorse TMS</span>}
         </div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={menuItems.map((m) => ({ key: m.key, icon: m.icon, label: m.label }))}
-          onClick={({ key }) => {
-            const target = menuItems.find((m) => m.key === key);
-            if (target) navigate(target.path);
-          }}
-          className="!bg-[#022c22] border-r-0 mt-2 prestige-menu"
-          style={{ backgroundColor: '#022c22' }}
-        />
-      </Sider>
-      <Layout style={{ height: '100vh', backgroundColor: '#fdfbf7' }}>
-        <Header className="!bg-[#fdfbf7] !px-6 flex items-center justify-between shadow-sm shrink-0 border-b border-[#f0f0f0]">
-          <div className="flex items-center gap-3 !leading-normal">
-            <div className="w-8 h-8 rounded bg-[#022c22] flex items-center justify-center text-[#eab308]">
-              <UserOutlined />
-            </div>
-            <div className="hidden sm:flex flex-col">
-              <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">{ROLE_GROUPS[user?.role]}</span>
-              <Text strong className="text-[#022c22] text-sm">{ROLE_LABELS[user?.role]}</Text>
-            </div>
-          </div>
-          <div className="flex items-center gap-5">
-            <AlertBell />
+
+
+
+        {/* Menu Section */}
+        <div className="flex-1 overflow-y-auto px-3 mt-4 custom-sidebar-menu min-h-0">
+          {!siderCollapsed && <div className="px-3 text-xs font-semibold text-gray-400 mb-2 uppercase">Dashboards</div>}
+          <Menu
+            theme="light"
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            items={menuItems.map((m) => ({ key: m.key, icon: m.icon, label: <span className="font-medium text-sm">{m.label}</span> }))}
+            onClick={({ key }) => {
+              const target = menuItems.find((m) => m.key === key);
+              if (target) navigate(target.path);
+            }}
+            className="border-r-0 !bg-white"
+          />
+        </div>
+
+        {/* Bottom Widgets */}
+        {!siderCollapsed && (
+          <div className="p-4 shrink-0 mt-auto bg-white border-t border-transparent">
+            {/* User Profile */}
             <Dropdown
-              menu={{
-                items: [{ key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', onClick: handleLogout }],
-              }}
+              menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', onClick: handleLogout }] }}
+              trigger={['click']}
+              placement="topRight"
             >
-              <div className="flex items-center gap-2 cursor-pointer hover:bg-white/50 px-2 py-1 rounded transition-colors">
-                <Avatar icon={<UserOutlined />} className="bg-[#022c22] text-[#eab308]" />
-                <span className="hidden sm:inline">
-                  <Text className="font-semibold text-[#022c22]">{user?.name}</Text>
-                </span>
+              <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 p-2 -mx-2 rounded-lg transition-colors">
+                <div className="flex items-center gap-3">
+                  <Avatar className="bg-gray-200 text-gray-600 font-bold" size={36}>
+                    {user?.name?.charAt(0)?.toUpperCase()}
+                  </Avatar>
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-sm text-gray-900 leading-tight">{user?.name}</span>
+                    <span className="text-xs text-gray-500">{ROLE_LABELS[user?.role]}</span>
+                  </div>
+                </div>
+                <EllipsisOutlined className="text-gray-400 text-lg" />
               </div>
             </Dropdown>
           </div>
-        </Header>
+        )}
+      </Sider>
+
+      {/* MAIN CONTENT AREA */}
+      <Layout style={{ backgroundColor: '#FAFAFA' }}>
         <Content
           style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
-          className="p-4 md:p-6"
+          className="p-0 md:px-2 pb-6 relative"
         >
+          <div className="absolute top-4 right-8 z-50 md:top-4 md:right-10">
+            <AlertBell />
+          </div>
           <Outlet />
         </Content>
       </Layout>
+      <style>{`
+        /* Fix Sider internal flex layout */
+        .custom-sider .ant-layout-sider-children {
+          display: flex;
+          flex-direction: column;
+        }
+
+        /* Override Ant Design Menu styles to match the modern Studio Admin look */
+        .custom-sidebar-menu .ant-menu-light {
+          background: transparent !important;
+        }
+        .custom-sidebar-menu .ant-menu-item {
+          height: 36px !important;
+          line-height: 36px !important;
+          border-radius: 8px !important;
+          margin-top: 4px !important;
+          margin-bottom: 4px !important;
+          color: #4b5563 !important; /* gray-600 */
+        }
+        .custom-sidebar-menu .ant-menu-item:hover {
+          background-color: #f3f4f6 !important; /* gray-100 */
+          color: #111827 !important; /* gray-900 */
+        }
+        .custom-sidebar-menu .ant-menu-item-selected {
+          background-color: #f3f4f6 !important; /* gray-100 */
+          color: #111827 !important; /* gray-900 */
+          font-weight: 600 !important;
+        }
+        /* Hide the blue indicator line in Ant Design */
+        .custom-sidebar-menu .ant-menu-item::after {
+          display: none !important;
+        }
+      `}</style>
     </Layout>
   );
 }

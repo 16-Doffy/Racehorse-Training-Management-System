@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Typography, Card, Row, Col, Tag, Table, Select, Empty, Descriptions, Badge, Segmented } from 'antd';
+import { Typography, Select, Tag, Table, Descriptions, Segmented } from 'antd';
 import {
   CalendarOutlined,
   ThunderboltOutlined,
-  DashboardOutlined,
   ClockCircleOutlined,
   FireOutlined,
 } from '@ant-design/icons';
@@ -12,18 +11,16 @@ import { horsesApi } from './horsesApi';
 import { trainingPlanApi, trainingSessionApi } from '../training/trainingApi';
 import dayjs from 'dayjs';
 
-const { Title, Text, Paragraph } = Typography;
-
 const SESSION_TYPE_CONFIG = {
   training: { color: 'blue', label: 'Tập luyện' },
   trial_run: { color: 'orange', label: '🏁 Chạy thử' },
 };
 
 const SESSION_STATUS_CONFIG = {
-  scheduled: { color: 'default', label: 'Đã lên lịch' },
-  in_progress: { color: 'processing', label: 'Đang diễn ra' },
-  completed: { color: 'success', label: 'Hoàn thành' },
-  cancelled: { color: 'error', label: 'Đã huỷ' },
+  scheduled: { color: 'bg-gray-100 text-gray-600 border-gray-200', label: 'Đã lên lịch' },
+  in_progress: { color: 'bg-blue-50 text-blue-600 border-blue-200', label: 'Đang diễn ra' },
+  completed: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: 'Hoàn thành' },
+  cancelled: { color: 'bg-red-50 text-red-600 border-red-200', label: 'Đã huỷ' },
 };
 
 const PHASE_LABELS = {
@@ -35,9 +32,9 @@ const PHASE_LABELS = {
 };
 
 const INTENSITY_CONFIG = {
-  light: { color: 'green', label: 'Nhẹ' },
-  moderate: { color: 'gold', label: 'Vừa' },
-  high: { color: 'red', label: 'Cao' },
+  light: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: 'Nhẹ' },
+  moderate: { color: 'bg-yellow-50 text-yellow-600 border-yellow-200', label: 'Vừa' },
+  high: { color: 'bg-red-50 text-red-600 border-red-200', label: 'Cao' },
 };
 
 const SURFACE_LABELS = {
@@ -48,10 +45,10 @@ const SURFACE_LABELS = {
 };
 
 const PLAN_STATUS_CONFIG = {
-  draft: { color: 'default', label: 'Nháp' },
-  active: { color: 'green', label: 'Đang áp dụng' },
-  completed: { color: 'blue', label: 'Hoàn thành' },
-  cancelled: { color: 'red', label: 'Đã huỷ' },
+  draft: { color: 'bg-gray-100 text-gray-600 border-gray-200', label: 'Nháp' },
+  active: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: 'Đang áp dụng' },
+  completed: { color: 'bg-blue-50 text-blue-600 border-blue-200', label: 'Hoàn thành' },
+  cancelled: { color: 'bg-red-50 text-red-600 border-red-200', label: 'Đã huỷ' },
 };
 
 export default function OwnerTrainingPage() {
@@ -90,6 +87,7 @@ export default function OwnerTrainingPage() {
   // Session stats
   const completedCount = horseSessions.filter((s) => s.status === 'completed').length;
   const scheduledCount = horseSessions.filter((s) => s.status === 'scheduled').length;
+  const totalPlans = horsePlans.length;
   const avgRating =
     horseSessions.filter((s) => s.performanceRating).length > 0
       ? (
@@ -103,7 +101,7 @@ export default function OwnerTrainingPage() {
       title: 'Ngày',
       dataIndex: 'scheduledAt',
       key: 'scheduledAt',
-      render: (d) => dayjs(d).format('DD/MM/YYYY HH:mm'),
+      render: (d) => <span className="font-medium text-gray-800">{dayjs(d).format('DD/MM/YYYY HH:mm')}</span>,
       defaultSortOrder: 'descend',
       sorter: (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt),
     },
@@ -112,9 +110,9 @@ export default function OwnerTrainingPage() {
       dataIndex: 'sessionType',
       key: 'sessionType',
       render: (type) => (
-        <Tag color={SESSION_TYPE_CONFIG[type]?.color}>
+        <span className="text-gray-600 font-medium">
           {SESSION_TYPE_CONFIG[type]?.label || type}
-        </Tag>
+        </span>
       ),
       filters: [
         { text: 'Tập luyện', value: 'training' },
@@ -127,32 +125,34 @@ export default function OwnerTrainingPage() {
       dataIndex: 'status',
       key: 'status',
       render: (status) => (
-        <Badge status={SESSION_STATUS_CONFIG[status]?.color} text={SESSION_STATUS_CONFIG[status]?.label || status} />
+        <span className={`text-xs px-2 py-0.5 rounded border font-medium ${SESSION_STATUS_CONFIG[status]?.color || 'bg-gray-100 border-gray-200 text-gray-600'}`}>
+          {SESSION_STATUS_CONFIG[status]?.label || status}
+        </span>
       ),
     },
     {
       title: 'Nhịp tim TB',
       dataIndex: ['metrics', 'avgHeartRate'],
       key: 'avgHeartRate',
-      render: (v) => (v ? `${v} bpm` : '—'),
+      render: (v) => <span className="text-gray-500 font-medium">{v ? `${v} bpm` : '—'}</span>,
     },
     {
       title: 'Tốc độ tối đa',
       dataIndex: ['metrics', 'maxSpeed'],
       key: 'maxSpeed',
-      render: (v) => (v ? `${v} km/h` : '—'),
+      render: (v) => <span className="text-gray-500 font-medium">{v ? `${v} km/h` : '—'}</span>,
     },
     {
       title: 'Khoảng cách',
       dataIndex: ['metrics', 'distance'],
       key: 'distance',
-      render: (v) => (v ? `${v} m` : '—'),
+      render: (v) => <span className="text-gray-500 font-medium">{v ? `${v} m` : '—'}</span>,
     },
     {
       title: 'Rating',
       dataIndex: 'performanceRating',
       key: 'performanceRating',
-      render: (r) => (r ? <Tag color="gold">⭐ {r}/10</Tag> : '—'),
+      render: (r) => (r ? <span className="text-yellow-600 font-medium">⭐ {r}/10</span> : <span className="text-gray-400">—</span>),
     },
   ];
 
@@ -161,16 +161,16 @@ export default function OwnerTrainingPage() {
       title: 'Giai đoạn',
       dataIndex: 'phase',
       key: 'phase',
-      render: (p) => PHASE_LABELS[p] || p,
+      render: (p) => <span className="font-semibold text-gray-800">{PHASE_LABELS[p] || p}</span>,
     },
     {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
       render: (s) => (
-        <Tag color={PLAN_STATUS_CONFIG[s]?.color}>
+        <span className={`text-xs px-2 py-0.5 rounded border font-medium ${PLAN_STATUS_CONFIG[s]?.color || 'bg-gray-100 border-gray-200 text-gray-600'}`}>
           {PLAN_STATUS_CONFIG[s]?.label || s}
-        </Tag>
+        </span>
       ),
     },
     {
@@ -178,173 +178,196 @@ export default function OwnerTrainingPage() {
       dataIndex: 'intensity',
       key: 'intensity',
       render: (i) => (
-        <Tag color={INTENSITY_CONFIG[i]?.color}>
+        <span className={`text-xs px-2 py-0.5 rounded border font-medium ${INTENSITY_CONFIG[i]?.color || 'bg-gray-100 border-gray-200 text-gray-600'}`}>
           {INTENSITY_CONFIG[i]?.label || i}
-        </Tag>
+        </span>
       ),
     },
     {
       title: 'Mặt sân',
       dataIndex: 'surface',
       key: 'surface',
-      render: (s) => SURFACE_LABELS[s] || s,
+      render: (s) => <span className="text-gray-600 font-medium">{SURFACE_LABELS[s] || s}</span>,
     },
     {
-      title: 'Mục tiêu cự ly',
+      title: 'Cự ly',
       dataIndex: 'distanceTarget',
       key: 'distanceTarget',
-      render: (v) => (v ? `${v} m` : '—'),
+      render: (v) => <span className="text-gray-500">{v ? `${v} m` : '—'}</span>,
     },
     {
       title: 'KL/tuần',
       dataIndex: 'weeklyVolumeKm',
       key: 'weeklyVolumeKm',
-      render: (v) => (v ? `${v} km` : '—'),
+      render: (v) => <span className="text-gray-500">{v ? `${v} km` : '—'}</span>,
     },
     {
       title: 'Bắt đầu',
       dataIndex: 'startDate',
       key: 'startDate',
-      render: (d) => (d ? dayjs(d).format('DD/MM/YYYY') : '—'),
+      render: (d) => <span className="text-gray-500 font-medium">{d ? dayjs(d).format('DD/MM/YYYY') : '—'}</span>,
     },
     {
       title: 'Kết thúc',
       dataIndex: 'endDate',
       key: 'endDate',
-      render: (d) => (d ? dayjs(d).format('DD/MM/YYYY') : 'Chưa xác định'),
+      render: (d) => <span className="text-gray-500 font-medium">{d ? dayjs(d).format('DD/MM/YYYY') : 'Chưa xác định'}</span>,
     },
   ];
 
+  const StatCard = ({ title, value, tagText, tagClass, subtitle }) => (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
+      <div className="flex justify-between items-center mb-4">
+        <span className="text-gray-500 text-sm font-medium">{title}</span>
+      </div>
+      <div className="flex items-baseline gap-3 mb-1">
+        <span className="text-3xl font-bold text-gray-900">{value}</span>
+        {tagText && (
+          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${tagClass}`}>
+            {tagText}
+          </span>
+        )}
+      </div>
+      <span className="text-xs text-gray-400 font-medium">{subtitle}</span>
+    </div>
+  );
+
   return (
-    <div>
-      <Title level={3} className="!font-semibold !mb-2 !text-[#022c22]" style={{ fontFamily: 'Georgia, serif' }}>
-        <CalendarOutlined className="mr-2 text-[#eab308]" />
-        Lịch Huấn luyện
-      </Title>
-      <Text className="block mb-6 text-gray-500">
-        Theo dõi lịch trình tập luyện và giáo án huấn luyện của ngựa.
-      </Text>
+    <div className="min-h-screen bg-[#FAFAFA] text-gray-800 p-4 md:px-8 md:pb-8 md:pt-4 font-sans">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-gray-900 m-0 mb-1 tracking-tight">Lịch Huấn luyện</h1>
+        <p className="text-sm text-gray-500 m-0">
+          Theo dõi lịch trình tập luyện, giáo án và hiệu suất của chiến mã.
+        </p>
+      </div>
 
       {/* Horse Selector */}
-      <div className="premium-card p-4 mb-6">
-        <div className="flex items-center gap-4 flex-wrap">
-          <span className="font-medium text-gray-700">Chọn ngựa:</span>
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <span className="font-medium text-gray-500 text-sm">Hiển thị cho:</span>
           <Select
-            placeholder="Tất cả ngựa"
+            placeholder="Tất cả chiến mã"
             allowClear
             value={selectedHorse}
             onChange={setSelectedHorse}
             options={horses.map((h) => ({ value: h._id, label: h.name }))}
-            style={{ minWidth: 200 }}
-            className="rounded-md"
-          />
-          <Segmented
-            value={viewMode}
-            onChange={setViewMode}
-            options={[
-              { value: 'sessions', label: '📅 Buổi tập' },
-              { value: 'plans', label: '📋 Giáo án' },
-            ]}
+            className="min-w-[200px]"
+            size="middle"
           />
         </div>
+        <Segmented
+          value={viewMode}
+          onChange={setViewMode}
+          options={[
+            { value: 'sessions', label: '📅 Danh sách buổi tập' },
+            { value: 'plans', label: '📋 Giáo án dài hạn' },
+          ]}
+          className="bg-gray-100"
+        />
       </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="premium-card p-4 flex items-center gap-4 border-l-4 border-l-blue-500">
-          <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center text-xl">
-            <ClockCircleOutlined />
-          </div>
-          <div>
-            <div className="text-gray-500 text-[10px] uppercase font-bold tracking-widest">Sắp diễn ra</div>
-            <div className="text-2xl font-bold text-[#022c22]">{scheduledCount}</div>
-          </div>
-        </div>
-        <div className="premium-card p-4 flex items-center gap-4 border-l-4 border-l-green-500">
-          <div className="w-12 h-12 rounded-full bg-green-50 text-green-500 flex items-center justify-center text-xl">
-            <ThunderboltOutlined />
-          </div>
-          <div>
-            <div className="text-gray-500 text-[10px] uppercase font-bold tracking-widest">Đã hoàn thành</div>
-            <div className="text-2xl font-bold text-[#022c22]">{completedCount}</div>
-          </div>
-        </div>
-        <div className="premium-card p-4 flex items-center gap-4 border-l-4 border-l-orange-500">
-          <div className="w-12 h-12 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center text-xl">
-            <FireOutlined />
-          </div>
-          <div>
-            <div className="text-gray-500 text-[10px] uppercase font-bold tracking-widest">Rating TB</div>
-            <div className="text-2xl font-bold text-[#022c22]">{avgRating}</div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard 
+          title="Sắp diễn ra" 
+          value={scheduledCount}
+          tagText="Đang chờ"
+          tagClass="bg-blue-100 text-blue-700"
+          subtitle="Buổi tập theo lịch"
+        />
+        <StatCard 
+          title="Đã hoàn thành" 
+          value={completedCount}
+          tagText="Thành công"
+          tagClass="bg-emerald-100 text-emerald-700"
+          subtitle="Tổng số phiên đạt chuẩn"
+        />
+        <StatCard 
+          title="Rating Trung bình" 
+          value={avgRating}
+          tagText="⭐ Tốt"
+          tagClass="bg-yellow-100 text-yellow-700"
+          subtitle="Đánh giá từ HLV"
+        />
+        <StatCard 
+          title="Giáo án đang có" 
+          value={totalPlans}
+          subtitle="Kế hoạch huấn luyện"
+        />
       </div>
 
       {/* Active Plan Card */}
       {activePlan && (
-        <div className="premium-card p-5 mb-6 border-l-4 border-l-[#eab308]">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="font-bold text-lg text-[#022c22]">📋 Giáo án đang áp dụng</span>
-            <Tag className="rounded-full border-0 font-medium" color="green">Active</Tag>
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-emerald-800 text-base m-0">Giáo án đang áp dụng</h2>
+            <span className="text-xs px-2 py-0.5 rounded font-medium bg-emerald-200 text-emerald-800">
+              Đang Active
+            </span>
           </div>
-          <Descriptions column={{ xs: 1, sm: 2, md: 3 }} size="small" colon={false} labelStyle={{ color: '#6b7280' }}>
-            <Descriptions.Item label="Giai đoạn">
-              <span className="font-medium text-gray-800">{PHASE_LABELS[activePlan.phase] || activePlan.phase}</span>
-            </Descriptions.Item>
-            <Descriptions.Item label="Cường độ">
-              <Tag className="rounded-full border-0" color={INTENSITY_CONFIG[activePlan.intensity]?.color}>
-                {INTENSITY_CONFIG[activePlan.intensity]?.label || activePlan.intensity}
-              </Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="Mặt sân">
-              <span className="font-medium text-gray-800">{SURFACE_LABELS[activePlan.surface] || activePlan.surface}</span>
-            </Descriptions.Item>
-            <Descriptions.Item label="Mục tiêu cự ly">
-              <span className="font-medium text-gray-800">{activePlan.distanceTarget} m</span>
-            </Descriptions.Item>
-            <Descriptions.Item label="Khối lượng/tuần">
-              <span className="font-medium text-gray-800">{activePlan.weeklyVolumeKm} km</span>
-            </Descriptions.Item>
-            <Descriptions.Item label="Thời gian">
-              <span className="font-medium text-gray-800">
-                {dayjs(activePlan.startDate).format('DD/MM/YYYY')} →{' '}
-                {activePlan.endDate ? dayjs(activePlan.endDate).format('DD/MM/YYYY') : 'Chưa xác định'}
-              </span>
-            </Descriptions.Item>
-          </Descriptions>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div>
+              <div className="text-emerald-600/70 text-xs font-medium mb-1">Giai đoạn</div>
+              <div className="font-semibold text-emerald-900 text-sm">{PHASE_LABELS[activePlan.phase] || activePlan.phase}</div>
+            </div>
+            <div>
+              <div className="text-emerald-600/70 text-xs font-medium mb-1">Cường độ</div>
+              <div className="font-semibold text-emerald-900 text-sm">{INTENSITY_CONFIG[activePlan.intensity]?.label || activePlan.intensity}</div>
+            </div>
+            <div>
+              <div className="text-emerald-600/70 text-xs font-medium mb-1">Mặt sân</div>
+              <div className="font-semibold text-emerald-900 text-sm">{SURFACE_LABELS[activePlan.surface] || activePlan.surface}</div>
+            </div>
+            <div>
+              <div className="text-emerald-600/70 text-xs font-medium mb-1">Cự ly mục tiêu</div>
+              <div className="font-semibold text-emerald-900 text-sm">{activePlan.distanceTarget} m</div>
+            </div>
+            <div>
+              <div className="text-emerald-600/70 text-xs font-medium mb-1">Khối lượng / Tuần</div>
+              <div className="font-semibold text-emerald-900 text-sm">{activePlan.weeklyVolumeKm} km</div>
+            </div>
+            <div>
+              <div className="text-emerald-600/70 text-xs font-medium mb-1">Thời gian</div>
+              <div className="font-semibold text-emerald-900 text-sm">
+                {dayjs(activePlan.startDate).format('DD/MM/YY')} - {activePlan.endDate ? dayjs(activePlan.endDate).format('DD/MM/YY') : 'N/A'}
+              </div>
+            </div>
+          </div>
           {activePlan.notes && (
-            <div className="mt-3 p-3 bg-gray-50 rounded text-gray-600 text-sm">
-              📝 {activePlan.notes}
+            <div className="mt-4 p-3 bg-white/50 border border-emerald-100 rounded-lg text-emerald-800 text-sm">
+              <strong className="text-emerald-900 mr-2">Ghi chú HLV:</strong>
+              {activePlan.notes}
             </div>
           )}
         </div>
       )}
 
       {/* Main Table */}
-      <div className="premium-card p-5">
-        <h3 className="font-bold text-lg text-[#022c22] mb-4">
-          {viewMode === 'sessions' ? 'Danh sách Buổi tập' : 'Danh sách Giáo án Huấn luyện'}
-        </h3>
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="p-5 border-b border-gray-100 flex justify-between items-center">
+          <h2 className="text-base font-semibold text-gray-900 m-0">
+            {viewMode === 'sessions' ? 'Bảng thống kê Buổi tập' : 'Danh sách Giáo án Huấn luyện'}
+          </h2>
+        </div>
+        
         {viewMode === 'sessions' ? (
           <Table
             rowKey="_id"
             columns={sessionColumns}
             dataSource={horseSessions}
             loading={sessionsLoading}
-            pagination={{ pageSize: 10 }}
-            size="middle"
+            pagination={{ pageSize: 10, position: ['bottomRight'] }}
+            className="custom-table"
             locale={{ emptyText: 'Chưa có buổi tập nào' }}
-            rowClassName="hover:bg-gray-50 transition-colors cursor-pointer"
           />
         ) : (
           <Table
             rowKey="_id"
             columns={planColumns}
             dataSource={horsePlans}
-            pagination={{ pageSize: 10 }}
-            size="middle"
+            pagination={{ pageSize: 10, position: ['bottomRight'] }}
+            className="custom-table"
             locale={{ emptyText: 'Chưa có giáo án nào' }}
-            rowClassName="hover:bg-gray-50 transition-colors"
           />
         )}
       </div>

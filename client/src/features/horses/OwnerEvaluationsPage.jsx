@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Typography, Card, Row, Col, Tag, Select, Empty, Timeline, Rate, Divider } from 'antd';
+import { Select, Timeline, Empty } from 'antd';
 import {
   StarOutlined,
   CommentOutlined,
@@ -21,24 +21,37 @@ import {
 } from 'recharts';
 import dayjs from 'dayjs';
 
-const { Title, Text, Paragraph } = Typography;
-
 const SESSION_TYPE_CONFIG = {
-  training: { color: 'blue', label: 'Tập luyện' },
-  trial_run: { color: 'orange', label: '🏁 Chạy thử' },
+  training: { color: 'bg-blue-50 text-blue-600 border-blue-200', label: 'Tập luyện' },
+  trial_run: { color: 'bg-orange-50 text-orange-600 border-orange-200', label: '🏁 Chạy thử' },
 };
 
 function RatingBadge({ rating }) {
-  if (!rating) return <Text type="secondary">Chưa đánh giá</Text>;
-  let color = '#52c41a';
-  if (rating < 4) color = '#ff4d4f';
-  else if (rating < 7) color = '#faad14';
+  if (!rating) return <span className="text-gray-400 font-medium">Chưa đánh giá</span>;
+  let colorClass = 'bg-emerald-100 text-emerald-700';
+  if (rating < 4) colorClass = 'bg-red-100 text-red-700';
+  else if (rating < 7) colorClass = 'bg-yellow-100 text-yellow-700';
   return (
-    <Tag color={color} style={{ fontSize: 14, padding: '2px 10px' }}>
+    <span className={`text-sm px-2.5 py-1 rounded-full font-bold shadow-sm ${colorClass}`}>
       ⭐ {rating}/10
-    </Tag>
+    </span>
   );
 }
+
+const StatCard = ({ title, value, subtitle, icon, iconColorClass }) => (
+  <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
+    <div className="flex justify-between items-center mb-4">
+      <span className="text-gray-500 text-sm font-medium">{title}</span>
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${iconColorClass}`}>
+        {icon}
+      </div>
+    </div>
+    <div className="flex items-baseline gap-3 mb-1">
+      <span className="text-3xl font-bold text-gray-900">{value}</span>
+    </div>
+    <span className="text-xs text-gray-400 font-medium">{subtitle}</span>
+  </div>
+);
 
 export default function OwnerEvaluationsPage() {
   const [selectedHorse, setSelectedHorse] = useState(null);
@@ -49,7 +62,7 @@ export default function OwnerEvaluationsPage() {
   });
   const horses = horsesData?.data || [];
 
-  const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
+  const { data: sessionsData } = useQuery({
     queryKey: ['training-sessions'],
     queryFn: () => trainingSessionApi.list(),
   });
@@ -92,92 +105,84 @@ export default function OwnerEvaluationsPage() {
     (max, s) => Math.max(max, s.performanceRating || 0),
     0
   );
-  const latestEval = evaluatedSessions[0];
 
   return (
-    <div>
-      <Title level={3} className="!font-semibold !mb-2 !text-[#022c22]" style={{ fontFamily: 'Georgia, serif' }}>
-        <StarOutlined className="mr-2 text-[#eab308]" />
-        Đánh giá từ HLV
-      </Title>
-      <Text className="block mb-6 text-gray-500">
-        Nhật ký nhận xét và đánh giá chuyên môn từ Huấn luyện viên Trưởng.
-      </Text>
+    <div className="min-h-screen bg-[#FAFAFA] text-gray-800 p-4 md:px-8 md:pb-8 md:pt-4 font-sans">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-gray-900 m-0 mb-1 tracking-tight">Đánh giá từ Huấn luyện viên</h1>
+        <p className="text-sm text-gray-500 m-0">
+          Nhật ký nhận xét và đánh giá chuyên môn định kỳ từ Huấn luyện viên Trưởng.
+        </p>
+      </div>
 
       {/* Horse Selector */}
-      <div className="premium-card p-4 mb-6">
-        <div className="flex items-center gap-4 flex-wrap">
-          <span className="font-medium text-gray-700">Chọn ngựa:</span>
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <span className="font-medium text-gray-500 text-sm">Xem đánh giá cho:</span>
           <Select
-            placeholder="Tất cả ngựa"
+            placeholder="Tất cả chiến mã"
             allowClear
             value={selectedHorse}
             onChange={setSelectedHorse}
             options={horses.map((h) => ({ value: h._id, label: h.name }))}
-            style={{ minWidth: 200 }}
-            className="rounded-md"
+            className="min-w-[200px]"
+            size="middle"
           />
-          <Text className="text-gray-500 text-sm">
-            Tìm thấy <strong className="text-gray-800">{totalEvaluations}</strong> đánh giá
-          </Text>
+        </div>
+        <div className="text-gray-500 text-sm">
+          Tìm thấy <strong className="text-gray-800">{totalEvaluations}</strong> đánh giá
         </div>
       </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="premium-card p-4 flex items-center gap-4 border-t-4 border-t-[#eab308]">
-          <div className="w-12 h-12 rounded-full bg-yellow-50 text-[#eab308] flex items-center justify-center text-xl">
-            <StarOutlined />
-          </div>
-          <div>
-            <div className="text-gray-500 text-[10px] uppercase font-bold tracking-widest">Rating trung bình</div>
-            <div className="text-2xl font-bold text-[#022c22]">{avgRating || '—'}</div>
-          </div>
-        </div>
-        <div className="premium-card p-4 flex items-center gap-4 border-t-4 border-t-green-500">
-          <div className="w-12 h-12 rounded-full bg-green-50 text-green-500 flex items-center justify-center text-xl">
-            <TrophyOutlined />
-          </div>
-          <div>
-            <div className="text-gray-500 text-[10px] uppercase font-bold tracking-widest">Rating cao nhất</div>
-            <div className="text-2xl font-bold text-[#022c22]">{highestRating || '—'}</div>
-          </div>
-        </div>
-        <div className="premium-card p-4 flex items-center gap-4 border-t-4 border-t-blue-500">
-          <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center text-xl">
-            <CommentOutlined />
-          </div>
-          <div>
-            <div className="text-gray-500 text-[10px] uppercase font-bold tracking-widest">Tổng đánh giá</div>
-            <div className="text-2xl font-bold text-[#022c22]">{totalEvaluations}</div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <StatCard 
+          title="Rating Trung bình" 
+          value={avgRating || '—'}
+          subtitle="Điểm trên thang 10"
+          icon={<StarOutlined />}
+          iconColorClass="bg-yellow-100 text-yellow-600"
+        />
+        <StatCard 
+          title="Rating Cao nhất" 
+          value={highestRating || '—'}
+          subtitle="Thành tích tốt nhất"
+          icon={<TrophyOutlined />}
+          iconColorClass="bg-emerald-100 text-emerald-600"
+        />
+        <StatCard 
+          title="Tổng Đánh giá" 
+          value={totalEvaluations}
+          subtitle="Số lần HLV nhận xét"
+          icon={<CommentOutlined />}
+          iconColorClass="bg-blue-100 text-blue-600"
+        />
       </div>
 
       {/* Rating Chart */}
       {chartData.length > 1 && (
-        <div className="premium-card p-5 mb-6">
-          <div className="flex items-center gap-2 mb-4">
-            <RiseOutlined className="text-green-500 text-lg" />
-            <h4 className="font-bold text-lg text-[#022c22] m-0">Biểu đồ Xu hướng Đánh giá</h4>
+        <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6">
+          <div className="flex items-center gap-2 mb-6 border-b border-gray-100 pb-4">
+            <RiseOutlined className="text-emerald-500 text-xl" />
+            <h2 className="text-base font-semibold text-gray-900 m-0">Biểu đồ Xu hướng Đánh giá</h2>
           </div>
-          <ResponsiveContainer width="100%" height={280}>
+          <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
+              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} dy={10} />
               <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
               <Tooltip
                 content={({ active, payload }) => {
                   if (active && payload?.length) {
                     const d = payload[0].payload;
                     return (
-                      <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-100">
-                        <div className="font-semibold text-gray-800">{d.fullDate}</div>
-                        <div className="mt-1">
+                      <div className="bg-white p-4 rounded-xl shadow-lg border border-gray-100">
+                        <div className="font-semibold text-gray-800 mb-2">{d.fullDate}</div>
+                        <div className="text-lg">
                           ⭐ Rating: <strong className="text-gray-900">{d.rating}/10</strong>
                         </div>
-                        <div className="text-gray-600 text-sm mt-1">Loại: {d.type}</div>
-                        {d.horse && <div className="text-gray-600 text-sm">Ngựa: {d.horse}</div>}
+                        <div className="text-gray-500 text-sm mt-2 font-medium">Loại: {d.type}</div>
+                        {d.horse && <div className="text-gray-500 text-sm font-medium">Chiến mã: {d.horse}</div>}
                       </div>
                     );
                   }
@@ -199,56 +204,64 @@ export default function OwnerEvaluationsPage() {
       )}
 
       {/* Evaluations Timeline */}
-      <div className="premium-card p-5">
-        <div className="flex items-center gap-2 mb-6">
-          <CommentOutlined className="text-[#022c22] text-lg" />
-          <h4 className="font-bold text-lg text-[#022c22] m-0">Nhật ký Đánh giá</h4>
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-2 mb-6 border-b border-gray-100 pb-4">
+          <CommentOutlined className="text-gray-700 text-xl" />
+          <h2 className="text-base font-semibold text-gray-900 m-0">Nhật ký Đánh giá & Nhận xét</h2>
         </div>
         
         {evaluatedSessions.length > 0 ? (
           <Timeline
-            className="mt-2"
+            className="mt-6 custom-timeline pl-2"
             items={evaluatedSessions.map((session) => ({
-              color:
-                session.performanceRating >= 7
-                  ? 'green'
-                  : session.performanceRating >= 4
-                    ? 'blue'
-                    : 'red',
+              color: session.performanceRating >= 7 ? '#10b981' : session.performanceRating >= 4 ? '#3b82f6' : '#ef4444',
               children: (
-                <div className="pb-4">
-                  <div className="flex justify-between items-start flex-wrap gap-2 mb-2">
+                <div className="pb-6 -mt-2">
+                  <div className="flex justify-between items-start flex-wrap gap-4 mb-3">
                     <div>
-                      <span className="font-medium text-gray-800 text-base">
+                      <span className="font-semibold text-gray-900 text-base">
                         {dayjs(session.scheduledAt).format('DD/MM/YYYY HH:mm')}
                       </span>
-                      <Tag className="ml-3 rounded-full border-0" color={SESSION_TYPE_CONFIG[session.sessionType]?.color}>
+                      <span className={`ml-3 text-xs px-2 py-0.5 rounded border font-medium ${SESSION_TYPE_CONFIG[session.sessionType]?.color || 'bg-gray-100'}`}>
                         {SESSION_TYPE_CONFIG[session.sessionType]?.label || session.sessionType}
-                      </Tag>
+                      </span>
                       {session.horse?.name && (
-                        <Tag className="ml-1 rounded-full border-0 bg-gray-100 text-gray-600">{session.horse.name}</Tag>
+                        <span className="ml-2 text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200 font-medium">
+                          🐴 {session.horse.name}
+                        </span>
                       )}
                     </div>
                     <RatingBadge rating={session.performanceRating} />
                   </div>
 
                   {session.trainerComment && (
-                    <div className="mt-2 p-3 bg-gray-50 rounded-lg text-gray-700 text-sm">
-                      <div className="text-gray-400 text-xs mb-1">💬 Nhận xét HLV:</div>
-                      {session.trainerComment}
+                    <div className="mt-2 p-4 bg-gray-50 rounded-xl border border-gray-100 text-gray-700 text-sm shadow-sm relative">
+                      <div className="absolute top-4 left-4 text-gray-300">
+                        <CommentOutlined />
+                      </div>
+                      <div className="pl-6">
+                        <div className="text-gray-400 text-xs mb-1 font-bold tracking-wider uppercase">Nhận xét HLV</div>
+                        <p className="m-0 leading-relaxed">{session.trainerComment}</p>
+                      </div>
                     </div>
                   )}
 
                   {session.metrics && (
-                    <div className="mt-3 flex gap-4 flex-wrap text-sm">
+                    <div className="mt-3 flex gap-2 flex-wrap text-sm">
                       {session.metrics.avgHeartRate && (
-                        <span className="text-gray-500 bg-white border border-gray-200 px-2 py-1 rounded-md">❤️ {session.metrics.avgHeartRate} bpm</span>
+                        <span className="text-gray-600 font-medium bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm">
+                          ❤️ {session.metrics.avgHeartRate} <span className="text-gray-400 text-xs">bpm</span>
+                        </span>
                       )}
                       {session.metrics.maxSpeed && (
-                        <span className="text-gray-500 bg-white border border-gray-200 px-2 py-1 rounded-md">🏃 {session.metrics.maxSpeed} km/h</span>
+                        <span className="text-gray-600 font-medium bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm">
+                          🏃 {session.metrics.maxSpeed} <span className="text-gray-400 text-xs">km/h</span>
+                        </span>
                       )}
                       {session.metrics.distance && (
-                        <span className="text-gray-500 bg-white border border-gray-200 px-2 py-1 rounded-md">📏 {session.metrics.distance} m</span>
+                        <span className="text-gray-600 font-medium bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm">
+                          📏 {session.metrics.distance} <span className="text-gray-400 text-xs">m</span>
+                        </span>
                       )}
                     </div>
                   )}
@@ -257,7 +270,7 @@ export default function OwnerEvaluationsPage() {
             }))}
           />
         ) : (
-          <Empty description="Chưa có đánh giá nào từ HLV" />
+          <Empty description="Chưa có đánh giá nào từ HLV" className="my-12" />
         )}
       </div>
     </div>
