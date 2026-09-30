@@ -19,6 +19,7 @@ const DailyTask = require('../src/models/DailyTask');
 const FeedingSchedule = require('../src/models/FeedingSchedule');
 const InventoryItem = require('../src/models/InventoryItem');
 const Notification = require('../src/models/Notification');
+const { syncCareTasks } = require('../src/modules/health/treatmentCare.service');
 
 const DEMO_PASSWORD = '123456';
 
@@ -248,6 +249,25 @@ async function run() {
     reportedAt: at(0, 7, 10),
   };
   await hoofIncidentTask.save();
+
+  // A vet's care order in progress: Golden Wind is on a short course of treatment, which shows up
+  // as medication and monitoring tasks on the groom's list (source: vet).
+  const tendonCheck = await HealthRecord.create({
+    horse: horses[2]._id,
+    examinedBy: vet._id,
+    diagnosis: 'Gân chân trước hơi ấm sau buổi tập, chưa thấy tổn thương.',
+    vitalSigns: { temperatureC: 38.0, heartRate: 40, respiratoryRate: 16 },
+    resultStatus: 'eligible',
+  });
+  const course = await Treatment.create({
+    healthRecord: tendonCheck._id,
+    horse: horses[2]._id,
+    prescribedBy: vet._id,
+    medications: [{ name: 'Gel kháng viêm', dosage: 'bôi chân trước', frequency: '2 lần/ngày' }],
+    careInstructions: 'Dắt bộ 15 phút, theo dõi độ ấm của gân chân trước.',
+    status: 'ongoing',
+  });
+  await syncCareTasks(course);
 
   const rations = {
     morning: [{ type: 'grain', quantity: '2.5kg' }, { type: 'hay', quantity: '3kg' }, { type: 'vitamin', quantity: '30g' }],

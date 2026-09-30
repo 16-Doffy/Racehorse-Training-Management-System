@@ -144,6 +144,11 @@ module.exports = {
           resolvedAt: { type: 'string', format: 'date-time', nullable: true },
           healthRecord: { type: 'string', nullable: true, description: 'The exam that answered the request' },
           resolutionNote: { type: 'string' },
+          trainingSession: {
+            type: 'string',
+            nullable: true,
+            description: 'Set when the system raised the request itself: a finished session averaged 10%+ over its heart-rate limit',
+          },
         },
       },
       Readiness: {
@@ -219,6 +224,7 @@ module.exports = {
           },
           trainerComment: { type: 'string' },
           performanceRating: { type: 'integer', minimum: 1, maximum: 10 },
+          videoUrl: { type: 'string', description: 'Link (http/https) to a recording of the run, mainly for trial runs — set through the evaluation endpoint' },
         },
       },
       HealthRecord: {
@@ -248,7 +254,12 @@ module.exports = {
             type: 'array',
             items: { type: 'object', properties: { name: { type: 'string' }, dosage: { type: 'string' }, frequency: { type: 'string' } } },
           },
-          isTrainingLocked: { type: 'boolean', description: 'While true, POST /training/sessions is refused for this horse (409).' },
+          careInstructions: {
+            type: 'string',
+            description:
+              "What the stable must do during the treatment (box rest, watch the swelling…). While the treatment is ongoing, each medication becomes a daily `medication` task and this becomes a daily `monitoring` task for the horse's caretaker (DailyTask.source = vet), who is notified.",
+          },
+          isTrainingLocked: { type: 'boolean', description: 'While true, POST /training/sessions is refused for this horse (409), and so is a race registration. The trainer and the groom are notified.' },
           lockReason: { type: 'string' },
           status: { type: 'string', enum: ['ongoing', 'completed'] },
         },
@@ -270,7 +281,17 @@ module.exports = {
           _id: { type: 'string' },
           horse: { type: 'string' },
           assignedTo: { type: 'string' },
-          taskType: { type: 'string', enum: ['feeding', 'cleaning', 'bathing', 'icing'] },
+          taskType: {
+            type: 'string',
+            enum: ['feeding', 'cleaning', 'bathing', 'icing', 'medication', 'monitoring'],
+            description: 'medication / monitoring are created from a vet treatment only; they cannot be assigned by hand',
+          },
+          source: {
+            type: 'string',
+            enum: ['trainer', 'vet', 'system'],
+            description: 'Who the work comes from: assigned by hand, ordered by the vet through a treatment, or generated (daily meals, post-session care). A trainer/manager cannot edit or delete a vet task (409).',
+          },
+          treatment: { type: 'string', nullable: true, description: 'The treatment a vet care order belongs to' },
           mealSlot: {
             type: 'string',
             nullable: true,
@@ -303,8 +324,31 @@ module.exports = {
               description: { type: 'string' },
               images: { type: 'array', items: { type: 'string' }, description: 'Relative URLs under /uploads' },
               severity: { type: 'string', enum: ['low', 'medium', 'high'] },
+              reportedAt: { type: 'string', format: 'date-time' },
+              status: {
+                type: 'string',
+                enum: ['open', 'acknowledged', 'resolved'],
+                description: 'Open until the vet picks it up and closes it. Reports filed before this field existed have none and count as open.',
+              },
+              handledBy: { type: 'string', nullable: true, description: 'The vet who acknowledged / resolved it' },
+              response: { type: 'string', description: 'What the vet found or told the stable to do' },
+              resolvedAt: { type: 'string', format: 'date-time', nullable: true },
+              healthRecord: { type: 'string', nullable: true, description: 'Set when the report was closed by filing an exam' },
             },
           },
+        },
+      },
+      TimelineEvent: {
+        type: 'object',
+        properties: {
+          at: { type: 'string', format: 'date-time' },
+          kind: { type: 'string', enum: ['session', 'exam', 'treatment', 'care', 'incident', 'exam_request', 'race'] },
+          role: { type: 'string', description: 'The role the record came from (head_trainer, veterinarian, groom, manager)' },
+          actor: { type: 'string', description: 'Name of the person, when known' },
+          title: { type: 'string' },
+          detail: { type: 'string' },
+          severity: { type: 'string', enum: ['info', 'warning', 'critical'] },
+          refId: { type: 'string', description: 'Id of the underlying record' },
         },
       },
       StableAssignment: {
@@ -502,6 +546,31 @@ module.exports = {
       put: { tags: ['Horses'], summary: 'Update horse (Manager only)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Horse' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404] } },
       delete: { tags: ['Horses'], summary: 'Delete horse (Manager only)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
     },
+    '/horses/{id}/timeline': {
+      get: {
+        tags: ['Horses'],
+        summary: 'Everything every role did to one horse, newest first',
+        description:
+          'Merges training sessions, exams, treatments and locks, completed care tasks with what the groom observed, ' +
+          'incident reports, exam requests and race entries. Covers the last `days` days (default 14, max 90) plus ' +
+          'sessions and races booked for the next 7. Same access rule as GET /horses/{id}.',
+        parameters: [idParam('id'), { name: 'days', in: 'query', schema: { type: 'integer', default: 14, maximum: 90 } }],
+        responses: {
+          200: responses[200]({
+            type: 'object',
+            properties: {
+              horse: { type: 'object' },
+              from: { type: 'string', format: 'date-time' },
+              to: { type: 'string', format: 'date-time' },
+              days: { type: 'integer' },
+              events: { type: 'array', items: { $ref: '#/components/schemas/TimelineEvent' } },
+            },
+          }),
+          403: responses[403],
+          404: responses[404],
+        },
+      },
+    },
     '/horses/{id}/care-schedule': {
       patch: {
         tags: ['Horses'],
@@ -609,10 +678,12 @@ module.exports = {
           'Recomputes `outcome` by comparing the recorded metrics against the session prescription. ' +
           'When this moves the session to `completed` for the first time and the session was hard ' +
           '(intensity high, or a race simulation), it also creates the follow-up icing and bathing ' +
-          "DailyTasks for the horse's caretaker, and notifies the owner that their horse has trained.",
+          "DailyTasks for the horse's caretaker (who is notified), and notifies the owner that their horse has trained. " +
+          'If the average heart rate is 10% or more over the prescribed limit, a high-priority exam request is raised ' +
+          "for the horse's vet (once per session, and not while the horse already has one pending).",
         parameters: [idParam('id')],
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { trainerComment: { type: 'string' }, performanceRating: { type: 'integer' }, metrics: { type: 'object' }, status: { type: 'string' } } } } } },
-        responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 404: responses[404] },
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { trainerComment: { type: 'string' }, performanceRating: { type: 'integer' }, metrics: { type: 'object' }, status: { type: 'string' }, videoUrl: { type: 'string', description: 'http(s) link; empty string clears it' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 404: responses[404] },
       },
     },
     '/health/records': {
@@ -787,6 +858,7 @@ module.exports = {
       post: {
         tags: ['Stable (Groom)'],
         summary: 'Report an incident with optional photo evidence (Groom)',
+        description: "Opens the report (status open) and notifies the horse's vet and trainer.",
         parameters: [idParam('id')],
         requestBody: {
           required: true,
@@ -797,6 +869,44 @@ module.exports = {
           },
         },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404] },
+      },
+    },
+    '/stable/incidents': {
+      get: {
+        tags: ['Stable (Groom)'],
+        summary: 'Incident reports as a working list',
+        description:
+          'Returns the DailyTasks that carry an incident report, newest report first. Veterinarian and Head Trainer: ' +
+          'reports on the horses assigned to them. Groom: the ones they filed. Owner: their own horses. Manager: all. ' +
+          'An unresolved medium/high report from the last 3 days turns the training readiness `medical` gate amber.',
+        parameters: [
+          horseQueryParam,
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['open', 'acknowledged', 'resolved', 'unresolved'] }, description: '`unresolved` = everything still waiting on a vet' },
+        ],
+        responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/DailyTask' } }) },
+      },
+    },
+    '/stable/incidents/{id}': {
+      patch: {
+        tags: ['Stable (Groom)'],
+        summary: "The vet's answer to an incident report (Veterinarian)",
+        description:
+          '`id` is the DailyTask id. `acknowledged` = seen, being looked at; `resolved` needs a `response`. The groom who ' +
+          "reported it and the horse's trainer are notified. Filing a health record for the horse resolves its open " +
+          'reports automatically.',
+        parameters: [idParam('id')],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: { status: { type: 'string', enum: ['acknowledged', 'resolved'], default: 'resolved' }, response: { type: 'string' } },
+              },
+            },
+          },
+        },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
     '/stable/assignments': {
@@ -841,12 +951,27 @@ module.exports = {
     },
     '/races': {
       get: { tags: ['Races (scaffold)'], summary: 'List race entries', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/RaceEntry' } }) } },
-      post: { tags: ['Races (scaffold)'], summary: 'Register a horse for a race (Head Trainer)', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/RaceEntry' }), 403: responses[403] } },
+      post: { tags: ['Races (scaffold)'], summary: 'Register a horse for a race (Head Trainer) — 409 if the vet has grounded the horse (training lock, injured, quarantined)', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/RaceEntry' }), 403: responses[403] } },
     },
     '/races/{id}': {
       get: { tags: ['Races (scaffold)'], summary: 'Get race entry', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
       put: { tags: ['Races (scaffold)'], summary: 'Update race entry (Head Trainer)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
       delete: { tags: ['Races (scaffold)'], summary: 'Delete race entry (Head Trainer, Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
+    },
+    '/finance/mine/summary': {
+      get: {
+        tags: ['Finance (scaffold)'],
+        summary: "Owner's periodic statement: cost, medical and revenue per month or quarter",
+        description:
+          'Totals for the owner\'s horses over one year: `periods` (12 months or 4 quarters, each with cost, revenue, net, ' +
+          'medicalCost, exams, treatments, byCategory), `byHorse`, `byCategory` and `totals`. medicalCost is spending in ' +
+          'the "medical" category; exams / treatments count the health records and treatments in the period.',
+        parameters: [
+          { name: 'period', in: 'query', schema: { type: 'string', enum: ['month', 'quarter'], default: 'month' } },
+          { name: 'year', in: 'query', schema: { type: 'integer' }, description: 'Defaults to the current year' },
+        ],
+        responses: { 200: responses[200]({ type: 'object' }), 403: responses[403] },
+      },
     },
     '/finance/mine': {
       get: { tags: ['Finance (scaffold)'], summary: "Owner's own cost/revenue records", responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FinancialRecord' } }), 403: responses[403] } },
