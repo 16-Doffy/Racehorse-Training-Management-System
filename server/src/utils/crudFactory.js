@@ -15,10 +15,12 @@ const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('./hors
  * - `stamp(req, { isCreate })`: fields the server sets itself (e.g. who recorded it), so the client
  *   can't claim to be someone else. Return {} for the case that shouldn't change them.
  * - `afterWrite(item, req)`: hook for side effects that must follow a successful create/update.
+ * - `validate(req, { existing })`: business rule checked before a create/update is written.
+ *   Return a message to refuse it (409), or nothing to let it through.
  */
 function crudFactory(
   Model,
-  { populate = [], defaultSort = { createdAt: -1 }, label = 'Item', scopeByHorse = false, stamp, afterWrite } = {}
+  { populate = [], defaultSort = { createdAt: -1 }, label = 'Item', scopeByHorse = false, stamp, afterWrite, validate } = {}
 ) {
   const denied = async (req, horseId) => scopeByHorse && !(await canAccessHorse(req.user, horseId));
 
@@ -44,6 +46,8 @@ function crudFactory(
 
   const createOne = asyncHandler(async (req, res) => {
     if (await denied(req, req.body.horse)) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+    const refusal = validate ? await validate(req, { existing: null }) : null;
+    if (refusal) return fail(res, refusal, 409);
     const item = await Model.create({ ...req.body, ...(stamp ? stamp(req, { isCreate: true }) : {}) });
     if (afterWrite) await afterWrite(item, req);
     return created(res, item, `${label} created.`);
@@ -55,6 +59,8 @@ function crudFactory(
     // Checked against both the current horse and any horse the update moves it to.
     if (await denied(req, existing.horse)) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
     if (req.body.horse && (await denied(req, req.body.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+    const refusal = validate ? await validate(req, { existing }) : null;
+    if (refusal) return fail(res, refusal, 409);
 
     const item = await Model.findByIdAndUpdate(
       req.params.id,
