@@ -13,3 +13,10 @@ PROJECT_STATUS.md
 # Expo
 mobile/.expo/
 mobile/dist/
+
+# One-off files from comparing the API against the frontend; not part of the app.
+swagger-init.js
+endpoints.json
+scratch/
+# Local AI-assistant skill folders.
+.agents/

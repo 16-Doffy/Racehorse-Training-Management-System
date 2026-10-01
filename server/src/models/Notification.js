@@ -17,6 +17,7 @@ const notificationSchema = new mongoose.Schema(
         'vaccination_due',
         'deworming_due',
         'farrier_due',
+        'exam_due', // periodic check-up the vet scheduled (careSchedule.nextExamDue)
         'incident_report',
         'exam_request',
         'restock_decision',
@@ -24,6 +25,7 @@ const notificationSchema = new mongoose.Schema(
         'restock_request',
         'horse_assigned',
         'session_completed',
+        'race_result', // to the owner: placing and prize money of their horse's race
         'readiness_override',
         'training_unlocked',
         // To the groom: work handed to them, a vet's care order, a session coming up for their horse.

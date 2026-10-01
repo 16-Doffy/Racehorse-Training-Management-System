@@ -71,11 +71,27 @@ export default function MedicalSchedule() {
     setSelectedHorse(horse);
     const sched = horse.careSchedule || {};
     setFormData({
+      nextExamDue: formatDateForInput(sched.nextExamDue),
       nextVaccinationDue: formatDateForInput(sched.nextVaccinationDue),
       nextDewormingDue: formatDateForInput(sched.nextDewormingDue),
       nextFarrierDue: formatDateForInput(sched.nextFarrierDue),
     });
     setShowModal(true);
+  };
+
+  const handleQuickAdd7Days = async (horse, type = 'nextExamDue') => {
+    const next7Days = new Date();
+    next7Days.setDate(next7Days.getDate() + 7);
+    const dateStr = formatDateForInput(next7Days);
+
+    try {
+      await veterinarianApi.updateCareSchedule(horse._id, {
+        [type]: dateStr,
+      });
+      fetchHorses();
+    } catch (err) {
+      setError(err?.message || 'Lỗi khi cập nhật lịch khám định kỳ.');
+    }
   };
 
   const handleSaveSchedule = async (e) => {
@@ -85,6 +101,7 @@ export default function MedicalSchedule() {
     setSaving(true);
     try {
       await veterinarianApi.updateCareSchedule(selectedHorse._id, {
+        nextExamDue: formData.nextExamDue || null,
         nextVaccinationDue: formData.nextVaccinationDue || null,
         nextDewormingDue: formData.nextDewormingDue || null,
         nextFarrierDue: formData.nextFarrierDue || null,
@@ -104,7 +121,16 @@ export default function MedicalSchedule() {
     const sched = horse.careSchedule || {};
     const items = [
       {
+        type: 'periodicExam',
+        field: 'nextExamDue',
+        label: 'Khám định kỳ 7 ngày (Periodic Exam)',
+        icon: 'bi-stethoscope text-danger',
+        date: sched.nextExamDue,
+        notifiedAt: sched.examNotifiedAt,
+      },
+      {
         type: 'vaccination',
+        field: 'nextVaccinationDue',
         label: 'Tiêm phòng (Vaccination)',
         icon: 'bi-eyedropper text-primary',
         date: sched.nextVaccinationDue,
@@ -112,6 +138,7 @@ export default function MedicalSchedule() {
       },
       {
         type: 'deworming',
+        field: 'nextDewormingDue',
         label: 'Tẩy giun (Deworming)',
         icon: 'bi-capsule text-success',
         date: sched.nextDewormingDue,
@@ -119,6 +146,7 @@ export default function MedicalSchedule() {
       },
       {
         type: 'farrier',
+        field: 'nextFarrierDue',
         label: 'Kiểm tra móng (Farrier Check)',
         icon: 'bi-hammer text-dark',
         date: sched.nextFarrierDue,
@@ -164,10 +192,10 @@ export default function MedicalSchedule() {
         <div>
           <h2 className="fw-bold text-dark mb-1">
             <i className="bi bi-calendar-check me-2 text-primary"></i>
-            Quản Lý Lịch Y Tế & Chăm Sóc Định Kỳ
+            Quản Lý Lịch Y Tế & Khám Định Kỳ (7 Ngày)
           </h2>
           <p className="text-muted mb-0 small">
-            Theo dõi kế hoạch tiêm phòng vắc-xin, tẩy giun sán và đóng móng sắt cho toàn bộ chiến mã trong câu lạc bộ.
+            Tạo và tự động hóa lịch khám bệnh định kỳ 7 ngày/lần, theo dõi vắc-xin, tẩy giun và kiểm tra móng cho chiến mã.
           </p>
         </div>
 
@@ -201,6 +229,7 @@ export default function MedicalSchedule() {
                 onChange={(e) => setCategoryFilter(e.target.value)}
               >
                 <option value="all">Tất cả hạng mục</option>
+                <option value="periodicExam">🩺 Khám định kỳ 7 ngày (Periodic Exam)</option>
                 <option value="vaccination">💉 Tiêm phòng (Vaccination)</option>
                 <option value="deworming">💊 Tẩy giun (Deworming)</option>
                 <option value="farrier">🔨 Đóng móng (Farrier)</option>
@@ -241,7 +270,7 @@ export default function MedicalSchedule() {
                     <th>Hạn tiếp theo</th>
                     <th>Trạng thái hạn</th>
                     <th>Nhắc nhở gần nhất</th>
-                    <th className="text-center" style={{ width: '130px' }}>Thao tác</th>
+                    <th className="text-center" style={{ width: '200px' }}>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -275,14 +304,24 @@ export default function MedicalSchedule() {
                         {formatDate(row.notifiedAt, 'Chưa gửi')}
                       </td>
                       <td className="text-center">
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          onClick={() => handleOpenEdit(row.horse)}
-                          title="Cập nhật lịch cho ngựa này"
-                        >
-                          <i className="bi bi-calendar-plus me-1"></i> Cập nhật
-                        </Button>
+                        <div className="d-flex justify-content-center gap-1">
+                          <Button
+                            variant="outline-success"
+                            size="sm"
+                            onClick={() => handleQuickAdd7Days(row.horse, row.field)}
+                            title="Tự động đặt lịch khám lại sau 7 ngày"
+                          >
+                            +7 ngày
+                          </Button>
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            onClick={() => handleOpenEdit(row.horse)}
+                            title="Cập nhật lịch cho ngựa này"
+                          >
+                            <i className="bi bi-pencil me-1"></i> Sửa
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -297,9 +336,35 @@ export default function MedicalSchedule() {
       <Modal show={showModal} onHide={() => setShowModal(false)} centered>
         <Form onSubmit={handleSaveSchedule}>
           <Modal.Header closeButton={!saving}>
-            <Modal.Title className="fs-5">Cập Nhật Lịch Y Tế - {selectedHorse?.name}</Modal.Title>
+            <Modal.Title className="fs-5">Cập Nhật Lịch Y Tế & Định Kỳ - {selectedHorse?.name}</Modal.Title>
           </Modal.Header>
           <Modal.Body>
+            <Form.Group className="mb-3">
+              <div className="d-flex justify-content-between align-items-center mb-1">
+                <Form.Label className="fw-semibold mb-0">
+                  <i className="bi bi-stethoscope me-1 text-danger"></i> Hạn Khám Sức Khỏe Định Kỳ (7 ngày)
+                </Form.Label>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="p-0 text-decoration-none"
+                  onClick={() => {
+                    const next7Days = new Date();
+                    next7Days.setDate(next7Days.getDate() + 7);
+                    setFormData({ ...formData, nextExamDue: formatDateForInput(next7Days) });
+                  }}
+                >
+                  ➕ Đặt 7 ngày tới
+                </Button>
+              </div>
+              <Form.Control
+                type="date"
+                value={formData.nextExamDue}
+                onChange={(e) => setFormData({ ...formData, nextExamDue: e.target.value })}
+                disabled={saving}
+              />
+            </Form.Group>
+
             <Form.Group className="mb-3">
               <Form.Label className="fw-semibold">
                 <i className="bi bi-eyedropper me-1 text-primary"></i> Hạn Tiêm Phòng Kế Tiếp

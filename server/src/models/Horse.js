@@ -38,9 +38,11 @@ const horseSchema = new mongoose.Schema(
       nextVaccinationDue: { type: Date, default: null },
       nextDewormingDue: { type: Date, default: null },
       nextFarrierDue: { type: Date, default: null },
+      nextExamDue: { type: Date, default: null },
       vaccinationNotifiedAt: { type: Date, default: null },
       dewormingNotifiedAt: { type: Date, default: null },
       farrierNotifiedAt: { type: Date, default: null },
+      examNotifiedAt: { type: Date, default: null },
     },
   },
   { timestamps: true }

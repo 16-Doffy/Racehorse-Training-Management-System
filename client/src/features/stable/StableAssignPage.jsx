@@ -15,6 +15,7 @@ import {
   TimePicker,
   Tooltip,
   Popconfirm,
+  Segmented,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
 import {
@@ -41,6 +42,7 @@ import {
   ASSIGNABLE_TASK_TYPES,
   TASK_TIMING_META,
   INCIDENT_STATUS_META,
+  INCIDENT_SEVERITY_META,
   incidentStatusOf,
 } from '../../constants/care';
 
@@ -561,100 +563,102 @@ function RationList() {
 }
 
 /* -------------------------------------------------------------------------- */
-/* INCIDENTS LIST                                                             */
+/* Incidents                                                                   */
 /* -------------------------------------------------------------------------- */
+
+const INCIDENT_FILTERS = [
+  { value: 'unresolved', label: 'Chưa xử lý xong' },
+  { value: 'resolved', label: 'Đã xử lý' },
+  { value: 'all', label: 'Tất cả' },
+];
+
+/**
+ * What the grooms reported on this trainer's horses and what the vet did about it. Read-only on
+ * purpose: answering a report is the vet's call (PATCH /stable/incidents is vet-only). The trainer
+ * needs the list because an open report keeps the horse's medical readiness gate amber.
+ */
 function IncidentsList() {
-  const queryClient = useQueryClient();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [selectedIncident, setSelectedIncident] = useState(null);
-  const [form] = Form.useForm();
-
+  const [filter, setFilter] = useState('unresolved');
   const { data, isLoading } = useQuery({
-    queryKey: ['stable-incidents'],
-    queryFn: () => incidentApi.list(),
-  });
-  const incidents = data?.data || [];
-
-  const updateMutation = useMutation({
-    mutationFn: (payload) => incidentApi.update(selectedIncident._id, payload),
-    onSuccess: () => {
-      message.success('Đã cập nhật sự cố.');
-      queryClient.invalidateQueries({ queryKey: ['stable-incidents'] });
-      setModalOpen(false);
-    },
-    onError: (err) => message.error(err.message || 'Cập nhật thất bại.'),
+    queryKey: ['incidents', filter],
+    queryFn: () => incidentApi.list(filter === 'all' ? {} : { status: filter }),
   });
 
   const columns = [
     {
-      title: 'Ngày báo cáo',
-      dataIndex: 'reportedAt',
+      title: 'Báo lúc',
       key: 'reportedAt',
-      render: (d) => d ? dayjs(d).format('DD/MM/YYYY HH:mm') : dayjs().format('DD/MM/YYYY HH:mm'),
+      render: (_, t) => (t.incidentReport?.reportedAt ? dayjs(t.incidentReport.reportedAt).format('DD/MM HH:mm') : '—'),
     },
     {
-      title: 'Mô tả sự cố',
-      dataIndex: 'description',
+      title: 'Ngựa',
+      key: 'horse',
+      render: (_, t) => <Link to={`/horses/${t.horse?._id}`}>{t.horse?.name || 'Ngựa'}</Link>,
+    },
+    {
+      title: 'Mô tả',
       key: 'description',
+      render: (_, t) => (
+        <div className="min-w-[220px] max-w-md">
+          <div>{t.incidentReport?.description}</div>
+          {t.incidentReport?.images?.length > 0 && (
+            <Text type="secondary" className="!text-xs">
+              {t.incidentReport.images.length} ảnh đính kèm
+            </Text>
+          )}
+        </div>
+      ),
     },
     {
       title: 'Mức độ',
-      dataIndex: 'severity',
       key: 'severity',
-      render: (s) => (
-        <Tag color={s === 'high' ? 'red' : s === 'medium' ? 'orange' : 'green'}>
-          {s === 'high' ? 'Nghiêm trọng' : s === 'medium' ? 'Trung bình' : 'Nhẹ'}
-        </Tag>
-      ),
+      render: (_, t) => {
+        const meta = INCIDENT_SEVERITY_META[t.incidentReport?.severity];
+        return meta ? <Tag color={meta.color}>{meta.label}</Tag> : '—';
+      },
     },
+    { title: 'Người báo', key: 'reporter', render: (_, t) => t.assignedTo?.name || '—' },
     {
       title: 'Trạng thái',
-      dataIndex: 'status',
       key: 'status',
-      render: (s) => (
-        <Tag color={s === 'resolved' ? 'blue' : 'gold'}>
-          {s === 'resolved' ? 'Đã giải quyết' : 'Đang xử lý'}
-        </Tag>
-      ),
+      render: (_, t) => {
+        const meta = INCIDENT_STATUS_META[incidentStatusOf(t.incidentReport)];
+        return <Tag color={meta.color}>{meta.label}</Tag>;
+      },
     },
     {
-      title: 'Thao tác',
-      key: 'action',
-      render: (_, record) => (
-        <Button
-          size="small"
-          onClick={() => {
-            setSelectedIncident(record);
-            form.setFieldsValue({ status: record.status });
-            setModalOpen(true);
-          }}
-        >
-          Cập nhật
-        </Button>
-      ),
+      title: 'Bác sĩ phản hồi',
+      key: 'response',
+      render: (_, t) => {
+        const r = t.incidentReport || {};
+        if (!r.response) return <span className="text-gray-400">—</span>;
+        return (
+          <div className="min-w-[200px] max-w-sm text-sm">
+            {r.handledBy?.name ? `${r.handledBy.name}: ` : ''}
+            {r.response}
+          </div>
+        );
+      },
     },
   ];
 
   return (
-    <div className="mt-4">
-      <Table rowKey="_id" columns={columns} dataSource={incidents} loading={isLoading} size="middle" />
-      <Modal
-        title="Cập nhật sự cố"
-        open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={updateMutation.isPending}
-        destroyOnHidden
-      >
-        <Form form={form} layout="vertical" onFinish={(values) => updateMutation.mutate(values)}>
-          <Form.Item name="status" label="Trạng thái">
-            <Select options={[
-              { value: 'pending', label: 'Đang xử lý' },
-              { value: 'resolved', label: 'Đã giải quyết' },
-            ]} />
-          </Form.Item>
-        </Form>
-      </Modal>
+    <div>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+        <Typography.Text type="secondary" className="text-sm max-w-3xl">
+          Sự cố nhân viên chăm sóc báo trên các ngựa bạn phụ trách. Bác sĩ tiếp nhận và kết luận; sự cố
+          chưa xử lý xong làm cửa y tế của buổi tập chuyển vàng.
+        </Typography.Text>
+        <Segmented options={INCIDENT_FILTERS} value={filter} onChange={setFilter} />
+      </div>
+      <Table
+        rowKey="_id"
+        columns={columns}
+        dataSource={data?.data}
+        loading={isLoading}
+        scroll={{ x: 'max-content' }}
+        locale={{ emptyText: filter === 'unresolved' ? 'Không có sự cố nào đang chờ xử lý.' : 'Chưa có sự cố nào.' }}
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Card, Typography, Row, Col, Statistic, DatePicker, Empty, Segmented, Tag, Table } from 'antd';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, ResponsiveContainer, Legend } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { reportsApi } from './reportsApi';
@@ -67,6 +67,50 @@ const formatVndCompact = (n) => {
   if (v >= 1e3) return `${Math.round(v / 1e3)}k`;
   return String(v);
 };
+
+/** Money in and out per month of one year — the club's cash flow at a glance. */
+function CashFlowChart() {
+  const [year, setYear] = useState(dayjs().year());
+  const { data, isLoading } = useQuery({
+    queryKey: ['reports-finance-chart', year],
+    queryFn: () => reportsApi.financeChart({ period: 'month', year }),
+  });
+  const chart = data?.data;
+  const rows = (chart?.periods || []).map((p, i) => ({ month: `T${i + 1}`, revenue: p.revenue, cost: p.cost }));
+  const empty = rows.every((r) => !r.revenue && !r.cost);
+
+  return (
+    <Card
+      title={`Dòng tiền theo tháng — ${year}`}
+      className="mb-4"
+      loading={isLoading}
+      extra={<DatePicker picker="year" allowClear={false} value={dayjs().year(year)} onChange={(d) => d && setYear(d.year())} />}
+    >
+      {empty ? (
+        <Empty description="Chưa có khoản thu/chi nào trong năm này" />
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 mb-3 text-sm">
+            <span>Thu: <strong className="text-green-700">{formatVnd(chart.totals.revenue)}</strong></span>
+            <span>Chi: <strong className="text-red-700">{formatVnd(chart.totals.cost)}</strong></span>
+            <span>Lãi/lỗ: <strong className={chart.totals.net >= 0 ? 'text-green-700' : 'text-red-700'}>{formatVnd(chart.totals.net)}</strong></span>
+          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={rows} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="month" tickLine={false} />
+              <YAxis tickFormatter={formatVndCompact} width={56} tickLine={false} axisLine={false} />
+              <Tooltip formatter={(value, name) => [formatVnd(value), name]} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+              <Legend />
+              <Bar dataKey="revenue" name="Thu" fill="#16a34a" radius={[4, 4, 0, 0]} maxBarSize={22} />
+              <Bar dataKey="cost" name="Chi" fill="#dc2626" radius={[4, 4, 0, 0]} maxBarSize={22} />
+            </BarChart>
+          </ResponsiveContainer>
+        </>
+      )}
+    </Card>
+  );
+}
 
 /** Horizontal magnitude bars for one money breakdown. One series → the card title names it, no legend. */
 function CategoryBreakdownChart({ title, rows, hue, total }) {
@@ -243,6 +287,8 @@ export default function ReportsOverviewPage() {
           </Card>
         </Col>
       </Row>
+
+      <CashFlowChart />
 
       <Row gutter={[16, 16]} className="mb-4">
         <Col xs={24} lg={12}>

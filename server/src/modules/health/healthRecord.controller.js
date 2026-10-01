@@ -10,6 +10,7 @@ const { openExamRequest } = require('./examRequest.service');
 const { resolveIncidentsWithRecord } = require('../stable/incident.service');
 const { ROLES } = require('../../constants/roles');
 const pick = require('../../utils/pick');
+const { saveFile, deleteFileByUrl } = require('../../utils/fileStore');
 
 const RECORD_FIELDS = ['horse', 'date', 'diagnosis', 'vitalSigns', 'resultStatus', 'notes'];
 
@@ -217,7 +218,43 @@ const listClearances = asyncHandler(async (req, res) => {
   return ok(res, visible.map((r) => ({ ...r, clearanceDays: CLEARANCE_DAYS })), 'Clearance status fetched.');
 });
 
+const MAX_ATTACHMENTS = 10;
+
+/** Attaches files (images or PDF) to an exam record — X-rays, lab results, a scanned prescription. */
+const addAttachments = asyncHandler(async (req, res) => {
+  const record = await HealthRecord.findById(req.params.id);
+  if (!record) return fail(res, 'Health record not found.', 404);
+  if (!(await canAccessHorse(req.user, record.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+  const files = req.files || [];
+  if (files.length === 0) return fail(res, 'Chưa chọn tệp nào (trường "files").', 400);
+  if ((record.attachments || []).length + files.length > MAX_ATTACHMENTS) {
+    return fail(res, `Mỗi phiếu khám đính kèm tối đa ${MAX_ATTACHMENTS} tệp.`, 400);
+  }
+
+  const saved = await Promise.all(files.map((f) => saveFile(f, { uploadedBy: req.user._id, purpose: 'health_record', record: record._id })));
+  record.attachments.push(...saved.map((f) => ({ url: f.url, name: f.name, contentType: f.contentType, size: f.size, uploadedBy: req.user._id })));
+  await record.save();
+  await logAction({ actorId: req.user._id, action: 'healthRecord.attach', targetModel: 'HealthRecord', targetId: record._id, metadata: { count: saved.length } });
+  return ok(res, record, 'Attachments added.');
+});
+
+const removeAttachment = asyncHandler(async (req, res) => {
+  const record = await HealthRecord.findById(req.params.id);
+  if (!record) return fail(res, 'Health record not found.', 404);
+  if (!(await canAccessHorse(req.user, record.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+  const attachment = record.attachments.id(req.params.attachmentId);
+  if (!attachment) return fail(res, 'Không tìm thấy tệp đính kèm.', 404);
+
+  const { url } = attachment;
+  attachment.deleteOne();
+  await record.save();
+  await deleteFileByUrl(url);
+  return ok(res, record, 'Attachment removed.');
+});
+
 module.exports = {
+  addAttachments,
+  removeAttachment,
   listRecords,
   getRecord,
   createRecord,

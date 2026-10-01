@@ -1,27 +1,35 @@
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 
-const uploadDir = path.join(__dirname, '..', '..', 'uploads', 'incidents');
-fs.mkdirSync(uploadDir, { recursive: true });
+/**
+ * Uploads are kept in memory only long enough to be written to GridFS (see utils/fileStore.js);
+ * nothing is written to the server's disk, which the host wipes on every deploy.
+ */
+const storage = multer.memoryStorage();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${unique}${path.extname(file.originalname)}`);
-  },
-});
+const IMAGE_TYPES = /^image\/(jpeg|png|webp|gif)$/;
+const DOCUMENT_TYPES = /^(image\/(jpeg|png|webp|gif)|application\/pdf)$/;
 
-const fileFilter = (req, file, cb) => {
-  if (/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)) return cb(null, true);
-  cb(new Error('Only image files (jpeg, png, webp, gif) are allowed.'));
-};
+function onlyTypes(pattern, message) {
+  return (req, file, cb) => {
+    if (pattern.test(file.mimetype)) return cb(null, true);
+    const err = new Error(message);
+    err.statusCode = 400;
+    return cb(err);
+  };
+}
 
+// Incident photos: images up to 5 MB.
 const uploadIncidentImages = multer({
   storage,
-  fileFilter,
+  fileFilter: onlyTypes(IMAGE_TYPES, 'Chỉ nhận ảnh (jpeg, png, webp, gif).'),
   limits: { fileSize: 5 * 1024 * 1024, files: 5 },
 });
 
-module.exports = { uploadIncidentImages };
+// Exam attachments: X-rays, lab results, scanned prescriptions — images or PDF up to 10 MB.
+const uploadMedicalFiles = multer({
+  storage,
+  fileFilter: onlyTypes(DOCUMENT_TYPES, 'Chỉ nhận ảnh (jpeg, png, webp, gif) hoặc PDF.'),
+  limits: { fileSize: 10 * 1024 * 1024, files: 5 },
+});
+
+module.exports = { uploadIncidentImages, uploadMedicalFiles };

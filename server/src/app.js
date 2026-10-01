@@ -47,6 +47,9 @@ app.use('/api/v1/finance', financeRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/audit-logs', auditRoutes);
 app.use('/api/v1/reports', reportsRoutes);
+// POST /api/v1/uploads and GET /api/v1/files/:id (files kept in MongoDB GridFS).
+app.use('/api/v1', require('./modules/files/files.routes'));
+app.use('/api/v1/export', require('./modules/export/export.routes'));
 
 app.use(notFound);
 app.use(errorHandler);

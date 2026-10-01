@@ -75,6 +75,7 @@ module.exports = {
           email: { type: 'string', format: 'email' },
           role: { type: 'string', enum: ['head_trainer', 'veterinarian', 'groom', 'owner', 'manager'] },
           phone: { type: 'string' },
+          avatarUrl: { type: 'string', description: 'Link from POST /uploads' },
           isActive: { type: 'boolean' },
           approvalStatus: { type: 'string', enum: ['pending', 'approved', 'rejected'], description: 'Distinguishes a self-registration awaiting a Manager decision from an existing member who was deactivated (both have isActive=false).' },
         },
@@ -108,6 +109,7 @@ module.exports = {
               nextVaccinationDue: { type: 'string', format: 'date-time', nullable: true },
               nextDewormingDue: { type: 'string', format: 'date-time', nullable: true },
               nextFarrierDue: { type: 'string', format: 'date-time', nullable: true },
+              nextExamDue: { type: 'string', format: 'date-time', nullable: true, description: 'Periodic check-up; the vet is reminded when due' },
             },
           },
         },
@@ -241,6 +243,11 @@ module.exports = {
           },
           resultStatus: { type: 'string', enum: ['eligible', 'monitoring', 'injured', 'quarantined'] },
           notes: { type: 'string' },
+          attachments: {
+            type: 'array',
+            description: 'X-rays, lab results, scanned prescriptions (POST /health/records/{id}/attachments)',
+            items: { type: 'object', properties: { _id: { type: 'string' }, url: { type: 'string' }, name: { type: 'string' }, contentType: { type: 'string' }, size: { type: 'number' }, uploadedBy: { type: 'string' }, uploadedAt: { type: 'string', format: 'date-time' } } },
+          },
         },
       },
       Treatment: {
@@ -423,6 +430,10 @@ module.exports = {
           distance: { type: 'number' },
           status: { type: 'string', enum: ['registered', 'confirmed', 'completed', 'withdrawn'] },
           result: { type: 'string' },
+          position: { type: 'integer', minimum: 1 },
+          finishTime: { type: 'string', example: '1:12.45' },
+          prizeMoney: { type: 'number', description: 'VND; recorded as owner revenue (category prize)' },
+          financeRecord: { type: 'string', nullable: true, description: 'The revenue record the prize became' },
         },
       },
       FinancialRecord: {
@@ -518,6 +529,59 @@ module.exports = {
         responses: { 201: responses[201]({ type: 'object', properties: { user: { $ref: '#/components/schemas/User' } } }), 400: responses[400], 409: responses[409] },
       },
     },
+    '/auth/change-password': {
+      put: {
+        tags: ['Auth'],
+        summary: 'Change your own password',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['currentPassword', 'newPassword'], properties: { currentPassword: { type: 'string' }, newPassword: { type: 'string', minLength: 6 } } } } } },
+        responses: { 200: responses[200]({ nullable: true }), 400: responses[400], 401: responses[401] },
+      },
+    },
+    '/auth/profile': {
+      put: {
+        tags: ['Auth'],
+        summary: 'Edit your own name, phone and avatar (email and role are set by the Club Manager)',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string' }, avatarUrl: { type: 'string', description: 'A URL returned by POST /uploads; empty string removes it' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 400: responses[400], 401: responses[401] },
+      },
+    },
+    '/uploads': {
+      post: {
+        tags: ['Files'],
+        summary: 'Upload up to 5 files (images or PDF, 10 MB each) — any signed-in user',
+        description: 'Files are stored in MongoDB GridFS (they survive redeploys). Returns each file\'s url (relative to the API host) to put on a record — avatar, attachment, etc.',
+        requestBody: {
+  required: true,
+  content: {
+    'multipart/form-data': {
+      schema: {
+        type: 'object',
+        properties: {
+          files: {
+            type: 'array',
+            items: {
+              type: 'string',
+              format: 'binary'
+            },
+            description: 'Up to 5 files'
+          }
+        }
+      }
+    }
+  }
+},
+        responses: { 200: responses[200]({ type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, url: { type: 'string' }, name: { type: 'string' }, contentType: { type: 'string' }, size: { type: 'number' } } } }), 400: responses[400], 401: responses[401] },
+      },
+    },
+    '/files/{id}': {
+      get: {
+        tags: ['Files'],
+        summary: 'Download a stored file (no login; the signed URL from upload is required)',
+        security: [],
+        parameters: [idParam('id'), { name: 's', in: 'query', required: true, schema: { type: 'string' }, description: 'Signature included in the URL returned at upload' }],
+        responses: { 200: { description: 'The file' }, 403: responses[403], 404: responses[404] },
+      },
+    },
     '/auth/me': {
       get: { tags: ['Auth'], summary: 'Current authenticated user', responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 401: responses[401] } },
     },
@@ -580,6 +644,14 @@ module.exports = {
       put: { tags: ['Horses'], summary: 'Update horse (Manager only)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Horse' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404] } },
       delete: { tags: ['Horses'], summary: 'Delete horse (Manager only)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
     },
+    '/horses/{id}/lineage': {
+      get: {
+        tags: ['Horses'],
+        summary: 'Pedigree tree: sire / dam, recursively (default 3 generations, max 4)',
+        parameters: [idParam('id'), { name: 'generations', in: 'query', schema: { type: 'integer', default: 3, maximum: 4 } }],
+        responses: { 200: responses[200]({ type: 'object', properties: { generations: { type: 'integer' }, tree: { type: 'object', description: '{ _id, name, breed, color, dob, achievements, sire, dam } — parents null when unknown' } } }), 403: responses[403], 404: responses[404] },
+      },
+    },
     '/horses/{id}/timeline': {
       get: {
         tags: ['Horses'],
@@ -619,6 +691,7 @@ module.exports = {
                   nextVaccinationDue: { type: 'string', format: 'date-time' },
                   nextDewormingDue: { type: 'string', format: 'date-time' },
                   nextFarrierDue: { type: 'string', format: 'date-time' },
+                  nextExamDue: { type: 'string', format: 'date-time', description: 'Periodic check-up; the vet is reminded when due' },
                 },
               },
             },
@@ -727,6 +800,42 @@ module.exports = {
         summary: 'Create health record (also updates Horse.healthStatus)',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/HealthRecord' } } } },
         responses: { 201: responses[201]({ $ref: '#/components/schemas/HealthRecord' }), 403: responses[403] },
+      },
+    },
+    '/health/records/{id}/attachments': {
+      post: {
+        tags: ['Health (Veterinarian)'],
+        summary: 'Attach files to an exam record (Veterinarian) — images or PDF, max 10 per record',
+        parameters: [idParam('id')],
+        requestBody: {
+  required: true,
+  content: {
+    'multipart/form-data': {
+      schema: {
+        type: 'object',
+        properties: {
+          files: {
+            type: 'array',
+            items: {
+              type: 'string',
+              format: 'binary'
+            },
+            description: 'Up to 5 files per request'
+          }
+        }
+      }
+    }
+  }
+},
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/HealthRecord' }), 400: responses[400], 403: responses[403], 404: responses[404] },
+      },
+    },
+    '/health/records/{id}/attachments/{attachmentId}': {
+      delete: {
+        tags: ['Health (Veterinarian)'],
+        summary: 'Remove an attachment (Veterinarian) — the stored file is deleted too',
+        parameters: [idParam('id'), idParam('attachmentId')],
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/HealthRecord' }), 403: responses[403], 404: responses[404] },
       },
     },
     '/health/records/{id}': {
@@ -1051,6 +1160,19 @@ module.exports = {
       get: { tags: ['Races (scaffold)'], summary: 'List race entries', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/RaceEntry' } }) } },
       post: { tags: ['Races (scaffold)'], summary: 'Register a horse for a race (Head Trainer) — 409 if the vet has grounded the horse (training lock, injured, quarantined)', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/RaceEntry' }), 403: responses[403] } },
     },
+    '/races/{id}/results': {
+      patch: {
+        tags: ['Races (scaffold)'],
+        summary: 'Record the result: placing, time, prize money (Head Trainer, Manager)',
+        description:
+          'Refused (409) before race day or for a withdrawn entry. Completes the entry, builds `result` from placing and ' +
+          'time when none is typed, updates the horse\'s achievements, and turns prizeMoney into one revenue record ' +
+          '(category prize) linked to the entry — updated on correction, removed when set to 0. The owner is notified.',
+        parameters: [idParam('id')],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { position: { type: 'integer', minimum: 1 }, finishTime: { type: 'string' }, prizeMoney: { type: 'number', minimum: 0 }, result: { type: 'string' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
     '/races/{id}': {
       get: { tags: ['Races (scaffold)'], summary: 'Get race entry', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
       put: { tags: ['Races (scaffold)'], summary: 'Update race entry (Head Trainer)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
@@ -1102,6 +1224,37 @@ module.exports = {
     },
     // careCoordination in the response: incidents { reported, byStatus, avgHoursToResolve },
     // vetCareTasks { assigned, completed, pending }, autoExamRequests.
+    '/reports/training-chart': {
+      get: {
+        tags: ['Reports (Manager)'],
+        summary: 'Training progress per month, for charts (scoped: owner → own horses, trainer → assigned, manager → all)',
+        parameters: [{ name: 'months', in: 'query', schema: { type: 'integer', default: 6, maximum: 24 } }, horseQueryParam],
+        responses: { 200: responses[200]({ type: 'object', properties: { months: { type: 'array', items: { type: 'string', example: '2026-10' } }, totals: { type: 'array', items: { type: 'object', description: '{ month, sessions, avgRating, avgMaxSpeed, totalDistance, metTargets }' } }, series: { type: 'array', items: { type: 'object', description: '{ horse, points: [same shape as totals] }' } } } }) },
+      },
+    },
+    '/reports/finance-chart': {
+      get: {
+        tags: ['Reports (Manager)'],
+        summary: 'Club-wide cost / revenue / net per month or quarter (Manager)',
+        parameters: [{ name: 'period', in: 'query', schema: { type: 'string', enum: ['month', 'quarter'] } }, { name: 'year', in: 'query', schema: { type: 'integer' } }],
+        responses: { 200: responses[200]({ type: 'object', properties: { periods: { type: 'array', items: { type: 'object' } }, totals: { type: 'object' }, byCategory: { type: 'object' } } }), 403: responses[403] },
+      },
+    },
+    '/export/finance': {
+      get: {
+        tags: ['Reports (Manager)'],
+        summary: 'Download the financial ledger as CSV (Manager)',
+        parameters: [{ name: 'from', in: 'query', schema: { type: 'string', format: 'date' } }, { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } }],
+        responses: { 200: { description: 'text/csv (UTF-8 with BOM)' }, 403: responses[403] },
+      },
+    },
+    '/export/horses': {
+      get: {
+        tags: ['Reports (Manager)'],
+        summary: 'Download the horse roster with owners, staff and stalls as CSV (Manager)',
+        responses: { 200: { description: 'text/csv (UTF-8 with BOM)' }, 403: responses[403] },
+      },
+    },
     '/reports/overview': {
       get: {
         tags: ['Reports (Manager)'],

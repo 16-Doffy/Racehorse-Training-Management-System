@@ -116,6 +116,24 @@ const updateHorse = asyncHandler(async (req, res) => {
     assignedTrainer: before.assignedTrainer,
     assignedVet: before.assignedVet,
   });
+  // A change of owner is a transfer: on the record, and the previous owner is told too — they
+  // stop seeing the horse from this moment.
+  if (before.owner && String(before.owner) !== String(horse.owner || '')) {
+    await logAction({
+      actorId: req.user._id,
+      action: 'horse.transfer_ownership',
+      targetModel: 'Horse',
+      targetId: horse._id,
+      metadata: { from: before.owner, to: horse.owner || null },
+    });
+    await pushNotification({
+      recipientUser: before.owner,
+      horse: horse._id,
+      type: 'horse_assigned',
+      severity: 'info',
+      message: `🐎 Quyền sở hữu ngựa "${horse.name}" đã được chuyển sang chủ khác.`,
+    });
+  }
   return ok(res, horse, 'Horse updated.');
 });
 
@@ -159,7 +177,7 @@ const deleteHorse = asyncHandler(async (req, res) => {
 // Setting a new due date also clears that item's *NotifiedAt so the scheduler will remind again
 // once the new date falls due, instead of staying silent because of the old reminder record.
 const updateCareSchedule = asyncHandler(async (req, res) => {
-  const { nextVaccinationDue, nextDewormingDue, nextFarrierDue } = req.body;
+  const { nextVaccinationDue, nextDewormingDue, nextFarrierDue, nextExamDue } = req.body;
   const horse = await Horse.findById(req.params.id);
   if (!horse) return fail(res, 'Horse not found.', 404);
   if (!(await canAccessHorse(req.user, horse._id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
@@ -175,6 +193,10 @@ const updateCareSchedule = asyncHandler(async (req, res) => {
   if (nextFarrierDue !== undefined) {
     horse.careSchedule.nextFarrierDue = nextFarrierDue;
     horse.careSchedule.farrierNotifiedAt = null;
+  }
+  if (nextExamDue !== undefined) {
+    horse.careSchedule.nextExamDue = nextExamDue;
+    horse.careSchedule.examNotifiedAt = null;
   }
 
   await horse.save();

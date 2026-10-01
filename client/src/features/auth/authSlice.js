@@ -24,6 +24,11 @@ const authSlice = createSlice({
       localStorage.setItem('user', JSON.stringify(user));
       localStorage.setItem('token', token);
     },
+    // The signed-in user edited their own profile: same session, fresh details.
+    profileUpdated(state, action) {
+      state.user = { ...state.user, ...action.payload };
+      localStorage.setItem('user', JSON.stringify(state.user));
+    },
     loggedOut(state) {
       state.user = null;
       state.token = null;
@@ -33,5 +38,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { credentialsReceived, loggedOut } = authSlice.actions;
+export const { credentialsReceived, profileUpdated, loggedOut } = authSlice.actions;
 export default authSlice.reducer;

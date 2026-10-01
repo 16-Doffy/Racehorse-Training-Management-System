@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Table, Tag, Typography, Button, Modal, Form, Input, InputNumber, Select, DatePicker, Alert, Empty } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DownloadOutlined } from '@ant-design/icons';
+import { downloadFile } from '../../lib/files';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -165,9 +166,17 @@ export default function HorseListPage() {
           )}
         </div>
         {isManager && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            Thêm ngựa mới
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => downloadFile('/export/horses', `danh-sach-ngua-${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => message.error(e.message || 'Xuất file thất bại.'))}
+            >
+              Xuất CSV
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              Thêm ngựa mới
+            </Button>
+          </div>
         )}
       </div>
 
