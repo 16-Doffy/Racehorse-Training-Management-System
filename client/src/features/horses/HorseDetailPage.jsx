@@ -148,7 +148,8 @@ export default function HorseDetailPage() {
     queryFn: () => horsesApi.lineage(id),
     enabled: !!id,
   });
-  const lineageTree = lineageDataResp?.data || horse;
+  // GET /horses/:id/lineage answers { generations, tree }; the tree is what PedigreeTree draws.
+  const lineageTree = lineageDataResp?.data?.tree || horse;
 
   const requestExamMutation = useMutation({
     mutationFn: (payload) => healthRecordApi.requestExam(payload),
