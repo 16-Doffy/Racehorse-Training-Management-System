@@ -18,6 +18,7 @@ import { getMenuByRole } from './menuConfig';
 import { ROLES, ROLE_LABELS } from '../constants/roles';
 import AlertBell from '../features/alerts/AlertBell';
 import { disconnectSocket } from '../lib/socket';
+import { fileHref } from '../lib/files';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -89,13 +90,19 @@ export default function MainLayout() {
           <div className="p-4 shrink-0 mt-auto bg-white border-t border-transparent">
             {/* User Profile */}
             <Dropdown
-              menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', onClick: handleLogout }] }}
+              menu={{
+                items: [
+                  { key: 'profile', icon: <UserOutlined />, label: 'Hồ sơ cá nhân', onClick: () => navigate('/profile') },
+                  { type: 'divider' },
+                  { key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', onClick: handleLogout },
+                ],
+              }}
               trigger={['click']}
               placement="topRight"
             >
               <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 p-2 -mx-2 rounded-lg transition-colors">
                 <div className="flex items-center gap-3">
-                  <Avatar className="bg-gray-200 text-gray-600 font-bold" size={36}>
+                  <Avatar className="bg-gray-200 text-gray-600 font-bold" size={36} src={fileHref(user?.avatarUrl)}>
                     {user?.name?.charAt(0)?.toUpperCase()}
                   </Avatar>
                   <div className="flex flex-col">

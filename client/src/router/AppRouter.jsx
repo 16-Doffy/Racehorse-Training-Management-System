@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom';
 import ProtectedRoute from './ProtectedRoute';
 import MainLayout from '../layouts/MainLayout';
 import LoginPage from '../features/auth/LoginPage';
+import ProfilePage from '../features/auth/ProfilePage';
 import RegisterPage from '../features/auth/RegisterPage';
 import ForbiddenPage from '../pages/ForbiddenPage';
 import NotFoundPage from '../pages/NotFoundPage';
@@ -50,6 +51,7 @@ export default function AppRouter() {
       <Route element={<ProtectedRoute allowedRoles={ALL_ROLES} />}>
         <Route element={<MainLayout />}>
           <Route path="/" element={<RoleDashboard />} />
+          <Route path="/profile" element={<ProfilePage />} />
 
           {/* Shared: horse roster/profile (Owner's core flow; visible to every role). */}
           <Route path="/horses" element={<HorseListPage />} />
