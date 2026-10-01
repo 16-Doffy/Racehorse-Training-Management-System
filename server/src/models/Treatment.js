@@ -10,6 +10,11 @@ const medicationSchema = new mongoose.Schema(
     inventoryItem: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem', default: null },
     amount: { type: Number, min: 0 },
     times: [{ type: String, match: /^([01]\d|2[0-3]):[0-5]\d$/ }],
+    timeSlots: [{ type: String }], // e.g. ['morning', 'noon', 'afternoon', 'evening']
+    specificTimes: { type: String }, // e.g. "08:00, 16:00"
+    startDate: { type: Date },
+    endDate: { type: Date },
+    instructions: { type: String },
   },
   { _id: false }
 );

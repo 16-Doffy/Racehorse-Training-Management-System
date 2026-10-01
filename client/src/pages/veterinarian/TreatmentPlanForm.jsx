@@ -30,7 +30,16 @@ export default function TreatmentPlanForm() {
     status: 'ongoing',
     isTrainingLocked: false,
     lockReason: '',
-    medications: [{ name: '', dosage: '', frequency: '' }],
+    medications: [
+      {
+        name: '',
+        dosage: '',
+        frequency: '',
+        timeSlots: { morning: true, noon: false, afternoon: true, evening: false },
+        specificTimes: '08:00, 16:00',
+        instructions: '',
+      },
+    ],
   });
 
   const [validated, setValidated] = useState(false);
@@ -59,8 +68,29 @@ export default function TreatmentPlanForm() {
             isTrainingLocked: tr.isTrainingLocked || false,
             lockReason: tr.lockReason || '',
             medications: tr.medications?.length
-              ? tr.medications.map((m) => ({ name: m.name, dosage: m.dosage, frequency: m.frequency || '' }))
-              : [{ name: '', dosage: '', frequency: '' }],
+              ? tr.medications.map((m) => ({
+                  name: m.name,
+                  dosage: m.dosage,
+                  frequency: m.frequency || '',
+                  timeSlots: {
+                    morning: (m.timeSlots || []).includes('morning'),
+                    noon: (m.timeSlots || []).includes('noon'),
+                    afternoon: (m.timeSlots || []).includes('afternoon'),
+                    evening: (m.timeSlots || []).includes('evening'),
+                  },
+                  specificTimes: m.specificTimes || '',
+                  instructions: m.instructions || '',
+                }))
+              : [
+                  {
+                    name: '',
+                    dosage: '',
+                    frequency: '',
+                    timeSlots: { morning: true, noon: false, afternoon: true, evening: false },
+                    specificTimes: '08:00, 16:00',
+                    instructions: '',
+                  },
+                ],
           });
         } else if (recordsRes.data?.length > 0 && !formData.healthRecord) {
           setFormData((prev) => ({ ...prev, healthRecord: recordsRes.data[0]._id }));
@@ -79,7 +109,17 @@ export default function TreatmentPlanForm() {
   const handleAddMedication = () => {
     setFormData((prev) => ({
       ...prev,
-      medications: [...prev.medications, { name: '', dosage: '', frequency: '' }],
+      medications: [
+        ...prev.medications,
+        {
+          name: '',
+          dosage: '',
+          frequency: '',
+          timeSlots: { morning: true, noon: false, afternoon: true, evening: false },
+          specificTimes: '08:00, 16:00',
+          instructions: '',
+        },
+      ],
     }));
   };
 
@@ -94,6 +134,16 @@ export default function TreatmentPlanForm() {
     setFormData((prev) => {
       const updated = [...prev.medications];
       updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, medications: updated };
+    });
+  };
+
+  const handleTimeSlotToggle = (index, slot) => {
+    setFormData((prev) => {
+      const updated = [...prev.medications];
+      const currentSlots = { ...(updated[index].timeSlots || {}) };
+      currentSlots[slot] = !currentSlots[slot];
+      updated[index] = { ...updated[index], timeSlots: currentSlots };
       return { ...prev, medications: updated };
     });
   };
@@ -117,7 +167,35 @@ export default function TreatmentPlanForm() {
     setError(null);
 
     // Filter valid medications
-    const validMedications = formData.medications.filter((m) => m.name.trim() && m.dosage.trim());
+    const validMedications = formData.medications
+      .filter((m) => m.name.trim() && m.dosage.trim())
+      .map((m) => {
+        const slots = [];
+        if (m.timeSlots?.morning) slots.push('morning');
+        if (m.timeSlots?.noon) slots.push('noon');
+        if (m.timeSlots?.afternoon) slots.push('afternoon');
+        if (m.timeSlots?.evening) slots.push('evening');
+
+        const slotLabels = [];
+        if (m.timeSlots?.morning) slotLabels.push('Sáng');
+        if (m.timeSlots?.noon) slotLabels.push('Trưa');
+        if (m.timeSlots?.afternoon) slotLabels.push('Chiều');
+        if (m.timeSlots?.evening) slotLabels.push('Tối');
+
+        const freqParts = [];
+        if (slotLabels.length) freqParts.push(`Buổi: ${slotLabels.join(', ')}`);
+        if (m.specificTimes?.trim()) freqParts.push(`Giờ: ${m.specificTimes.trim()}`);
+        if (!freqParts.length && m.frequency) freqParts.push(m.frequency);
+
+        return {
+          name: m.name.trim(),
+          dosage: m.dosage.trim(),
+          timeSlots: slots,
+          specificTimes: m.specificTimes?.trim() || '',
+          frequency: freqParts.join(' - ') || 'Theo chỉ dẫn',
+          instructions: m.instructions?.trim() || '',
+        };
+      });
 
     const payload = {
       horse: formData.horse,
@@ -312,9 +390,9 @@ export default function TreatmentPlanForm() {
               </Card.Body>
             </Card>
 
-            {/* Medications & Prescription Table */}
+            {/* Medications & Prescription Section */}
             <div className="mb-4">
-              <div className="d-flex justify-content-between align-items-center mb-2">
+              <div className="d-flex justify-content-between align-items-center mb-3">
                 <h5 className="fw-bold text-primary mb-0">
                   <i className="bi bi-prescription2 me-2"></i> Danh Sách Thuốc Kê Đơn (Medications)
                 </h5>
@@ -324,44 +402,115 @@ export default function TreatmentPlanForm() {
               </div>
 
               {formData.medications.map((med, index) => (
-                <Row key={index} className="g-2 mb-2 align-items-center">
-                  <Col xs={12} md={4}>
-                    <Form.Control
-                      placeholder="Tên thuốc (Ví dụ: Phenylbutazone, Banamine...)"
-                      value={med.name}
-                      onChange={(e) => handleMedChange(index, 'name', e.target.value)}
-                      disabled={submitting}
-                    />
-                  </Col>
-                  <Col xs={6} md={3}>
-                    <Form.Control
-                      placeholder="Liều lượng (Ví dụ: 2g/ngày, 10ml...)"
-                      value={med.dosage}
-                      onChange={(e) => handleMedChange(index, 'dosage', e.target.value)}
-                      disabled={submitting}
-                    />
-                  </Col>
-                  <Col xs={6} md={4}>
-                    <Form.Control
-                      placeholder="Tần suất (Ví dụ: 2 lần/ngày sau khi ăn)"
-                      value={med.frequency}
-                      onChange={(e) => handleMedChange(index, 'frequency', e.target.value)}
-                      disabled={submitting}
-                    />
-                  </Col>
-                  <Col xs={12} md={1} className="text-center">
-                    {formData.medications.length > 1 && (
-                      <Button
-                        variant="outline-danger"
-                        size="sm"
-                        onClick={() => handleRemoveMedication(index)}
-                        disabled={submitting}
-                      >
-                        <i className="bi bi-trash"></i>
-                      </Button>
-                    )}
-                  </Col>
-                </Row>
+                <Card key={index} className="mb-3 border bg-light-subtle">
+                  <Card.Body className="p-3">
+                    <div className="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                      <span className="badge bg-primary">Thuốc #{index + 1}</span>
+                      {formData.medications.length > 1 && (
+                        <Button
+                          variant="link"
+                          className="text-danger p-0 border-0 text-decoration-none"
+                          size="sm"
+                          onClick={() => handleRemoveMedication(index)}
+                          disabled={submitting}
+                        >
+                          <i className="bi bi-trash me-1"></i> Xóa thuốc này
+                        </Button>
+                      )}
+                    </div>
+
+                    <Row className="g-2 mb-2">
+                      <Col xs={12} md={7}>
+                        <Form.Label className="small fw-semibold mb-1">Tên thuốc / Dược phẩm *</Form.Label>
+                        <Form.Control
+                          placeholder="Tên thuốc (Ví dụ: Phenylbutazone, Banamine...)"
+                          value={med.name}
+                          onChange={(e) => handleMedChange(index, 'name', e.target.value)}
+                          disabled={submitting}
+                        />
+                      </Col>
+                      <Col xs={12} md={5}>
+                        <Form.Label className="small fw-semibold mb-1">Liều lượng *</Form.Label>
+                        <Form.Control
+                          placeholder="Liều lượng (Ví dụ: 2g, 10ml, 1 viên...)"
+                          value={med.dosage}
+                          onChange={(e) => handleMedChange(index, 'dosage', e.target.value)}
+                          disabled={submitting}
+                        />
+                      </Col>
+                    </Row>
+
+                    {/* Morning / Noon / Afternoon / Evening slots */}
+                    <Form.Group className="mb-2">
+                      <Form.Label className="small fw-semibold mb-1 d-block">Lịch uống thuốc trong ngày (Sáng / Chiều):</Form.Label>
+                      <div className="d-flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant={med.timeSlots?.morning ? 'warning' : 'outline-secondary'}
+                          className={med.timeSlots?.morning ? 'fw-bold' : ''}
+                          onClick={() => handleTimeSlotToggle(index, 'morning')}
+                          disabled={submitting}
+                        >
+                          🌅 Sáng (08:00)
+                        </Button>
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant={med.timeSlots?.noon ? 'info' : 'outline-secondary'}
+                          className={med.timeSlots?.noon ? 'fw-bold text-white' : ''}
+                          onClick={() => handleTimeSlotToggle(index, 'noon')}
+                          disabled={submitting}
+                        >
+                          ☀️ Trưa (12:00)
+                        </Button>
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant={med.timeSlots?.afternoon ? 'primary' : 'outline-secondary'}
+                          className={med.timeSlots?.afternoon ? 'fw-bold' : ''}
+                          onClick={() => handleTimeSlotToggle(index, 'afternoon')}
+                          disabled={submitting}
+                        >
+                          🌇 Chiều (16:00)
+                        </Button>
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant={med.timeSlots?.evening ? 'dark' : 'outline-secondary'}
+                          className={med.timeSlots?.evening ? 'fw-bold' : ''}
+                          onClick={() => handleTimeSlotToggle(index, 'evening')}
+                          disabled={submitting}
+                        >
+                          🌙 Tối (20:00)
+                        </Button>
+                      </div>
+                    </Form.Group>
+
+                    <Row className="g-2 mb-2">
+                      <Col xs={12} md={6}>
+                        <Form.Label className="small fw-semibold mb-1">Khung giờ cụ thể</Form.Label>
+                        <Form.Control
+                          size="sm"
+                          placeholder="Ví dụ: 08:00, 16:00"
+                          value={med.specificTimes}
+                          onChange={(e) => handleMedChange(index, 'specificTimes', e.target.value)}
+                          disabled={submitting}
+                        />
+                      </Col>
+                      <Col xs={12} md={6}>
+                        <Form.Label className="small fw-semibold mb-1">Hướng dẫn dùng riêng loại thuốc này</Form.Label>
+                        <Form.Control
+                          size="sm"
+                          placeholder="Ví dụ: Trộn vào khẩu phần ăn..."
+                          value={med.instructions}
+                          onChange={(e) => handleMedChange(index, 'instructions', e.target.value)}
+                          disabled={submitting}
+                        />
+                      </Col>
+                    </Row>
+                  </Card.Body>
+                </Card>
               ))}
             </div>
 
