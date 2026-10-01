@@ -14,6 +14,13 @@ const { logAction } = require('../audit/audit.service');
 const { ROLES } = require('../../constants/roles');
 const { getScopedHorseIds, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { pushNotification } = require('../alerts/notification.service');
+const { clearanceMap } = require('../health/trainingClearance');
+
+/** Adds the vet's current training level (lock / recovery / clear) to each horse. */
+async function withClearance(horses) {
+  const map = await clearanceMap(horses.map((h) => h._id));
+  return horses.map((h) => ({ ...h.toObject(), trainingClearance: map.get(String(h._id)) }));
+}
 
 const populatePedigree = [
   { path: 'owner', select: 'name email phone' },
@@ -54,15 +61,18 @@ async function notifyNewAssignees(horse, previous = {}) {
 const listHorses = asyncHandler(async (req, res) => {
   const scopedIds = await getScopedHorseIds(req.user);
   const filter = scopedIds ? { _id: { $in: scopedIds } } : {};
+  // Horses the club no longer manages are off every working list; the Manager can ask for them.
+  filter.isArchived = req.query.archived === 'true' && req.user.role === ROLES.MANAGER ? true : { $ne: true };
   const horses = await Horse.find(filter).populate(populatePedigree).sort({ name: 1 });
-  return ok(res, horses, 'Horses fetched.');
+  return ok(res, await withClearance(horses), 'Horses fetched.');
 });
 
 const getHorse = asyncHandler(async (req, res) => {
   const horse = await Horse.findById(req.params.id).populate(populatePedigree);
   if (!horse) return fail(res, 'Horse not found.', 404);
   if (!(await canAccessHorse(req.user, horse._id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
-  return ok(res, horse, 'Horse fetched.');
+  const [withLevel] = await withClearance([horse]);
+  return ok(res, withLevel, 'Horse fetched.');
 });
 
 // healthStatus is a clinical conclusion owned by the Veterinarian (health records, injury markers,
@@ -157,8 +167,9 @@ const deleteHorse = asyncHandler(async (req, res) => {
   if (sessions + records + treatments + races > 0) {
     return fail(
       res,
-      `Không thể xoá: ngựa đã có ${sessions} buổi tập, ${records} hồ sơ khám, ${treatments} phác đồ và ${races} lượt đăng ký giải. Đây là hồ sơ cần lưu giữ.`,
-      409
+      `Không thể xoá: ngựa đã có ${sessions} buổi tập, ${records} hồ sơ khám, ${treatments} phác đồ và ${races} lượt đăng ký giải. Đây là hồ sơ cần lưu giữ — hãy chọn "Ngừng quản lý".`,
+      409,
+      { canArchive: true }
     );
   }
 
@@ -204,4 +215,57 @@ const updateCareSchedule = asyncHandler(async (req, res) => {
   return ok(res, horse, 'Care schedule updated.');
 });
 
-module.exports = { listHorses, getHorse, createHorse, updateHorse, deleteHorse, updateCareSchedule };
+/**
+ * Stops managing a horse that has records (sold, retired, moved away): it leaves the working lists,
+ * its stall is freed so no more care tasks are generated, booked sessions are cancelled, future
+ * race entries withdrawn and open training plans cancelled. Its history stays. The owner and the
+ * staff responsible are told. PATCH /horses/:id/archive { reason }
+ */
+const archiveHorse = asyncHandler(async (req, res) => {
+  const horse = await Horse.findById(req.params.id);
+  if (!horse) return fail(res, 'Horse not found.', 404);
+  if (horse.isArchived) return fail(res, 'Ngựa này đã ngừng quản lý.', 409);
+  const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+  if (!reason) return fail(res, 'Hãy ghi lý do ngừng quản lý (VD: đã bán, nghỉ hưu).', 400);
+
+  const [sessions, races, plans] = await Promise.all([
+    TrainingSession.updateMany({ horse: horse._id, status: { $in: ['scheduled', 'in_progress'] } }, { status: 'cancelled' }),
+    RaceEntry.updateMany({ horse: horse._id, status: { $in: ['registered', 'confirmed'] }, raceDate: { $gte: new Date() } }, { status: 'withdrawn' }),
+    TrainingPlan.updateMany({ horse: horse._id, status: { $in: ['draft', 'active'] } }, { status: 'cancelled' }),
+    StableAssignment.deleteMany({ horse: horse._id }),
+    DailyTask.deleteMany({ horse: horse._id, status: 'pending' }),
+  ]);
+  Object.assign(horse, { isArchived: true, archivedAt: new Date(), archivedReason: reason });
+  await horse.save();
+
+  await logAction({
+    actorId: req.user._id,
+    action: 'horse.archive',
+    targetModel: 'Horse',
+    targetId: horse._id,
+    metadata: { reason, cancelledSessions: sessions.modifiedCount, withdrawnRaces: races.modifiedCount, cancelledPlans: plans.modifiedCount },
+  });
+  const message = `📁 Ngựa "${horse.name}" đã ngừng quản lý tại câu lạc bộ: ${reason}.`;
+  for (const userId of [horse.owner, horse.assignedTrainer, horse.assignedVet].filter(Boolean)) {
+    // eslint-disable-next-line no-await-in-loop
+    await pushNotification({ recipientUser: userId, horse: horse._id, type: 'horse_assigned', severity: 'info', message });
+  }
+  return ok(
+    res,
+    horse,
+    `Đã ngừng quản lý ${horse.name}: hủy ${sessions.modifiedCount} buổi tập, rút ${races.modifiedCount} giải, đóng ${plans.modifiedCount} kế hoạch, gỡ chuồng.`
+  );
+});
+
+/** Brings an archived horse back onto the working lists (its stall has to be assigned again). */
+const unarchiveHorse = asyncHandler(async (req, res) => {
+  const horse = await Horse.findById(req.params.id);
+  if (!horse) return fail(res, 'Horse not found.', 404);
+  if (!horse.isArchived) return fail(res, 'Ngựa này đang được quản lý.', 409);
+  Object.assign(horse, { isArchived: false, archivedAt: null, archivedReason: undefined });
+  await horse.save();
+  await logAction({ actorId: req.user._id, action: 'horse.unarchive', targetModel: 'Horse', targetId: horse._id });
+  return ok(res, horse, `${horse.name} đã được quản lý trở lại — hãy xếp chuồng và người chăm sóc.`);
+});
+
+module.exports = { listHorses, getHorse, createHorse, updateHorse, deleteHorse, updateCareSchedule, archiveHorse, unarchiveHorse };

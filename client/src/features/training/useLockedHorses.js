@@ -1,36 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
-import { treatmentApi } from '../health/healthApi';
 import { horsesApi } from '../horses/horsesApi';
 
 /**
- * Set of horse ids currently under an active Vet training lock or in injured/quarantined status.
- * Used to warn/disable in the Head Trainer's own plan/session creation forms before submitting.
+ * Every horse's training clearance as the server computes it (the vet's level on the ongoing
+ * treatments: none = locked, light / moderate = recovering, high = clear), as a Map by horse id.
+ */
+export function useHorseClearances() {
+  const { data } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
+  return new Map((data?.data || []).map((h) => [String(h._id), h.trainingClearance || { level: 'high' }]));
+}
+
+/**
+ * Horses that can't be trained at all right now: locked by the vet, or injured / quarantined.
+ * A horse recovering at a reduced level is not in this set — it may still do lighter work.
  */
 export function useLockedHorseIds() {
-  const { data: treatmentsData } = useQuery({
-    queryKey: ['treatments', 'locked'],
-    queryFn: () => treatmentApi.list({ isTrainingLocked: true }),
-  });
-  const { data: horsesData } = useQuery({
-    queryKey: ['horses'],
-    queryFn: () => horsesApi.list(),
-  });
-
-  const lockedSet = new Set();
-
-  (treatmentsData?.data || []).forEach((t) => {
-    if (t.isTrainingLocked && t.status === 'ongoing') {
-      const hId = (t.horse?._id || t.horse)?.toString();
-      if (hId) lockedSet.add(hId);
-    }
-  });
-
-  (horsesData?.data || []).forEach((h) => {
-    if (h.healthStatus === 'injured' || h.healthStatus === 'quarantined') {
-      const hId = h._id?.toString();
-      if (hId) lockedSet.add(hId);
-    }
-  });
-
-  return lockedSet;
+  const { data } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
+  return new Set(
+    (data?.data || [])
+      .filter((h) => h.trainingClearance?.level === 'none' || h.healthStatus === 'injured' || h.healthStatus === 'quarantined')
+      .map((h) => String(h._id))
+  );
 }

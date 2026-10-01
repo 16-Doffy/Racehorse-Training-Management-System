@@ -1,11 +1,11 @@
 import { useSelector } from 'react-redux';
 import { useNavigate, Link } from 'react-router-dom';
-import { Typography, Card, Row, Col, Statistic, Alert, List, Tag, Button } from 'antd';
+import { Typography, Card, Row, Col, Statistic, Alert, Tag, Button } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { horsesApi } from '../horses/horsesApi';
 import { trainingSessionApi } from '../training/trainingApi';
-import { treatmentApi } from '../health/healthApi';
 import { ROLE_LABELS, ROLES } from '../../constants/roles';
+import { TRAINING_LEVEL_META } from '../../constants/health';
 import FitnessOverviewChart from './FitnessOverviewChart';
 import ExamRequestsCard from './ExamRequestsCard';
 import OpenIncidentsCard from './OpenIncidentsCard';
@@ -40,12 +40,9 @@ export default function DashboardPage() {
 
   // Surfaces Vet training locks right on the Head Trainer's landing page, instead of them only
   // finding out via a 409 while trying to schedule a session for an already-locked horse.
-  const { data: lockedTreatmentsData } = useQuery({
-    queryKey: ['treatments', 'locked'],
-    queryFn: () => treatmentApi.list({ isTrainingLocked: true, status: 'ongoing' }),
-    enabled: isHeadTrainer,
-  });
-  const lockedTreatments = lockedTreatmentsData?.data || [];
+  // Horses the vet has restricted — locked, or recovering at a reduced level — from the clearance
+  // the server attaches to every horse.
+  const restrictedHorses = horses.filter((h) => h.trainingClearance?.restricted);
 
   const eligible = horses.filter((h) => h.healthStatus === 'eligible').length;
   const monitoring = horses.filter((h) => h.healthStatus === 'monitoring').length;
@@ -84,36 +81,37 @@ export default function DashboardPage() {
         </Col>
       </Row>
 
-      {isHeadTrainer && lockedTreatments.length > 0 && (
+      {restrictedHorses.length > 0 && (
         <Alert
           className="mt-6"
-          type="error"
+          type={restrictedHorses.some((h) => h.trainingClearance.level === 'none') ? 'error' : 'warning'}
           showIcon
-          title={`${lockedTreatments.length} ngựa đang bị bác sĩ thú y khóa huấn luyện`}
+          title={`${restrictedHorses.length} ngựa đang điều trị — bác sĩ hạn chế tập luyện`}
           description={
-            <List
-              size="small"
-              dataSource={lockedTreatments}
-              renderItem={(t) => (
-                <List.Item
-                  actions={[
-                    <Button
-                      key="sessions"
-                      size="small"
-                      onClick={() => navigate(`/training/sessions?horse=${t.horse?._id}`)}
-                    >
-                      Xem buổi tập
-                    </Button>,
-                  ]}
-                >
-                  <Link to={`/horses/${t.horse?._id}`}>
-                    <Tag color="red">🔒</Tag>
-                    {t.horse?.name}
-                  </Link>
-                  <span className="ml-2 text-gray-500 text-sm">— {t.lockReason || 'chỉ định y tế'}</span>
-                </List.Item>
-              )}
-            />
+            <div className="flex flex-col divide-y divide-black/5 mt-1">
+              {restrictedHorses.map((h) => {
+                const c = h.trainingClearance;
+                return (
+                  <div key={h._id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                    <div>
+                      <Link to={`/horses/${h._id}`}>
+                        <Tag color={TRAINING_LEVEL_META[c.level]?.color}>{TRAINING_LEVEL_META[c.level]?.short}</Tag>
+                        {h.name}
+                      </Link>
+                      <span className="ml-2 text-gray-500 text-sm">
+                        — {c.reason || 'theo phác đồ điều trị'}
+                        {c.prescribedBy ? ` (bác sĩ ${c.prescribedBy})` : ''}
+                      </span>
+                    </div>
+                    {isHeadTrainer && (
+                      <Button size="small" onClick={() => navigate(`/training/sessions?horse=${h._id}`)}>
+                        Xem buổi tập
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           }
         />
       )}

@@ -6,4 +6,7 @@ export const horsesApi = {
   // Every role's records for one horse, merged into one list (sessions, exams, care, incidents…).
   timeline: (id, params) => axiosClient.get(`/horses/${id}/timeline`, { params }),
   lineage: (id) => axiosClient.get(`/horses/${id}/lineage`),
+  /** Stop managing a horse whose records must be kept: { reason }. Manager only. */
+  archive: (id, payload) => axiosClient.patch(`/horses/${id}/archive`, payload),
+  unarchive: (id) => axiosClient.patch(`/horses/${id}/unarchive`),
 };

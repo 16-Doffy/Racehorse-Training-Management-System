@@ -3,6 +3,7 @@ const FeedingSchedule = require('../models/FeedingSchedule');
 const DailyTask = require('../models/DailyTask');
 const { syncAllCareTasks } = require('../modules/health/treatmentCare.service');
 const { mealWindow } = require('../utils/taskTiming');
+const { warnLowStock } = require('../modules/inventory/stock.service');
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly is enough for day-granularity tasks
 
@@ -48,15 +49,22 @@ async function ensureFeedingTasks({ horseIds } = {}) {
   const { start, end } = todayBounds();
   const now = new Date();
   const schedules = await FeedingSchedule.find({ horse: { $in: assignments.map((a) => a.horse) } }).select(
-    'horse mealTime timeOfDay'
+    'horse mealTime timeOfDay items'
   );
 
   let createdCount = 0;
   for (const assignment of assignments) {
     const meals = schedules.filter((s) => String(s.horse) === String(assignment.horse));
     const slots = meals.length
-      ? meals.map((m) => ({ mealSlot: m.mealTime, at: atClock(start, m.timeOfDay || DEFAULT_MEAL_TIMES[m.mealTime]) }))
-      : [{ mealSlot: null, at: start }];
+      ? meals.map((m) => ({
+          mealSlot: m.mealTime,
+          at: atClock(start, m.timeOfDay || DEFAULT_MEAL_TIMES[m.mealTime]),
+          // The ration's stock items: feeding the horse takes them out of stock.
+          supplies: (m.items || [])
+            .filter((i) => i.inventoryItem && i.amount)
+            .map((i) => ({ inventoryItem: i.inventoryItem, name: i.type, amount: i.amount, unit: i.unit })),
+        }))
+      : [{ mealSlot: null, at: start, supplies: [] }];
 
     for (const slot of slots) {
       if (slot.mealSlot && now > mealWindow(slot.at).closesAt) continue;
@@ -78,6 +86,7 @@ async function ensureFeedingTasks({ horseIds } = {}) {
         source: 'system',
         mealSlot: slot.mealSlot,
         scheduledDate: slot.at,
+        supplies: slot.supplies,
         status: 'pending',
       });
       createdCount += 1;
@@ -116,6 +125,8 @@ function startDailyTaskGenerator() {
       await ensureFeedingTasks();
       // The vet's care orders repeat every day a treatment is ongoing, like meals do.
       await syncAllCareTasks();
+      // Stock that runs out within days is announced before it stops a meal or a dose.
+      await warnLowStock();
     } catch (err) {
       console.error('[daily-task-generator] check failed:', err.message);
     }

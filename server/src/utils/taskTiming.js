@@ -58,10 +58,13 @@ function taskTiming(task, now = new Date()) {
     return { state: 'upcoming', canComplete: false, canChange: true, opensAt: start, reason: 'Chưa tới ngày thực hiện công việc này.' };
   }
 
-  if (task.taskType === 'feeding' && task.mealSlot) {
+  // A meal, or a vet's dose given at a set time: recordable around that time only.
+  const isMeal = task.taskType === 'feeding' && task.mealSlot;
+  if (isMeal || task.dueTime) {
+    const what = isMeal ? 'bữa này' : 'liều thuốc này';
     const { opensAt, closesAt } = mealWindow(scheduled);
     if (now < opensAt) {
-      return { state: 'upcoming', canComplete: false, canChange: true, opensAt, closesAt, reason: `Chưa tới giờ bữa này — ghi nhận được từ ${clock(opensAt)}.` };
+      return { state: 'upcoming', canComplete: false, canChange: true, opensAt, closesAt, reason: `Chưa tới giờ ${what} — ghi nhận được từ ${clock(opensAt)}.` };
     }
     if (now > closesAt) {
       return {
@@ -70,7 +73,7 @@ function taskTiming(task, now = new Date()) {
         canChange: false,
         opensAt,
         closesAt,
-        reason: `Bữa này đã quá giờ (hạn ghi nhận ${clock(closesAt)} ngày ${day(closesAt)}) — không ghi nhận muộn được.`,
+        reason: `${what.charAt(0).toUpperCase()}${what.slice(1)} đã quá giờ (hạn ghi nhận ${clock(closesAt)} ngày ${day(closesAt)}) — không ghi nhận muộn được.`,
       };
     }
     return { state: 'open', canComplete: true, canChange: true, opensAt, closesAt };

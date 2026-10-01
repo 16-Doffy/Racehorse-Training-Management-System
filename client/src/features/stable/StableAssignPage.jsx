@@ -16,6 +16,7 @@ import {
   Tooltip,
   Popconfirm,
   Segmented,
+  InputNumber,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
 import {
@@ -34,6 +35,7 @@ import { dailyTaskApi, incidentApi } from './stableApi';
 import { horsesApi } from '../horses/horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { feedingApi } from '../feeding/feedingApi';
+import { inventoryApi } from '../inventory/inventoryApi';
 import { ROLES } from '../../constants/roles';
 import {
   APPETITE_LABELS,
@@ -145,6 +147,7 @@ function TaskList() {
           <Space size={4} wrap>
             <span>{TASK_LABELS[r.taskType] || r.taskType}</span>
             {r.mealSlot && <Tag>{MEAL_LABELS[r.mealSlot]}</Tag>}
+            {r.dueTime && <Tag color="purple">💊 {r.dueTime}</Tag>}
             {r.source === 'vet' && (
               // The vet's care order, created from a treatment — shown here so the trainer sees
               // the horse is under treatment, but not theirs to change.
@@ -199,6 +202,16 @@ function TaskList() {
             <Tooltip title={r.timing.reason}>
               <Tag color={TASK_TIMING_META[r.timing.state].color} className="!m-0">
                 {TASK_TIMING_META[r.timing.state].label}
+              </Tag>
+            </Tooltip>
+          )}
+          {r.status === 'pending' && r.supplyStatus && !r.supplyStatus.ok && (
+            // The groom can't tick this until the stock is topped up (the server refuses it too).
+            <Tooltip
+              title={`Thiếu: ${r.supplyStatus.missing.map((m) => `${m.name} (cần ${m.needed} ${m.unit}, còn ${m.available})`).join('; ')}`}
+            >
+              <Tag color="red" className="!m-0">
+                Thiếu vật tư
               </Tag>
             </Tooltip>
           )}
@@ -377,8 +390,27 @@ function RationList() {
 
   const { data, isLoading } = useQuery({ queryKey: ['feeding'], queryFn: () => feedingApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
+  // Ration items come from the Manager's stock list (food only), with what is in stock now.
+  const { data: inventoryData } = useQuery({ queryKey: ['inventory'], queryFn: () => inventoryApi.list() });
+  const feedItems = (inventoryData?.data || []).filter((i) => i.category === 'feed' && !i.isProposed && i.isActive !== false);
+  const feedById = new Map(feedItems.map((i) => [i._id, i]));
+  const [proposeOpen, setProposeOpen] = useState(false);
+  const [proposeForm] = Form.useForm();
+  const proposeMutation = useMutation({
+    mutationFn: (payload) => inventoryApi.propose({ ...payload, category: 'feed' }),
+    onSuccess: () => {
+      message.success('Đã gửi đề xuất vật tư mới cho Quản lý.');
+      setProposeOpen(false);
+      proposeForm.resetFields();
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+    onError: (err) => message.error(err.message || 'Gửi đề xuất thất bại.'),
+  });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['feeding'] });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['feeding'] });
+    queryClient.invalidateQueries({ queryKey: ['inventory'] });
+  };
 
   const saveMutation = useMutation({
     mutationFn: ({ id, payload }) => (id ? feedingApi.update(id, payload) : feedingApi.create(payload)),
@@ -405,7 +437,13 @@ function RationList() {
             horse: record.horse?._id || record.horse,
             mealTime: record.mealTime,
             timeOfDay: dayjs(record.timeOfDay || DEFAULT_MEAL_TIMES[record.mealTime], 'HH:mm'),
-            items: record.items?.length ? record.items : [{}],
+            // Linked items load as stock item + amount; older text items are kept and shown so
+            // the trainer can re-pick them from stock.
+            items: record.items?.length
+              ? record.items.map((i) =>
+                  i.inventoryItem ? { inventoryItem: i.inventoryItem._id || i.inventoryItem, amount: i.amount } : { legacyType: i.type, legacyQuantity: i.quantity }
+                )
+              : [{}],
           }
         : { mealTime: 'morning', timeOfDay: dayjs(DEFAULT_MEAL_TIMES.morning, 'HH:mm'), items: [{}] }
     );
@@ -436,9 +474,27 @@ function RationList() {
       key: 'items',
       render: (_, r) =>
         r.items?.length ? (
-          <span className="text-sm">
-            {r.items.map((i) => `${FEED_TYPE_LABELS[i.type] || i.type} ${i.quantity}`).join(' · ')}
-          </span>
+          <div className="flex flex-col gap-0.5 text-sm">
+            {r.items.map((i, idx) => {
+              const stock = i.inventoryItem;
+              const short = stock && typeof stock.quantity === 'number' && stock.quantity < (i.amount || 0);
+              return (
+                <span key={idx}>
+                  {stock ? `${stock.name} ${i.amount} ${stock.unit}` : `${FEED_TYPE_LABELS[i.type] || i.type} ${i.quantity}`}
+                  {stock && (
+                    <Text type={short ? 'danger' : 'secondary'} className="!text-xs ml-1">
+                      (kho còn {stock.quantity} {stock.unit})
+                    </Text>
+                  )}
+                  {!stock && (
+                    <Text type="warning" className="!text-xs ml-1">
+                      (chưa liên kết kho)
+                    </Text>
+                  )}
+                </span>
+              );
+            })}
+          </div>
         ) : (
           <span className="text-gray-400">Chưa có món nào</span>
         ),
@@ -506,7 +562,15 @@ function RationList() {
               payload: {
                 ...values,
                 timeOfDay: values.timeOfDay ? dayjs(values.timeOfDay).format('HH:mm') : undefined,
-                items: (values.items || []).filter((i) => i?.type && i?.quantity),
+                items: (values.items || [])
+                  .map((i) =>
+                    i?.inventoryItem && i?.amount
+                      ? { inventoryItem: i.inventoryItem, amount: i.amount }
+                      : i?.legacyType && i?.legacyQuantity
+                        ? { type: i.legacyType, quantity: i.legacyQuantity }
+                        : null
+                  )
+                  .filter(Boolean),
               },
             })
           }
@@ -529,26 +593,62 @@ function RationList() {
             </Form.Item>
           </div>
 
-          <Text strong className="!text-sm">
-            Các món trong khẩu phần
+          <div className="flex items-center justify-between">
+            <Text strong className="!text-sm">
+              Các món trong khẩu phần
+            </Text>
+            <Button size="small" type="link" onClick={() => setProposeOpen(true)}>
+              Kho chưa có món cần dùng?
+            </Button>
+          </div>
+          <Text type="secondary" className="block !text-xs mb-2">
+            Món lấy từ kho của Quản lý; lượng tính theo đơn vị của mặt hàng. Mỗi bữa nhân viên cho ăn xong, kho tự trừ.
           </Text>
           <Form.List name="items">
             {(fields, { add, remove }) => (
-              <div className="mt-2">
+              <div>
                 {fields.map((field) => (
-                  <Space key={field.key} align="baseline" className="!flex !mb-1">
-                    <Form.Item name={[field.name, 'type']} className="!mb-0">
-                      <Select placeholder="Loại thức ăn" options={FEED_TYPE_OPTIONS} style={{ width: 170 }} />
-                    </Form.Item>
-                    <Form.Item name={[field.name, 'quantity']} className="!mb-0">
-                      <Input placeholder="VD: 2kg" style={{ width: 110 }} />
-                    </Form.Item>
-                    {fields.length > 1 && (
-                      <Button size="small" danger type="text" onClick={() => remove(field.name)}>
-                        Xoá
-                      </Button>
-                    )}
-                  </Space>
+                  <Form.Item key={field.key} noStyle shouldUpdate>
+                    {({ getFieldValue }) => {
+                      const row = getFieldValue(['items', field.name]) || {};
+                      const item = feedById.get(row.inventoryItem);
+                      return (
+                        <div className="mb-2">
+                          {row.legacyType && !row.inventoryItem && (
+                            <Text type="warning" className="block !text-xs">
+                              Món cũ: {FEED_TYPE_LABELS[row.legacyType] || row.legacyType} {row.legacyQuantity} — chọn lại từ kho để kho tự trừ.
+                            </Text>
+                          )}
+                          <Space align="baseline" className="!flex">
+                            <Form.Item name={[field.name, 'inventoryItem']} className="!mb-0">
+                              <Select
+                                placeholder="Chọn thức ăn trong kho"
+                                style={{ width: 240 }}
+                                options={feedItems.map((i) => ({
+                                  value: i._id,
+                                  label: `${i.name} — còn ${i.quantity} ${i.unit}`,
+                                }))}
+                              />
+                            </Form.Item>
+                            <Form.Item name={[field.name, 'amount']} className="!mb-0">
+                              <InputNumber min={0} step={0.5} placeholder="Lượng" style={{ width: 110 }} />
+                            </Form.Item>
+                            <Text type="secondary">{item?.unit || ''}</Text>
+                            {fields.length > 1 && (
+                              <Button size="small" danger type="text" onClick={() => remove(field.name)}>
+                                Xoá
+                              </Button>
+                            )}
+                          </Space>
+                          {item && item.quantity < (row.amount || 0) && (
+                            <Text type="danger" className="block !text-xs">
+                              Kho chỉ còn {item.quantity} {item.unit} — bữa này sẽ không ghi nhận được cho đến khi bổ sung.
+                            </Text>
+                          )}
+                        </div>
+                      );
+                    }}
+                  </Form.Item>
                 ))}
                 <Button size="small" type="dashed" onClick={() => add()} className="!mt-1">
                   Thêm món
@@ -556,6 +656,34 @@ function RationList() {
               </div>
             )}
           </Form.List>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Đề xuất vật tư mới cho Quản lý"
+        open={proposeOpen}
+        onCancel={() => setProposeOpen(false)}
+        onOk={() => proposeForm.submit()}
+        okText="Gửi đề xuất"
+        cancelText="Huỷ"
+        confirmLoading={proposeMutation.isPending}
+        destroyOnHidden
+      >
+        <Form form={proposeForm} layout="vertical" onFinish={(v) => proposeMutation.mutate(v)}>
+          <Form.Item name="name" label="Tên thức ăn" rules={[{ required: true, whitespace: true }]}>
+            <Input placeholder="VD: Cỏ alfalfa" />
+          </Form.Item>
+          <div className="grid grid-cols-2 gap-3">
+            <Form.Item name="quantity" label="Số lượng cần" rules={[{ required: true }]}>
+              <InputNumber min={1} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="unit" label="Đơn vị" rules={[{ required: true, whitespace: true }]}>
+              <Input placeholder="kg, bao, bó…" />
+            </Form.Item>
+          </div>
+          <Form.Item name="note" label="Lý do">
+            <Input.TextArea rows={2} placeholder="VD: Khẩu phần mới cho ngựa đang hồi phục" />
+          </Form.Item>
         </Form>
       </Modal>
     </div>

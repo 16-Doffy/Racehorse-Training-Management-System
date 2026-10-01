@@ -10,6 +10,8 @@ router.use(protect);
 
 // Daily tasks: Head Trainer/Manager assign, Groom executes and reports.
 router.get('/tasks', taskCtrl.listTasks);
+// Per horse: rations and prescriptions with their stock, and what is short (the groom's sheet).
+router.get('/my-care-plan', taskCtrl.myCarePlan);
 router.get('/tasks/:id', taskCtrl.getTask);
 router.post('/tasks', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), taskCtrl.createTask);
 router.put('/tasks/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), taskCtrl.updateTask);

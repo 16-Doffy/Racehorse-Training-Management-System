@@ -25,7 +25,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { trainingSessionApi, trainingPlanApi } from './trainingApi';
 import { horsesApi } from '../horses/horsesApi';
 import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
-import { useLockedHorseIds } from './useLockedHorses';
+import { useLockedHorseIds, useHorseClearances } from './useLockedHorses';
+import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } from '../../constants/health';
 import ReadinessPanel from './ReadinessPanel';
 import SessionOutcome from './SessionOutcome';
 import confirmReadinessOverride, { needsOverride } from './confirmReadinessOverride';
@@ -83,6 +84,7 @@ export default function TrainingSessionPage() {
   const planFilter = searchParams.get('plan');
   const horseFilter = searchParams.get('horse');
   const lockedHorseIds = useLockedHorseIds();
+  const clearances = useHorseClearances();
 
   // The readiness board has to follow what the trainer is currently typing, so these mirror the
   // form fields it depends on.
@@ -107,7 +109,11 @@ export default function TrainingSessionPage() {
 
   const horseOptions = (horsesData?.data || []).map((h) => ({
     value: h._id,
-    label: lockedHorseIds.has(h._id) ? `🔒 ${h.name} (đang bị khóa huấn luyện)` : h.name,
+    label: lockedHorseIds.has(h._id)
+      ? `🔒 ${h.name} (đang bị khóa huấn luyện)`
+      : h.trainingClearance?.restricted
+        ? `🩹 ${h.name} (hồi phục — ${h.trainingClearance.label})`
+        : h.name,
     disabled: lockedHorseIds.has(h._id),
   }));
 
@@ -204,10 +210,16 @@ export default function TrainingSessionPage() {
       render: (name, record) => (
         <span>
           <Link to={`/horses/${record.horse?._id}`}>{name}</Link>
-          {lockedHorseIds.has(record.horse?._id) && (
+          {lockedHorseIds.has(record.horse?._id) ? (
             <Tag color="red" className="ml-2">
               🔒 Đang khóa
             </Tag>
+          ) : (
+            clearances.get(String(record.horse?._id))?.restricted && (
+              <Tag color={TRAINING_LEVEL_META[clearances.get(String(record.horse?._id)).level]?.color} className="ml-2">
+                {TRAINING_LEVEL_META[clearances.get(String(record.horse?._id)).level]?.short}
+              </Tag>
+            )
           )}
         </span>
       ),
@@ -413,15 +425,29 @@ export default function TrainingSessionPage() {
           form={createForm}
           layout="vertical"
           onFinish={(values) => submitCreate(values)}
-          onValuesChange={(_, all) =>
+          onValuesChange={(changed, all) => {
+            // A recovering horse can't be booked above the vet's level: pull the intensity down to
+            // the highest one allowed as soon as the horse is picked.
+            let intensity = all.intensity;
+            if (changed.horse) {
+              const c = clearances.get(String(changed.horse));
+              if (c?.restricted && !intensityAllowed(c, intensity)) {
+                const allowed = Object.keys(INTENSITY_RANK).filter((i) => INTENSITY_RANK[i] <= LEVEL_RANK[c.level]);
+                if (allowed.length) {
+                  intensity = allowed[allowed.length - 1];
+                  createForm.setFieldValue('intensity', intensity);
+                }
+              }
+            }
             setDraft({
               horse: all.horse,
               scheduledAt: all.scheduledAt?.toISOString(),
-              intensity: all.intensity,
+              // The adjusted value: setFieldValue doesn't re-trigger this handler.
+              intensity,
               sessionType: all.sessionType,
               objective: all.objective,
-            })
-          }
+            });
+          }}
         >
           {/* Two columns on desktop so the readiness board stays in view and visibly reacts as the
               trainer picks a horse and a time — that live feedback is the point of the board. */}
@@ -467,8 +493,22 @@ export default function TrainingSessionPage() {
 
               <Row gutter={16}>
                 <Col xs={24} md={8}>
-                  <Form.Item name="intensity" label="Cường độ" initialValue="moderate">
-                    <Select options={intensityOptions} />
+                  <Form.Item
+                    name="intensity"
+                    label="Cường độ"
+                    initialValue="moderate"
+                    extra={
+                      clearances.get(String(draft.horse))?.restricted
+                        ? `Bác sĩ chỉ cho ${clearances.get(String(draft.horse)).label} trong thời gian hồi phục.`
+                        : null
+                    }
+                  >
+                    <Select
+                      options={intensityOptions.map((o) => ({
+                        ...o,
+                        disabled: !intensityAllowed(clearances.get(String(draft.horse)), o.value),
+                      }))}
+                    />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8}>

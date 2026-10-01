@@ -20,6 +20,7 @@ const FeedingSchedule = require('../src/models/FeedingSchedule');
 const InventoryItem = require('../src/models/InventoryItem');
 const Notification = require('../src/models/Notification');
 const { syncCareTasks } = require('../src/modules/health/treatmentCare.service');
+const { CATALOG } = require('../src/modules/inventory/catalog');
 
 const DEMO_PASSWORD = '123456';
 
@@ -263,7 +264,7 @@ async function run() {
     healthRecord: tendonCheck._id,
     horse: horses[2]._id,
     prescribedBy: vet._id,
-    medications: [{ name: 'Gel kháng viêm', dosage: 'bôi chân trước', frequency: '2 lần/ngày' }],
+    medications: [{ name: 'Gel kháng viêm bôi ngoài', dosage: 'bôi chân trước', frequency: '2 lần/ngày' }],
     careInstructions: 'Dắt bộ 15 phút, theo dõi độ ấm của gân chân trước.',
     status: 'ongoing',
   });
@@ -288,33 +289,53 @@ async function run() {
     )
   );
 
-  await InventoryItem.create([
-    { name: 'Yến mạch cao cấp', category: 'feed', quantity: 120, unit: 'kg', stableBlock: 'Block A' },
-    {
-      name: 'Cỏ khô Timothy',
-      category: 'feed',
-      quantity: 8,
-      unit: 'bó',
-      stableBlock: 'Block A',
-      restockRequests: [{ requestedBy: groom._id, quantity: 30, status: 'pending', requestedAt: at(0, 7, 30) }],
-    },
-    { name: 'Muối điện giải', category: 'feed', quantity: 0, unit: 'gói', stableBlock: 'Block A' },
-    { name: 'Vitamin tổng hợp', category: 'medicine', quantity: 6, unit: 'hộp', stableBlock: 'Block A' },
-    { name: 'Dung dịch sát trùng Povidine', category: 'medicine', quantity: 15, unit: 'chai' },
-    {
-      name: 'Túi chườm đá',
-      category: 'equipment',
-      quantity: 24,
-      unit: 'cái',
-      stableBlock: 'Block A',
-      restockRequests: [{ requestedBy: groom._id, quantity: 12, status: 'approved', requestedAt: at(-3, 9) }],
-    },
-    { name: 'Băng quấn chân', category: 'equipment', quantity: 9, unit: 'cuộn', stableBlock: 'Block A' },
-    { name: 'Bàn chải tắm ngựa', category: 'equipment', quantity: 12, unit: 'cái', stableBlock: 'Block B' },
-  ]);
+  // The club's standard stock list (modules/inventory/catalog.js), with demo quantities: some
+  // items are low or out on purpose so the warnings and the restock flow show on a fresh seed.
+  const demoStock = {
+    'Yến mạch (Oats)': 200, 'Cỏ khô Alfalfa (Alfalfa Hay)': 120, 'Cỏ khô Timothy (Timothy Hay)': 30,
+    'Thức ăn viên chuyên dụng (Horse Pellets)': 80, 'Cám ngũ cốc (Grain Mix)': 60, 'Bột điện giải (Electrolyte Powder)': 300,
+    'Vitamin tổng hợp (Multivitamin)': 900, 'Khoáng chất bổ sung (Mineral Supplement)': 4000, 'Muối liếm (Salt Lick Block)': 6,
+    'Dầu hạt lanh (Flaxseed Oil)': 2000, 'Phenylbutazone (Bute) 1g': 60, 'Flunixin meglumine (Banamine) tiêm': 150,
+    'Kháng sinh Penicillin tiêm': 0, 'Thuốc tẩy giun Ivermectin (Dewormer)': 8, 'Vắc-xin uốn ván (Tetanus Vaccine)': 10,
+    'Gel kháng viêm bôi ngoài': 60, 'Dung dịch sát trùng Povidine (Antiseptic)': 1500, 'Gạc y tế vô trùng (Sterile Gauze)': 200,
+    'Băng cuốn thú y (Vet Wrap)': 10, 'Kim tiêm thú y (Veterinary Needles)': 150,
+  };
+  for (const entry of CATALOG) {
+    // One at a time so each item gets the next code of its category (TA-001, YT-001, DC-001…).
+    await InventoryItem.create({ ...entry, quantity: demoStock[entry.name] ?? 4, stableBlock: entry.category === 'feed' ? 'Block A' : undefined });
+  }
+  await InventoryItem.updateOne(
+    { name: 'Cỏ khô Timothy (Timothy Hay)' },
+    { $push: { restockRequests: { requestedBy: groom._id, quantity: 40, status: 'pending', requestedAt: at(0, 7, 30), note: 'Cỏ Timothy sắp hết' } } }
+  );
+
+  // Rations and the vet's course draw on that stock: oats and hay in kg, electrolytes and vitamins in
+  // grams, the gel in ml — feeding the horse or giving a dose takes it out of stock. Carrots stay as
+  // plain text, like rations written before the link existed.
+  const stockByName = Object.fromEntries((await InventoryItem.find()).map((i) => [i.name, i]));
+  const linkFor = {
+    grain: (q) => ({ item: stockByName['Yến mạch (Oats)'], amount: parseFloat(q) }),
+    hay: (q) => ({ item: stockByName['Cỏ khô Timothy (Timothy Hay)'], amount: parseFloat(q) }),
+    electrolyte: (q) => ({ item: stockByName['Bột điện giải (Electrolyte Powder)'], amount: parseFloat(q) }),
+    vitamin: (q) => ({ item: stockByName['Vitamin tổng hợp (Multivitamin)'], amount: parseFloat(q) }),
+  };
+  for (const ration of await FeedingSchedule.find()) {
+    ration.items = ration.items.map((it) => {
+      const link = linkFor[it.type]?.(it.quantity);
+      if (!link?.item) return it;
+      return { type: link.item.name, quantity: `${link.amount} ${link.item.unit}`, inventoryItem: link.item._id, amount: link.amount, unit: link.item.unit };
+    });
+    await ration.save();
+  }
+  // Golden Wind's course: the gel twice a day, and only light work while it recovers.
+  course.medications = [{ name: 'Gel kháng viêm bôi ngoài', dosage: '5 ml bôi chân trước', frequency: '2 lần/ngày', inventoryItem: stockByName['Gel kháng viêm bôi ngoài']._id, amount: 5, times: ['08:00', '18:00'] }];
+  course.trainingLevel = 'light';
+  await course.save();
+  await DailyTask.deleteMany({ treatment: course._id, status: 'pending' });
+  await syncCareTasks(course);
 
   console.log(`[seed] created ${horses.length} horses, 2 training plans, 4 sessions, 1 health record.`);
-  console.log(`[seed] groom data: ${tasks.length} daily tasks, ${horses.length * 3} feeding schedules, 8 inventory items.`);
+  console.log(`[seed] groom data: ${tasks.length} daily tasks, ${horses.length * 3} feeding schedules, ${CATALOG.length} inventory items.`);
   console.log('[seed] done.');
   await mongoose.disconnect();
 }

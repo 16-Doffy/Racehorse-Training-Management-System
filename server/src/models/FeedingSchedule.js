@@ -3,8 +3,13 @@ const mongoose = require('mongoose');
 // Scaffold model: full CRUD is exposed, detailed nutrition planning UI comes in a later phase.
 const feedingItemSchema = new mongoose.Schema(
   {
-    type: { type: String, required: true }, // grain, hay, vitamin, ...
-    quantity: { type: String, required: true }, // e.g. "2kg"
+    type: { type: String, required: true }, // the item's name (older rations: grain, hay, ...)
+    quantity: { type: String, required: true }, // display text, e.g. "2.5 kg"
+    // The stock item this food comes out of, and how much per meal in that item's unit. Feeding the
+    // horse takes it out of stock; rations from before the link have only the text above.
+    inventoryItem: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem', default: null },
+    amount: { type: Number, min: 0 },
+    unit: { type: String },
   },
   { _id: false }
 );

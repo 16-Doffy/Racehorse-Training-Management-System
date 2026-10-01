@@ -9,6 +9,11 @@ const { logAction } = require('../audit/audit.service');
 const { announceIncidentUpdate } = require('./incident.service');
 const { taskTiming, dayBounds } = require('../../utils/taskTiming');
 const { saveFile } = require('../../utils/fileStore');
+const { withSupplyStatus, consumeSupplies, stockMap, shortagesFrom } = require('../inventory/stock.service');
+const StableAssignment = require('../../models/StableAssignment');
+const FeedingSchedule = require('../../models/FeedingSchedule');
+const Treatment = require('../../models/Treatment');
+const { clearanceMap, levelOf } = require('../health/trainingClearance');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
 
@@ -90,7 +95,8 @@ const listTasks = asyncHandler(async (req, res) => {
     .populate('horse', 'name')
     .populate('assignedTo', 'name')
     .sort({ scheduledDate: -1 });
-  return ok(res, tasks, 'Daily tasks fetched.');
+  // Pending tasks that use up stock say whether the stock covers them right now.
+  return ok(res, await withSupplyStatus(tasks), 'Daily tasks fetched.');
 });
 
 /** Loads a task the caller may see: their own as a Groom, in-scope horses for everyone else. */
@@ -271,6 +277,13 @@ const completeTask = asyncHandler(async (req, res) => {
     // meal eaten at 23:00, and yesterday's dose can't be given today (utils/taskTiming.js).
     const timing = taskTiming(task);
     if (!timing.canComplete) return fail(res, timing.reason, 409, { timing });
+    // A meal or a dose takes its supplies out of stock; without them it can't be recorded as given.
+    // The groom asks the Manager for more instead (restock request, which can name this task).
+    const stock = await consumeSupplies(task.supplies, { actor: req.user, task });
+    if (!stock.ok) {
+      const list = stock.missing.map((m) => `${m.name} (cần ${m.needed} ${m.unit}, còn ${m.available} ${m.unit})`).join('; ');
+      return fail(res, `Thiếu vật tư: ${list} — hãy gửi đề xuất bổ sung cho Quản lý.`, 409, { missing: stock.missing });
+    }
     task.status = 'completed';
     task.completedAt = new Date();
     if (!task.acknowledgedAt) task.acknowledgedAt = task.completedAt;
@@ -329,6 +342,87 @@ const reportIncident = asyncHandler(async (req, res) => {
   await notifyHorseStaff({ ...alert, staff: 'trainer' });
 
   return ok(res, task, 'Incident reported.');
+});
+
+/**
+ * The groom's reference sheet for each horse they look after: what it eats at each meal and what the
+ * vet has prescribed (medicine, amount, times), each with the stock behind it, plus what is short —
+ * so they can ask the Manager before a meal or a dose is held up. Other roles get the same sheet
+ * for the horses they can see (?horse= narrows it).
+ * GET /stable/my-care-plan
+ */
+const myCarePlan = asyncHandler(async (req, res) => {
+  let horseIds;
+  if (req.user.role === ROLES.GROOM) {
+    horseIds = (await StableAssignment.find({ assignedCaretaker: req.user._id }).select('horse')).map((a) => a.horse);
+  } else {
+    const scoped = await horseFilter(req.user, req.query.horse);
+    const filter = scoped === undefined ? {} : { _id: scoped };
+    horseIds = (await Horse.find(filter).select('_id')).map((h) => h._id);
+  }
+  if (req.query.horse) horseIds = horseIds.filter((id) => String(id) === String(req.query.horse));
+
+  const [horses, stalls, rations, treatments, clearances] = await Promise.all([
+    Horse.find({ _id: { $in: horseIds } }).select('name healthStatus').sort({ name: 1 }),
+    StableAssignment.find({ horse: { $in: horseIds } }).populate('assignedCaretaker', 'name'),
+    FeedingSchedule.find({ horse: { $in: horseIds } }).select('horse mealTime timeOfDay items'),
+    Treatment.find({ horse: { $in: horseIds }, status: 'ongoing' })
+      .populate('prescribedBy', 'name')
+      .select('horse medications careInstructions trainingLevel isTrainingLocked status lockReason startDate endDate prescribedBy'),
+    clearanceMap(horseIds),
+  ]);
+  const ids = [
+    ...rations.flatMap((r) => r.items.map((i) => i.inventoryItem)),
+    ...treatments.flatMap((t) => t.medications.map((m) => m.inventoryItem)),
+  ].filter(Boolean);
+  const stock = await stockMap(ids);
+  const stockOf = (id) => {
+    const item = id ? stock.get(String(id)) : null;
+    return item ? { _id: item._id, name: item.name, unit: item.unit, available: item.quantity } : null;
+  };
+  const MEAL_ORDER = { morning: 0, noon: 1, evening: 2 };
+
+  const sheets = horses.map((h) => {
+    const mine = (list) => list.filter((x) => String(x.horse) === String(h._id));
+    const horseRations = mine(rations)
+      .sort((a, b) => MEAL_ORDER[a.mealTime] - MEAL_ORDER[b.mealTime])
+      .map((r) => ({
+        _id: r._id,
+        mealTime: r.mealTime,
+        timeOfDay: r.timeOfDay,
+        items: r.items.map((i) => {
+          const s = stockOf(i.inventoryItem);
+          return { name: i.type, quantity: i.quantity, amount: i.amount, unit: i.unit, stock: s, enough: s ? s.available >= (i.amount || 0) : null };
+        }),
+      }));
+    const prescriptions = mine(treatments).map((t) => ({
+      _id: t._id,
+      prescribedBy: t.prescribedBy?.name,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      trainingLevel: levelOf(t),
+      careInstructions: t.careInstructions,
+      medications: t.medications.map((m) => {
+        const s = stockOf(m.inventoryItem);
+        const daily = (m.amount || 0) * Math.max((m.times || []).length, 1);
+        return { name: m.name, dosage: m.dosage, amount: m.amount, times: m.times, stock: s, enough: s ? s.available >= daily : null, dailyNeed: m.amount ? daily : null };
+      }),
+    }));
+    // One day's need per stock item for this horse, against what is in stock.
+    const needs = [
+      ...horseRations.flatMap((r) => r.items.filter((i) => i.stock).map((i) => ({ inventoryItem: i.stock._id, name: i.stock.name, unit: i.stock.unit, amount: i.amount }))),
+      ...prescriptions.flatMap((p) => p.medications.filter((m) => m.stock).map((m) => ({ inventoryItem: m.stock._id, name: m.stock.name, unit: m.stock.unit, amount: m.dailyNeed }))),
+    ];
+    return {
+      horse: h,
+      stall: stalls.find((s) => String(s.horse) === String(h._id)) || null,
+      trainingClearance: clearances.get(String(h._id)),
+      rations: horseRations,
+      prescriptions,
+      shortages: shortagesFrom(needs, stock),
+    };
+  });
+  return ok(res, sheets, 'Care plan fetched.');
 });
 
 /**
@@ -452,4 +546,5 @@ module.exports = {
   handleIncident,
   acknowledgeTask,
   reportNotDone,
+  myCarePlan,
 };
