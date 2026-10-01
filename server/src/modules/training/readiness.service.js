@@ -60,6 +60,12 @@ function formatTime(date) {
 async function medicalGate(horse, { intensity } = {}) {
   const gate = { key: 'medical', label: 'Y tế', status: 'ok', detail: 'Bác sĩ chưa đặt hạn chế nào.' };
 
+  if (horse.isArchived) {
+    gate.status = 'blocked';
+    gate.detail = 'Ngựa đã ngừng quản lý tại câu lạc bộ.';
+    return gate;
+  }
+
   // The vet's level on the ongoing treatments (trainingClearance.js): none is the training lock.
   const clearance = await getTrainingClearance(horse._id);
   if (clearance.level === 'none') {
@@ -297,7 +303,7 @@ async function computeReadiness(horseId, { scheduledAt, intensity, sessionType, 
     throw err;
   }
 
-  const horse = await Horse.findById(horseId).select('name healthStatus');
+  const horse = await Horse.findById(horseId).select('name healthStatus isArchived');
   if (!horse) return null;
 
   const options = { intensity, sessionType, objective };
@@ -332,7 +338,7 @@ function cautionGates(readiness) {
  * — each used to carry its own copy of the lock-or-injured check.
  */
 async function getMedicalBlock(horseId) {
-  const horse = await Horse.findById(horseId).select('healthStatus');
+  const horse = await Horse.findById(horseId).select('healthStatus isArchived');
   if (!horse) return null;
   const gate = await medicalGate(horse);
   return gate.status === 'blocked' ? gate.detail : null;

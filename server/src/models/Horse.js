@@ -22,6 +22,11 @@ const horseSchema = new mongoose.Schema(
     // horseScope.js): until the Manager assigns one, no trainer or vet can see the horse at all.
     assignedTrainer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     assignedVet: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    // No longer managed by the club (sold, retired, moved) but with records worth keeping, so it
+    // can't simply be deleted. Hidden from the working lists; the Manager can bring it back.
+    isArchived: { type: Boolean, default: false },
+    archivedAt: { type: Date, default: null },
+    archivedReason: { type: String, trim: true },
     healthStatus: {
       type: String,
       enum: ['eligible', 'monitoring', 'injured', 'quarantined'],
