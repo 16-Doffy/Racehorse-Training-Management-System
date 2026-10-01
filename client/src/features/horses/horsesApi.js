@@ -5,4 +5,5 @@ export const horsesApi = {
   ...createCrudApi('/horses'),
   // Every role's records for one horse, merged into one list (sessions, exams, care, incidents…).
   timeline: (id, params) => axiosClient.get(`/horses/${id}/timeline`, { params }),
+  lineage: (id) => axiosClient.get(`/horses/${id}/lineage`),
 };
