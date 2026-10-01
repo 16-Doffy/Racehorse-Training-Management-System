@@ -143,6 +143,13 @@ export default function HorseDetailPage() {
   });
   const horse = data?.data;
 
+  const { data: lineageDataResp, isLoading: lineageLoading } = useQuery({
+    queryKey: ['horses', id, 'lineage'],
+    queryFn: () => horsesApi.lineage(id),
+    enabled: !!id,
+  });
+  const lineageTree = lineageDataResp?.data || horse;
+
   const requestExamMutation = useMutation({
     mutationFn: (payload) => healthRecordApi.requestExam(payload),
     onSuccess: () => {
@@ -260,8 +267,8 @@ export default function HorseDetailPage() {
               </Card>
             </Col>
             <Col xs={24} md={12}>
-              <Card title="🌳 Gia phả (Pedigree)" size="small">
-                <PedigreeTree horse={horse} />
+              <Card title="🌳 Gia phả (Pedigree)" size="small" loading={lineageLoading}>
+                <PedigreeTree horse={lineageTree} />
               </Card>
             </Col>
           </Row>
@@ -516,11 +523,8 @@ export default function HorseDetailPage() {
 
       <HorseTimeline horseId={horse._id} />
 
-      <Card className="mb-4" title="Dòng dõi (Pedigree)">
-        <Descriptions column={2} bordered size="small">
-          <Descriptions.Item label="Ngựa bố (Sire)">{horse.sire?.name || 'Chưa cập nhật'}</Descriptions.Item>
-          <Descriptions.Item label="Ngựa mẹ (Dam)">{horse.dam?.name || 'Chưa cập nhật'}</Descriptions.Item>
-        </Descriptions>
+      <Card className="mb-4" title="Dòng dõi (Pedigree)" loading={lineageLoading}>
+        <PedigreeTree horse={lineageTree} />
       </Card>
 
       <Card title="Lịch sử thành tích thi đấu" className="mb-4">
