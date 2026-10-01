@@ -20,6 +20,8 @@ const notificationSchema = new mongoose.Schema(
         'incident_report',
         'exam_request',
         'restock_decision',
+        // To the Manager: someone asked for supplies (or proposed a new item).
+        'restock_request',
         'horse_assigned',
         'session_completed',
         'readiness_override',

@@ -16,12 +16,16 @@ const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('./hors
  *   can't claim to be someone else. Return {} for the case that shouldn't change them.
  * - `afterWrite(item, req)`: hook for side effects that must follow a successful create/update.
  * - `validate(req, { existing })`: business rule checked before a create/update is written.
- *   Return a message to refuse it (409), or nothing to let it through.
+ *   Return a message to refuse it (409) — or { status, message } for another status, e.g. 400 for
+ *   invalid input — or nothing to let it through.
+ * - `fields`: the only body fields a create/update may set. Without it the whole body is written,
+ *   which lets a client set things the module manages itself (e.g. an item's request history).
  */
 function crudFactory(
   Model,
-  { populate = [], defaultSort = { createdAt: -1 }, label = 'Item', scopeByHorse = false, stamp, afterWrite, validate } = {}
+  { populate = [], defaultSort = { createdAt: -1 }, label = 'Item', scopeByHorse = false, stamp, afterWrite, validate, fields } = {}
 ) {
+  const bodyOf = (req) => (fields ? Object.fromEntries(fields.filter((f) => req.body[f] !== undefined).map((f) => [f, req.body[f]])) : req.body);
   const denied = async (req, horseId) => scopeByHorse && !(await canAccessHorse(req.user, horseId));
 
   const list = asyncHandler(async (req, res) => {
@@ -47,8 +51,8 @@ function crudFactory(
   const createOne = asyncHandler(async (req, res) => {
     if (await denied(req, req.body.horse)) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
     const refusal = validate ? await validate(req, { existing: null }) : null;
-    if (refusal) return fail(res, refusal, 409);
-    const item = await Model.create({ ...req.body, ...(stamp ? stamp(req, { isCreate: true }) : {}) });
+    if (refusal) return fail(res, refusal.message || refusal, refusal.status || 409);
+    const item = await Model.create({ ...bodyOf(req), ...(stamp ? stamp(req, { isCreate: true }) : {}) });
     if (afterWrite) await afterWrite(item, req);
     return created(res, item, `${label} created.`);
   });
@@ -60,11 +64,11 @@ function crudFactory(
     if (await denied(req, existing.horse)) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
     if (req.body.horse && (await denied(req, req.body.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
     const refusal = validate ? await validate(req, { existing }) : null;
-    if (refusal) return fail(res, refusal, 409);
+    if (refusal) return fail(res, refusal.message || refusal, refusal.status || 409);
 
     const item = await Model.findByIdAndUpdate(
       req.params.id,
-      { ...req.body, ...(stamp ? stamp(req, { isCreate: false }) : {}) },
+      { ...bodyOf(req), ...(stamp ? stamp(req, { isCreate: false }) : {}) },
       { new: true, runValidators: true }
     );
     if (afterWrite) await afterWrite(item, req, existing);
