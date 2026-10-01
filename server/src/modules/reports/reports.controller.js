@@ -4,7 +4,9 @@ const RaceEntry = require('../../models/RaceEntry');
 const DailyTask = require('../../models/DailyTask');
 const ExamRequest = require('../../models/ExamRequest');
 const asyncHandler = require('../../utils/asyncHandler');
-const { ok } = require('../../utils/apiResponse');
+const { ok, fail } = require('../../utils/apiResponse');
+const { horseFilter } = require('../../utils/horseScope');
+const { parsePeriodQuery, emptyPeriods, foldRecords } = require('../finance/financeSeries');
 
 /** Builds a { $gte, $lte } range filter from optional `from`/`to` query params, or {} if neither given. */
 function dateRangeFilter(from, to) {
@@ -152,4 +154,80 @@ const getOverview = asyncHandler(async (req, res) => {
   );
 });
 
-module.exports = { getOverview };
+/**
+ * Training progress per month, for a chart: sessions completed, average rating, average top speed,
+ * total distance and how many hit their targets — per horse and for all of them together. Scoped
+ * like every horse list: an owner sees their horses, a trainer theirs, the manager all.
+ * GET /reports/training-chart?months=6&horse=
+ */
+const getTrainingChart = asyncHandler(async (req, res) => {
+  const months = Math.min(Math.max(parseInt(req.query.months, 10) || 6, 1), 24);
+  const start = new Date();
+  start.setDate(1);
+  start.setHours(0, 0, 0, 0);
+  start.setMonth(start.getMonth() - (months - 1));
+
+  const filter = { status: 'completed', scheduledAt: { $gte: start } };
+  const horse = await horseFilter(req.user, req.query.horse);
+  if (horse !== undefined) filter.horse = horse;
+  const sessions = await TrainingSession.find(filter).populate('horse', 'name').select('horse scheduledAt performanceRating metrics outcome');
+
+  const monthKeys = Array.from({ length: months }, (_, i) => {
+    const d = new Date(start);
+    d.setMonth(start.getMonth() + i);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const keyOf = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  const blank = () => ({ sessions: 0, ratingSum: 0, rated: 0, speedSum: 0, speedCount: 0, totalDistance: 0, metTargets: 0 });
+  const add = (b, s) => {
+    b.sessions += 1;
+    if (s.performanceRating) { b.ratingSum += s.performanceRating; b.rated += 1; }
+    if (s.metrics?.maxSpeed) { b.speedSum += s.metrics.maxSpeed; b.speedCount += 1; }
+    b.totalDistance += s.metrics?.distance || 0;
+    if (s.outcome?.met === true) b.metTargets += 1;
+  };
+  const finish = (month, b) => ({
+    month,
+    sessions: b.sessions,
+    avgRating: b.rated ? Number((b.ratingSum / b.rated).toFixed(1)) : null,
+    avgMaxSpeed: b.speedCount ? Number((b.speedSum / b.speedCount).toFixed(1)) : null,
+    totalDistance: Math.round(b.totalDistance),
+    metTargets: b.metTargets,
+  });
+
+  const overall = new Map(monthKeys.map((k) => [k, blank()]));
+  const perHorse = new Map();
+  for (const s of sessions) {
+    const key = keyOf(s.scheduledAt);
+    if (!overall.has(key)) continue;
+    add(overall.get(key), s);
+    const id = String(s.horse?._id || s.horse);
+    if (!perHorse.has(id)) perHorse.set(id, { horse: s.horse ? { _id: s.horse._id, name: s.horse.name } : { _id: id }, months: new Map(monthKeys.map((k) => [k, blank()])) });
+    add(perHorse.get(id).months.get(key), s);
+  }
+
+  return ok(
+    res,
+    {
+      months: monthKeys,
+      totals: monthKeys.map((k) => finish(k, overall.get(k))),
+      series: [...perHorse.values()].map((h) => ({ horse: h.horse, points: monthKeys.map((k) => finish(k, h.months.get(k))) })),
+    },
+    'Training chart computed.'
+  );
+});
+
+/**
+ * Club-wide money in and out per month or quarter, for the manager's cash-flow chart.
+ * GET /reports/finance-chart?period=month|quarter&year=2026
+ */
+const getFinanceChart = asyncHandler(async (req, res) => {
+  const { period, year, valid, from, to } = parsePeriodQuery(req.query);
+  if (!valid) return fail(res, 'year không hợp lệ.', 400);
+  const records = await FinancialRecord.find({ date: { $gte: from, $lt: to } }).select('type category amount date');
+  const periods = emptyPeriods(period, year);
+  const { totals, byCategory } = foldRecords(records, { period, periods });
+  return ok(res, { year, period, totals, byCategory, periods }, 'Finance chart computed.');
+});
+
+module.exports = { getOverview, getTrainingChart, getFinanceChart };

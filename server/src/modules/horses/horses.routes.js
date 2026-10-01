@@ -4,11 +4,13 @@ const { authorize } = require('../../middlewares/rbacMiddleware');
 const { ROLES } = require('../../constants/roles');
 const { listHorses, getHorse, createHorse, updateHorse, deleteHorse, updateCareSchedule } = require('./horses.controller');
 const { getTimeline } = require('./horseTimeline.controller');
+const { getLineage } = require('./horseLineage.controller');
 
 router.use(protect);
 
 router.get('/', listHorses);
 router.get('/:id/timeline', getTimeline);
+router.get('/:id/lineage', getLineage);
 router.get('/:id', getHorse);
 router.post('/', authorize(ROLES.MANAGER), createHorse);
 router.put('/:id', authorize(ROLES.MANAGER), updateHorse);

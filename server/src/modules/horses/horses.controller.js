@@ -116,6 +116,24 @@ const updateHorse = asyncHandler(async (req, res) => {
     assignedTrainer: before.assignedTrainer,
     assignedVet: before.assignedVet,
   });
+  // A change of owner is a transfer: on the record, and the previous owner is told too — they
+  // stop seeing the horse from this moment.
+  if (before.owner && String(before.owner) !== String(horse.owner || '')) {
+    await logAction({
+      actorId: req.user._id,
+      action: 'horse.transfer_ownership',
+      targetModel: 'Horse',
+      targetId: horse._id,
+      metadata: { from: before.owner, to: horse.owner || null },
+    });
+    await pushNotification({
+      recipientUser: before.owner,
+      horse: horse._id,
+      type: 'horse_assigned',
+      severity: 'info',
+      message: `🐎 Quyền sở hữu ngựa "${horse.name}" đã được chuyển sang chủ khác.`,
+    });
+  }
   return ok(res, horse, 'Horse updated.');
 });
 

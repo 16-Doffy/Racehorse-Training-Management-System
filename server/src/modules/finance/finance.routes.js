@@ -28,12 +28,7 @@ const listMine = asyncHandler(async (req, res) => {
   return ok(res, records, 'Your financial records fetched.');
 });
 
-const emptyTotals = () => ({ cost: 0, revenue: 0, net: 0 });
-
-function addTo(bucket, record) {
-  bucket[record.type] += record.amount;
-  bucket.net = bucket.revenue - bucket.cost;
-}
+const { emptyTotals, parsePeriodQuery, slotOf, emptyPeriods, foldRecords } = require('./financeSeries');
 
 /**
  * The owner's periodic statement: what each of their horses cost and earned, per month or per
@@ -44,12 +39,8 @@ function addTo(bucket, record) {
  * GET /finance/mine/summary?period=month|quarter&year=2026
  */
 const summarizeMine = asyncHandler(async (req, res) => {
-  const period = req.query.period === 'quarter' ? 'quarter' : 'month';
-  const year = parseInt(req.query.year, 10) || new Date().getFullYear();
-  if (year < 2000 || year > 2100) return fail(res, 'year không hợp lệ.', 400);
-
-  const from = new Date(year, 0, 1);
-  const to = new Date(year + 1, 0, 1);
+  const { period, year, valid, from, to } = parsePeriodQuery(req.query);
+  if (!valid) return fail(res, 'year không hợp lệ.', 400);
   const horses = await Horse.find({ owner: req.user._id }).select('name');
   const horseIds = horses.map((h) => h._id);
   const inYear = { $gte: from, $lt: to };
@@ -60,45 +51,19 @@ const summarizeMine = asyncHandler(async (req, res) => {
     Treatment.find({ horse: { $in: horseIds }, createdAt: inYear }).select('horse createdAt'),
   ]);
 
-  const slots = period === 'quarter' ? 4 : 12;
-  const slotOf = (date) => (period === 'quarter' ? Math.floor(new Date(date).getMonth() / 3) : new Date(date).getMonth());
-  const periods = Array.from({ length: slots }, (_, i) => ({
-    key: period === 'quarter' ? `${year}-Q${i + 1}` : `${year}-${String(i + 1).padStart(2, '0')}`,
-    label: period === 'quarter' ? `Quý ${i + 1}/${year}` : `Tháng ${i + 1}/${year}`,
-    ...emptyTotals(),
-    medicalCost: 0,
-    exams: 0,
-    treatments: 0,
-    byCategory: {},
-  }));
+  const periods = emptyPeriods(period, year, () => ({ exams: 0, treatments: 0 }));
 
   const byHorse = new Map(
     horses.map((h) => [String(h._id), { horse: { _id: h._id, name: h.name }, ...emptyTotals(), medicalCost: 0, exams: 0, treatments: 0 }])
   );
-  const totals = { ...emptyTotals(), medicalCost: 0, exams: exams.length, treatments: treatments.length };
-  const byCategory = {};
-
-  for (const record of records) {
-    const slot = periods[slotOf(record.date)];
-    const horse = byHorse.get(String(record.horse));
-    [slot, horse, totals].forEach((bucket) => addTo(bucket, record));
-
-    for (const map of [slot.byCategory, byCategory]) {
-      map[record.category] = map[record.category] || emptyTotals();
-      addTo(map[record.category], record);
-    }
-    if (record.type === 'cost' && record.category === 'medical') {
-      [slot, horse, totals].forEach((bucket) => {
-        bucket.medicalCost += record.amount;
-      });
-    }
-  }
+  const { totals, byCategory } = foldRecords(records, { period, periods, onRecord: (r) => byHorse.get(String(r.horse)) });
+  Object.assign(totals, { exams: exams.length, treatments: treatments.length });
   for (const exam of exams) {
-    periods[slotOf(exam.date)].exams += 1;
+    periods[slotOf(period, exam.date)].exams += 1;
     byHorse.get(String(exam.horse)).exams += 1;
   }
   for (const treatment of treatments) {
-    periods[slotOf(treatment.createdAt)].treatments += 1;
+    periods[slotOf(period, treatment.createdAt)].treatments += 1;
     byHorse.get(String(treatment.horse)).treatments += 1;
   }
 
