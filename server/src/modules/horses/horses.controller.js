@@ -14,6 +14,13 @@ const { logAction } = require('../audit/audit.service');
 const { ROLES } = require('../../constants/roles');
 const { getScopedHorseIds, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { pushNotification } = require('../alerts/notification.service');
+const { clearanceMap } = require('../health/trainingClearance');
+
+/** Adds the vet's current training level (lock / recovery / clear) to each horse. */
+async function withClearance(horses) {
+  const map = await clearanceMap(horses.map((h) => h._id));
+  return horses.map((h) => ({ ...h.toObject(), trainingClearance: map.get(String(h._id)) }));
+}
 
 const populatePedigree = [
   { path: 'owner', select: 'name email phone' },
@@ -55,14 +62,15 @@ const listHorses = asyncHandler(async (req, res) => {
   const scopedIds = await getScopedHorseIds(req.user);
   const filter = scopedIds ? { _id: { $in: scopedIds } } : {};
   const horses = await Horse.find(filter).populate(populatePedigree).sort({ name: 1 });
-  return ok(res, horses, 'Horses fetched.');
+  return ok(res, await withClearance(horses), 'Horses fetched.');
 });
 
 const getHorse = asyncHandler(async (req, res) => {
   const horse = await Horse.findById(req.params.id).populate(populatePedigree);
   if (!horse) return fail(res, 'Horse not found.', 404);
   if (!(await canAccessHorse(req.user, horse._id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
-  return ok(res, horse, 'Horse fetched.');
+  const [withLevel] = await withClearance([horse]);
+  return ok(res, withLevel, 'Horse fetched.');
 });
 
 // healthStatus is a clinical conclusion owned by the Veterinarian (health records, injury markers,

@@ -41,6 +41,18 @@ const dailyTaskSchema = new mongoose.Schema(
     // rather than assigned by hand, so the groom can see why it appeared.
     trainingSession: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingSession', default: null },
     note: { type: String }, // the trainer's instruction riding along with the task
+    // Time of day of a vet's dose ("08:00"); such a task can be recorded around that time only.
+    dueTime: { type: String, default: null },
+    // What doing the task uses up, taken out of stock when it is completed (a meal's ration, a dose).
+    supplies: [
+      {
+        inventoryItem: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem' },
+        name: { type: String },
+        amount: { type: Number },
+        unit: { type: String },
+        _id: false,
+      },
+    ],
     scheduledDate: { type: Date, required: true, default: Date.now },
     status: { type: String, enum: ['pending', 'completed', 'skipped'], default: 'pending' },
     completedAt: { type: Date },

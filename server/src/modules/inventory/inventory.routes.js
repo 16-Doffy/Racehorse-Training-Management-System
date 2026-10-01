@@ -7,6 +7,8 @@ const { ok, fail } = require('../../utils/apiResponse');
 const crudFactory = require('../../utils/crudFactory');
 const InventoryItem = require('../../models/InventoryItem');
 const { pushNotification } = require('../alerts/notification.service');
+const DailyTask = require('../../models/DailyTask');
+const { computeForecast, itemInUse } = require('./stock.service');
 
 // Restock requests are reviewed by name on the Manager's screen, so the requester is populated
 // here — otherwise the list hands back a raw ObjectId and the UI has nothing to show.
@@ -62,9 +64,21 @@ const requestRestock = asyncHandler(async (req, res) => {
   if (!item) return fail(res, 'Inventory item not found.', 404);
 
   const note = typeof req.body.note === 'string' ? req.body.note.trim() : undefined;
-  item.restockRequests.push({ requestedBy: req.user._id, quantity, note });
+  // A request raised from a meal or dose that can't be recorded for lack of stock says so.
+  let task = null;
+  if (req.body.task) {
+    task = await DailyTask.findById(req.body.task).populate('horse', 'name');
+    if (!task) return fail(res, 'Không tìm thấy công việc.', 404);
+  }
+  item.restockRequests.push({ requestedBy: req.user._id, quantity, note, task: task?._id || null });
   await item.save();
-  await tellManagers(`📦 ${req.user.name} đề xuất bổ sung ${quantity} ${item.unit} "${item.name}"${note ? `: ${note}` : '.'}`);
+  const blocking = task ? ` — đang chặn việc ${task.taskType === 'feeding' ? 'cho ăn' : 'cho thuốc'} của ${task.horse?.name || 'ngựa'}` : '';
+  await pushNotification({
+    recipientRole: ROLES.MANAGER,
+    type: 'restock_request',
+    severity: task ? 'warning' : 'info',
+    message: `📦 ${req.user.name} đề xuất bổ sung ${quantity} ${item.unit} "${item.name}"${blocking}${note ? `: ${note}` : '.'}`,
+  });
   return ok(res, item, 'Restock requested.');
 });
 
@@ -145,7 +159,9 @@ const reviewRestockRequest = asyncHandler(async (req, res) => {
     severity: status === 'approved' ? 'info' : 'warning',
     message:
       status === 'approved'
-        ? `✅ Yêu cầu bổ sung ${request.quantity} ${item.unit} "${item.name}" đã được duyệt. Tồn kho hiện tại: ${item.quantity} ${item.unit}.`
+        ? `✅ Yêu cầu bổ sung ${request.quantity} ${item.unit} "${item.name}" đã được duyệt. Tồn kho hiện tại: ${item.quantity} ${item.unit}.${
+            request.task ? ' Bạn có thể hoàn thành công việc đang chờ (nếu còn trong khung giờ).' : ''
+          }`
         : `❌ Yêu cầu ${dropProposal ? 'thêm vật tư mới' : 'bổ sung'} ${request.quantity} ${item.unit} "${item.name}" đã bị từ chối${
             request.reviewNote ? `: ${request.reviewNote}` : '.'
           }`,
@@ -156,10 +172,20 @@ const reviewRestockRequest = asyncHandler(async (req, res) => {
 
 router.use(protect);
 router.get('/', ctrl.list);
+// Daily use from rations and ongoing treatments, and how many days the stock lasts.
+router.get('/forecast', asyncHandler(async (req, res) => ok(res, await computeForecast(), 'Inventory forecast computed.')));
 router.get('/:id', ctrl.getOne);
 router.post('/', authorize(ROLES.MANAGER), ctrl.createOne);
 router.put('/:id', authorize(ROLES.MANAGER), ctrl.updateOne);
-router.delete('/:id', authorize(ROLES.MANAGER), ctrl.removeOne);
+// An item a ration or an ongoing treatment draws on can't be deleted out from under it.
+const refuseItemInUse = asyncHandler(async (req, res, next) => {
+  const horses = await itemInUse(req.params.id);
+  if (horses.length) {
+    return fail(res, `Mặt hàng đang được dùng trong khẩu phần/đơn thuốc của: ${[...new Set(horses)].join(', ')} — hãy đổi món ở đó trước.`, 409);
+  }
+  return next();
+});
+router.delete('/:id', authorize(ROLES.MANAGER), refuseItemInUse, ctrl.removeOne);
 router.post('/proposals', authorize(ROLES.GROOM, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN), proposeItem);
 router.post('/:id/restock-request', authorize(ROLES.GROOM, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN), requestRestock);
 router.patch('/:id/restock-requests/:reqId', authorize(ROLES.MANAGER), reviewRestockRequest);

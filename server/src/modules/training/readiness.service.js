@@ -1,9 +1,11 @@
 const Horse = require('../../models/Horse');
-const Treatment = require('../../models/Treatment');
 const HealthRecord = require('../../models/HealthRecord');
 const DailyTask = require('../../models/DailyTask');
 const StableAssignment = require('../../models/StableAssignment');
 const { findOpenIncident } = require('../stable/incident.service');
+const { getTrainingClearance, allows } = require('../health/trainingClearance');
+
+const INTENSITY_WORDS = { light: 'nhẹ', moderate: 'vừa', high: 'cao' };
 
 /**
  * "Is this horse fit to do this particular piece of work, right now?"
@@ -55,13 +57,14 @@ function formatTime(date) {
   return new Date(date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 }
 
-async function medicalGate(horse) {
+async function medicalGate(horse, { intensity } = {}) {
   const gate = { key: 'medical', label: 'Y tế', status: 'ok', detail: 'Bác sĩ chưa đặt hạn chế nào.' };
 
-  const activeLock = await Treatment.findOne({ horse: horse._id, isTrainingLocked: true, status: 'ongoing' });
-  if (activeLock) {
+  // The vet's level on the ongoing treatments (trainingClearance.js): none is the training lock.
+  const clearance = await getTrainingClearance(horse._id);
+  if (clearance.level === 'none') {
     gate.status = 'blocked';
-    gate.detail = `Bác sĩ đang khóa huấn luyện: ${activeLock.lockReason || 'chỉ định y tế'}.`;
+    gate.detail = `Bác sĩ đang khóa huấn luyện: ${clearance.reason || 'chỉ định y tế'}.`;
     return gate;
   }
 
@@ -71,9 +74,22 @@ async function medicalGate(horse) {
     return gate;
   }
 
+  // Recovering: the vet allows some work but not all of it. Going above that level is not the
+  // trainer's call, so it blocks like the lock does; within it, the trainer is simply told.
+  if (clearance.restricted) {
+    const since = clearance.since ? ` (từ ${new Date(clearance.since).toLocaleDateString('vi-VN')})` : '';
+    const limit = `Ngựa đang hồi phục — bác sĩ${clearance.prescribedBy ? ` ${clearance.prescribedBy}` : ''} chỉ cho ${clearance.label}${since}`;
+    if (!allows(clearance, intensity)) {
+      gate.status = 'blocked';
+      gate.detail = `${limit}; buổi cường độ ${INTENSITY_WORDS[intensity] || intensity} chưa được phép.`;
+      return gate;
+    }
+    gate.detail = `${limit}.`;
+  }
+
   if (horse.healthStatus === 'monitoring') {
     gate.status = 'caution';
-    gate.detail = 'Ngựa đang trong diện theo dõi — cân nhắc giảm cường độ.';
+    gate.detail = `${clearance.restricted ? `${gate.detail} ` : ''}Ngựa đang trong diện theo dõi — cân nhắc giảm cường độ.`;
   }
 
   // Something the groom saw and reported, that no vet has answered yet. Whatever task it was
@@ -286,7 +302,7 @@ async function computeReadiness(horseId, { scheduledAt, intensity, sessionType, 
 
   const options = { intensity, sessionType, objective };
   const gates = await Promise.all([
-    medicalGate(horse),
+    medicalGate(horse, options),
     vetClearanceGate(horse, options),
     nutritionGate(horse, when),
     careAssignmentGate(horse),
@@ -322,6 +338,17 @@ async function getMedicalBlock(horseId) {
   return gate.status === 'blocked' ? gate.detail : null;
 }
 
+/**
+ * Why this horse can't be entered for a race, or null. Racing needs a horse fully cleared: no lock,
+ * not injured, and no recovery restriction.
+ */
+async function getRaceBlock(horseId) {
+  const block = await getMedicalBlock(horseId);
+  if (block) return block;
+  const clearance = await getTrainingClearance(horseId);
+  return clearance.restricted ? `Ngựa đang hồi phục (bác sĩ chỉ cho ${clearance.label}) — chưa đủ điều kiện thi đấu.` : null;
+}
+
 /** Snapshot stored on a session: the gates as they stood when the decision was made. */
 function toSnapshot(readiness, { overrideReason, userId } = {}) {
   const overridden = cautionGates(readiness).length > 0 && overrideReason;
@@ -338,6 +365,7 @@ module.exports = {
   computeReadiness,
   cautionGates,
   getMedicalBlock,
+  getRaceBlock,
   toSnapshot,
   needsVetClearance,
   MIN_DIGEST_MINUTES,

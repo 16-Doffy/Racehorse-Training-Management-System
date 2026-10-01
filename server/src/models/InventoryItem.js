@@ -12,6 +12,8 @@ const restockRequestSchema = new mongoose.Schema({
   reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   reviewedAt: { type: Date, default: null },
   reviewNote: { type: String, trim: true },
+  // The task this request is holding up (a meal or dose the groom can't record without the stock).
+  task: { type: mongoose.Schema.Types.ObjectId, ref: 'DailyTask', default: null },
 });
 
 const inventoryItemSchema = new mongoose.Schema(
@@ -26,6 +28,7 @@ const inventoryItemSchema = new mongoose.Schema(
     isProposed: { type: Boolean, default: false },
     proposedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     restockRequests: [restockRequestSchema],
+    lowStockNotifiedAt: { type: Date, default: null }, // throttles the low-stock warning to once a day
   },
   { timestamps: true }
 );

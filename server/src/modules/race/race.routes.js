@@ -5,7 +5,7 @@ const { ROLES } = require('../../constants/roles');
 const crudFactory = require('../../utils/crudFactory');
 const RaceEntry = require('../../models/RaceEntry');
 const Horse = require('../../models/Horse');
-const { getMedicalBlock } = require('../training/readiness.service');
+const { getRaceBlock } = require('../training/readiness.service');
 const FinancialRecord = require('../../models/FinancialRecord');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, fail } = require('../../utils/apiResponse');
@@ -131,7 +131,7 @@ async function refuseGroundedHorse(req, { existing }) {
   const reviving = existing && ['registered', 'confirmed'].includes(nextStatus) && nextStatus !== existing.status;
   if (!entering && !reviving) return null;
 
-  const block = await getMedicalBlock(horseId);
+  const block = await getRaceBlock(horseId);
   return block ? `Không thể đăng ký giải cho ngựa này: ${block}` : null;
 }
 
