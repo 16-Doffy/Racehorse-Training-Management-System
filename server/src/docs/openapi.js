@@ -439,13 +439,23 @@ module.exports = {
       },
       InventoryItem: {
         type: 'object',
+        description: 'Status (in stock / low / out / expiring / discontinued) is computed from quantity, reorderLevel, expiryDate and isActive.',
         properties: {
           _id: { type: 'string' },
+          code: { type: 'string', readOnly: true, example: 'TA-001', description: 'Auto per category: TA (food), YT (medical), DC (equipment)' },
           name: { type: 'string' },
           category: { type: 'string', enum: ['feed', 'medicine', 'equipment'] },
+          description: { type: 'string', description: 'What it is for' },
           quantity: { type: 'number' },
-          unit: { type: 'string' },
-          stableBlock: { type: 'string' },
+          unit: { type: 'string', description: 'Unit rations / doses and stock are counted in (kg, g, ml, viên…)' },
+          packUnit: { type: 'string', description: 'Purchase unit, optional (bao, hộp, chai…)' },
+          packSize: { type: 'number', description: 'Units per pack: 1 packUnit = packSize unit' },
+          reorderLevel: { type: 'number', description: 'Minimum stock; at or below it the item counts as low' },
+          price: { type: 'number', description: 'Reference price per purchase unit (pack, or unit), VND' },
+          expiryDate: { type: 'string', format: 'date-time', nullable: true },
+          isActive: { type: 'boolean', description: 'false = discontinued: kept on record, not selectable for new rations / prescriptions' },
+          lastRestockedAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true },
+          stableBlock: { type: 'string', description: 'Area; empty = shared stock' },
           isProposed: { type: 'boolean', description: 'A new item someone asked to stock, not yet approved (quantity 0)' },
           proposedBy: { type: 'string', nullable: true },
           restockRequests: {
@@ -689,6 +699,27 @@ module.exports = {
       get: { tags: ['Horses'], summary: 'Get horse by id', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404] } },
       put: { tags: ['Horses'], summary: 'Update horse (Manager only)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Horse' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404] } },
       delete: { tags: ['Horses'], summary: 'Delete horse (Manager only)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
+    },
+    '/horses/{id}/archive': {
+      patch: {
+        tags: ['Horses'],
+        summary: 'Stop managing a horse whose records must be kept (Manager)',
+        description:
+          'For a horse that can\'t be deleted (DELETE answers 409 with data.canArchive). Hides it from every working list, frees its stall, ' +
+          'cancels booked sessions and open plans, withdraws future race entries and notifies the owner, trainer and vet. History stays. ' +
+          'GET /horses?archived=true (Manager) lists archived horses.',
+        parameters: [idParam('id')],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['reason'], properties: { reason: { type: 'string' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
+    '/horses/{id}/unarchive': {
+      patch: {
+        tags: ['Horses'],
+        summary: 'Bring an archived horse back onto the working lists (Manager)',
+        parameters: [idParam('id')],
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
     },
     '/horses/{id}/lineage': {
       get: {
@@ -1171,7 +1202,31 @@ module.exports = {
       delete: { tags: ['Inventory (scaffold)'], summary: 'Delete inventory item (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
     '/inventory/{id}/restock-request': {
-      post: { tags: ['Inventory (scaffold)'], summary: 'Request a restock (Groom, Head Trainer, Veterinarian) — the Manager is notified', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['quantity'], properties: { quantity: { type: 'number', minimum: 1 }, note: { type: 'string' }, task: { type: 'string', description: 'The meal/dose task this shortage is blocking — the Manager is told, and the groom is told when it is approved' } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 404: responses[404] } },
+      post: { tags: ['Inventory (scaffold)'], summary: 'Request a restock (Groom, Head Trainer, Veterinarian) — the Manager is notified', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['quantity'], properties: { quantity: { type: 'number', minimum: 1 }, packs: { type: 'number', description: 'Alternative to quantity for items with a pack size' }, note: { type: 'string' }, task: { type: 'string', description: 'The meal/dose task this shortage is blocking — the Manager is told, and the groom is told when it is approved' } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 404: responses[404] } },
+    },
+    '/inventory/catalog': {
+      get: {
+        tags: ['Inventory (scaffold)'],
+        summary: 'The standard stock list (30 items) and unit suggestions per category',
+        responses: { 200: responses[200]({ type: 'object', properties: { items: { type: 'array', items: { type: 'object' } }, units: { type: 'object' } } }) },
+      },
+    },
+    '/inventory/catalog/import': {
+      post: {
+        tags: ['Inventory (scaffold)'],
+        summary: 'Add the catalog items not already in stock, with quantity 0 (Manager) — safe to repeat',
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { categories: { type: 'array', items: { type: 'string', enum: ['feed', 'medicine', 'equipment'] } } } } } } },
+        responses: { 200: responses[200]({ type: 'object', properties: { created: { type: 'integer' }, skipped: { type: 'integer' } } }), 403: responses[403] },
+      },
+    },
+    '/inventory/{id}/receive': {
+      post: {
+        tags: ['Inventory (scaffold)'],
+        summary: 'Record a delivery by quantity (in the item unit) or by packs (Manager)',
+        parameters: [idParam('id')],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { quantity: { type: 'number' }, packs: { type: 'number' }, note: { type: 'string' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 403: responses[403], 404: responses[404] },
+      },
     },
     '/inventory/forecast': {
       get: {
