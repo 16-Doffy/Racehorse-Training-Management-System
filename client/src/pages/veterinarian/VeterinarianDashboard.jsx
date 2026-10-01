@@ -200,7 +200,7 @@ export default function VeterinarianDashboard() {
           </div>
           <div className="d-flex flex-column gap-2 mt-2">
             {examRequests.filter(req => req.status === 'pending').map(req => (
-              <div key={req._id} className="d-flex justify-content-between align-items-center bg-white p-2 rounded border border-warning-subtle">
+              <div key={req._id} className="d-flex justify-content-between align-items-center bg-white p-2.5 rounded border border-warning-subtle">
                 <div>
                   <strong>{req.horse?.name || 'Ngựa'}</strong>
                   <span className="text-muted small ms-2">Yêu cầu bởi: {req.requestedBy?.name || 'HLV'}</span>
@@ -212,14 +212,14 @@ export default function VeterinarianDashboard() {
                 <div className="d-flex gap-2">
                   <Button variant="outline-secondary" size="sm" onClick={() => {
                     setSelectedExamReq(req);
-                    setExamStatus('done');
+                    setExamStatus('cancelled');
                     setResolutionNote('');
                     setShowExamModal(true);
                   }}>
-                    Cập nhật
+                    <i className="bi bi-x-circle me-1"></i> Đóng yêu cầu
                   </Button>
-                  <Button variant="primary" size="sm" onClick={() => navigate(`/veterinarian/horses/${req.horse?._id || req.horse}`)}>
-                    Tiến hành khám
+                  <Button variant="primary" size="sm" onClick={() => navigate(`/veterinarian/examinations/new/${req.horse?._id || req.horse}`)}>
+                    <i className="bi bi-stethoscope me-1"></i> Tiến hành khám
                   </Button>
                 </div>
               </div>
@@ -233,22 +233,52 @@ export default function VeterinarianDashboard() {
         <div className="alert alert-info shadow-sm mb-4">
           <div className="d-flex align-items-center mb-2 border-bottom border-info pb-2">
             <i className="bi bi-clipboard2-check-fill fs-4 me-2 text-info"></i>
-            <strong className="fs-6">Hàng Đợi Đánh Giá Phục Hồi / Clearance ({clearances.length} ngựa cần tái khám)</strong>
+            <strong className="fs-6">Hàng Đợi Giấy Khám / Đánh Giá Phục Hồi ({clearances.length} ngựa cần tái khám)</strong>
           </div>
           <div className="d-flex flex-column gap-2 mt-2">
             {clearances.map((item, idx) => {
               const horse = item.horse || item; // Handle both schemas
+              const status = item.status || 'expired';
+              const ageDays = item.ageDays;
+              const clearanceDays = item.clearanceDays || 14;
+              const validUntil = item.validUntil;
+              const lastExam = item.lastExam;
+
+              let reasonBadge = null;
+              let reasonText = '';
+
+              if (status === 'never' || !lastExam) {
+                reasonBadge = <Badge bg="dark" className="me-2">Chưa khám bao giờ</Badge>;
+                reasonText = 'Chú ngựa này chưa có hồ sơ khám bệnh nào trong hệ thống.';
+              } else if (status === 'expired') {
+                const overdueDays = typeof ageDays === 'number' && ageDays > clearanceDays ? ageDays - clearanceDays : (ageDays || 0);
+                reasonBadge = <Badge bg="danger" className="me-2">Quá hạn {overdueDays} ngày</Badge>;
+                reasonText = `Lần khám gần nhất: ${formatDate(lastExam.date || lastExam.createdAt)} (${ageDays} ngày trước). Giấy khám đã hết hạn ngày ${formatDate(validUntil)}.`;
+              } else if (status === 'due_soon') {
+                const remainingDays = typeof ageDays === 'number' ? Math.max(0, clearanceDays - ageDays) : 0;
+                reasonBadge = <Badge bg="warning" text="dark" className="me-2">Sắp hết hạn ({remainingDays} ngày còn lại)</Badge>;
+                reasonText = `Lần khám gần nhất: ${formatDate(lastExam.date || lastExam.createdAt)}. Giấy khám sắp hết hạn ngày ${formatDate(validUntil)}.`;
+              } else {
+                reasonBadge = <Badge bg="success" className="me-2">Đạt tiêu chuẩn</Badge>;
+                reasonText = `Lần khám gần nhất: ${formatDate(lastExam.date || lastExam.createdAt)}.`;
+              }
+
               return (
-                <div key={horse._id || idx} className="d-flex justify-content-between align-items-center bg-white p-2 rounded border border-info-subtle">
+                <div key={horse._id || idx} className="d-flex justify-content-between align-items-center bg-white p-2.5 rounded border border-info-subtle">
                   <div>
-                    <strong>{horse.name || 'Ngựa'}</strong>
-                    <div className="small mt-1 text-muted">
-                      Ngựa này đã quá hạn khám hoặc cần được đánh giá lại để quyết định trạng thái thi đấu / luyện tập.
+                    <div className="d-flex align-items-center mb-1">
+                      <strong className="fs-6 me-2">{horse.name || 'Ngựa'}</strong>
+                      {reasonBadge}
+                    </div>
+                    <div className="small text-muted">
+                      {reasonText}
                     </div>
                   </div>
-                  <Button variant="info" className="text-white" size="sm" onClick={() => handleOpenLockModal(horse)}>
-                    Đánh giá & Cấp phép
-                  </Button>
+                  <div className="d-flex gap-2">
+                    <Button variant="primary" size="sm" onClick={() => navigate(`/veterinarian/examinations/new/${horse._id}`)}>
+                      <i className="bi bi-stethoscope me-1"></i> Lập hồ sơ khám
+                    </Button>
+                  </div>
                 </div>
               );
             })}

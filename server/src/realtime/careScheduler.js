@@ -8,6 +8,7 @@ const CARE_ITEMS = [
   { dueField: 'nextVaccinationDue', notifiedField: 'vaccinationNotifiedAt', type: 'vaccination_due', label: 'tiêm phòng' },
   { dueField: 'nextDewormingDue', notifiedField: 'dewormingNotifiedAt', type: 'deworming_due', label: 'tẩy giun' },
   { dueField: 'nextFarrierDue', notifiedField: 'farrierNotifiedAt', type: 'farrier_due', label: 'kiểm tra móng (farrier)' },
+  { dueField: 'nextExamDue', notifiedField: 'examNotifiedAt', type: 'exam_due', label: 'khám sức khỏe định kỳ (7 ngày)' },
 ];
 
 /**
