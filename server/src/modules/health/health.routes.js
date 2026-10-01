@@ -23,6 +23,8 @@ router.patch('/exam-requests/:id', authorize(ROLES.VETERINARIAN), recordCtrl.res
 router.get('/clearances', recordCtrl.listClearances);
 
 // Treatments, including the emergency training-lock order.
+// The vet's care orders and today's progress on them (trainer, manager, vet, owner, groom).
+router.get('/care-orders', treatmentCtrl.listCareOrders);
 router.get('/treatments', treatmentCtrl.listTreatments);
 router.get('/treatments/:id', treatmentCtrl.getTreatment);
 router.post('/treatments', authorize(ROLES.VETERINARIAN), treatmentCtrl.createTreatment);

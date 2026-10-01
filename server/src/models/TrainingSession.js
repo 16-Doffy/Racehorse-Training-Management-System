@@ -44,6 +44,9 @@ const trainingSessionSchema = new mongoose.Schema(
     },
     trainerComment: { type: String },
     performanceRating: { type: Number, min: 1, max: 10 },
+    // Link to the recording of the run (YouTube, Drive…), mainly for trial runs: the owner is
+    // meant to be able to watch them. A link rather than an upload — the host keeps no files.
+    videoUrl: { type: String, trim: true },
     // Snapshot of the readiness gates at the moment the session was created/started. Kept on the
     // session rather than recomputed on read, because the point of the record is what was known
     // at the time the decision was made — a horse fed late today doesn't retroactively make last

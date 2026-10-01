@@ -3,13 +3,15 @@ const TrainingPlan = require('../../models/TrainingPlan');
 const Horse = require('../../models/Horse');
 const DailyTask = require('../../models/DailyTask');
 const StableAssignment = require('../../models/StableAssignment');
+const ExamRequest = require('../../models/ExamRequest');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
-const { pushNotification } = require('../alerts/notification.service');
-const { computeReadiness, cautionGates, toSnapshot } = require('./readiness.service');
+const { pushNotification, notifyCaretaker } = require('../alerts/notification.service');
+const { openExamRequest } = require('../health/examRequest.service');
+const { computeReadiness, cautionGates, toSnapshot, MIN_DIGEST_MINUTES } = require('./readiness.service');
 const { OBJECTIVE_LABELS } = require('../../constants/training');
 const { ROLES } = require('../../constants/roles');
 
@@ -121,6 +123,61 @@ function computeOutcome(session) {
   return { met, summary: `${met ? 'Đạt mục tiêu' : 'Chưa đạt mục tiêu'} — ${checks.map((c) => c.text).join(', ')}.` };
 }
 
+// Average heart rate this far past the session's own ceiling is no longer "worked hard" but
+// "something may be wrong" — worth a vet's look even if the trainer doesn't ask for one.
+const OVEREXERTION_RATIO = 1.1;
+// A session only concerns the groom's day once it is this close.
+const ANNOUNCE_WITHIN_HOURS = 24;
+
+const clock = (date) => new Date(date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+/**
+ * Tells the horse's groom a session is coming and when the horse has to have finished eating.
+ * The trainer's readiness board warns about a meal too close to the work, but the person who can
+ * actually move the meal is the groom, who until now was never told a session existed.
+ */
+async function announceSessionToGroom(session, horseName) {
+  if (session.status !== 'scheduled') return;
+  const at = new Date(session.scheduledAt);
+  const hoursAway = (at.getTime() - Date.now()) / (60 * 60 * 1000);
+  if (hoursAway < 0 || hoursAway > ANNOUNCE_WITHIN_HOURS) return;
+
+  const feedBy = new Date(at.getTime() - MIN_DIGEST_MINUTES * 60 * 1000);
+  await notifyCaretaker({
+    horse: session.horse,
+    trainingSession: session._id,
+    type: 'session_scheduled',
+    severity: 'info',
+    message: `🏇 ${horseName} có buổi tập "${OBJECTIVE_LABELS[session.objective] || 'huấn luyện'}" lúc ${clock(at)} ngày ${at.toLocaleDateString(
+      'vi-VN'
+    )} — cho ăn xong trước ${clock(feedBy)}.${session.coachNote ? ` HLV dặn: ${session.coachNote}` : ''}`,
+  });
+}
+
+/**
+ * Raises an exam request when the numbers of a finished session say the horse was pushed well past
+ * the heart-rate ceiling the trainer set for it. At most one per session, and none while the horse
+ * already has a request waiting.
+ */
+async function raiseExamIfOverexerted(session, user, horse) {
+  const limit = session.prescription?.targetHeartRateMax;
+  const measured = session.metrics?.avgHeartRate;
+  if (!limit || !measured || measured < limit * OVEREXERTION_RATIO) return false;
+  if (await ExamRequest.exists({ $or: [{ trainingSession: session._id }, { horse: session.horse, status: 'pending' }] })) return false;
+
+  const what = OBJECTIVE_LABELS[session.objective] || 'huấn luyện';
+  const reason = `Nhịp tim trung bình ${Math.round(measured)} bpm, vượt giới hạn ${limit} bpm của buổi "${what}".`;
+  await openExamRequest({
+    horse,
+    requestedBy: user,
+    reason,
+    priority: 'high',
+    trainingSession: session._id,
+    message: `🩺 [ƯU TIÊN CAO] Hệ thống đề nghị khám ${horse.name} sau buổi tập: ${reason}`,
+  });
+  return true;
+}
+
 /**
  * A hard session leaves a horse that needs cooling down and its legs iced, and the person who does
  * that is the groom, not the trainer. Rather than relying on the trainer to remember to assign it,
@@ -152,6 +209,7 @@ async function createPostSessionCare(session) {
       horse: session.horse,
       assignedTo: assignment.assignedCaretaker,
       taskType: item.taskType,
+      source: 'system',
       trainingSession: session._id,
       note: item.note,
       scheduledDate: new Date(),
@@ -159,16 +217,26 @@ async function createPostSessionCare(session) {
     });
     createdCount += 1;
   }
+  if (createdCount > 0) {
+    await notifyCaretaker({
+      horse: session.horse,
+      trainingSession: session._id,
+      type: 'task_assigned',
+      severity: 'info',
+      message: `🧊 Ngựa vừa xong buổi ${what} — có ${createdCount} việc chăm sóc sau tập (ngâm chân, tắm) trong danh sách của bạn.`,
+    });
+  }
   return createdCount;
 }
 
 /** Everything that follows a session reaching "completed" for the first time. */
-async function onCompleted(session) {
+async function onCompleted(session, user) {
   const careTasksCreated = await createPostSessionCare(session);
 
   // The owner pays for this horse and never sees the training screens — closing the loop back to
   // them is the difference between "my horse trains somewhere" and knowing how it went.
   const horse = await Horse.findById(session.horse).select('name owner');
+  if (horse) await raiseExamIfOverexerted(session, user, horse);
   if (horse?.owner) {
     await pushNotification({
       recipientUser: horse.owner,
@@ -229,7 +297,7 @@ async function finishStatusChange(session, effects, user) {
   if (effects.completed) session.outcome = computeOutcome(session);
   await session.save();
   if (effects.override) await reportOverride({ session, user, ...effects.override });
-  return effects.completed ? onCompleted(session) : 0;
+  return effects.completed ? onCompleted(session, user) : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -312,6 +380,7 @@ const createSession = asyncHandler(async (req, res) => {
   if (cautionGates(readiness).length > 0) {
     await reportOverride({ session, readiness, reason: overrideReason, user: req.user, moment: 'create' });
   }
+  await announceSessionToGroom(session, readiness.horse.name);
   return created(res, session, 'Training session created.');
 });
 
@@ -325,6 +394,7 @@ const updateSession = asyncHandler(async (req, res) => {
   if (Object.keys(changes).length > 0 && session.status !== 'scheduled') {
     return fail(res, 'Chỉ sửa được nội dung buổi tập khi buổi tập còn ở trạng thái "đã lên lịch".', 409);
   }
+  const previousTime = new Date(session.scheduledAt).getTime();
   Object.assign(session, changes);
 
   const { effects, error } = await applyStatusChange(session, req.body.status, {
@@ -334,6 +404,11 @@ const updateSession = asyncHandler(async (req, res) => {
   if (error) return fail(res, error.message, error.status, error.data);
 
   await finishStatusChange(session, effects, req.user);
+  // A moved session moves the groom's feeding deadline with it.
+  if (new Date(session.scheduledAt).getTime() !== previousTime) {
+    const horse = await Horse.findById(session.horse).select('name');
+    await announceSessionToGroom(session, horse?.name || 'Ngựa');
+  }
   await logAction({ actorId: req.user._id, action: 'trainingSession.update', targetModel: 'TrainingSession', targetId: session._id });
   return ok(res, session, 'Training session updated.');
 });
@@ -357,7 +432,7 @@ const startSession = asyncHandler(async (req, res) => {
 
 // Trainer's post-session evaluation: performance rating, professional comment, measured metrics.
 const recordEvaluation = asyncHandler(async (req, res) => {
-  const { trainerComment, performanceRating, metrics, status, overrideReason } = req.body;
+  const { trainerComment, performanceRating, metrics, status, overrideReason, videoUrl } = req.body;
   const session = await loadSession(req, res);
   if (!session) return undefined;
 
@@ -369,13 +444,27 @@ const recordEvaluation = asyncHandler(async (req, res) => {
     return fail(res, 'Chỉ chấm điểm phong độ khi buổi tập đã hoàn thành.', 400);
   }
 
+  if (videoUrl !== undefined && videoUrl !== null && videoUrl !== '') {
+    if (!/^https?:\/\/\S+$/i.test(String(videoUrl).trim())) {
+      return fail(res, 'Link video phải là một địa chỉ http(s) hợp lệ.', 400);
+    }
+    session.videoUrl = String(videoUrl).trim();
+  } else if (videoUrl === '' || videoUrl === null) {
+    session.videoUrl = undefined;
+  }
   if (trainerComment !== undefined) session.trainerComment = trainerComment;
   if (performanceRating !== undefined) session.performanceRating = performanceRating;
   if (metrics !== undefined) session.metrics = { ...session.metrics.toObject(), ...metrics };
   // Re-judged whenever the numbers change on a finished session, not only at the moment it ends.
-  if (session.status === 'completed' && !effects.completed) session.outcome = computeOutcome(session);
+  const reJudged = session.status === 'completed' && !effects.completed;
+  if (reJudged) session.outcome = computeOutcome(session);
 
   const careTasksCreated = await finishStatusChange(session, effects, req.user);
+  // Numbers entered after the session was closed get the same overexertion check as live ones.
+  if (reJudged && metrics !== undefined) {
+    const horse = await Horse.findById(session.horse).select('name');
+    if (horse) await raiseExamIfOverexerted(session, req.user, horse);
+  }
   await logAction({
     actorId: req.user._id,
     action: 'trainingSession.evaluate',

@@ -5,6 +5,7 @@ const { ROLES } = require('../../constants/roles');
 const crudFactory = require('../../utils/crudFactory');
 const RaceEntry = require('../../models/RaceEntry');
 const Horse = require('../../models/Horse');
+const { getMedicalBlock } = require('../training/readiness.service');
 
 /**
  * A finished race with a result becomes part of the horse's record. Horse.achievements is what
@@ -19,6 +20,23 @@ async function recordAchievement(entry) {
   );
 }
 
+/**
+ * A horse the vet has grounded can't be entered for a race: the same medical block that stops a
+ * training session (an active lock, or an injured/quarantined status) stops a registration too.
+ * Checked when an entry is created, moved to another horse, or put back to registered/confirmed —
+ * recording a result or withdrawing a grounded horse stays possible.
+ */
+async function refuseGroundedHorse(req, { existing }) {
+  const horseId = req.body.horse || existing?.horse;
+  const nextStatus = req.body.status || existing?.status || 'registered';
+  const entering = !existing || (req.body.horse && String(req.body.horse) !== String(existing.horse));
+  const reviving = existing && ['registered', 'confirmed'].includes(nextStatus) && nextStatus !== existing.status;
+  if (!entering && !reviving) return null;
+
+  const block = await getMedicalBlock(horseId);
+  return block ? `Không thể đăng ký giải cho ngựa này: ${block}` : null;
+}
+
 const ctrl = crudFactory(RaceEntry, {
   populate: [{ path: 'horse', select: 'name' }, { path: 'registeredBy', select: 'name' }],
   defaultSort: { raceDate: -1 },
@@ -28,6 +46,7 @@ const ctrl = crudFactory(RaceEntry, {
   scopeByHorse: true,
   stamp: (req, { isCreate }) => (isCreate ? { registeredBy: req.user._id } : {}),
   afterWrite: recordAchievement,
+  validate: refuseGroundedHorse,
 });
 
 router.use(protect);

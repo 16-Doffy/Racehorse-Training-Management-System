@@ -5,12 +5,17 @@ const TrainingSession = require('../../models/TrainingSession');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
-const { notifyHorseStaff } = require('../alerts/notification.service');
+const RaceEntry = require('../../models/RaceEntry');
+const DailyTask = require('../../models/DailyTask');
+const User = require('../../models/User');
+const { dayBounds } = require('../../utils/taskTiming');
+const { notifyHorseStaff, notifyCaretaker, pushNotification } = require('../alerts/notification.service');
+const { syncCareTasks } = require('./treatmentCare.service');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
 const { syncHorseHealthStatus } = require('./injuryMarker.controller');
 
-const TREATMENT_FIELDS = ['healthRecord', 'horse', 'medications', 'isTrainingLocked', 'lockReason', 'startDate', 'endDate', 'status'];
+const TREATMENT_FIELDS = ['healthRecord', 'horse', 'medications', 'careInstructions', 'isTrainingLocked', 'lockReason', 'startDate', 'endDate', 'status'];
 
 const listTreatments = asyncHandler(async (req, res) => {
   const { isTrainingLocked, status } = req.query;
@@ -68,6 +73,57 @@ async function cancelPendingSessionsForLock(horseId, actorId) {
 }
 
 /**
+ * Turns the treatment into today's work for the horse's groom (see treatmentCare.service.js) and
+ * tells them when there is something new to do. The vet's prescription used to stop at the record.
+ */
+async function sendCareOrders(treatment, vet, { isNew = false } = {}) {
+  const { created: createdCount, caretaker, wanted } = await syncCareTasks(treatment);
+  if (wanted === 0) return 0;
+
+  const horse = await Horse.findById(treatment.horse).select('name');
+  const horseName = horse?.name || 'ngựa';
+  const meds = (treatment.medications || []).map((m) => [m.name, m.dosage].filter(Boolean).join(' ')).join(', ');
+
+  // Nobody can carry the order out: say so once, when the treatment is written.
+  if (!caretaker) {
+    if (isNew) {
+      await notifyHorseStaff({
+        staff: 'trainer',
+        horse: treatment.horse,
+        type: 'care_order',
+        severity: 'warning',
+        message: `💊 Bác sĩ ${vet.name} kê y lệnh cho ${horseName} nhưng ngựa chưa có nhân viên chăm sóc phụ trách — chưa ai nhận việc.`,
+      });
+    }
+    return 0;
+  }
+  if (createdCount === 0) return 0;
+
+  // The trainer plans around the treatment, and follows whether the doses are given.
+  const caretakerName = (await User.findById(caretaker).select('name'))?.name || 'nhân viên chăm sóc';
+  await notifyHorseStaff({
+    staff: 'trainer',
+    horse: treatment.horse,
+    type: 'care_order',
+    severity: 'info',
+    message: `💊 Bác sĩ ${vet.name} kê y lệnh cho ${horseName}${meds ? `: ${meds}` : ''}${
+      treatment.careInstructions ? ` — ${treatment.careInstructions}` : ''
+    }. ${caretakerName} thực hiện; theo dõi tiến độ ở trang Tổng quan.`,
+  });
+
+  await pushNotification({
+    recipientUser: caretaker,
+    horse: treatment.horse,
+    type: 'care_order',
+    severity: 'warning',
+    message: `💊 Bác sĩ ${vet.name} có y lệnh chăm sóc ${horse?.name || 'ngựa'}: ${createdCount} việc cần làm hôm nay${
+      treatment.careInstructions ? ` — ${treatment.careInstructions}` : '.'
+    }`,
+  });
+  return createdCount;
+}
+
+/**
  * Side effects of a lock being issued or lifted, whichever route did it.
  *
  * The generic treatment edit (the vet's edit form has a lock checkbox) used to change the flag
@@ -92,13 +148,30 @@ async function onLockChanged(treatment, { wasLocked, actor }) {
   if (isLocked) {
     const cancelled = await cancelPendingSessionsForLock(treatment.horse, actor._id);
     const cancelNote = cancelled > 0 ? ` Đã tự động hủy ${cancelled} buổi tập đã lên lịch trước đó.` : '';
+    // A race the horse is entered for is the trainer's decision to withdraw, not something to do
+    // silently — but they need to be reminded it exists.
+    const races = await RaceEntry.find({
+      horse: treatment.horse,
+      status: { $in: ['registered', 'confirmed'] },
+      raceDate: { $gte: new Date() },
+    }).select('raceName raceDate');
+    const raceNote = races.length
+      ? ` Lưu ý: ngựa đang đăng ký ${races.map((r) => `${r.raceName} (${r.raceDate.toLocaleDateString('vi-VN')})`).join(', ')}.`
+      : '';
     await notifyHorseStaff({
       staff: 'trainer',
       horse: treatment.horse,
       type: 'injury_lock',
       severity: 'critical',
-      message: `🔒 ${horseName} bị khóa huấn luyện khẩn cấp: ${treatment.lockReason || 'chỉ định y tế'}.${cancelNote}`,
+      message: `🔒 ${horseName} bị khóa huấn luyện khẩn cấp: ${treatment.lockReason || 'chỉ định y tế'}.${cancelNote}${raceNote}`,
       extraRooms: [`horse:${treatment.horse}`],
+    });
+    // The groom is the one who would otherwise lead the horse out in the morning.
+    await notifyCaretaker({
+      horse: treatment.horse,
+      type: 'injury_lock',
+      severity: 'critical',
+      message: `🔒 ${horseName} bị bác sĩ khóa huấn luyện: ${treatment.lockReason || 'chỉ định y tế'}. Không đưa ngựa ra tập, chăm sóc tại chuồng theo y lệnh.`,
     });
     return;
   }
@@ -117,6 +190,14 @@ async function onLockChanged(treatment, { wasLocked, actor }) {
       : `🔓 ${horseName} đã được bác sĩ gỡ khóa huấn luyện — có thể xếp lịch tập lại.`,
     extraRooms: [`horse:${treatment.horse}`],
   });
+  if (!stillLocked) {
+    await notifyCaretaker({
+      horse: treatment.horse,
+      type: 'training_unlocked',
+      severity: 'info',
+      message: `🔓 ${horseName} đã được bác sĩ gỡ khóa huấn luyện — ngựa có thể tập lại theo lịch của HLV.`,
+    });
+  }
 }
 
 const createTreatment = asyncHandler(async (req, res) => {
@@ -131,6 +212,7 @@ const createTreatment = asyncHandler(async (req, res) => {
   const treatment = await Treatment.create({ ...body, prescribedBy: req.user._id });
   await logAction({ actorId: req.user._id, action: 'treatment.create', targetModel: 'Treatment', targetId: treatment._id });
   await onLockChanged(treatment, { wasLocked: false, actor: req.user });
+  await sendCareOrders(treatment, req.user, { isNew: true });
 
   return created(res, treatment, 'Treatment created.');
 });
@@ -148,6 +230,8 @@ const updateTreatment = asyncHandler(async (req, res) => {
   await logAction({ actorId: req.user._id, action: 'treatment.update', targetModel: 'Treatment', targetId: treatment._id });
   // Completing a locked treatment ends the lock too, so it counts as lifting it.
   await onLockChanged(treatment, { wasLocked, actor: req.user });
+  // Also removes the care tasks still pending when the treatment has just been completed.
+  await sendCareOrders(treatment, req.user);
   return ok(res, treatment, 'Treatment updated.');
 });
 
@@ -166,4 +250,63 @@ const setTrainingLock = asyncHandler(async (req, res) => {
   return ok(res, treatment, treatment.isTrainingLocked ? 'Training lock issued.' : 'Training lock lifted.');
 });
 
-module.exports = { listTreatments, getTreatment, createTreatment, updateTreatment, setTrainingLock };
+/**
+ * The vet's orders being carried out, day by day: every ongoing treatment that asks something of
+ * the stable, with that day's tasks and where each stands — not yet taken on, taken on, given (when
+ * and by whom), could not be given (and why), or missed. What the trainer and manager follow after
+ * the vet prescribes; the vet sees the same for their horses.
+ *
+ * GET /health/care-orders?date=YYYY-MM-DD&horse=
+ */
+const listCareOrders = asyncHandler(async (req, res) => {
+  const day = req.query.date ? new Date(req.query.date) : new Date();
+  if (Number.isNaN(day.getTime())) return fail(res, 'date không hợp lệ.', 400);
+  const { start, end } = dayBounds(day);
+
+  const filter = {
+    status: 'ongoing',
+    $or: [{ 'medications.0': { $exists: true } }, { careInstructions: { $nin: [null, ''] } }],
+  };
+  const horse = await horseFilter(req.user, req.query.horse);
+  if (horse !== undefined) filter.horse = horse;
+
+  const treatments = await Treatment.find(filter)
+    .populate('horse', 'name healthStatus')
+    .populate('prescribedBy', 'name')
+    .sort({ createdAt: -1 });
+  const tasks = await DailyTask.find({
+    treatment: { $in: treatments.map((t) => t._id) },
+    scheduledDate: { $gte: start, $lt: end },
+  })
+    .populate('assignedTo', 'name')
+    .populate('skippedBy', 'name')
+    .sort({ taskType: 1, createdAt: 1 });
+
+  const rows = treatments.map((t) => {
+    const mine = tasks.filter((task) => String(task.treatment) === String(t._id));
+    const missed = mine.filter((task) => task.status === 'pending' && task.timing.state === 'missed').length;
+    return {
+      _id: t._id,
+      horse: t.horse,
+      prescribedBy: t.prescribedBy,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      medications: t.medications,
+      careInstructions: t.careInstructions,
+      isTrainingLocked: t.isTrainingLocked,
+      date: start,
+      tasks: mine,
+      progress: {
+        total: mine.length,
+        done: mine.filter((task) => task.status === 'completed').length,
+        notDone: mine.filter((task) => task.status === 'skipped').length,
+        missed,
+        acknowledged: mine.filter((task) => task.status === 'pending' && task.acknowledgedAt).length,
+        waiting: mine.filter((task) => task.status === 'pending' && !task.acknowledgedAt && task.timing.state !== 'missed').length,
+      },
+    };
+  });
+  return ok(res, rows, 'Care orders fetched.');
+});
+
+module.exports = { listTreatments, getTreatment, createTreatment, updateTreatment, setTrainingLock, listCareOrders };

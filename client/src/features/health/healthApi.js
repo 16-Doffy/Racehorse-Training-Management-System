@@ -17,6 +17,8 @@ export const treatmentApi = {
   create: (payload) => axiosClient.post('/health/treatments', payload),
   update: (id, payload) => axiosClient.put(`/health/treatments/${id}`, payload),
   setTrainingLock: (id, payload) => axiosClient.post(`/health/treatments/${id}/lock-training`, payload),
+  // Ongoing treatments with that day's care tasks and their progress. params: { date, horse }
+  careOrders: (params) => axiosClient.get('/health/care-orders', { params }),
 };
 
 export const injuryMarkerApi = {

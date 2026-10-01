@@ -13,6 +13,12 @@ export const dailyTaskApi = {
     }),
 };
 
+// Incident reports as a list with a status. Handling one (PATCH) is the vet's action.
+export const incidentApi = {
+  list: (params) => axiosClient.get('/stable/incidents', { params }),
+  handle: (taskId, payload) => axiosClient.patch(`/stable/incidents/${taskId}`, payload),
+};
+
 export const stableAssignmentApi = {
   list: () => axiosClient.get('/stable/assignments'),
   upsert: (payload) => axiosClient.post('/stable/assignments', payload),

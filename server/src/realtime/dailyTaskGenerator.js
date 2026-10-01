@@ -1,6 +1,8 @@
 const StableAssignment = require('../models/StableAssignment');
 const FeedingSchedule = require('../models/FeedingSchedule');
 const DailyTask = require('../models/DailyTask');
+const { syncAllCareTasks } = require('../modules/health/treatmentCare.service');
+const { mealWindow } = require('../utils/taskTiming');
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly is enough for day-granularity tasks
 
@@ -30,12 +32,13 @@ function atClock(dayStart, hhmm) {
  * A horse with no ration on file gets a single daily task, as before, rather than three meals the
  * stable never agreed to.
  *
- * `onlyUpcoming` is for mid-day triggers (a ration was just saved, a groom was just assigned):
- * creating a 06:00 task at 15:00 would only produce an instantly-overdue item.
+ * A meal whose window has already closed today is not created (utils/taskTiming.js): the server
+ * waking at 23:00 used to fill the groom's list with that morning's breakfast and lunch, born
+ * overdue and impossible to record honestly. Tomorrow's run creates them on time.
  *
  * Idempotent: safe to run on every tick and after every restart.
  */
-async function ensureFeedingTasks({ horseIds, onlyUpcoming = false } = {}) {
+async function ensureFeedingTasks({ horseIds } = {}) {
   const assignmentFilter = { assignedCaretaker: { $ne: null } };
   if (horseIds) assignmentFilter.horse = { $in: horseIds };
 
@@ -56,7 +59,7 @@ async function ensureFeedingTasks({ horseIds, onlyUpcoming = false } = {}) {
       : [{ mealSlot: null, at: start }];
 
     for (const slot of slots) {
-      if (onlyUpcoming && slot.mealSlot && slot.at < now) continue;
+      if (slot.mealSlot && now > mealWindow(slot.at).closesAt) continue;
 
       // eslint-disable-next-line no-await-in-loop
       const exists = await DailyTask.exists({
@@ -72,6 +75,7 @@ async function ensureFeedingTasks({ horseIds, onlyUpcoming = false } = {}) {
         horse: assignment.horse,
         assignedTo: assignment.assignedCaretaker,
         taskType: 'feeding',
+        source: 'system',
         mealSlot: slot.mealSlot,
         scheduledDate: slot.at,
         status: 'pending',
@@ -110,6 +114,8 @@ function startDailyTaskGenerator() {
   const check = async () => {
     try {
       await ensureFeedingTasks();
+      // The vet's care orders repeat every day a treatment is ongoing, like meals do.
+      await syncAllCareTasks();
     } catch (err) {
       console.error('[daily-task-generator] check failed:', err.message);
     }
@@ -119,4 +125,4 @@ function startDailyTaskGenerator() {
   setInterval(check, CHECK_INTERVAL_MS);
 }
 
-module.exports = { startDailyTaskGenerator, ensureFeedingTasks };
+module.exports = { startDailyTaskGenerator, ensureFeedingTasks, atClock, DEFAULT_MEAL_TIMES };

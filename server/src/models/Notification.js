@@ -20,10 +20,18 @@ const notificationSchema = new mongoose.Schema(
         'incident_report',
         'exam_request',
         'restock_decision',
+        // To the Manager: someone asked for supplies (or proposed a new item).
+        'restock_request',
         'horse_assigned',
         'session_completed',
         'readiness_override',
         'training_unlocked',
+        // To the groom: work handed to them, a vet's care order, a session coming up for their horse.
+        'task_assigned',
+        'care_order',
+        'session_scheduled',
+        // A vet picked up or closed an incident — to the groom who reported it and the trainer.
+        'incident_update',
         'system',
       ],
       required: true,

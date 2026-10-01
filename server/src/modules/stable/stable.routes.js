@@ -15,12 +15,18 @@ router.post('/tasks', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), taskCtrl.cre
 router.put('/tasks/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), taskCtrl.updateTask);
 router.delete('/tasks/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), taskCtrl.deleteTask);
 router.patch('/tasks/:id/complete', authorize(ROLES.GROOM), taskCtrl.completeTask);
+router.patch('/tasks/:id/acknowledge', authorize(ROLES.GROOM), taskCtrl.acknowledgeTask);
+router.patch('/tasks/:id/not-done', authorize(ROLES.GROOM), taskCtrl.reportNotDone);
 router.post(
   '/tasks/:id/incident',
   authorize(ROLES.GROOM),
   uploadIncidentImages.array('images', 5),
   taskCtrl.reportIncident
 );
+
+// Incident reports as a list with a lifecycle: the groom files one, the vet picks it up and closes it.
+router.get('/incidents', taskCtrl.listIncidents);
+router.patch('/incidents/:id', authorize(ROLES.VETERINARIAN), taskCtrl.handleIncident);
 
 // Stable/stall assignment map.
 router.get('/assignments', assignmentCtrl.listAssignments);

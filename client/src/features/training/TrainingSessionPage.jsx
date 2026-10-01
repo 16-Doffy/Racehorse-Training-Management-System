@@ -287,6 +287,7 @@ export default function TrainingSessionPage() {
               setActiveSession(record);
               evalForm.setFieldsValue({
                 trainerComment: record.trainerComment,
+                videoUrl: record.videoUrl,
                 performanceRating: record.performanceRating,
                 status: record.status,
                 metrics: {
@@ -584,7 +585,10 @@ export default function TrainingSessionPage() {
         <Form
           form={evalForm}
           layout="vertical"
-          onFinish={(values) => evalMutation.mutate({ id: activeSession._id, payload: values })}
+          onFinish={(values) =>
+            // An emptied field must reach the server as '' so the link is cleared, not ignored.
+            evalMutation.mutate({ id: activeSession._id, payload: { ...values, videoUrl: values.videoUrl || '' } })
+          }
         >
           <Form.Item name="status" label="Trạng thái">
             <Select options={statusOptionsFor(activeSession?.status)} />
@@ -641,6 +645,14 @@ export default function TrainingSessionPage() {
           >
             <Input.TextArea rows={3} placeholder="VD: Ngựa chạy ổn định, nên tăng nhẹ cường độ tuần tới." />
           </Form.Item>
+          <Form.Item
+            name="videoUrl"
+            label="Link video buổi chạy"
+            extra="Dán đường link YouTube/Drive để chủ sở hữu xem lại — nhất là với lượt chạy thử."
+            rules={[{ type: 'url', message: 'Hãy nhập một đường link hợp lệ (bắt đầu bằng http:// hoặc https://).' }]}
+          >
+            <Input placeholder="https://..." allowClear />
+          </Form.Item>
           {/* Mirrors the server rule in trainingSession.controller.js createPostSessionCare. */}
           {(activeSession?.intensity === 'high' || activeSession?.objective === 'race_simulation') &&
           activeSession?.status !== 'completed' ? (
@@ -648,7 +660,7 @@ export default function TrainingSessionPage() {
               type="warning"
               showIcon
               title="Đây là buổi tập nặng"
-              description="Khi chuyển sang 'Đã hoàn thành', hệ thống sẽ tự giao việc ngâm chân và tắm cho nhân viên chăm sóc phụ trách, đồng thời báo kết quả cho chủ sở hữu."
+              description="Khi chuyển sang 'Đã hoàn thành', hệ thống sẽ tự giao việc ngâm chân và tắm cho nhân viên chăm sóc phụ trách, đồng thời báo kết quả cho chủ sở hữu. Nếu nhịp tim trung bình vượt mục tiêu từ 10%, bác sĩ sẽ nhận được yêu cầu khám."
             />
           ) : activeSession?.status !== 'completed' ? (
             <Alert

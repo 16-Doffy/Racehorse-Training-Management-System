@@ -5,7 +5,9 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { getScopedHorseIds, horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
-const { notifyHorseStaff, pushNotification } = require('../alerts/notification.service');
+const { pushNotification } = require('../alerts/notification.service');
+const { openExamRequest } = require('./examRequest.service');
+const { resolveIncidentsWithRecord } = require('../stable/incident.service');
 const { ROLES } = require('../../constants/roles');
 const pick = require('../../utils/pick');
 
@@ -49,6 +51,8 @@ const createRecord = asyncHandler(async (req, res) => {
   }
   await logAction({ actorId: req.user._id, action: 'healthRecord.create', targetModel: 'HealthRecord', targetId: record._id });
   await closeRequestsWithRecord(record, req.user);
+  // The same exam answers whatever the groom reported about this horse.
+  await resolveIncidentsWithRecord(record, req.user);
 
   return created(res, record, 'Health record created.');
 });
@@ -73,8 +77,6 @@ const updateRecord = asyncHandler(async (req, res) => {
   return ok(res, record, 'Health record updated.');
 });
 
-const PRIORITY_LABELS = { normal: '', high: ' [ƯU TIÊN CAO]', urgent: ' [KHẨN CẤP]' };
-
 // Lets a Head Trainer or Manager flag that a horse needs a vet's attention (e.g. after noticing
 // repeated fitness alerts or a performance drop) without them being able to create a HealthRecord
 // themselves — that stays Veterinarian-only. Stored as a request with a status, and announced to
@@ -88,24 +90,7 @@ const requestExam = asyncHandler(async (req, res) => {
   const horse = await Horse.findById(horseId).select('name');
   if (!horse) return fail(res, 'Horse not found.', 404);
 
-  const request = await ExamRequest.create({ horse: horse._id, requestedBy: req.user._id, reason, priority });
-
-  await notifyHorseStaff({
-    staff: 'vet',
-    horse: horse._id,
-    type: 'exam_request',
-    severity: priority === 'normal' ? 'warning' : 'critical',
-    message: `🩺${PRIORITY_LABELS[priority]} ${req.user.name} yêu cầu kiểm tra sức khỏe cho ${horse.name}${reason ? `: ${reason}` : '.'}`,
-  });
-
-  await logAction({
-    actorId: req.user._id,
-    action: 'healthRecord.request_exam',
-    targetModel: 'ExamRequest',
-    targetId: request._id,
-    metadata: { reason, priority },
-  });
-
+  const request = await openExamRequest({ horse, requestedBy: req.user, reason, priority });
   return created(res, request, 'Exam request sent.');
 });
 
