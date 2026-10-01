@@ -59,17 +59,42 @@ export default function TrainingLockModal({
     try {
       if (isLocked) {
         // UNLOCK FLOW:
-        // 1. Lift the training lock order
-        if (hasLock && currentTreatment?._id) {
-          await veterinarianApi.setTrainingLock(currentTreatment._id, {
-            isTrainingLocked: false,
-            lockReason: '',
-          });
-          // Update treatment status to completed
-          await veterinarianApi.updateTreatment(currentTreatment._id, {
-            status: 'completed',
-            endDate: new Date(),
-          });
+        // 1. Lift training locks from ALL treatments associated with this horse
+        try {
+          const treatmentsRes = await veterinarianApi.getTreatments({ horse: horse._id });
+          const horseTreatments = (treatmentsRes?.data || []).filter(
+            (t) => t.isTrainingLocked || t.status === 'ongoing' || (currentTreatment && t._id === currentTreatment._id)
+          );
+
+          for (const tr of horseTreatments) {
+            await veterinarianApi.setTrainingLock(tr._id, {
+              isTrainingLocked: false,
+              lockReason: '',
+            });
+            await veterinarianApi.updateTreatment(tr._id, {
+              status: 'completed',
+              isTrainingLocked: false,
+              endDate: new Date(),
+            });
+          }
+        } catch (tErr) {
+          console.warn('Error releasing treatment locks:', tErr);
+        }
+
+        if (currentTreatment?._id) {
+          try {
+            await veterinarianApi.setTrainingLock(currentTreatment._id, {
+              isTrainingLocked: false,
+              lockReason: '',
+            });
+            await veterinarianApi.updateTreatment(currentTreatment._id, {
+              status: 'completed',
+              isTrainingLocked: false,
+              endDate: new Date(),
+            });
+          } catch (tErr) {
+            // ignore if already updated
+          }
         }
 
         // 2. Create recovery health record to update horse.healthStatus in MongoDB
