@@ -17,6 +17,7 @@ const notificationSchema = new mongoose.Schema(
         'vaccination_due',
         'deworming_due',
         'farrier_due',
+        'exam_due', // periodic check-up the vet scheduled (careSchedule.nextExamDue)
         'incident_report',
         'exam_request',
         'restock_decision',

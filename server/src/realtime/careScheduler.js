@@ -29,33 +29,44 @@ function startCareScheduler() {
       if (horses.length === 0) return;
 
       for (const horse of horses) {
-        for (const item of CARE_ITEMS) {
-          const dueAt = horse.careSchedule?.[item.dueField];
-          if (!dueAt || dueAt > now) continue;
-
-          const notifiedAt = horse.careSchedule?.[item.notifiedField];
-          if (notifiedAt && now - new Date(notifiedAt) < RENOTIFY_AFTER_MS) continue;
-
-          const message = `Ngựa ${horse.name} đến hạn ${item.label} (hạn: ${dueAt.toLocaleDateString('vi-VN')}).`;
+        // One horse's failure (a bad record, a notification that won't save) must not cancel the
+        // reminders for every horse after it — a single unknown reminder type used to do exactly that.
+        try {
           // eslint-disable-next-line no-await-in-loop
-          // The horse's own vet; other vets can't even open this horse under per-horse scoping.
-          await notifyHorseStaff({
-            staff: 'vet',
-            horse: horse._id,
-            type: item.type,
-            severity: 'warning',
-            message,
-          });
-
-          horse.careSchedule[item.notifiedField] = now;
-          // eslint-disable-next-line no-await-in-loop
-          await horse.save();
+          await remindHorse(horse, now);
+        } catch (err) {
+          console.error(`[care-scheduler] reminder for ${horse.name} failed:`, err.message);
         }
       }
     } catch (err) {
       console.error('[care-scheduler] check failed:', err.message);
     }
   };
+
+  async function remindHorse(horse, now) {
+    for (const item of CARE_ITEMS) {
+      const dueAt = horse.careSchedule?.[item.dueField];
+      if (!dueAt || dueAt > now) continue;
+
+      const notifiedAt = horse.careSchedule?.[item.notifiedField];
+      if (notifiedAt && now - new Date(notifiedAt) < RENOTIFY_AFTER_MS) continue;
+
+      const message = `Ngựa ${horse.name} đến hạn ${item.label} (hạn: ${dueAt.toLocaleDateString('vi-VN')}).`;
+      // eslint-disable-next-line no-await-in-loop
+      // The horse's own vet; other vets can't even open this horse under per-horse scoping.
+      await notifyHorseStaff({
+        staff: 'vet',
+        horse: horse._id,
+        type: item.type,
+        severity: 'warning',
+        message,
+      });
+
+      horse.careSchedule[item.notifiedField] = now;
+      // eslint-disable-next-line no-await-in-loop
+      await horse.save();
+    }
+  }
 
   check(); // also run once immediately on startup, don't wait a full interval
   setInterval(check, CHECK_INTERVAL_MS);

@@ -12,6 +12,7 @@ export const TYPE_LABELS = {
   vaccination_due: 'Nhắc lịch tiêm phòng',
   deworming_due: 'Nhắc lịch tẩy giun',
   farrier_due: 'Nhắc lịch kiểm tra móng',
+  exam_due: 'Nhắc lịch khám định kỳ',
   incident_report: 'Báo cáo sự cố',
   exam_request: 'Yêu cầu khám bệnh',
   restock_decision: 'Kết quả duyệt vật tư',
