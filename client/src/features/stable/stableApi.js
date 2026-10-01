@@ -18,3 +18,8 @@ export const stableAssignmentApi = {
   upsert: (payload) => axiosClient.post('/stable/assignments', payload),
   remove: (id) => axiosClient.delete(`/stable/assignments/${id}`),
 };
+
+export const incidentApi = {
+  list: (params) => axiosClient.get('/stable/incidents', { params }),
+  update: (id, payload) => axiosClient.patch(`/stable/incidents/${id}`, payload),
+};

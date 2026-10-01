@@ -8,6 +8,7 @@ export const healthRecordApi = {
   requestExam: (payload) => axiosClient.post('/health/exam-requests', payload),
   // Vet: their queue. Head Trainer: the requests they sent, with status.
   listExamRequests: (params) => axiosClient.get('/health/exam-requests', { params }),
+  updateExamRequest: (id, payload) => axiosClient.patch(`/health/exam-requests/${id}`, payload),
 };
 
 export const treatmentApi = {

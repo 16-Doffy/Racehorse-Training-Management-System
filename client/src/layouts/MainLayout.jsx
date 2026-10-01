@@ -111,14 +111,14 @@ export default function MainLayout() {
       </Sider>
 
       {/* MAIN CONTENT AREA */}
-      <Layout style={{ backgroundColor: '#FAFAFA' }}>
+      <Layout style={{ backgroundColor: '#FAFAFA', display: 'flex', flexDirection: 'column' }}>
+        <div className="flex justify-end items-center px-4 pt-4 md:px-8 md:pt-6 shrink-0 bg-transparent">
+          <AlertBell />
+        </div>
         <Content
           style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
-          className="p-0 md:px-2 pb-6 relative"
+          className="p-4 md:px-8 md:pb-8 relative"
         >
-          <div className="absolute top-4 right-8 z-50 md:top-4 md:right-10">
-            <AlertBell />
-          </div>
           <Outlet />
         </Content>
       </Layout>

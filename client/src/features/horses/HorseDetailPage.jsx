@@ -34,6 +34,7 @@ import {
   ExclamationCircleOutlined,
   CloseCircleOutlined,
   StopOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import { horsesApi } from './horsesApi';
 import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
@@ -139,6 +140,13 @@ export default function HorseDetailPage() {
     queryFn: () => horsesApi.getOne(id),
   });
   const horse = data?.data;
+
+  const { data: timelineData, isLoading: timelineLoading } = useQuery({
+    queryKey: ['horses', id, 'timeline'],
+    queryFn: () => horsesApi.getTimeline(id),
+    enabled: !!id,
+  });
+  const timelineEvents = timelineData?.data || [];
 
   const requestExamMutation = useMutation({
     mutationFn: (payload) => healthRecordApi.requestExam(payload),
@@ -391,6 +399,51 @@ export default function HorseDetailPage() {
           </Card>
         ),
       },
+      {
+        key: 'timeline',
+        label: (
+          <span>
+            <HistoryOutlined className="mr-1" />
+            Dòng thời gian
+          </span>
+        ),
+        children: (
+          <Card title="Dòng thời gian (Timeline)">
+            {timelineLoading ? (
+              <div className="text-center text-gray-500 py-10">Đang tải dữ liệu...</div>
+            ) : timelineEvents.length > 0 ? (
+              <div className="py-6">
+                <Timeline
+                  mode="alternate"
+                  items={timelineEvents.map((event) => {
+                    let color, icon;
+                    switch(event.type) {
+                      case 'race': color = '#eab308'; icon = <TrophyOutlined />; break;
+                      case 'health': color = '#ef4444'; icon = <MedicineBoxOutlined />; break;
+                      case 'training': color = '#3b82f6'; icon = <CalendarOutlined />; break;
+                      default: color = '#6b7280'; icon = <CheckCircleOutlined />;
+                    }
+                    return {
+                      dot: <div className="flex items-center justify-center w-8 h-8 rounded-full text-white shadow-md z-10" style={{ backgroundColor: color }}>{icon}</div>,
+                      children: (
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                          <div className="flex justify-between items-start mb-1">
+                            <Text strong className="text-gray-800 text-base">{event.title || event.type || 'Sự kiện'}</Text>
+                            <Tag color={color} className="rounded-full">{dayjs(event.date).format('DD/MM/YYYY')}</Tag>
+                          </div>
+                          <div className="text-gray-600 text-sm mt-2">{event.description}</div>
+                        </div>
+                      ),
+                    };
+                  })}
+                />
+              </div>
+            ) : (
+              <Empty description="Chưa có sự kiện nào trong dòng thời gian" />
+            )}
+          </Card>
+        ),
+      },
     ];
 
     return (
@@ -494,7 +547,7 @@ export default function HorseDetailPage() {
         </Descriptions>
       </Card>
 
-      <Card title="Lịch sử thành tích thi đấu">
+      <Card title="Lịch sử thành tích thi đấu" className="mb-4">
         <Table
           rowKey={(r) => `${r.race}-${r.date}`}
           columns={achievementColumns}
@@ -502,6 +555,40 @@ export default function HorseDetailPage() {
           pagination={false}
           locale={{ emptyText: 'Chưa có thành tích' }}
         />
+      </Card>
+
+      <Card title="Dòng thời gian (Timeline)" className="mb-4">
+        {timelineLoading ? (
+          <div className="text-center text-gray-500 py-10">Đang tải dữ liệu...</div>
+        ) : timelineEvents.length > 0 ? (
+          <div className="py-4 px-2">
+            <Timeline
+              items={timelineEvents.map((event) => {
+                let color, icon;
+                switch(event.type) {
+                  case 'race': color = '#eab308'; icon = <TrophyOutlined />; break;
+                  case 'health': color = '#ef4444'; icon = <MedicineBoxOutlined />; break;
+                  case 'training': color = '#3b82f6'; icon = <CalendarOutlined />; break;
+                  default: color = '#6b7280'; icon = <CheckCircleOutlined />;
+                }
+                return {
+                  dot: <div className="flex items-center justify-center w-7 h-7 rounded-full text-white shadow-sm z-10" style={{ backgroundColor: color }}>{icon}</div>,
+                  children: (
+                    <div className="bg-white p-3 rounded-lg border border-gray-100 ml-2">
+                      <div className="flex flex-wrap justify-between items-center mb-1">
+                        <Text strong className="text-gray-800">{event.title || event.type || 'Sự kiện'}</Text>
+                        <Tag color={color} className="rounded-full text-xs">{dayjs(event.date).format('DD/MM/YYYY')}</Tag>
+                      </div>
+                      <div className="text-gray-600 text-sm mt-1">{event.description}</div>
+                    </div>
+                  ),
+                };
+              })}
+            />
+          </div>
+        ) : (
+          <Empty description="Chưa có sự kiện nào" />
+        )}
       </Card>
 
       {canRequestExam && (

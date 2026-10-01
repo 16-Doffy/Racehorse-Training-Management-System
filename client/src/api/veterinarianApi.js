@@ -12,6 +12,7 @@ export const veterinarianApi = {
   createHealthRecord: (payload) => axiosClient.post('/health/records', payload),
   updateHealthRecord: (id, payload) => axiosClient.put(`/health/records/${id}`, payload),
   getExamRequests: (params) => axiosClient.get('/health/exam-requests', { params }),
+  updateExamRequest: (id, payload) => axiosClient.patch(`/health/exam-requests/${id}`, payload),
   getClearances: () => axiosClient.get('/health/clearances'),
 
   // Treatment Plans & Prescriptions

@@ -21,7 +21,7 @@ import { PlusOutlined, WarningFilled, RobotOutlined, EditOutlined, DeleteOutline
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { dailyTaskApi } from './stableApi';
+import { dailyTaskApi, incidentApi } from './stableApi';
 import { horsesApi } from '../horses/horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { feedingApi } from '../feeding/feedingApi';
@@ -490,6 +490,105 @@ function RationList() {
 }
 
 /* -------------------------------------------------------------------------- */
+/* INCIDENTS LIST                                                             */
+/* -------------------------------------------------------------------------- */
+function IncidentsList() {
+  const queryClient = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedIncident, setSelectedIncident] = useState(null);
+  const [form] = Form.useForm();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['stable-incidents'],
+    queryFn: () => incidentApi.list(),
+  });
+  const incidents = data?.data || [];
+
+  const updateMutation = useMutation({
+    mutationFn: (payload) => incidentApi.update(selectedIncident._id, payload),
+    onSuccess: () => {
+      message.success('Đã cập nhật sự cố.');
+      queryClient.invalidateQueries({ queryKey: ['stable-incidents'] });
+      setModalOpen(false);
+    },
+    onError: (err) => message.error(err.message || 'Cập nhật thất bại.'),
+  });
+
+  const columns = [
+    {
+      title: 'Ngày báo cáo',
+      dataIndex: 'reportedAt',
+      key: 'reportedAt',
+      render: (d) => d ? dayjs(d).format('DD/MM/YYYY HH:mm') : dayjs().format('DD/MM/YYYY HH:mm'),
+    },
+    {
+      title: 'Mô tả sự cố',
+      dataIndex: 'description',
+      key: 'description',
+    },
+    {
+      title: 'Mức độ',
+      dataIndex: 'severity',
+      key: 'severity',
+      render: (s) => (
+        <Tag color={s === 'high' ? 'red' : s === 'medium' ? 'orange' : 'green'}>
+          {s === 'high' ? 'Nghiêm trọng' : s === 'medium' ? 'Trung bình' : 'Nhẹ'}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Trạng thái',
+      dataIndex: 'status',
+      key: 'status',
+      render: (s) => (
+        <Tag color={s === 'resolved' ? 'blue' : 'gold'}>
+          {s === 'resolved' ? 'Đã giải quyết' : 'Đang xử lý'}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Thao tác',
+      key: 'action',
+      render: (_, record) => (
+        <Button
+          size="small"
+          onClick={() => {
+            setSelectedIncident(record);
+            form.setFieldsValue({ status: record.status });
+            setModalOpen(true);
+          }}
+        >
+          Cập nhật
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <div className="mt-4">
+      <Table rowKey="_id" columns={columns} dataSource={incidents} loading={isLoading} size="middle" />
+      <Modal
+        title="Cập nhật sự cố"
+        open={modalOpen}
+        onCancel={() => setModalOpen(false)}
+        onOk={() => form.submit()}
+        confirmLoading={updateMutation.isPending}
+        destroyOnHidden
+      >
+        <Form form={form} layout="vertical" onFinish={(values) => updateMutation.mutate(values)}>
+          <Form.Item name="status" label="Trạng thái">
+            <Select options={[
+              { value: 'pending', label: 'Đang xử lý' },
+              { value: 'resolved', label: 'Đã giải quyết' },
+            ]} />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 
 export default function StableAssignPage() {
   return (
@@ -508,6 +607,7 @@ export default function StableAssignPage() {
         items={[
           { key: 'tasks', label: 'Công việc chăm sóc', children: <TaskList /> },
           { key: 'rations', label: 'Khẩu phần ăn', children: <RationList /> },
+          { key: 'incidents', label: 'Sự cố chuồng trại', children: <IncidentsList /> },
         ]}
       />
     </div>
