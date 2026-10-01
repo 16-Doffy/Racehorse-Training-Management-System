@@ -75,9 +75,9 @@ export default function CareOrdersCard() {
                       {TRAINING_LEVEL_META[r.trainingLevel]?.short}
                     </Tag>
                   )}
-                  <div className="ml-auto flex items-center gap-2 min-w-[140px]">
+                  <div className="ml-auto flex items-center gap-2 shrink-0">
                     <Progress percent={total ? Math.round((done / total) * 100) : 0} size="small" showInfo={false} className="!m-0 w-20" />
-                    <Text className="!text-xs tabular-nums">
+                    <Text className="!text-xs tabular-nums whitespace-nowrap">
                       {done}/{total} đã làm
                     </Text>
                   </div>

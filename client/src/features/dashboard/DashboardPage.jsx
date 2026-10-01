@@ -1,6 +1,7 @@
 import { useSelector } from 'react-redux';
 import { useNavigate, Link } from 'react-router-dom';
 import { Typography, Card, Row, Col, Statistic, Alert, Tag, Button } from 'antd';
+import { AppstoreOutlined, CheckCircleOutlined, EyeOutlined, MedicineBoxOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { horsesApi } from '../horses/horsesApi';
 import { trainingSessionApi } from '../training/trainingApi';
@@ -10,8 +11,24 @@ import FitnessOverviewChart from './FitnessOverviewChart';
 import ExamRequestsCard from './ExamRequestsCard';
 import OpenIncidentsCard from './OpenIncidentsCard';
 import CareOrdersCard from './CareOrdersCard';
+import { STATUS_TONES } from '../../layouts/forestTheme';
 
 const { Title, Paragraph } = Typography;
+
+/** One counter on the dashboard: a tinted icon and a figure coloured by what it means. */
+function StatCard({ title, value, tone, icon, onClick }) {
+  const { color, bg } = STATUS_TONES[tone];
+  return (
+    <Card hoverable onClick={onClick} styles={{ body: { padding: 20 } }}>
+      <div className="flex items-center gap-4">
+        <span className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ background: bg, color }}>
+          {icon}
+        </span>
+        <Statistic title={title} value={value} styles={{ content: { color, fontWeight: 600 } }} />
+      </div>
+    </Card>
+  );
+}
 
 const ROLE_WELCOME = {
   head_trainer: 'Theo dõi tiến độ huấn luyện và thể lực toàn bộ chiến mã trong CLB.',
@@ -60,24 +77,16 @@ export default function DashboardPage() {
           so the dashboard isn't a dead-end — part of tying Head Trainer's pages together. */}
       <Row gutter={[16, 16]} className="mt-4">
         <Col xs={24} sm={12} lg={6}>
-          <Card hoverable onClick={() => navigate('/horses')}>
-            <Statistic title="Tổng số ngựa" value={horses.length} />
-          </Card>
+          <StatCard title="Tổng số ngựa" value={horses.length} tone="neutral" icon={<AppstoreOutlined />} onClick={() => navigate('/horses')} />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card hoverable onClick={() => navigate('/horses')}>
-            <Statistic title="Đủ điều kiện" value={eligible} styles={{ content: { color: '#3f8600' } }} />
-          </Card>
+          <StatCard title="Đủ điều kiện" value={eligible} tone="good" icon={<CheckCircleOutlined />} onClick={() => navigate('/horses')} />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card hoverable onClick={() => navigate('/horses')}>
-            <Statistic title="Cần theo dõi" value={monitoring} styles={{ content: { color: '#d4b106' } }} />
-          </Card>
+          <StatCard title="Cần theo dõi" value={monitoring} tone="watch" icon={<EyeOutlined />} onClick={() => navigate('/horses')} />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card hoverable onClick={() => navigate('/horses')}>
-            <Statistic title="Chấn thương" value={injured} styles={{ content: { color: '#cf1322' } }} />
-          </Card>
+          <StatCard title="Chấn thương" value={injured} tone="bad" icon={<MedicineBoxOutlined />} onClick={() => navigate('/horses')} />
         </Col>
       </Row>
 
