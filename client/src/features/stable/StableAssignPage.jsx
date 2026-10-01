@@ -392,7 +392,7 @@ function RationList() {
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   // Ration items come from the Manager's stock list (food only), with what is in stock now.
   const { data: inventoryData } = useQuery({ queryKey: ['inventory'], queryFn: () => inventoryApi.list() });
-  const feedItems = (inventoryData?.data || []).filter((i) => i.category === 'feed' && !i.isProposed);
+  const feedItems = (inventoryData?.data || []).filter((i) => i.category === 'feed' && !i.isProposed && i.isActive !== false);
   const feedById = new Map(feedItems.map((i) => [i._id, i]));
   const [proposeOpen, setProposeOpen] = useState(false);
   const [proposeForm] = Form.useForm();
