@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Table, Typography, Tag, Button, Modal, Form, Select, InputNumber, Input, Row, Col, Statistic, Card } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, DownloadOutlined } from '@ant-design/icons';
+import { downloadFile } from '../../lib/files';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { financeApi } from './financeApi';
 import { horsesApi } from '../horses/horsesApi';
@@ -63,9 +64,17 @@ export default function FinancePage() {
           {isOwner ? 'Chi phí & Doanh thu' : 'Báo cáo Tài chính'}
         </Title>
         {!isOwner && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-            Ghi nhận khoản mục
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => downloadFile('/export/finance', `tai-chinh-${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => message.error(e.message || 'Xuất file thất bại.'))}
+            >
+              Xuất CSV
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+              Ghi nhận khoản mục
+            </Button>
+          </div>
         )}
       </div>
 
