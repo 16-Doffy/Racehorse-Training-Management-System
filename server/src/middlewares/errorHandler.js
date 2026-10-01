@@ -15,6 +15,12 @@ function errorHandler(err, req, res, next) {
     return fail(res, `Duplicate value for '${field}'.`, 409);
   }
 
+  // Upload limits (file too big, too many files) are the client's mistake, not a server failure.
+  if (err.name === 'MulterError') {
+    const messages = { LIMIT_FILE_SIZE: 'Tệp quá lớn.', LIMIT_FILE_COUNT: 'Quá nhiều tệp (tối đa 5).', LIMIT_UNEXPECTED_FILE: 'Sai tên trường tệp.' };
+    return fail(res, messages[err.code] || err.message, 400);
+  }
+
   if (err.name === 'CastError') {
     return fail(res, `Invalid value for '${err.path}'.`, 400);
   }

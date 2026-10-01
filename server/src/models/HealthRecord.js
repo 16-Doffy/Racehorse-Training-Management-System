@@ -17,6 +17,17 @@ const healthRecordSchema = new mongoose.Schema(
       required: true,
     },
     notes: { type: String },
+    // X-rays, lab results, scanned prescriptions (stored in GridFS, see utils/fileStore.js).
+    attachments: [
+      {
+        url: { type: String, required: true },
+        name: { type: String },
+        contentType: { type: String },
+        size: { type: Number },
+        uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        uploadedAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );

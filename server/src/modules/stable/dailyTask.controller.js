@@ -8,6 +8,7 @@ const { notifyHorseStaff, pushNotification } = require('../alerts/notification.s
 const { logAction } = require('../audit/audit.service');
 const { announceIncidentUpdate } = require('./incident.service');
 const { taskTiming, dayBounds } = require('../../utils/taskTiming');
+const { saveFile } = require('../../utils/fileStore');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
 
@@ -308,7 +309,11 @@ const reportIncident = asyncHandler(async (req, res) => {
   const task = await loadTask(req, res);
   if (!task) return undefined;
 
-  const images = (req.files || []).map((f) => `/uploads/incidents/${f.filename}`);
+  // Kept in the database (GridFS), not on the server's disk, which is wiped on every deploy.
+  const stored = await Promise.all(
+    (req.files || []).map((f) => saveFile(f, { uploadedBy: req.user._id, purpose: 'incident', task: task._id }))
+  );
+  const images = stored.map((f) => f.url);
   task.incidentReport = { description, severity: severity || 'medium', images, reportedAt: new Date() };
   await task.save();
 

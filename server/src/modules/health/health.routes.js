@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { protect } = require('../../middlewares/authMiddleware');
 const { authorize } = require('../../middlewares/rbacMiddleware');
 const { ROLES } = require('../../constants/roles');
+const { uploadMedicalFiles } = require('../../middlewares/uploadMiddleware');
 const recordCtrl = require('./healthRecord.controller');
 const treatmentCtrl = require('./treatment.controller');
 const markerCtrl = require('./injuryMarker.controller');
@@ -13,6 +14,8 @@ router.get('/records', recordCtrl.listRecords);
 router.get('/records/:id', recordCtrl.getRecord);
 router.post('/records', authorize(ROLES.VETERINARIAN), recordCtrl.createRecord);
 router.put('/records/:id', authorize(ROLES.VETERINARIAN), recordCtrl.updateRecord);
+router.post('/records/:id/attachments', authorize(ROLES.VETERINARIAN), uploadMedicalFiles.array('files', 5), recordCtrl.addAttachments);
+router.delete('/records/:id/attachments/:attachmentId', authorize(ROLES.VETERINARIAN), recordCtrl.removeAttachment);
 
 // Head Trainer/Manager can flag a horse for a check-up; only the Vet can act on it by creating
 // an actual HealthRecord above.
