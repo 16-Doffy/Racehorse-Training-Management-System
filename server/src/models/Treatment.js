@@ -5,6 +5,11 @@ const medicationSchema = new mongoose.Schema(
     name: { type: String, required: true },
     dosage: { type: String, required: true },
     frequency: { type: String },
+    timeSlots: [{ type: String }], // e.g. ['morning', 'noon', 'afternoon', 'evening']
+    specificTimes: { type: String }, // e.g. "08:00, 16:00"
+    startDate: { type: Date },
+    endDate: { type: Date },
+    instructions: { type: String },
   },
   { _id: false }
 );

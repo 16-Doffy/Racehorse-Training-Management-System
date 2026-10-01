@@ -21,7 +21,29 @@ function todayBounds() {
 }
 
 function medicationNote(m) {
-  return [m.name, m.dosage, m.frequency].filter(Boolean).join(' — ');
+  const parts = [m.name, m.dosage];
+
+  const slotLabels = {
+    morning: 'Sáng',
+    noon: 'Trưa',
+    afternoon: 'Chiều',
+    evening: 'Tối',
+  };
+  const slotsStr = (m.timeSlots || []).map((s) => slotLabels[s] || s).join(', ');
+
+  const timingInfo = [];
+  if (slotsStr) timingInfo.push(`Buổi: ${slotsStr}`);
+  if (m.specificTimes) timingInfo.push(`Giờ: ${m.specificTimes}`);
+  if (!timingInfo.length && m.frequency) timingInfo.push(m.frequency);
+
+  if (timingInfo.length > 0) {
+    parts.push(`[${timingInfo.join(' - ')}]`);
+  }
+  if (m.instructions) {
+    parts.push(`(${m.instructions})`);
+  }
+
+  return parts.filter(Boolean).join(' — ');
 }
 
 /** The care a treatment asks of the stable today, as the tasks it should exist as. */
