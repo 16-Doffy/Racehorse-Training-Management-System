@@ -38,6 +38,7 @@ import {
 } from '@ant-design/icons';
 import { horsesApi } from './horsesApi';
 import HorseTimeline from './HorseTimeline';
+import { TRAINING_LEVEL_META } from '../../constants/health';
 import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
 import { trainingSessionApi } from '../training/trainingApi';
 import { ROLES } from '../../constants/roles';
@@ -496,6 +497,19 @@ export default function HorseDetailPage() {
             <Tag color={STATUS_CONFIG[horse.healthStatus]?.color}>
               {STATUS_CONFIG[horse.healthStatus]?.label || horse.healthStatus}
             </Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="Tập luyện" span={2}>
+            <Tag color={TRAINING_LEVEL_META[horse.trainingClearance?.level || 'high']?.color}>
+              {TRAINING_LEVEL_META[horse.trainingClearance?.level || 'high']?.label}
+            </Tag>
+            {horse.trainingClearance?.restricted && (
+              <span className="text-gray-500 text-sm">
+                {horse.trainingClearance.reason ? `${horse.trainingClearance.reason} — ` : ''}
+                theo phác đồ của bác sĩ {horse.trainingClearance.prescribedBy || ''}
+                {horse.trainingClearance.since ? ` từ ${dayjs(horse.trainingClearance.since).format('DD/MM')}` : ''}. Hết hạn chế khi bác sĩ
+                nâng mức hoặc kết thúc điều trị.
+              </span>
+            )}
           </Descriptions.Item>
         </Descriptions>
       </Card>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Typography, Tag, Button, Space, Alert, Popconfirm, Modal, Form, Input, InputNumber, Select } from 'antd';
+import { Table, Typography, Tag, Button, Space, Alert, Popconfirm, Modal, Form, Input, InputNumber, Select, Tooltip } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { CheckOutlined, CloseOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -74,6 +74,9 @@ export default function InventoryPage() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['inventory'], queryFn: () => inventoryApi.list() });
   const items = data?.data || [];
+  // How fast each item is used by the rations and ongoing treatments, and how long the stock lasts.
+  const { data: forecastData } = useQuery({ queryKey: ['inventory-forecast'], queryFn: () => inventoryApi.forecast() });
+  const forecastById = new Map((forecastData?.data || []).map((f) => [String(f._id), f]));
   const [editing, setEditing] = useState(null); // null = closed, {} = new item, item = edit
   const [rejecting, setRejecting] = useState(null);
   const [rejectNote, setRejectNote] = useState('');
@@ -85,6 +88,7 @@ export default function InventoryPage() {
         variables.status === 'approved' ? 'Đã duyệt — số lượng tồn kho đã được cộng thêm.' : 'Đã từ chối yêu cầu.'
       );
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-forecast'] });
       setRejecting(null);
       setRejectNote('');
     },
@@ -190,6 +194,23 @@ export default function InventoryPage() {
         ) : (
           `${r.quantity} ${r.unit}`
         ),
+    },
+    {
+      title: 'Đủ dùng',
+      key: 'daysLeft',
+      render: (_, r) => {
+        const f = forecastById.get(String(r._id));
+        if (!f || !f.dailyUsage) return <span className="text-gray-400">Chưa dùng</span>;
+        const color = f.quantity <= 0 || f.daysLeft < 3 ? 'red' : f.daysLeft < 7 ? 'orange' : 'green';
+        const usedBy = f.usedBy
+          .map((u) => (u.kind === 'ration' ? `${u.horse}: ${u.amount} ${r.unit}/bữa` : `${u.horse}: ${u.medicine} ${u.amount} ${r.unit} × ${u.doses}`))
+          .join('\n');
+        return (
+          <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{`Dùng ${f.dailyUsage} ${r.unit}/ngày\n${usedBy}`}</span>}>
+            <Tag color={color}>{f.quantity <= 0 ? 'Đã hết' : f.daysLeft < 1 ? 'Dưới 1 ngày' : `~${f.daysLeft} ngày`}</Tag>
+          </Tooltip>
+        );
+      },
     },
     { title: 'Khu vực', dataIndex: 'stableBlock', key: 'stableBlock', render: (v) => v || '—' },
     {

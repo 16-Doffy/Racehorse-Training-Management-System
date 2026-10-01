@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { treatmentApi } from '../health/healthApi';
 import { TASK_TYPE_LABELS } from '../../constants/care';
+import { TRAINING_LEVEL_META } from '../../constants/health';
 
 const { Text } = Typography;
 
@@ -69,9 +70,9 @@ export default function CareOrdersCard() {
                   <Text type="secondary" className="!text-xs">
                     Bác sĩ {r.prescribedBy?.name || '—'} · từ {dayjs(r.startDate).format('DD/MM')}
                   </Text>
-                  {r.isTrainingLocked && (
-                    <Tag color="red" className="!m-0">
-                      Đang khóa huấn luyện
+                  {r.trainingLevel && r.trainingLevel !== 'high' && (
+                    <Tag color={TRAINING_LEVEL_META[r.trainingLevel]?.color} className="!m-0">
+                      {TRAINING_LEVEL_META[r.trainingLevel]?.short}
                     </Tag>
                   )}
                   <div className="ml-auto flex items-center gap-2 min-w-[140px]">
@@ -96,11 +97,17 @@ export default function CareOrdersCard() {
                       const state = taskState(t);
                       return (
                         <div key={t._id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                          {t.dueTime && <Tag color="purple" className="!m-0">{t.dueTime}</Tag>}
                           <span className="font-medium">{TASK_TYPE_LABELS[t.taskType] || t.taskType}</span>
                           {t.taskType === 'medication' && <span className="text-gray-600">{t.note}</span>}
                           <Tag color={state.color} className="!m-0 !whitespace-normal">
                             {state.label}
                           </Tag>
+                          {t.status === 'pending' && t.supplyStatus && !t.supplyStatus.ok && (
+                            <Tag color="red" className="!m-0 !whitespace-normal">
+                              Thiếu {t.supplyStatus.missing.map((m) => `${m.name} (còn ${m.available} ${m.unit})`).join(', ')}
+                            </Tag>
+                          )}
                         </div>
                       );
                     })}

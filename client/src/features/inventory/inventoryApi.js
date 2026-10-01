@@ -6,6 +6,8 @@ export const inventoryApi = {
   requestRestock: (id, payload) => axiosClient.post(`/inventory/${id}/restock-request`, payload),
   /** Ask for an item not in the list yet: { name, category, unit, quantity, note, stableBlock }. */
   propose: (payload) => axiosClient.post('/inventory/proposals', payload),
+  /** Daily use from rations and ongoing treatments, and the days of stock left per item. */
+  forecast: () => axiosClient.get('/inventory/forecast'),
   /** Manager's decision on one restock request: { status: 'approved' | 'rejected', note }. */
   decideRestock: (itemId, requestId, payload) =>
     axiosClient.patch(`/inventory/${itemId}/restock-requests/${requestId}`, payload),

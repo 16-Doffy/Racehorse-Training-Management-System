@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Tag, Typography, Button, Modal, Form, Input, InputNumber, Select, DatePicker, Alert, Empty } from 'antd';
+import { Table, Tag, Typography, Button, Modal, Form, Input, InputNumber, Select, DatePicker, Alert, Empty, Tooltip } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, DownloadOutlined } from '@ant-design/icons';
 import { downloadFile } from '../../lib/files';
@@ -10,7 +10,7 @@ import dayjs from 'dayjs';
 import { horsesApi } from './horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { ROLES } from '../../constants/roles';
-import { HEALTH_LABELS, HEALTH_COLORS } from '../../constants/health';
+import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constants/health';
 
 const { Title } = Typography;
 
@@ -113,6 +113,21 @@ export default function HorseListPage() {
       dataIndex: 'healthStatus',
       key: 'healthStatus',
       render: (status) => <Tag color={HEALTH_COLORS[status]}>{HEALTH_LABELS[status] || status}</Tag>,
+    },
+    {
+      title: 'Tập luyện',
+      key: 'trainingClearance',
+      render: (_, h) => {
+        const c = h.trainingClearance || { level: 'high' };
+        const meta = TRAINING_LEVEL_META[c.level];
+        return c.restricted ? (
+          <Tooltip title={[c.reason, c.prescribedBy && `Bác sĩ ${c.prescribedBy}`].filter(Boolean).join(' — ') || 'Theo phác đồ điều trị'}>
+            <Tag color={meta.color}>{meta.short}</Tag>
+          </Tooltip>
+        ) : (
+          <Tag color={meta.color}>{meta.short}</Tag>
+        );
+      },
     },
   ];
 
