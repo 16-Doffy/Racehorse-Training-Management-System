@@ -15,6 +15,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { taskApi } from '../api/endpoints';
+import Icon from './Icon';
 import { Badge, Button, ChipGroup, Row } from './ui';
 import { INCIDENT_PRESETS, SEVERITY, TASK_CONFIG, formatDate } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
@@ -49,6 +50,7 @@ export default function IncidentModal({ task, visible, onClose }) {
     mutationFn: (formData) => taskApi.reportIncident(task._id, formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['incidents'] });
       Alert.alert('Đã gửi báo cáo', 'Bác sĩ thú y đã nhận được thông báo.');
       close();
     },
@@ -93,14 +95,14 @@ export default function IncidentModal({ task, visible, onClose }) {
     mutation.mutate(formData);
   };
 
-  const taskCfg = TASK_CONFIG[task?.taskType] || { label: task?.taskType, emoji: '📋' };
+  const taskCfg = TASK_CONFIG[task?.taskType] || { label: task?.taskType, icon: 'note' };
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
         <View style={styles.sheet}>
           <Row style={styles.sheetHeader}>
-            <Text style={font.h2}>⚠️ Báo cáo sự cố</Text>
+            <Row style={{ gap: 8 }}><Icon name="warning" size={18} color="#dc2626" /><Text style={font.h2}>Báo cáo sự cố</Text></Row>
             <Pressable onPress={close} hitSlop={10}>
               <Text style={styles.close}>✕</Text>
             </Pressable>
@@ -111,7 +113,7 @@ export default function IncidentModal({ task, visible, onClose }) {
               <View style={styles.taskBox}>
                 <Text style={styles.taskHorse}>{task.horse?.name}</Text>
                 <Text style={font.small}>
-                  {taskCfg.emoji} {taskCfg.label} • {formatDate(task.scheduledDate)}
+                  {taskCfg.label} · {formatDate(task.scheduledDate)}
                 </Text>
               </View>
             ) : null}
@@ -156,8 +158,8 @@ export default function IncidentModal({ task, visible, onClose }) {
                 ))}
               </Row>
               <Row style={{ marginTop: spacing.md, gap: spacing.md }}>
-                <Button title="Chụp ảnh" icon="📷" variant="ghost" size="sm" style={{ flex: 1 }} onPress={() => addPhoto(true)} />
-                <Button title="Chọn từ máy" icon="🖼️" variant="ghost" size="sm" style={{ flex: 1 }} onPress={() => addPhoto(false)} />
+                <Button title="Chụp ảnh" icon="camera" variant="ghost" size="sm" style={{ flex: 1 }} onPress={() => addPhoto(true)} />
+                <Button title="Chọn từ máy" icon="gallery" variant="ghost" size="sm" style={{ flex: 1 }} onPress={() => addPhoto(false)} />
               </Row>
             </View>
           </ScrollView>

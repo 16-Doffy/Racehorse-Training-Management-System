@@ -1,16 +1,29 @@
-// Labels and small helpers shared by the Groom screens.
+// Labels, lookups and small calculations shared by the Groom screens.
+// `icon` values are names from components/Icon.jsx — never raw emoji.
 
 export const TASK_CONFIG = {
-  feeding: { label: 'Cho ăn', emoji: '🥕' },
-  cleaning: { label: 'Vệ sinh chuồng', emoji: '🧹' },
-  bathing: { label: 'Tắm rửa', emoji: '🚿' },
-  icing: { label: 'Ngâm chân nước đá', emoji: '🧊' },
+  feeding: { label: 'Cho ăn', icon: 'feeding', color: '#ea580c', bg: '#ffedd5' },
+  cleaning: { label: 'Vệ sinh chuồng', icon: 'cleaning', color: '#2563eb', bg: '#dbeafe' },
+  bathing: { label: 'Tắm rửa', icon: 'bathing', color: '#0891b2', bg: '#cffafe' },
+  icing: { label: 'Ngâm chân nước đá', icon: 'icing', color: '#4f46e5', bg: '#e0e7ff' },
+  // Ordered by the vet through a treatment, not assigned by hand.
+  medication: { label: 'Cho dùng thuốc', icon: 'medication', color: '#dc2626', bg: '#fee2e2' },
+  monitoring: { label: 'Theo dõi theo y lệnh', icon: 'monitoring', color: '#7c3aed', bg: '#ede9fe' },
 };
+
+export const TASK_TYPE_ORDER = ['feeding', 'medication', 'monitoring', 'cleaning', 'bathing', 'icing'];
 
 export const TASK_STATUS = {
   pending: { label: 'Chưa xong', color: '#6b7280', bg: '#f3f4f6' },
   completed: { label: 'Hoàn thành', color: '#16a34a', bg: '#dcfce7' },
-  skipped: { label: 'HLV cho bỏ qua', color: '#ea580c', bg: '#ffedd5' },
+  skipped: { label: 'Không thực hiện', color: '#ea580c', bg: '#ffedd5' },
+};
+
+/** Where the work came from — a vet's order carries more weight than a routine chore. */
+export const TASK_SOURCE = {
+  vet: { label: 'Y lệnh bác sĩ', icon: 'vet', color: '#dc2626', bg: '#fee2e2' },
+  trainer: { label: 'HLV giao', icon: 'trainer', color: '#2563eb', bg: '#dbeafe' },
+  system: { label: 'Tự động', icon: 'system', color: '#6b7280', bg: '#f3f4f6' },
 };
 
 export const HEALTH_STATUS = {
@@ -20,12 +33,24 @@ export const HEALTH_STATUS = {
   quarantined: { label: 'Cách ly', color: '#ea580c', bg: '#ffedd5' },
 };
 
-// Fallback clock times only: a ration that carries its own `timeOfDay` always wins. These match
-// server/src/realtime/dailyTaskGenerator.js so the app and the generator agree.
+/**
+ * The server decides when a task may be ticked (server/src/utils/taskTiming.js) and sends that
+ * decision with every task as `timing`. The app shows the same words rather than guessing.
+ */
+export const TIMING_STATE = {
+  upcoming: { label: 'Chưa tới giờ', color: '#6b7280', bg: '#f3f4f6' },
+  open: { label: 'Làm được bây giờ', color: '#16a34a', bg: '#dcfce7' },
+  late: { label: 'Trễ hạn', color: '#ea580c', bg: '#ffedd5' },
+  missed: { label: 'Quá hạn ghi nhận', color: '#dc2626', bg: '#fee2e2' },
+  closed: { label: 'Đã chốt', color: '#6b7280', bg: '#f3f4f6' },
+};
+
+// FeedingSchedule.mealTime stores the slot; `timeOfDay` carries its clock time when the trainer
+// set one. These defaults match server/src/realtime/dailyTaskGenerator.js.
 export const MEAL_CONFIG = {
-  morning: { label: 'Bữa sáng', emoji: '🌅', defaultTime: '06:00' },
-  noon: { label: 'Bữa trưa', emoji: '☀️', defaultTime: '11:30' },
-  evening: { label: 'Bữa tối', emoji: '🌙', defaultTime: '17:30' },
+  morning: { label: 'Bữa sáng', icon: 'morning', defaultTime: '06:00' },
+  noon: { label: 'Bữa trưa', icon: 'noon', defaultTime: '11:30' },
+  evening: { label: 'Bữa tối', icon: 'evening', defaultTime: '17:30' },
 };
 export const MEAL_ORDER = ['morning', 'noon', 'evening'];
 
@@ -33,6 +58,13 @@ export const SEVERITY = {
   low: { label: 'Nhẹ', color: '#2563eb', bg: '#dbeafe' },
   medium: { label: 'Trung bình', color: '#ea580c', bg: '#ffedd5' },
   high: { label: 'Nghiêm trọng', color: '#dc2626', bg: '#fee2e2' },
+};
+
+/** Lifecycle of an incident the groom filed: the vet picks it up and closes it. */
+export const INCIDENT_STATUS = {
+  open: { label: 'Chờ bác sĩ', color: '#dc2626', bg: '#fee2e2' },
+  acknowledged: { label: 'Bác sĩ đã tiếp nhận', color: '#ca8a04', bg: '#fef9c3' },
+  resolved: { label: 'Đã xử lý', color: '#16a34a', bg: '#dcfce7' },
 };
 
 export const INCIDENT_PRESETS = [
@@ -51,9 +83,9 @@ export const MANURE_OPTIONS = ['Bình thường', 'Khô / Táo bón', 'Lỏng / 
 export const WATER_OPTIONS = ['Bình thường', 'Uống nhiều', 'Uống ít'];
 
 export const INVENTORY_CATEGORY = {
-  feed: { label: 'Thức ăn', emoji: '🌾' },
-  medicine: { label: 'Thuốc', emoji: '💊' },
-  equipment: { label: 'Dụng cụ', emoji: '🧰' },
+  feed: { label: 'Thức ăn', icon: 'feed', color: '#16a34a', bg: '#dcfce7' },
+  medicine: { label: 'Thuốc', icon: 'medicineBox', color: '#dc2626', bg: '#fee2e2' },
+  equipment: { label: 'Dụng cụ', icon: 'equipment', color: '#2563eb', bg: '#dbeafe' },
 };
 
 export const RESTOCK_STATUS = {
@@ -72,16 +104,16 @@ export function getStockLevel(quantity) {
 }
 
 const FEED_TYPES = [
-  { match: /grain|oat|ngũ cốc|yến mạch/i, label: 'Ngũ cốc', emoji: '🌾' },
-  { match: /hay|grass|cỏ/i, label: 'Cỏ khô', emoji: '🌿' },
-  { match: /vitamin|supplement|bổ sung/i, label: 'Vitamin', emoji: '💊' },
-  { match: /carrot|cà rốt/i, label: 'Cà rốt', emoji: '🥕' },
-  { match: /water|electrolyte|điện giải|nước/i, label: 'Nước điện giải', emoji: '💧' },
+  { match: /grain|oat|ngũ cốc|yến mạch|cám/i, label: 'Ngũ cốc', icon: 'grain' },
+  { match: /hay|grass|cỏ/i, label: 'Cỏ khô', icon: 'hay' },
+  { match: /vitamin|supplement|bổ sung|khoáng/i, label: 'Vitamin', icon: 'vitamin' },
+  { match: /carrot|cà rốt|củ/i, label: 'Cà rốt', icon: 'carrot' },
+  { match: /water|electrolyte|điện giải|nước|muối/i, label: 'Nước điện giải', icon: 'water' },
 ];
 
 export function getFeedTypeLabel(type = '') {
   const found = FEED_TYPES.find((f) => f.match.test(type));
-  return found ? { label: found.label, emoji: found.emoji } : { label: type, emoji: '🍽️' };
+  return found ? { label: found.label, icon: found.icon } : { label: type, icon: 'feedOther' };
 }
 
 /** "Block A - Stall 12" -> { block: "Block A", stall: "Stall 12" } */
@@ -93,7 +125,20 @@ export function parseStableBlock(stableBlock = '') {
 
 export const refId = (ref) => (ref && typeof ref === 'object' ? ref._id : ref);
 
+/** Accent-insensitive contains, so searching "co kho" finds "Cỏ khô". */
+export function normalize(text = '') {
+  return String(text)
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .trim();
+}
+
+export const matchesSearch = (haystack, needle) => !needle || normalize(haystack).includes(normalize(needle));
+
 const VI_WEEKDAYS = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+const VI_WEEKDAYS_SHORT = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
 export const startOfDay = (date) => {
   const d = new Date(date);
@@ -120,6 +165,8 @@ export const formatDate = (date) => {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 };
 
+export const weekdayShort = (date) => VI_WEEKDAYS_SHORT[new Date(date).getDay()];
+
 export const formatDayLabel = (date) => {
   if (isToday(date)) return 'Hôm nay';
   if (isSameDay(date, addDays(new Date(), -1))) return 'Hôm qua';
@@ -139,9 +186,9 @@ export const describeDaysLeft = (days) =>
 /** Recurring vet/farrier dates due within `withinDays`, soonest first. */
 export function getUpcomingCare(horse, withinDays = 14) {
   const items = [
-    { key: 'vaccination', label: 'Tiêm phòng', emoji: '💉', date: horse?.careSchedule?.nextVaccinationDue },
-    { key: 'deworming', label: 'Tẩy giun', emoji: '💊', date: horse?.careSchedule?.nextDewormingDue },
-    { key: 'farrier', label: 'Kiểm tra móng', emoji: '🔧', date: horse?.careSchedule?.nextFarrierDue },
+    { key: 'vaccination', label: 'Tiêm phòng', icon: 'syringe', date: horse?.careSchedule?.nextVaccinationDue },
+    { key: 'deworming', label: 'Tẩy giun', icon: 'deworm', date: horse?.careSchedule?.nextDewormingDue },
+    { key: 'farrier', label: 'Kiểm tra móng', icon: 'farrier', date: horse?.careSchedule?.nextFarrierDue },
   ];
   return items
     .filter((i) => i.date)
@@ -150,7 +197,7 @@ export function getUpcomingCare(horse, withinDays = 14) {
     .sort((a, b) => a.daysLeft - b.daysLeft);
 }
 
-/** Clock time of a feeding task: the ration's own time when known, else the slot's default. */
+/** Clock time of a meal: the ration's own time when known, else the slot's default. */
 export function mealTimeOf(mealSlot, schedules = []) {
   const withTime = schedules.find((s) => s.mealTime === mealSlot && s.timeOfDay);
   return withTime?.timeOfDay || MEAL_CONFIG[mealSlot]?.defaultTime || null;
@@ -158,12 +205,141 @@ export function mealTimeOf(mealSlot, schedules = []) {
 
 /** Title for one task row: feeding tasks say which meal, everything else keeps its own label. */
 export function describeTask(task, schedulesForHorse = []) {
-  const base = TASK_CONFIG[task.taskType] || { label: task.taskType, emoji: '📋' };
-  if (task.taskType !== 'feeding' || !task.mealSlot) return { ...base, time: null };
+  const base = TASK_CONFIG[task.taskType] || { label: task.taskType, icon: 'note' };
+  if (task.taskType !== 'feeding' || !task.mealSlot) {
+    return { ...base, time: task.scheduledDate ? formatTime(task.scheduledDate) : null, meal: null };
+  }
   const meal = MEAL_CONFIG[task.mealSlot];
   return {
-    emoji: meal?.emoji || base.emoji,
+    ...base,
+    icon: meal?.icon || base.icon,
     label: `${base.label} — ${meal?.label || task.mealSlot}`,
+    meal: meal?.label,
     time: mealTimeOf(task.mealSlot, schedulesForHorse) || formatTime(task.scheduledDate),
+  };
+}
+
+/** The meal slot that is current or next, using each ration's own clock time. */
+export function nextMealSlot(schedules = [], now = new Date()) {
+  const minutesNow = now.getHours() * 60 + now.getMinutes();
+  const slots = MEAL_ORDER.map((slot) => {
+    const time = mealTimeOf(slot, schedules) || MEAL_CONFIG[slot].defaultTime;
+    const [hh, mm] = time.split(':').map(Number);
+    return { slot, time, minutes: hh * 60 + mm };
+  });
+  const found = slots.find((s) => s.minutes + 60 > minutesNow);
+  return found ? { ...found, tomorrow: false } : { ...slots[0], tomorrow: true };
+}
+
+/** "2.5kg" -> { value: 2.5, unit: 'kg' }; "5" -> { value: 5, unit: '' }; "nửa bó" -> null. */
+export function parseQuantity(text) {
+  const raw = String(text ?? '').replace(',', '.').trim();
+  const match = raw.match(/([\d.]+)\s*(.*)$/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value)) return null;
+  return { value, unit: match[2].trim() };
+}
+
+/**
+ * How long the stock on hand covers the rations the groom has to serve.
+ *
+ * Rations name their feed in free text ("hay", "Cỏ khô") while the store names items ("Cỏ khô
+ * Timothy"), so they are matched by feed kind — the same grouping the ration list already shows.
+ *
+ * "How many days is that" is only claimed when both sides are written in the same unit: a ration
+ * in kilos against a store counted in bales would otherwise produce a confident, wrong number.
+ */
+export function buildFeedCoverage({ feedings, horseIds, inventory }) {
+  const needByKind = new Map();
+
+  feedings
+    .filter((f) => !horseIds || horseIds.has(refId(f.horse)))
+    .forEach((schedule) => {
+      (schedule.items || []).forEach((item) => {
+        const feed = getFeedTypeLabel(item.type);
+        const amount = parseQuantity(item.quantity);
+        const entry = needByKind.get(feed.label) || { kind: feed.label, icon: feed.icon, perDay: 0, units: new Set(), unknown: false };
+        if (!amount) entry.unknown = true;
+        else {
+          entry.perDay += amount.value;
+          if (amount.unit) entry.units.add(normalize(amount.unit));
+        }
+        needByKind.set(feed.label, entry);
+      });
+    });
+
+  return [...needByKind.values()]
+    .map((need) => {
+      const items = inventory.filter(
+        (item) => item.category === 'feed' && getFeedTypeLabel(item.name).label === need.kind
+      );
+      const stock = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      const unit = items[0]?.unit || '';
+      const rationUnits = [...need.units];
+      // One unit on the ration, and the store counts in the same one.
+      const comparable = items.length > 0 && rationUnits.length === 1 && normalize(unit) === rationUnits[0];
+      const daysLeft = comparable && need.perDay > 0 ? stock / need.perDay : null;
+      return {
+        ...need,
+        items,
+        stock,
+        unit,
+        rationUnit: rationUnits.length === 1 ? rationUnits[0] : '',
+        comparable,
+        daysLeft,
+        // Under a day of feed on hand is the point at which asking for more cannot wait.
+        level:
+          items.length === 0
+            ? 'unknown'
+            : stock <= 0
+              ? 'critical'
+              : daysLeft === null
+                ? 'unknown'
+                : daysLeft < 1
+                  ? 'critical'
+                  : daysLeft < 3
+                    ? 'low'
+                    : 'ok',
+      };
+    })
+    .sort((a, b) => (a.daysLeft ?? 99) - (b.daysLeft ?? 99));
+}
+
+export const formatDays = (days) => (days >= 10 ? '10+ ngày' : `${Math.floor(days * 10) / 10} ngày`);
+
+/**
+ * What the store has for one named thing — a medicine on a prescription, or a feed on a ration.
+ *
+ * Names are written by hand in two places ("Vitamin tổng hợp" on the shelf, "Vitamin" in the
+ * ration), so matching is by containment either way, and feeds fall back to their kind. Returns
+ * null when nothing in the catalogue looks like it, which the screens show as "chưa có trong kho"
+ * rather than as zero stock.
+ */
+export function findStock(name, inventory = [], category) {
+  if (!name) return null;
+  const pool = category ? inventory.filter((i) => i.category === category) : inventory;
+  const needle = normalize(name);
+
+  const direct = pool.filter((item) => {
+    const hay = normalize(item.name);
+    return hay === needle || hay.includes(needle) || needle.includes(hay);
+  });
+
+  const matches =
+    direct.length > 0
+      ? direct
+      : category === 'feed'
+        ? pool.filter((item) => getFeedTypeLabel(item.name).label === getFeedTypeLabel(name).label)
+        : [];
+
+  if (matches.length === 0) return null;
+
+  const quantity = matches.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  return {
+    quantity,
+    unit: matches[0].unit || '',
+    items: matches,
+    level: getStockLevel(quantity),
   };
 }

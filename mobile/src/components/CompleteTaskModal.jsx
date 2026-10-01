@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { taskApi } from '../api/endpoints';
+import Icon from './Icon';
 import { Button, ChipGroup, Row } from './ui';
 import { APPETITE_OPTIONS, MANURE_OPTIONS, TASK_CONFIG, WATER_OPTIONS, describeTask } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
@@ -76,12 +77,15 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
           <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }} keyboardShouldPersistTaps="handled">
             {task ? (
               <View style={styles.taskBox}>
-                <Text style={styles.taskTitle}>
-                  {info.emoji} {info.label}
-                  {info.time ? ` • ${info.time}` : ''}
-                </Text>
+                <Row style={{ gap: 6 }}>
+                  <Icon name={info.icon} size={16} color={info.color} />
+                  <Text style={styles.taskTitle}>
+                    {info.label}
+                    {info.time ? ` · ${info.time}` : ''}
+                  </Text>
+                </Row>
                 <Text style={font.small}>{task.horse?.name}</Text>
-                {task.note ? <Text style={styles.trainerNote}>📋 HLV dặn: {task.note}</Text> : null}
+                {task.note ? <Text style={styles.trainerNote}>{task.source === 'vet' ? 'Bác sĩ dặn' : 'HLV dặn'}: {task.note}</Text> : null}
               </View>
             ) : null}
 

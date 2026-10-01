@@ -1,18 +1,30 @@
 import { useMemo, useState } from 'react';
 import { Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Badge, Button, Card, ChipGroup, EmptyState, HorseAvatar, Loading, Row, SectionTitle } from '../components/ui';
+import Icon from '../components/Icon';
+import AppHeader from '../components/AppHeader';
+import { Badge, Button, Card, ChipRow, EmptyState, HorseAvatar, Loading, Row } from '../components/ui';
 import IncidentModal from '../components/IncidentModal';
-import { useRefreshAll, useStableOverview, useTasks } from '../hooks/useGroomData';
+import { useIncidents, useRefreshAll, useStableOverview, useTasks } from '../hooks/useGroomData';
 import { API_ORIGIN } from '../api/client';
-import { SEVERITY, TASK_CONFIG, formatDate, formatDateTime, isToday, parseStableBlock, refId } from '../utils/groom';
+import {
+  INCIDENT_STATUS,
+  SEVERITY,
+  TASK_CONFIG,
+  formatDate,
+  formatDateTime,
+  isToday,
+  parseStableBlock,
+  refId,
+} from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
+// Mirrors the ?status= values the incidents endpoint accepts.
 const FILTERS = [
   { value: 'all', label: 'Tất cả' },
-  { value: 'high', label: 'Nghiêm trọng' },
-  { value: 'medium', label: 'Trung bình' },
-  { value: 'low', label: 'Nhẹ' },
+  { value: 'open', label: 'Chờ bác sĩ' },
+  { value: 'acknowledged', label: 'Đang xử lý' },
+  { value: 'resolved', label: 'Đã xử lý' },
 ];
 
 export default function IncidentsScreen() {
@@ -21,19 +33,15 @@ export default function IncidentsScreen() {
   const [reporting, setReporting] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const { tasks, isLoading } = useTasks();
+  const { tasks } = useTasks();
+  const { incidents, isLoading } = useIncidents(filter === 'all' ? undefined : filter);
   const { assignmentByHorseId } = useStableOverview();
   const refreshAll = useRefreshAll();
 
-  const reported = useMemo(
-    () =>
-      tasks
-        .filter((t) => t.incidentReport)
-        .sort((a, b) => new Date(b.incidentReport.reportedAt || 0) - new Date(a.incidentReport.reportedAt || 0)),
-    [tasks]
+  const visible = useMemo(
+    () => [...incidents].sort((a, b) => new Date(b.incidentReport?.reportedAt || 0) - new Date(a.incidentReport?.reportedAt || 0)),
+    [incidents]
   );
-
-  const visible = reported.filter((t) => filter === 'all' || t.incidentReport.severity === filter);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -46,29 +54,31 @@ export default function IncidentsScreen() {
       <View style={styles.header}>
         <Text style={font.h1}>Báo cáo Sự cố</Text>
         <Text style={font.small}>Ngựa bỏ ăn, đau bụng/sốt, móng bị xước... kèm ảnh thực tế. Bác sĩ thú y nhận thông báo ngay.</Text>
-        <Button title="Báo cáo sự cố mới" icon="⚠️" variant="danger" onPress={() => setPicking(true)} />
+        <Button title="Báo cáo sự cố mới" icon="warning" variant="danger" onPress={() => setPicking(true)} />
       </View>
 
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
       >
-        <ChipGroup options={FILTERS} value={filter} onChange={setFilter} />
+        <ChipRow options={FILTERS} value={filter} onChange={setFilter} />
 
         {isLoading ? (
           <Loading />
         ) : visible.length === 0 ? (
           <Card>
             <EmptyState
-              emoji="📋"
-              text={reported.length === 0 ? 'Bạn chưa gửi báo cáo sự cố nào' : 'Không có báo cáo nào khớp bộ lọc'}
+              icon="note"
+              text={filter === 'all' ? 'Bạn chưa gửi báo cáo sự cố nào' : 'Không có báo cáo nào ở trạng thái này'}
             />
           </Card>
         ) : (
           visible.map((task) => {
             const report = task.incidentReport;
             const severity = SEVERITY[report.severity] || SEVERITY.medium;
-            const cfg = TASK_CONFIG[task.taskType] || { label: task.taskType, emoji: '📋' };
+            const state = INCIDENT_STATUS[report.status] || INCIDENT_STATUS.open;
+            const cfg = TASK_CONFIG[task.taskType] || { label: task.taskType, icon: 'note' };
+            const isResolved = report.status === 'resolved';
             return (
               <Card key={task._id} style={{ borderLeftWidth: 4, borderLeftColor: severity.color, gap: spacing.sm }}>
                 <Row style={{ gap: spacing.md }}>
@@ -76,14 +86,20 @@ export default function IncidentsScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={font.h3}>{task.horse?.name}</Text>
                     <Text style={font.small}>
-                      {assignmentByHorseId.get(refId(task.horse))?.stableBlock || 'Chưa xếp chuồng'} • {cfg.emoji} {cfg.label} •{' '}
+                      {assignmentByHorseId.get(refId(task.horse))?.stableBlock || 'Chưa xếp chuồng'} • {cfg.label} •{' '}
                       {formatDate(task.scheduledDate)}
                     </Text>
                   </View>
                   <Badge label={severity.label} color={severity.color} bg={severity.bg} />
                 </Row>
+
+                <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
+                  <Badge label={state.label} color={state.color} bg={state.bg} />
+                  {report.reportedAt ? <Text style={font.small}>Gửi lúc {formatDateTime(report.reportedAt)}</Text> : null}
+                </Row>
+
                 <Text style={font.body}>{report.description}</Text>
-                {report.reportedAt ? <Text style={font.small}>Gửi lúc {formatDateTime(report.reportedAt)}</Text> : null}
+
                 {report.images?.length > 0 && (
                   <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
                     {report.images.map((src) => (
@@ -91,7 +107,25 @@ export default function IncidentsScreen() {
                     ))}
                   </Row>
                 )}
-                <Button title="Cập nhật báo cáo" variant="ghost" size="sm" onPress={() => setReporting(task)} />
+
+                {/* What the vet did with it — the half of the loop the groom could not see before. */}
+                {report.response || report.handledBy || report.healthRecord ? (
+                  <View style={styles.vetBox}>
+                    <Text style={font.tiny}>Bác sĩ thú y</Text>
+                    {report.response ? <Text style={font.body}>{report.response}</Text> : null}
+                    {report.healthRecord?.diagnosis ? (
+                      <Text style={font.small}>Chẩn đoán: {report.healthRecord.diagnosis}</Text>
+                    ) : null}
+                    <Text style={font.small}>
+                      {report.handledBy?.name ? `${report.handledBy.name}` : 'Đã tiếp nhận'}
+                      {report.resolvedAt ? ` • ${formatDateTime(report.resolvedAt)}` : ''}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {!isResolved ? (
+                  <Button title="Cập nhật báo cáo" variant="ghost" size="sm" onPress={() => setReporting(task)} />
+                ) : null}
               </Card>
             );
           })
@@ -141,14 +175,14 @@ function TaskPicker({ visible, tasks, onClose, onPick }) {
           </Row>
           <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm }}>
             {candidates.length === 0 ? (
-              <EmptyState emoji="📭" text="Bạn chưa có công việc nào" hint="Sự cố cần gắn với một công việc được giao." />
+              <EmptyState icon="empty" text="Bạn chưa có công việc nào" hint="Sự cố cần gắn với một công việc được giao." />
             ) : (
               candidates.map((task) => {
-                const cfg = TASK_CONFIG[task.taskType] || { label: task.taskType, emoji: '📋' };
+                const cfg = TASK_CONFIG[task.taskType] || { label: task.taskType, icon: 'note' };
                 return (
                   <Card key={task._id} style={styles.pickRow} onPress={() => onPick(task)}>
                     <Row style={{ gap: spacing.md }}>
-                      <Text style={{ fontSize: 20 }}>{cfg.emoji}</Text>
+                      <Icon name={cfg.icon} size={18} color={cfg.color} />
                       <View style={{ flex: 1 }}>
                         <Text style={font.h3}>{task.horse?.name}</Text>
                         <Text style={font.small}>
@@ -173,6 +207,7 @@ const styles = StyleSheet.create({
   header: { padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
   thumb: { width: 72, height: 72, borderRadius: radius.sm, backgroundColor: colors.graySoft },
+  vetBox: { backgroundColor: colors.blueSoft, borderRadius: radius.sm, padding: spacing.md, gap: 2 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.cream, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, maxHeight: '85%' },
   sheetHeader: {
