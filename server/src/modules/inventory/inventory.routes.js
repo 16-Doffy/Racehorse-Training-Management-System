@@ -221,20 +221,23 @@ const receiveStock = asyncHandler(async (req, res) => {
 });
 
 /**
- * Adds the club's standard stock list (catalog.js): only names not already in stock, with quantity
- * 0 for the Manager to fill in. Safe to run again. POST /inventory/catalog/import { categories? }
+ * Adds the club's standard stock list (catalog.js): only names not already in stock. Safe to run
+ * again. With `withStock` each new item comes in with the catalog's starting stock; otherwise with
+ * quantity 0 for the Manager to receive. POST /inventory/catalog/import { categories?, withStock? }
  */
 const importCatalog = asyncHandler(async (req, res) => {
   const wanted = Array.isArray(req.body.categories) && req.body.categories.length ? req.body.categories : CATEGORIES;
+  const withStock = req.body.withStock === true;
   const existing = new Set((await InventoryItem.find().select('name')).map((i) => i.name.trim().toLowerCase()));
   const created = [];
   // One at a time so each new item gets the next code of its category.
-  for (const entry of CATALOG.filter((c) => wanted.includes(c.category))) {
+  for (const { startingStock, ...entry } of CATALOG.filter((c) => wanted.includes(c.category))) {
     if (existing.has(entry.name.toLowerCase())) continue;
+    const quantity = withStock ? startingStock || 0 : 0;
     // eslint-disable-next-line no-await-in-loop
-    created.push(await InventoryItem.create({ ...entry, quantity: 0 }));
+    created.push(await InventoryItem.create({ ...entry, quantity, lastRestockedAt: quantity > 0 ? new Date() : null }));
   }
-  await logAction({ actorId: req.user._id, action: 'inventory.import_catalog', targetModel: 'InventoryItem', metadata: { created: created.length } });
+  await logAction({ actorId: req.user._id, action: 'inventory.import_catalog', targetModel: 'InventoryItem', metadata: { created: created.length, withStock } });
   return ok(res, { created: created.length, skipped: CATALOG.filter((c) => wanted.includes(c.category)).length - created.length, items: created }, 'Catalog imported.');
 });
 

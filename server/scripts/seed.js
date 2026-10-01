@@ -289,20 +289,15 @@ async function run() {
     )
   );
 
-  // The club's standard stock list (modules/inventory/catalog.js), with demo quantities: some
-  // items are low or out on purpose so the warnings and the restock flow show on a fresh seed.
+  // The club's standard stock list (modules/inventory/catalog.js) at its starting stock, except a
+  // few items left low or out on purpose so the warnings and the restock flow show on a fresh seed.
   const demoStock = {
-    'Yến mạch (Oats)': 200, 'Cỏ khô Alfalfa (Alfalfa Hay)': 120, 'Cỏ khô Timothy (Timothy Hay)': 30,
-    'Thức ăn viên chuyên dụng (Horse Pellets)': 80, 'Cám ngũ cốc (Grain Mix)': 60, 'Bột điện giải (Electrolyte Powder)': 300,
-    'Vitamin tổng hợp (Multivitamin)': 900, 'Khoáng chất bổ sung (Mineral Supplement)': 4000, 'Muối liếm (Salt Lick Block)': 6,
-    'Dầu hạt lanh (Flaxseed Oil)': 2000, 'Phenylbutazone (Bute) 1g': 60, 'Flunixin meglumine (Banamine) tiêm': 150,
-    'Kháng sinh Penicillin tiêm': 0, 'Thuốc tẩy giun Ivermectin (Dewormer)': 8, 'Vắc-xin uốn ván (Tetanus Vaccine)': 10,
-    'Gel kháng viêm bôi ngoài': 60, 'Dung dịch sát trùng Povidine (Antiseptic)': 1500, 'Gạc y tế vô trùng (Sterile Gauze)': 200,
-    'Băng cuốn thú y (Vet Wrap)': 10, 'Kim tiêm thú y (Veterinary Needles)': 150,
+    'Cỏ khô Timothy (Timothy Hay)': 30, 'Bột điện giải (Electrolyte Powder)': 300, 'Vitamin tổng hợp (Multivitamin)': 900,
+    'Kháng sinh Penicillin tiêm': 0, 'Gel kháng viêm bôi ngoài': 60, 'Băng cuốn thú y (Vet Wrap)': 5,
   };
-  for (const entry of CATALOG) {
+  for (const { startingStock, ...entry } of CATALOG) {
     // One at a time so each item gets the next code of its category (TA-001, YT-001, DC-001…).
-    await InventoryItem.create({ ...entry, quantity: demoStock[entry.name] ?? 4, stableBlock: entry.category === 'feed' ? 'Block A' : undefined });
+    await InventoryItem.create({ ...entry, quantity: demoStock[entry.name] ?? startingStock, stableBlock: entry.category === 'feed' ? 'Block A' : undefined });
   }
   await InventoryItem.updateOne(
     { name: 'Cỏ khô Timothy (Timothy Hay)' },

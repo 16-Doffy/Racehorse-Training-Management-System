@@ -1207,15 +1207,16 @@ module.exports = {
     '/inventory/catalog': {
       get: {
         tags: ['Inventory (scaffold)'],
-        summary: 'The standard stock list (30 items) and unit suggestions per category',
+        summary: 'The standard stock list (35 items: 10 feed, 15 medicine, 10 equipment, each with startingStock) and unit suggestions per category',
         responses: { 200: responses[200]({ type: 'object', properties: { items: { type: 'array', items: { type: 'object' } }, units: { type: 'object' } } }) },
       },
     },
     '/inventory/catalog/import': {
       post: {
         tags: ['Inventory (scaffold)'],
-        summary: 'Add the catalog items not already in stock, with quantity 0 (Manager) — safe to repeat',
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { categories: { type: 'array', items: { type: 'string', enum: ['feed', 'medicine', 'equipment'] } } } } } } },
+        summary: 'Add the catalog items not already in stock (Manager) — safe to repeat',
+        description: 'New items come in with quantity 0, or with the startingStock of their catalog entry when withStock is true. Names already in stock are skipped.',
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { categories: { type: 'array', items: { type: 'string', enum: ['feed', 'medicine', 'equipment'] } }, withStock: { type: 'boolean', default: false, description: 'Put in the starting stock instead of 0' } } } } } },
         responses: { 200: responses[200]({ type: 'object', properties: { created: { type: 'integer' }, skipped: { type: 'integer' } } }), 403: responses[403] },
       },
     },

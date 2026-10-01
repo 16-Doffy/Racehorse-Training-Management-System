@@ -44,7 +44,7 @@ const CATEGORY_LABELS = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label
 // Fallback when the catalog endpoint hasn't answered yet.
 const DEFAULT_UNITS = {
   feed: { units: ['kg', 'g', 'lít', 'ml', 'viên'], packUnits: ['bao', 'kiện', 'hộp', 'túi', 'chai', 'can'] },
-  medicine: { units: ['viên', 'ml', 'g', 'liều', 'tuýp', 'miếng', 'cái', 'cuộn', 'túi'], packUnits: ['hộp', 'lọ', 'chai', 'tuýp', 'gói'] },
+  medicine: { units: ['viên', 'ml', 'g', 'liều', 'tuýp', 'miếng', 'cái', 'cuộn', 'túi'], packUnits: ['hộp', 'lọ', 'chai', 'tuýp', 'gói', 'thùng'] },
   equipment: { units: ['cái', 'bộ', 'đôi', 'sợi', 'cuộn'], packUnits: [] },
 };
 const EXPIRY_SOON_DAYS = 30;
@@ -273,6 +273,61 @@ function ReceiveModal({ item, onClose }) {
   );
 }
 
+/** Adds the standard items still missing, either with the catalog's starting stock or with none. */
+function ImportCatalogModal({ open, missing, loading, onCancel, onImport }) {
+  const [withStock, setWithStock] = useState(true);
+  return (
+    <Modal
+      title={`Nhập ${missing.length} vật tư từ danh mục mẫu`}
+      open={open}
+      okText="Nhập vào kho"
+      cancelText="Huỷ"
+      confirmLoading={loading}
+      onCancel={onCancel}
+      onOk={() => onImport(withStock)}
+      destroyOnHidden
+    >
+      <Segmented
+        block
+        value={withStock ? 'stock' : 'zero'}
+        onChange={(v) => setWithStock(v === 'stock')}
+        options={[
+          { value: 'stock', label: 'Kèm số lượng ban đầu' },
+          { value: 'zero', label: 'Tồn = 0, nhập kho sau' },
+        ]}
+      />
+      <Text type="secondary" className="block !text-xs mt-2 mb-3">
+        {withStock
+          ? 'Mỗi vật tư có sẵn số lượng như bên dưới; chỉnh lại bằng "Nhập kho" hoặc "Sửa" bất cứ lúc nào.'
+          : 'Vật tư được tạo với tồn kho bằng 0; dùng "Nhập kho" khi hàng về.'}
+      </Text>
+      <div className="max-h-72 overflow-y-auto flex flex-col gap-3 pr-1">
+        {CATEGORIES.map((c) => {
+          const rows = missing.filter((m) => m.category === c.key);
+          if (!rows.length) return null;
+          return (
+            <div key={c.key}>
+              <Text strong className="!text-sm">
+                {c.label} ({rows.length})
+              </Text>
+              <div className="flex flex-col mt-1">
+                {rows.map((m) => (
+                  <div key={m.name} className="flex justify-between gap-3 text-sm py-0.5">
+                    <span className="min-w-0">{m.name}</span>
+                    <Text type="secondary" className="shrink-0 tabular-nums !text-sm">
+                      {withStock ? stockText(m, m.startingStock || 0) : `0 ${m.unit}`}
+                    </Text>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
 export default function InventoryPage() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['inventory'], queryFn: () => inventoryApi.list() });
@@ -281,15 +336,17 @@ export default function InventoryPage() {
   const forecastById = new Map((forecastData?.data || []).map((f) => [String(f._id), f]));
   const { data: catalogData } = useQuery({ queryKey: ['inventory-catalog'], queryFn: () => inventoryApi.catalog(), staleTime: Infinity });
   const units = catalogData?.data?.units || DEFAULT_UNITS;
-  const catalogMissing = (catalogData?.data?.items || []).filter(
+  const catalogMissingItems = (catalogData?.data?.items || []).filter(
     (c) => !items.some((i) => i.name.trim().toLowerCase() === c.name.toLowerCase())
-  ).length;
+  );
+  const catalogMissing = catalogMissingItems.length;
 
   const [tab, setTab] = useState('feed');
   const [editing, setEditing] = useState(null); // null = closed, {} = new item, item = edit
   const [receiving, setReceiving] = useState(null);
   const [rejecting, setRejecting] = useState(null);
   const [rejectNote, setRejectNote] = useState('');
+  const [importing, setImporting] = useState(false);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['inventory'] });
@@ -317,9 +374,15 @@ export default function InventoryPage() {
   });
 
   const importMutation = useMutation({
-    mutationFn: () => inventoryApi.importCatalog(),
-    onSuccess: (res) => {
-      message.success(res.data.created ? `Đã thêm ${res.data.created} vật tư từ danh mục mẫu (tồn = 0, hãy nhập kho).` : 'Danh mục mẫu đã có đủ.');
+    mutationFn: (withStock) => inventoryApi.importCatalog({ withStock }),
+    onSuccess: (res, withStock) => {
+      const created = res.data.created;
+      message.success(
+        created
+          ? `Đã thêm ${created} vật tư từ danh mục mẫu${withStock ? ' kèm số lượng ban đầu' : ' (tồn = 0, hãy nhập kho)'}.`
+          : 'Danh mục mẫu đã có đủ.'
+      );
+      setImporting(false);
       refresh();
     },
     onError: (err) => message.error(err.message || 'Nhập danh mục thất bại.'),
@@ -533,8 +596,8 @@ export default function InventoryPage() {
           </Text>
         </div>
         <Space wrap>
-          <Tooltip title={catalogMissing ? `Thêm ${catalogMissing} vật tư chuẩn còn thiếu (tồn = 0)` : 'Danh mục mẫu đã có đủ'}>
-            <Button icon={<ImportOutlined />} disabled={!catalogMissing} loading={importMutation.isPending} onClick={() => importMutation.mutate()}>
+          <Tooltip title={catalogMissing ? `Thêm ${catalogMissing} vật tư chuẩn còn thiếu` : 'Danh mục mẫu đã có đủ'}>
+            <Button icon={<ImportOutlined />} disabled={!catalogMissing} onClick={() => setImporting(true)}>
               Nhập danh mục mẫu{catalogMissing ? ` (${catalogMissing})` : ''}
             </Button>
           </Tooltip>
@@ -570,6 +633,13 @@ export default function InventoryPage() {
         units={units}
       />
       <ReceiveModal item={receiving} onClose={() => setReceiving(null)} />
+      <ImportCatalogModal
+        open={importing}
+        missing={catalogMissingItems}
+        loading={importMutation.isPending}
+        onCancel={() => setImporting(false)}
+        onImport={(withStock) => importMutation.mutate(withStock)}
+      />
 
       <Modal
         title={rejecting ? `Từ chối đề xuất — ${rejecting.item.name}` : ''}
