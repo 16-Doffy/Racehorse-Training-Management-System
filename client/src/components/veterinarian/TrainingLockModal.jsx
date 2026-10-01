@@ -8,6 +8,7 @@ export default function TrainingLockModal({
   onHide,
   horse,
   currentTreatment,
+  onSuccess,
 }) {
   const isLocked = currentTreatment?.isTrainingLocked || (horse && horse.healthStatus !== 'eligible');
   const hasLock = currentTreatment?.isTrainingLocked;
