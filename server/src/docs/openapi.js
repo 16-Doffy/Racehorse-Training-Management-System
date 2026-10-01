@@ -84,6 +84,19 @@ module.exports = {
         type: 'object',
         properties: {
           _id: { type: 'string' },
+          trainingClearance: {
+            type: 'object',
+            readOnly: true,
+            description: 'How hard the horse may be worked now, from the vet\'s level on its ongoing treatments (strictest applies)',
+            properties: {
+              level: { type: 'string', enum: ['none', 'light', 'moderate', 'high'], description: 'none = training lock; light / moderate = recovering; high = no restriction' },
+              label: { type: 'string' },
+              restricted: { type: 'boolean' },
+              reason: { type: 'string', nullable: true },
+              since: { type: 'string', format: 'date-time' },
+              prescribedBy: { type: 'string', nullable: true },
+            },
+          },
           name: { type: 'string' },
           breed: { type: 'string' },
           dob: { type: 'string', format: 'date-time' },
@@ -259,7 +272,23 @@ module.exports = {
           prescribedBy: { type: 'string' },
           medications: {
             type: 'array',
-            items: { type: 'object', properties: { name: { type: 'string' }, dosage: { type: 'string' }, frequency: { type: 'string' } } },
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'Defaults to the stock item\'s name when inventoryItem is given' },
+                dosage: { type: 'string' },
+                frequency: { type: 'string' },
+                inventoryItem: { type: 'string', nullable: true, description: 'Medicine in stock (category medicine); giving a dose takes `amount` out of stock' },
+                amount: { type: 'number', description: 'Per dose, in the stock item\'s unit (required with inventoryItem)' },
+                times: { type: 'array', items: { type: 'string', example: '08:00' }, description: 'Times of day; one groom task per time, recordable 1h before to 4h after. Empty = one task a day' },
+              },
+            },
+          },
+          trainingLevel: {
+            type: 'string',
+            enum: ['none', 'light', 'moderate', 'high'],
+            description:
+              'How hard the horse may work while this treatment is ongoing (none = lock). Kept in step with isTrainingLocked. Lowering cancels booked sessions above the level; sessions above it are refused (409); racing needs high. Completing the treatment ends the restriction.',
           },
           careInstructions: {
             type: 'string',
@@ -313,6 +342,18 @@ module.exports = {
           note: { type: 'string', description: "The trainer's instruction attached to the task" },
           scheduledDate: { type: 'string', format: 'date-time' },
           status: { type: 'string', enum: ['pending', 'completed', 'skipped'] },
+          dueTime: { type: 'string', nullable: true, description: 'Time of a vet\'s dose (HH:mm); recordable 1h before to 4h after' },
+          supplies: {
+            type: 'array',
+            description: 'What completing the task takes out of stock (ration items, a dose). Completing without enough stock → 409 with data.missing.',
+            items: { type: 'object', properties: { inventoryItem: { type: 'string' }, name: { type: 'string' }, amount: { type: 'number' }, unit: { type: 'string' } } },
+          },
+          supplyStatus: {
+            type: 'object',
+            readOnly: true,
+            description: 'On pending tasks with supplies (list endpoints): whether stock covers it now',
+            properties: { ok: { type: 'boolean' }, missing: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, needed: { type: 'number' }, available: { type: 'number' }, short: { type: 'number' }, unit: { type: 'string' } } } } },
+          },
           acknowledgedAt: { type: 'string', format: 'date-time', nullable: true, description: 'When the groom took the task on (PATCH /stable/tasks/{id}/acknowledge)' },
           skipReason: { type: 'string', description: 'Why it was not done, when the groom reported it (PATCH /stable/tasks/{id}/not-done)' },
           skippedBy: { type: 'string', nullable: true, description: 'Who called it off: the trainer, or the groom reporting it could not be done' },
@@ -388,7 +429,12 @@ module.exports = {
           _id: { type: 'string' },
           horse: { type: 'string' },
           mealTime: { type: 'string', enum: ['morning', 'noon', 'evening'] },
-          items: { type: 'array', items: { type: 'object', properties: { type: { type: 'string' }, quantity: { type: 'string' } } } },
+          timeOfDay: { type: 'string', example: '06:00' },
+          items: {
+            type: 'array',
+            description: 'Send { inventoryItem, amount } (a food item in stock, amount per meal in its unit); the server fills type/quantity for display. Text-only { type, quantity } items from before are kept.',
+            items: { type: 'object', properties: { inventoryItem: { type: 'string' }, amount: { type: 'number' }, unit: { type: 'string', readOnly: true }, type: { type: 'string' }, quantity: { type: 'string' } } },
+          },
         },
       },
       InventoryItem: {
@@ -940,8 +986,9 @@ module.exports = {
         tags: ['Health (Veterinarian)'],
         summary: 'Emergency: set or lift the training-lock order for a horse',
         parameters: [idParam('id')],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['isTrainingLocked'], properties: { isTrainingLocked: { type: 'boolean' }, lockReason: { type: 'string' } } } } } },
-        responses: { 200: responses[200]({ $ref: '#/components/schemas/Treatment' }), 404: responses[404] },
+        description: 'Send { trainingLevel } to set the recovery level (none / light / moderate / high), or the older { isTrainingLocked }. The trainer, the groom and the owner are told; lowering cancels booked sessions above the level.',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { trainingLevel: { type: 'string', enum: ['none', 'light', 'moderate', 'high'] }, isTrainingLocked: { type: 'boolean' }, lockReason: { type: 'string' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/Treatment' }), 400: responses[400], 404: responses[404] },
       },
     },
     '/health/injury-markers': {
@@ -1047,6 +1094,19 @@ module.exports = {
         responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404] },
       },
     },
+    '/stable/my-care-plan': {
+      get: {
+        tags: ['Stable (Groom)'],
+        summary: 'Per horse: rations and prescriptions with the stock behind each, and what is short',
+        description:
+          'Groom: the horses they look after. Other roles: the horses they can see (?horse= narrows). Each sheet: horse, stall, ' +
+          'trainingClearance, rations [{ mealTime, timeOfDay, items: [{ name, amount, unit, stock, enough }] }], prescriptions ' +
+          '[{ prescribedBy, trainingLevel, careInstructions, medications: [{ name, dosage, amount, times, stock, enough, dailyNeed }] }], ' +
+          'shortages [{ name, needed, available, short, unit }] for one day.',
+        parameters: [horseQueryParam],
+        responses: { 200: responses[200]({ type: 'array', items: { type: 'object' } }) },
+      },
+    },
     '/stable/incidents': {
       get: {
         tags: ['Stable (Groom)'],
@@ -1111,7 +1171,14 @@ module.exports = {
       delete: { tags: ['Inventory (scaffold)'], summary: 'Delete inventory item (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
     '/inventory/{id}/restock-request': {
-      post: { tags: ['Inventory (scaffold)'], summary: 'Request a restock (Groom, Head Trainer, Veterinarian) — the Manager is notified', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['quantity'], properties: { quantity: { type: 'number', minimum: 1 }, note: { type: 'string' } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 404: responses[404] } },
+      post: { tags: ['Inventory (scaffold)'], summary: 'Request a restock (Groom, Head Trainer, Veterinarian) — the Manager is notified', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['quantity'], properties: { quantity: { type: 'number', minimum: 1 }, note: { type: 'string' }, task: { type: 'string', description: 'The meal/dose task this shortage is blocking — the Manager is told, and the groom is told when it is approved' } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 404: responses[404] } },
+    },
+    '/inventory/forecast': {
+      get: {
+        tags: ['Inventory (scaffold)'],
+        summary: 'Daily use of each stock item from rations and ongoing treatments, and days of stock left',
+        responses: { 200: responses[200]({ type: 'array', items: { type: 'object', properties: { _id: { type: 'string' }, name: { type: 'string' }, unit: { type: 'string' }, quantity: { type: 'number' }, dailyUsage: { type: 'number' }, daysLeft: { type: 'integer', nullable: true }, usedBy: { type: 'array', items: { type: 'object' } } } } }) },
+      },
     },
     '/inventory/proposals': {
       post: {
