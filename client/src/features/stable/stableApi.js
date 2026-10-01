@@ -17,15 +17,11 @@ export const dailyTaskApi = {
 export const incidentApi = {
   list: (params) => axiosClient.get('/stable/incidents', { params }),
   handle: (taskId, payload) => axiosClient.patch(`/stable/incidents/${taskId}`, payload),
+  update: (id, payload) => axiosClient.patch(`/stable/incidents/${id}`, payload),
 };
 
 export const stableAssignmentApi = {
   list: () => axiosClient.get('/stable/assignments'),
   upsert: (payload) => axiosClient.post('/stable/assignments', payload),
   remove: (id) => axiosClient.delete(`/stable/assignments/${id}`),
-};
-
-export const incidentApi = {
-  list: (params) => axiosClient.get('/stable/incidents', { params }),
-  update: (id, payload) => axiosClient.patch(`/stable/incidents/${id}`, payload),
 };
