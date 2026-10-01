@@ -306,6 +306,25 @@ module.exports = {
           note: { type: 'string', description: "The trainer's instruction attached to the task" },
           scheduledDate: { type: 'string', format: 'date-time' },
           status: { type: 'string', enum: ['pending', 'completed', 'skipped'] },
+          acknowledgedAt: { type: 'string', format: 'date-time', nullable: true, description: 'When the groom took the task on (PATCH /stable/tasks/{id}/acknowledge)' },
+          skipReason: { type: 'string', description: 'Why it was not done, when the groom reported it (PATCH /stable/tasks/{id}/not-done)' },
+          skippedBy: { type: 'string', nullable: true, description: 'Who called it off: the trainer, or the groom reporting it could not be done' },
+          timing: {
+            type: 'object',
+            readOnly: true,
+            description:
+              'Computed on every response from the real clock. A meal can be recorded from 1h before to 4h after its time; ' +
+              'medication / monitoring / an untimed feeding only on their own day; other chores can still be completed late. ' +
+              'Completing, editing or skipping outside the window is refused with `reason`.',
+            properties: {
+              state: { type: 'string', enum: ['upcoming', 'open', 'late', 'missed', 'closed'] },
+              canComplete: { type: 'boolean' },
+              canChange: { type: 'boolean', description: 'Whether the trainer may still edit / skip it' },
+              opensAt: { type: 'string', format: 'date-time' },
+              closesAt: { type: 'string', format: 'date-time' },
+              reason: { type: 'string' },
+            },
+          },
           observation: {
             type: 'object',
             nullable: true,
@@ -374,9 +393,23 @@ module.exports = {
           quantity: { type: 'number' },
           unit: { type: 'string' },
           stableBlock: { type: 'string' },
+          isProposed: { type: 'boolean', description: 'A new item someone asked to stock, not yet approved (quantity 0)' },
+          proposedBy: { type: 'string', nullable: true },
           restockRequests: {
             type: 'array',
-            items: { type: 'object', properties: { _id: { type: 'string' }, requestedBy: { type: 'string' }, quantity: { type: 'number' }, status: { type: 'string', enum: ['pending', 'approved', 'rejected'] } } },
+            items: {
+              type: 'object',
+              properties: {
+                _id: { type: 'string' },
+                requestedBy: { type: 'string' },
+                quantity: { type: 'number' },
+                note: { type: 'string' },
+                status: { type: 'string', enum: ['pending', 'approved', 'rejected'] },
+                reviewedBy: { type: 'string', nullable: true },
+                reviewedAt: { type: 'string', format: 'date-time', nullable: true },
+                reviewNote: { type: 'string' },
+              },
+            },
           },
         },
       },
@@ -768,6 +801,18 @@ module.exports = {
         },
       },
     },
+    '/health/care-orders': {
+      get: {
+        tags: ['Health (Veterinarian)'],
+        summary: "The vet's care orders and one day's progress on them",
+        description:
+          'Ongoing treatments with medications or careInstructions, each with that day\'s care tasks (populated assignedTo / ' +
+          'skippedBy, with `timing`) and `progress` { total, done, notDone, missed, acknowledged, waiting }. Scoped by horse ' +
+          'like the treatments list — used by the trainer and manager dashboards; the vet and owner can use it too.',
+        parameters: [horseQueryParam, { name: 'date', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Defaults to today' }],
+        responses: { 200: responses[200]({ type: 'array', items: { type: 'object' } }), 400: responses[400] },
+      },
+    },
     '/health/treatments': {
       get: {
         tags: ['Health (Veterinarian)'],
@@ -821,6 +866,27 @@ module.exports = {
         summary: 'Cancel an assigned task (Head Trainer / Manager). Completed tasks are kept — deleting one would erase the record that the work was done — so those return 409.',
         parameters: [idParam('id')],
         responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
+    '/stable/tasks/{id}/acknowledge': {
+      patch: {
+        tags: ['Stable (Groom)'],
+        summary: 'Take a task on (Groom) — idempotent',
+        description: "Sets acknowledgedAt, so the trainer, manager and vet see the order was picked up before it is done. 409 if it is already done or its window is missed.",
+        parameters: [idParam('id')],
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
+    '/stable/tasks/{id}/not-done': {
+      patch: {
+        tags: ['Stable (Groom)'],
+        summary: 'Report that a task could not be done, with the reason (Groom)',
+        description:
+          'Status becomes skipped with skipReason / skippedBy. For a vet care order (source vet) the vet and trainer are notified; ' +
+          'otherwise the trainer.',
+        parameters: [idParam('id')],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['reason'], properties: { reason: { type: 'string' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
     '/stable/tasks/{id}/complete': {
@@ -936,7 +1002,37 @@ module.exports = {
       delete: { tags: ['Inventory (scaffold)'], summary: 'Delete inventory item (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
     '/inventory/{id}/restock-request': {
-      post: { tags: ['Inventory (scaffold)'], summary: 'Request a restock (Groom, Head Trainer, Veterinarian)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { quantity: { type: 'number' } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 404: responses[404] } },
+      post: { tags: ['Inventory (scaffold)'], summary: 'Request a restock (Groom, Head Trainer, Veterinarian) — the Manager is notified', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['quantity'], properties: { quantity: { type: 'number', minimum: 1 }, note: { type: 'string' } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 404: responses[404] } },
+    },
+    '/inventory/proposals': {
+      post: {
+        tags: ['Inventory (scaffold)'],
+        summary: 'Propose a new item that is not in the stock list yet (Groom, Head Trainer, Veterinarian)',
+        description:
+          'Creates the item as a proposal (isProposed, quantity 0) carrying one restock request; the Manager is notified. ' +
+          'Approving that request (PATCH /inventory/{id}/restock-requests/{reqId}) makes it a regular item with the requested ' +
+          'quantity; rejecting it removes the item. A name already in the list (case-insensitive) → 409 with data.itemId.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name', 'category', 'unit', 'quantity'],
+                properties: {
+                  name: { type: 'string' },
+                  category: { type: 'string', enum: ['feed', 'medicine', 'equipment'] },
+                  unit: { type: 'string' },
+                  quantity: { type: 'number', minimum: 1 },
+                  note: { type: 'string' },
+                  stableBlock: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 403: responses[403], 409: responses[409] },
+      },
     },
     '/inventory/{id}/restock-requests/{reqId}': {
       patch: {
@@ -945,8 +1041,9 @@ module.exports = {
         parameters: [idParam('id'), idParam('reqId', 'The restockRequests sub-document id')],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', required: ['status'], properties: { status: { type: 'string', enum: ['approved', 'rejected'] } } } } },
+          content: { 'application/json': { schema: { type: 'object', required: ['status'], properties: { status: { type: 'string', enum: ['approved', 'rejected'] }, note: { type: 'string', description: 'Shown to the requester' } } } } },
         },
+        description: 'Records who reviewed it. Approving a proposed item turns it into a regular item; rejecting a proposal with nothing else pending deletes it (data: null).',
         responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
