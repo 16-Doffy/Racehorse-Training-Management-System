@@ -298,7 +298,9 @@ async function run() {
       stableBlock: 'Block A',
       restockRequests: [{ requestedBy: groom._id, quantity: 30, status: 'pending', requestedAt: at(0, 7, 30) }],
     },
-    { name: 'Muối điện giải', category: 'feed', quantity: 0, unit: 'gói', stableBlock: 'Block A' },
+    // Low on purpose: the rations use 4 a day, so the low-stock warning shows on a fresh seed.
+    { name: 'Muối điện giải', category: 'feed', quantity: 6, unit: 'gói', stableBlock: 'Block A' },
+    { name: 'Gel kháng viêm', category: 'medicine', quantity: 40, unit: 'ml', stableBlock: 'Block A' },
     { name: 'Vitamin tổng hợp', category: 'medicine', quantity: 6, unit: 'hộp', stableBlock: 'Block A' },
     { name: 'Dung dịch sát trùng Povidine', category: 'medicine', quantity: 15, unit: 'chai' },
     {
@@ -312,6 +314,30 @@ async function run() {
     { name: 'Băng quấn chân', category: 'equipment', quantity: 9, unit: 'cuộn', stableBlock: 'Block A' },
     { name: 'Bàn chải tắm ngựa', category: 'equipment', quantity: 12, unit: 'cái', stableBlock: 'Block B' },
   ]);
+
+  // Rations and the vet's course draw on that stock: oats in kg, hay by the bale, electrolytes by the
+  // sachet, the gel in ml — feeding the horse or giving a dose takes it out of stock. Vitamins and
+  // carrots stay as plain text, like rations written before the link existed.
+  const stockByName = Object.fromEntries((await InventoryItem.find()).map((i) => [i.name, i]));
+  const linkFor = {
+    grain: (q) => ({ item: stockByName['Yến mạch cao cấp'], amount: parseFloat(q) }),
+    hay: () => ({ item: stockByName['Cỏ khô Timothy'], amount: 1 }),
+    electrolyte: () => ({ item: stockByName['Muối điện giải'], amount: 1 }),
+  };
+  for (const ration of await FeedingSchedule.find()) {
+    ration.items = ration.items.map((it) => {
+      const link = linkFor[it.type]?.(it.quantity);
+      if (!link?.item) return it;
+      return { type: link.item.name, quantity: `${link.amount} ${link.item.unit}`, inventoryItem: link.item._id, amount: link.amount, unit: link.item.unit };
+    });
+    await ration.save();
+  }
+  // Golden Wind's course: the gel twice a day, and only light work while it recovers.
+  course.medications = [{ name: 'Gel kháng viêm', dosage: '5 ml bôi chân trước', frequency: '2 lần/ngày', inventoryItem: stockByName['Gel kháng viêm']._id, amount: 5, times: ['08:00', '18:00'] }];
+  course.trainingLevel = 'light';
+  await course.save();
+  await DailyTask.deleteMany({ treatment: course._id, status: 'pending' });
+  await syncCareTasks(course);
 
   console.log(`[seed] created ${horses.length} horses, 2 training plans, 4 sessions, 1 health record.`);
   console.log(`[seed] groom data: ${tasks.length} daily tasks, ${horses.length * 3} feeding schedules, 8 inventory items.`);
