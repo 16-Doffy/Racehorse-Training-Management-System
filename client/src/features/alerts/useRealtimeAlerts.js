@@ -15,6 +15,7 @@ export const TYPE_LABELS = {
   incident_report: 'Báo cáo sự cố',
   exam_request: 'Yêu cầu khám bệnh',
   restock_decision: 'Kết quả duyệt vật tư',
+  restock_request: 'Đề xuất vật tư',
   horse_assigned: 'Phân công ngựa',
   session_completed: 'Buổi tập hoàn thành',
   readiness_override: 'Ghi đè cảnh báo sẵn sàng',

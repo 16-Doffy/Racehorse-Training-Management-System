@@ -38,7 +38,8 @@ import {
   APPETITE_LABELS,
   APPETITE_COLORS,
   TASK_TYPE_LABELS as TASK_LABELS,
-  MANUAL_TASK_TYPES,
+  ASSIGNABLE_TASK_TYPES,
+  TASK_TIMING_META,
   INCIDENT_STATUS_META,
   incidentStatusOf,
 } from '../../constants/care';
@@ -179,8 +180,31 @@ function TaskList() {
       title: 'Trạng thái',
       key: 'status',
       render: (_, r) => (
-        <div>
-          <Tag color={STATUS_COLORS[r.status]}>{STATUS_LABELS[r.status] || r.status}</Tag>
+        <div className="flex flex-wrap gap-1">
+          {r.status === 'skipped' && r.skipReason ? (
+            // The groom reported they could not do it — show why, not just "skipped".
+            <Tooltip title={r.skipReason}>
+              <Tag color="red" className="!m-0">
+                NV báo không làm được
+              </Tag>
+            </Tooltip>
+          ) : (
+            <Tag color={STATUS_COLORS[r.status]} className="!m-0">
+              {STATUS_LABELS[r.status] || r.status}
+            </Tag>
+          )}
+          {r.status === 'pending' && TASK_TIMING_META[r.timing?.state] && (
+            <Tooltip title={r.timing.reason}>
+              <Tag color={TASK_TIMING_META[r.timing.state].color} className="!m-0">
+                {TASK_TIMING_META[r.timing.state].label}
+              </Tag>
+            </Tooltip>
+          )}
+          {r.status === 'pending' && r.acknowledgedAt && (
+            <Tag color="blue" className="!m-0">
+              Đã tiếp nhận {dayjs(r.acknowledgedAt).format('HH:mm')}
+            </Tag>
+          )}
           {r.observation?.appetite && (
             <Tag color={APPETITE_COLORS[r.observation.appetite]} className="!mt-1">
               {APPETITE_LABELS[r.observation.appetite]}
@@ -224,6 +248,9 @@ function TaskList() {
       render: (_, r) => {
         // Done or called-off work is a record, not something to edit (the server refuses too).
         if (r.status !== 'pending') return <span className="text-gray-400">—</span>;
+        // Its window on the real clock has closed (a meal past its time, yesterday's dose):
+        // it stays on record as missed and can't be changed — the server refuses too.
+        if (r.timing && !r.timing.canChange) return <Text type="secondary" className="!text-xs">Đã quá hạn</Text>;
         // The vet's orders change through the treatment, not from here (the server refuses too).
         if (r.source === 'vet') return <Text type="secondary" className="!text-xs">Do bác sĩ quản lý</Text>;
         const isMeal = r.taskType === 'feeding';
@@ -310,10 +337,22 @@ function TaskList() {
             <Select options={(groomsData?.data || []).map((u) => ({ value: u._id, label: u.name }))} />
           </Form.Item>
           <Form.Item name="taskType" label="Loại công việc" rules={[{ required: true }]}>
-            <Select options={MANUAL_TASK_TYPES.map((value) => ({ value, label: TASK_LABELS[value] }))} />
+            <Select
+              // Meals come from the rations; an existing meal can be reassigned but stays a meal.
+              disabled={editing?.taskType === 'feeding'}
+              options={(editing?.taskType === 'feeding' ? ['feeding'] : ASSIGNABLE_TASK_TYPES).map((value) => ({
+                value,
+                label: TASK_LABELS[value],
+              }))}
+            />
           </Form.Item>
           <Form.Item name="scheduledDate" label="Ngày thực hiện" rules={[{ required: true }]}>
-            <DatePicker className="w-full" />
+            <DatePicker
+              className="w-full"
+              // Work is handed out for today or later; a meal's day is fixed by its ration.
+              disabled={editing?.taskType === 'feeding'}
+              disabledDate={(d) => d && d < dayjs().startOf('day')}
+            />
           </Form.Item>
           <Form.Item name="note" label="Dặn dò cho nhân viên" extra="Hiện ngay trên việc của họ.">
             <Input.TextArea rows={2} placeholder="VD: Ngâm chân trước 20 phút, kiểm tra kỹ gân chân trái." />
@@ -341,8 +380,13 @@ function RationList() {
 
   const saveMutation = useMutation({
     mutationFn: ({ id, payload }) => (id ? feedingApi.update(id, payload) : feedingApi.create(payload)),
-    onSuccess: () => {
+    onSuccess: (_res, { payload }) => {
       message.success(editing ? 'Đã cập nhật khẩu phần.' : 'Đã tạo khẩu phần.');
+      // Mirrors utils/taskTiming.js on the server: a meal is recordable until 4h after its time.
+      const at = dayjs(`${dayjs().format('YYYY-MM-DD')} ${payload.timeOfDay || DEFAULT_MEAL_TIMES[payload.mealTime]}`);
+      if (at.add(4, 'hour').isBefore(dayjs())) {
+        message.info('Hôm nay đã qua giờ bữa này — việc cho ăn sẽ bắt đầu từ ngày mai.');
+      }
       invalidate();
       setOpen(false);
       setEditing(null);

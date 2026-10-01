@@ -9,6 +9,7 @@ import { ROLE_LABELS, ROLES } from '../../constants/roles';
 import FitnessOverviewChart from './FitnessOverviewChart';
 import ExamRequestsCard from './ExamRequestsCard';
 import OpenIncidentsCard from './OpenIncidentsCard';
+import CareOrdersCard from './CareOrdersCard';
 
 const { Title, Paragraph } = Typography;
 
@@ -122,6 +123,9 @@ export default function DashboardPage() {
       {/* Both roles this dashboard serves (Head Trainer, Manager) need to see what the grooms
           reported and whether a vet has answered. */}
       <OpenIncidentsCard />
+
+      {/* After the vet prescribes: whether each dose has been taken on and given. */}
+      <CareOrdersCard />
 
       {isHeadTrainer && (
         <div className="mt-6">

@@ -14,7 +14,7 @@ export const MANURE_LABELS = {
 export const WATER_INTAKE_LABELS = { normal: 'Bình thường', high: 'Uống nhiều', low: 'Uống ít' };
 
 // Daily task types. The last two are the vet's care orders: they are created from a treatment and
-// can't be assigned by hand, which is why the assignment form only offers MANUAL_TASK_TYPES.
+// can't be assigned by hand; the assignment form offers only ASSIGNABLE_TASK_TYPES (below).
 export const TASK_TYPE_LABELS = {
   feeding: 'Cho ăn',
   cleaning: 'Vệ sinh chuồng',
@@ -23,7 +23,15 @@ export const TASK_TYPE_LABELS = {
   medication: 'Cho dùng thuốc',
   monitoring: 'Theo dõi theo y lệnh',
 };
-export const MANUAL_TASK_TYPES = ['feeding', 'cleaning', 'bathing', 'icing'];
+
+// The real-clock window every task carries (task.timing.state, computed by the server):
+// a meal can only be recorded around its time, a dose only on its day. 'open' needs no tag.
+export const TASK_TIMING_META = {
+  upcoming: { label: 'Chưa tới giờ', color: 'default' },
+  late: { label: 'Trễ hạn', color: 'orange' },
+  missed: { label: 'Đã lỡ', color: 'red' },
+};
+export const ASSIGNABLE_TASK_TYPES = ['cleaning', 'bathing', 'icing']; // meals come from rations
 
 // Where a task came from (DailyTask.source).
 export const TASK_SOURCE_META = {
