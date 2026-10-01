@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
 import { Badge, Button, Card, ChipRow, EmptyState, HorseAvatar, Loading, Row } from '../components/ui';
@@ -151,6 +151,7 @@ export default function IncidentsScreen() {
  * groom's tasks it belongs to — today's first.
  */
 function TaskPicker({ visible, tasks, onClose, onPick }) {
+  const insets = useSafeAreaInsets();
   const candidates = useMemo(
     () =>
       [...tasks]
@@ -164,9 +165,16 @@ function TaskPicker({ visible, tasks, onClose, onPick }) {
   );
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
       <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
           <Row style={styles.sheetHeader}>
             <Text style={font.h2}>Chọn công việc liên quan</Text>
             <Pressable onPress={onClose} hitSlop={10}>

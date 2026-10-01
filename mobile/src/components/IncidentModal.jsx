@@ -19,6 +19,7 @@ import Icon from './Icon';
 import { Badge, Button, ChipGroup, Row } from './ui';
 import { INCIDENT_PRESETS, SEVERITY, TASK_CONFIG, formatDate } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const MAX_IMAGES = 5;
 const SEVERITY_OPTIONS = Object.entries(SEVERITY).map(([value, cfg]) => ({ value, label: cfg.label }));
@@ -28,6 +29,7 @@ const SEVERITY_OPTIONS = Object.entries(SEVERITY).map(([value, cfg]) => ({ value
  * phone camera or picked from the gallery. The vet is notified by the server on submit.
  */
 export default function IncidentModal({ task, visible, onClose }) {
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [presets, setPresets] = useState([]);
   const [detail, setDetail] = useState('');
@@ -98,9 +100,16 @@ export default function IncidentModal({ task, visible, onClose }) {
   const taskCfg = TASK_CONFIG[task?.taskType] || { label: task?.taskType, icon: 'note' };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={close}
+    >
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
           <Row style={styles.sheetHeader}>
             <Row style={{ gap: 8 }}><Icon name="warning" size={18} color="#dc2626" /><Text style={font.h2}>Báo cáo sự cố</Text></Row>
             <Pressable onPress={close} hitSlop={10}>

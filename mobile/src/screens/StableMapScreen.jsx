@@ -5,7 +5,7 @@ import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
 import { Badge, Card, ChipRow, EmptyState, HorseAvatar, Loading, ProgressBar, Row, SearchInput } from '../components/ui';
 import { useRefreshAll, useStableOverview, useTasks, useTreatments } from '../hooks/useGroomData';
-import { HEALTH_STATUS, getUpcomingCare, isSameDay, matchesSearch, parseStableBlock, refId } from '../utils/groom';
+import { HEALTH_STATUS, TRAINING_LEVEL, getUpcomingCare, isSameDay, matchesSearch, parseStableBlock, refId } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
 const SCOPES = [
@@ -144,6 +144,8 @@ export default function StableMapScreen({ navigation }) {
                 const counts = todayByHorse.get(horseId);
                 const treatment = treatmentByHorse.get(horseId);
                 const care = getUpcomingCare(horse, 7)[0];
+                const clearance = horse?.trainingClearance;
+                const clearanceCfg = clearance?.restricted ? TRAINING_LEVEL[clearance.level] : null;
                 const percent = counts?.total ? Math.round((counts.done / counts.total) * 100) : 0;
 
                 return (
@@ -195,6 +197,9 @@ export default function StableMapScreen({ navigation }) {
                         ) : null}
 
                         <Row style={{ gap: spacing.sm, flexWrap: 'wrap', marginTop: counts ? spacing.sm : 0 }}>
+                          {clearanceCfg ? (
+                            <Badge label={clearanceCfg.label} color={clearanceCfg.color} bg={clearanceCfg.bg} />
+                          ) : null}
                           {counts?.vet ? (
                             <Badge label={`${counts.vet} y lệnh`} color={colors.red} bg={colors.redSoft} />
                           ) : null}

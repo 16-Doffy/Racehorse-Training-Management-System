@@ -6,6 +6,7 @@ import Icon from './Icon';
 import { Button, ChipGroup, Row } from './ui';
 import { TASK_CONFIG } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // The reasons a stable hand actually has; tapping one fills the box so nobody types on a phone
 // while holding a horse.
@@ -19,6 +20,7 @@ const PRESETS = [
 
 /** Reports a task as not done, with the reason. The trainer (and vet, for an order) is told. */
 export default function NotDoneModal({ task, visible, onClose }) {
+  const insets = useSafeAreaInsets();
   const [reason, setReason] = useState('');
   const queryClient = useQueryClient();
 
@@ -48,9 +50,16 @@ export default function NotDoneModal({ task, visible, onClose }) {
   const cfg = TASK_CONFIG[task?.taskType];
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={close}
+    >
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
           <Row style={styles.header}>
             <Text style={font.h2}>Không thực hiện được</Text>
             <Pressable onPress={close} hitSlop={10}>

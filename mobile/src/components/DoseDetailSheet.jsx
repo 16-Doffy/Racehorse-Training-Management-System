@@ -1,7 +1,8 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Icon from './Icon';
 import { Badge, Button, Card, DataRow, HorseAvatar, Row, Sheet } from './ui';
-import { TIMING_STATE, findStock, formatDate, formatDateTime } from '../utils/groom';
+import SupplyShortage from './SupplyShortage';
+import { TIMING_STATE, canCompleteTask, findStock, formatDate, formatDateTime, missingSupplies } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
 /**
@@ -16,7 +17,8 @@ export default function DoseDetailSheet({ dose, visible, onClose, onComplete, on
   const timing = task?.timing || {};
   const timingCfg = TIMING_STATE[timing.state];
   const done = task?.status === 'completed';
-  const canComplete = task?.status === 'pending' && timing.canComplete !== false;
+  const canComplete = canCompleteTask(task);
+  const missing = missingSupplies(task);
 
   return (
     <Sheet visible={visible} onClose={onClose} title={isCare ? 'Hướng dẫn chăm sóc' : 'Chi tiết thuốc'}>
@@ -56,18 +58,27 @@ export default function DoseDetailSheet({ dose, visible, onClose, onComplete, on
             ) : (
               <Text style={font.small}>Chưa có thuốc này trong danh mục kho.</Text>
             )}
-            {(!stock || stock.level.key !== 'ok') && onAskSupply ? (
+            {!missing.length && stock && stock.level.key !== 'ok' && onAskSupply ? (
               <Button
                 title="Xin bổ sung thuốc"
                 icon="plus"
                 variant="danger"
                 size="sm"
                 style={{ marginTop: spacing.md }}
-                onPress={onAskSupply}
+                onPress={() =>
+                  onAskSupply({
+                    inventoryItem: stock.items[0]?._id,
+                    name: stock.items[0]?.name,
+                    unit: stock.unit,
+                    available: stock.quantity,
+                  })
+                }
               />
             ) : null}
           </Card>
         ) : null}
+
+        <SupplyShortage missing={missing} onAskSupply={onAskSupply} />
 
         <Card>
           <Row style={{ gap: spacing.md, marginBottom: spacing.sm }}>

@@ -7,13 +7,12 @@ import { useAuth } from '../auth/AuthContext';
 import { useToday } from '../hooks/useGroomData';
 import LoginScreen from '../screens/LoginScreen';
 import DashboardScreen from '../screens/DashboardScreen';
-import TasksScreen from '../screens/TasksScreen';
 import StableMapScreen from '../screens/StableMapScreen';
-import FeedingScreen from '../screens/FeedingScreen';
+import CareScreen from '../screens/CareScreen';
 import SuppliesScreen from '../screens/SuppliesScreen';
 import IncidentsScreen from '../screens/IncidentsScreen';
 import HorseDetailScreen from '../screens/HorseDetailScreen';
-import TreatmentsScreen from '../screens/TreatmentsScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 import { Loading } from '../components/ui';
 import { colors } from '../theme';
 
@@ -22,11 +21,9 @@ const Stack = createNativeStackNavigator();
 
 const TAB_ICONS = {
   'Tổng quan': 'dashboard',
+  'Chăm sóc': 'care',
   Chuồng: 'stable',
-  'Cho ăn': 'rations',
-  Thuốc: 'medication',
-  Việc: 'tasks',
-  'Vật tư': 'supplies',
+  Kho: 'supplies',
 };
 
 function TabIcon({ name, focused, badge }) {
@@ -56,19 +53,10 @@ function TabIcon({ name, focused, badge }) {
   );
 }
 
-const CHORE_TYPES = ['cleaning', 'bathing', 'icing'];
-const FEED_TYPES = ['feeding'];
-const CARE_TYPES = ['medication', 'monitoring'];
-
 function Tabs() {
   const { pending, overdue } = useToday();
-  // Each tab counts only the work it owns: chores here, meals on "Cho ăn", doses on "Thuốc".
-  const open = [...pending, ...overdue];
-  const badges = {
-    Việc: open.filter((t) => CHORE_TYPES.includes(t.taskType)).length,
-    'Cho ăn': open.filter((t) => FEED_TYPES.includes(t.taskType)).length,
-    Thuốc: open.filter((t) => CARE_TYPES.includes(t.taskType)).length,
-  };
+  // One tab carries all of the day's work, so its badge is everything still open.
+  const badges = { 'Chăm sóc': [...pending, ...overdue].length };
 
   return (
     <Tab.Navigator
@@ -83,18 +71,15 @@ function Tabs() {
           paddingBottom: 10,
           paddingTop: 8,
         },
-        // Six tabs on a phone: the labels have to stay on one line each.
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         tabBarItemStyle: { paddingHorizontal: 2 },
         tabBarIcon: ({ focused }) => <TabIcon name={route.name} focused={focused} badge={badges[route.name] || 0} />,
       })}
     >
       <Tab.Screen name="Tổng quan" component={DashboardScreen} />
+      <Tab.Screen name="Chăm sóc" component={CareScreen} />
       <Tab.Screen name="Chuồng" component={StableMapScreen} />
-      <Tab.Screen name="Cho ăn" component={FeedingScreen} />
-      <Tab.Screen name="Thuốc" component={TreatmentsScreen} />
-      <Tab.Screen name="Việc" component={TasksScreen} />
-      <Tab.Screen name="Vật tư" component={SuppliesScreen} />
+      <Tab.Screen name="Kho" component={SuppliesScreen} />
     </Tab.Navigator>
   );
 }
@@ -117,6 +102,7 @@ export default function RootNavigator() {
         {user ? (
           <>
             <Stack.Screen name="Tabs" component={Tabs} />
+            <Stack.Screen name="Profile" component={ProfileScreen} options={{ ...detailHeader, title: 'Hồ sơ của tôi' }} />
             <Stack.Screen name="Incidents" component={IncidentsScreen} options={{ ...detailHeader, title: 'Báo cáo sự cố' }} />
             <Stack.Screen
               name="HorseDetail"

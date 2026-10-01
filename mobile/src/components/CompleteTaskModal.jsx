@@ -15,15 +15,24 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { taskApi } from '../api/endpoints';
 import Icon from './Icon';
 import { Button, ChipGroup, Row } from './ui';
-import { APPETITE_OPTIONS, MANURE_OPTIONS, TASK_CONFIG, WATER_OPTIONS, describeTask } from '../utils/groom';
+import {
+  APPETITE_OPTIONS,
+  MANURE_OPTIONS,
+  TASK_CONFIG,
+  WATER_OPTIONS,
+  describeTask,
+  shortageFromError,
+} from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
  * Confirms a task as done. For feeding tasks it also collects what the groom saw — appetite,
  * droppings, water — because that is what the vet and the training readiness check read. The
  * server treats the observation as optional, so other task types just confirm and close.
  */
-export default function CompleteTaskModal({ task, schedules = [], visible, onClose }) {
+export default function CompleteTaskModal({ task, schedules = [], visible, onClose, onShortage }) {
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [appetite, setAppetite] = useState('Bình thường');
   const [manure, setManure] = useState('Bình thường');
@@ -50,7 +59,17 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       close();
     },
-    onError: (err) => Alert.alert('Không hoàn thành được', err?.message || 'Thử lại sau.'),
+    onError: (err) => {
+      // Stock ran out between opening this and confirming: offer the restock instead of a dead end.
+      const missing = shortageFromError(err);
+      if (missing.length && onShortage) {
+        const blocked = task;
+        close();
+        onShortage(missing, blocked);
+        return;
+      }
+      Alert.alert('Không hoàn thành được', err?.message || 'Thử lại sau.');
+    },
   });
 
   const submit = () => {
@@ -64,9 +83,16 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
   const taskCfg = TASK_CONFIG[task?.taskType];
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={close}
+    >
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
           <Row style={styles.sheetHeader}>
             <Text style={font.h2}>Xác nhận hoàn thành</Text>
             <Pressable onPress={close} hitSlop={10}>

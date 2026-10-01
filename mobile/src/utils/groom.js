@@ -60,6 +60,68 @@ export const SEVERITY = {
   high: { label: 'Nghiêm trọng', color: '#dc2626', bg: '#fee2e2' },
 };
 
+/**
+ * Whether the groom may tick this task now: the server's timing window, and enough stock for what
+ * it uses up (`supplyStatus`). Completing without the supplies is refused by the server anyway.
+ */
+export const canCompleteTask = (task) =>
+  task?.status === 'pending' && task.timing?.canComplete !== false && task.supplyStatus?.ok !== false;
+
+/** The supplies a task is short of, or an empty list. */
+export const missingSupplies = (task) => (task?.supplyStatus?.ok === false ? task.supplyStatus.missing || [] : []);
+
+/**
+ * How hard a horse may be worked right now, decided by the vet's ongoing treatments and sent with
+ * every horse as `trainingClearance`. A groom needs it before leading one out.
+ */
+export const TRAINING_LEVEL = {
+  none: { label: 'Không được tập', color: '#dc2626', bg: '#fee2e2' },
+  light: { label: 'Chỉ tập nhẹ', color: '#ea580c', bg: '#ffedd5' },
+  moderate: { label: 'Cường độ vừa', color: '#ca8a04', bg: '#fef9c3' },
+  high: { label: 'Tập bình thường', color: '#16a34a', bg: '#dcfce7' },
+};
+
+/**
+ * Stock as the storeroom reads it: the counted unit first, then the packs it comes in
+ * ("250 kg · 10 bao"), because an order is placed in packs but a ration is measured in kilos.
+ */
+export function formatStock(item, quantity = item?.quantity) {
+  if (!item) return '';
+  const base = `${quantity} ${item.unit}`;
+  if (!item.packUnit || !item.packSize) return base;
+  const packs = Math.floor(quantity / item.packSize + 1e-9);
+  if (!packs) return base;
+  const rest = Math.round((quantity - packs * item.packSize) * 100) / 100;
+  return `${base} · ${packs} ${item.packUnit}${rest > 0 ? ` + ${rest} ${item.unit}` : ''}`;
+}
+
+/**
+ * The shortage a rejected complete reports back: the API answers 409 with
+ * { message, data: { missing } } when the store cannot cover the task.
+ */
+export const shortageFromError = (err) => err?.data?.missing || [];
+
+/**
+ * Turns a missing-supply line into what <RestockSheet> needs. The real stock item carries the
+ * pack size and code, so prefer it; if the storeroom list has not loaded, the shortage line alone
+ * still describes the item well enough to ask for more.
+ */
+export function restockRequestFor({ entry, missing = [], task, inventory = [] }) {
+  const line = entry || missing[0];
+  if (!line) return null;
+  const item =
+    inventory.find((i) => String(i._id) === String(line.inventoryItem)) || {
+      _id: line.inventoryItem,
+      name: line.name,
+      unit: line.unit,
+      quantity: line.available,
+    };
+  return { item, task, missing: missing.length ? missing : [line] };
+}
+/** One line per missing supply: "Cỏ khô: cần 5 kg, còn 2 kg". */
+export const describeMissing = (missing = []) =>
+  missing.map((m) => `${m.name}: cần ${m.needed} ${m.unit}, còn ${m.available} ${m.unit}`).join(' · ');
+
 /** Lifecycle of an incident the groom filed: the vet picks it up and closes it. */
 export const INCIDENT_STATUS = {
   open: { label: 'Chờ bác sĩ', color: '#dc2626', bg: '#fee2e2' },
@@ -76,6 +138,19 @@ export const INCIDENT_PRESETS = [
   'Vết thương ngoài da',
 ];
 
+/** The codes the server stores an observation under, in the words a groom used to enter them. */
+export const OBSERVATION_LABELS = {
+  appetite: { full: 'Ăn hết', partial: 'Ăn dở', refused: 'Bỏ ăn' },
+  manure: { normal: 'Phân bình thường', dry: 'Phân khô', loose: 'Phân lỏng', none: 'Không thấy phân' },
+  waterIntake: { normal: 'Uống bình thường', high: 'Uống nhiều', low: 'Uống ít' },
+};
+
+/** "Ăn hết · Phân bình thường · Uống bình thường" — one line of what was seen at a meal. */
+export const describeObservation = (observation) =>
+  ['appetite', 'manure', 'waterIntake']
+    .map((key) => OBSERVATION_LABELS[key][observation?.[key]] || observation?.[key])
+    .filter(Boolean)
+    .join(' · ');
 // The observation form sends these Vietnamese labels; the server maps them to its own codes
 // (see server/src/modules/stable/dailyTask.controller.js).
 export const APPETITE_OPTIONS = ['Bình thường', 'Tốt', 'Kém', 'Bỏ ăn'];

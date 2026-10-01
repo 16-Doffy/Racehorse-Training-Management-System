@@ -1,8 +1,11 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Icon from './Icon';
 import { Badge, Button, Card, DataRow, HorseAvatar, Row, Sheet } from './ui';
+import SupplyShortage from './SupplyShortage';
 import {
   MEAL_CONFIG,
+  canCompleteTask,
+  missingSupplies,
   TIMING_STATE,
   findStock,
   formatDateTime,
@@ -23,13 +26,15 @@ export default function MealDetailSheet({ meal, visible, onClose, onComplete, on
   const timing = task?.timing || {};
   const timingCfg = TIMING_STATE[timing.state];
   const fed = task?.status === 'completed';
-  const canFeed = task?.status === 'pending' && timing.canComplete !== false;
+  const canFeed = canCompleteTask(task);
+  // What the store is actually short of for this meal, as the server counted it.
+  const missing = missingSupplies(task);
   const items = schedules.flatMap((s) => s.items || []);
   const approver = schedules.find((s) => s.approvedBy)?.approvedBy;
-  const shortages = items.filter((item) => {
-    const stock = findStock(item.type, inventory, 'feed');
-    return !stock || stock.level.key !== 'ok';
-  });
+  // Feeds that are merely running low: worth a warning, not a block.
+  const lowStock = items
+    .map((item) => findStock(item.type, inventory, 'feed'))
+    .filter((stock) => stock && stock.level.key !== 'ok');
 
   return (
     <Sheet visible={visible} onClose={onClose} title={`${config?.label || 'Bữa ăn'} · ${horse?.name || ''}`}>
@@ -90,8 +95,15 @@ export default function MealDetailSheet({ meal, visible, onClose, onComplete, on
           ) : null}
         </Card>
 
-        {shortages.length > 0 ? (
-          <Button title="Xin bổ sung thức ăn" icon="plus" variant="danger" onPress={onAskSupply} />
+        <SupplyShortage missing={missing} onAskSupply={onAskSupply} />
+
+        {!missing.length && lowStock.length > 0 ? (
+          <Button
+            title="Xin bổ sung thức ăn"
+            icon="plus"
+            variant="danger"
+            onPress={() => onAskSupply(stockEntry(lowStock[0]))}
+          />
         ) : null}
       </ScrollView>
 
@@ -106,6 +118,14 @@ export default function MealDetailSheet({ meal, visible, onClose, onComplete, on
     </Sheet>
   );
 }
+
+/** Describes a low stock line the way a shortage line looks, so one restock sheet serves both. */
+const stockEntry = (stock) => ({
+  inventoryItem: stock.items[0]?._id,
+  name: stock.items[0]?.name,
+  unit: stock.unit,
+  available: stock.quantity,
+});
 
 const styles = StyleSheet.create({
   body: { padding: spacing.lg, gap: spacing.md },

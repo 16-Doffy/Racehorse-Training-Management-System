@@ -1,6 +1,7 @@
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Icon from './Icon';
 import { colors, font, radius, shadow, spacing } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function Card({ children, style, onPress }) {
   // A plain View ignores a function style, so only the Pressable branch may use one.
@@ -193,6 +194,41 @@ export function ChipRow(props) {
   );
 }
 
+/**
+ * Switches between parts of one screen. Deliberately not a chip row: chips narrow a list, these
+ * change what the screen is showing.
+ */
+export function Segments({ options, value, onChange, style }) {
+  return (
+    <View style={[styles.segments, style]}>
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            onPress={() => onChange(option.value)}
+            style={[styles.segment, selected && styles.segmentOn]}
+          >
+            {option.icon ? (
+              <Icon name={option.icon} size={14} color={selected ? colors.white : colors.textMuted} />
+            ) : null}
+            <Text style={[styles.segmentText, selected && styles.segmentTextOn]} numberOfLines={1}>
+              {option.label}
+            </Text>
+            {option.count ? (
+              <View style={[styles.segmentCount, selected && styles.segmentCountOn]}>
+                <Text style={[styles.segmentCountText, selected && { color: colors.forest }]}>{option.count}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export function SearchInput({ value, onChange, placeholder = 'Tìm kiếm...' }) {
   return (
     <View style={styles.search}>
@@ -268,11 +304,19 @@ export function ProgressBar({ percent, tint = colors.gold, track = 'rgba(255,255
 
 /** Bottom sheet used for notifications and pickers. */
 export function Sheet({ visible, title, onClose, children, footer }) {
+  const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
       <View style={styles.sheetBackdrop}>
         <Pressable style={{ flex: 1 }} accessibilityLabel="Đóng" onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
           <View style={styles.sheetHandle} />
           <Row style={styles.sheetHeader}>
             <Text style={font.h2}>{title}</Text>
@@ -370,6 +414,29 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, color: colors.text, fontWeight: '600' },
   chipTextSm: { fontSize: 12 },
   chipTextActive: { color: colors.white },
+  segments: { flexDirection: 'row', gap: 4, padding: 4, borderRadius: radius.md, backgroundColor: colors.graySoft },
+  segment: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 9,
+    borderRadius: radius.sm,
+  },
+  segmentOn: { backgroundColor: colors.forest },
+  segmentText: { fontSize: 12.5, fontWeight: '700', color: colors.textMuted },
+  segmentTextOn: { color: colors.white },
+  segmentCount: {
+    minWidth: 18,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 9,
+    backgroundColor: colors.red,
+    alignItems: 'center',
+  },
+  segmentCountOn: { backgroundColor: colors.gold },
+  segmentCountText: { fontSize: 10, fontWeight: '800', color: colors.white },
   search: {
     flexDirection: 'row',
     alignItems: 'center',

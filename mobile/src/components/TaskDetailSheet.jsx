@@ -1,9 +1,12 @@
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Icon from './Icon';
 import { Badge, Button, Card, DataRow, HorseAvatar, Row, Sheet } from './ui';
+import SupplyShortage from './SupplyShortage';
 import { API_ORIGIN } from '../api/client';
 import {
   SEVERITY,
+  canCompleteTask,
+  missingSupplies,
   TASK_SOURCE,
   TASK_STATUS,
   TIMING_STATE,
@@ -22,7 +25,7 @@ const WATER_LABELS = { normal: 'Bình thường', high: 'Uống nhiều', low: '
  * Everything about one task, opened from a compact list row: who asked for it, when it may be
  * done, what was observed, and every action — so the list itself can stay short.
  */
-export default function TaskDetailSheet({ task, schedules = [], visible, onClose, onComplete, onNotDone, onReport, onAcknowledge, acknowledging }) {
+export default function TaskDetailSheet({ task, schedules = [], visible, onClose, onComplete, onNotDone, onReport, onAcknowledge, acknowledging, onAskSupply }) {
   if (!task) return <Sheet visible={visible} onClose={onClose} title="Chi tiết công việc" />;
 
   const info = describeTask(task, schedules);
@@ -31,7 +34,8 @@ export default function TaskDetailSheet({ task, schedules = [], visible, onClose
   const timingCfg = TIMING_STATE[timing.state];
   const source = TASK_SOURCE[task.source];
   const isPending = task.status === 'pending';
-  const canComplete = isPending && timing.canComplete !== false;
+  const missing = missingSupplies(task);
+  const canComplete = canCompleteTask(task);
   const observation = task.observation || {};
   const hasObservation = observation.appetite || observation.manure || observation.waterIntake || observation.behaviourNote;
 
@@ -57,6 +61,18 @@ export default function TaskDetailSheet({ task, schedules = [], visible, onClose
             <Row style={{ gap: spacing.sm, alignItems: 'flex-start' }}>
               <Icon name="clock" size={15} color={colors.orange} />
               <Text style={[font.small, { flex: 1, color: colors.orange }]}>{timing.reason}</Text>
+            </Row>
+          </Card>
+        ) : null}
+
+        {/* No supplies, no meal: the groom asks the Manager instead of ticking it off. */}
+        <SupplyShortage missing={missing} onAskSupply={onAskSupply} />
+
+        {task.dueTime ? (
+          <Card style={styles.note}>
+            <Row style={{ gap: spacing.sm }}>
+              <Icon name="clock" size={15} color={colors.forestLight} />
+              <Text style={[font.body, { flex: 1 }]}>Giờ dùng theo y lệnh: {task.dueTime}</Text>
             </Row>
           </Card>
         ) : null}

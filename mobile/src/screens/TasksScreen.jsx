@@ -8,6 +8,7 @@ import CompleteTaskModal from '../components/CompleteTaskModal';
 import IncidentModal from '../components/IncidentModal';
 import NotDoneModal from '../components/NotDoneModal';
 import TaskDetailSheet from '../components/TaskDetailSheet';
+import RestockSheet from '../components/RestockSheet';
 import WeekStrip from '../components/WeekStrip';
 import {
   Badge,
@@ -22,7 +23,7 @@ import {
   ProgressBar,
   Row,
 } from '../components/ui';
-import { useFeedings, useRefreshAll, useStableOverview, useTasks } from '../hooks/useGroomData';
+import { useFeedings, useInventory, useRefreshAll, useStableOverview, useTasks } from '../hooks/useGroomData';
 import { API_ORIGIN } from '../api/client';
 import { taskApi } from '../api/endpoints';
 import {
@@ -34,10 +35,13 @@ import {
   TASK_TYPE_ORDER,
   TIMING_STATE,
   describeTask,
+  describeMissing,
   formatTime,
   isSameDay,
   isToday,
   matchesSearch,
+  missingSupplies,
+  restockRequestFor,
   parseStableBlock,
   refId,
   startOfDay,
@@ -55,7 +59,7 @@ const STATUS_FILTERS = [
   { value: 'skipped', label: 'Không làm được' },
 ];
 
-export default function TasksScreen() {
+export default function TasksScreen({ segments }) {
   const [day, setDay] = useState(() => startOfDay(new Date()));
   const [status, setStatus] = useState('all');
   const [type, setType] = useState('all');
@@ -65,10 +69,12 @@ export default function TasksScreen() {
   const [completing, setCompleting] = useState(null);
   const [reporting, setReporting] = useState(null);
   const [notDone, setNotDone] = useState(null);
+  const [restock, setRestock] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const { tasks, isLoading } = useTasks();
   const { feedings } = useFeedings();
+  const { items: inventory } = useInventory();
   const { assignmentByHorseId, horseById } = useStableOverview();
   const refreshAll = useRefreshAll();
   const queryClient = useQueryClient();
@@ -160,6 +166,8 @@ export default function TasksScreen() {
         title="Việc chuồng trại"
         subtitle={`Vệ sinh · tắm rửa · ngâm chân — ${done.length}/${dayTasks.length} đã xong`}
       />
+
+      {segments}
 
       <WeekStrip value={day} onChange={setDay} pendingByDay={pendingByDay} />
 
@@ -264,6 +272,11 @@ export default function TasksScreen() {
           setDetail(null);
           setNotDone(task);
         }}
+        onAskSupply={(entry) => {
+          const task = detail;
+          setDetail(null);
+          setRestock(restockRequestFor({ entry, missing: missingSupplies(task), task, inventory }));
+        }}
         onReport={() => {
           const task = detail;
           setDetail(null);
@@ -276,9 +289,12 @@ export default function TasksScreen() {
         schedules={completing ? schedulesFor(refId(completing.horse)) : []}
         visible={!!completing}
         onClose={() => setCompleting(null)}
+        onShortage={(missing, task) => setRestock(restockRequestFor({ missing, task, inventory }))}
       />
       <IncidentModal task={reporting} visible={!!reporting} onClose={() => setReporting(null)} />
       <NotDoneModal task={notDone} visible={!!notDone} onClose={() => setNotDone(null)} />
+
+      <RestockSheet request={restock} visible={!!restock} onClose={() => setRestock(null)} />
 
       <FilterSheet
         visible={filtersOpen}
@@ -309,7 +325,8 @@ function TaskRow({ task, schedules, onOpen, onComplete }) {
 
   const timing = task.timing || {};
   const timingCfg = TIMING_STATE[timing.state];
-  const canComplete = isPending && timing.canComplete !== false;
+  const missing = missingSupplies(task);
+  const canComplete = isPending && timing.canComplete !== false && missing.length === 0;
   const isVetOrder = task.source === 'vet';
 
   // Two separate touch targets side by side, never nested: the row opens the detail, the round
@@ -341,6 +358,8 @@ function TaskRow({ task, schedules, onOpen, onComplete }) {
             {isPending && timingCfg ? <Badge label={timingCfg.label} color={timingCfg.color} bg={timingCfg.bg} /> : null}
             {!isDone && !isPending ? <Badge label={status.label} color={status.color} bg={status.bg} /> : null}
             {isVetOrder ? <Badge label="Y lệnh" color={colors.red} bg={colors.redSoft} /> : null}
+            {missing.length ? <Badge label="Thiếu vật tư" color={colors.red} bg={colors.redSoft} /> : null}
+            {task.dueTime ? <Badge label={task.dueTime} color={colors.forest} bg={colors.forestSoft} /> : null}
             {task.incidentReport ? <Icon name="warning" size={13} color={colors.orange} /> : null}
             {isPending && task.acknowledgedAt ? <Icon name="thumb" size={13} color={colors.green} /> : null}
           </Row>

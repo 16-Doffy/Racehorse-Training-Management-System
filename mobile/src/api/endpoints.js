@@ -3,6 +3,13 @@ import api from './client';
 export const authApi = {
   login: (payload) => api.post('/auth/login', payload),
   me: () => api.get('/auth/me'),
+  updateProfile: (payload) => api.put('/auth/profile', payload),
+  changePassword: (payload) => api.put('/auth/change-password', payload),
+};
+
+export const filesApi = {
+  /** Shared upload (field name `files`); returns [{ id, url, name }] for an avatar or a photo. */
+  upload: (formData) => api.post('/uploads', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 };
 
 export const taskApi = {
@@ -22,6 +29,8 @@ export const stableApi = {
   assignments: () => api.get('/stable/assignments'),
   /** status: 'open' | 'unresolved' | 'acknowledged' | 'resolved' */
   incidents: (params) => api.get('/stable/incidents', { params }),
+  /** Per horse: rations and prescriptions with the stock behind them, plus what is short. */
+  carePlan: (params) => api.get('/stable/my-care-plan', { params }),
 };
 
 export const horseApi = {
@@ -42,7 +51,8 @@ export const feedingApi = {
 
 export const inventoryApi = {
   list: () => api.get('/inventory'),
-  requestRestock: (id, quantity, note) => api.post(`/inventory/${id}/restock-request`, { quantity, note }),
+  /** payload: { quantity } or { packs }, plus an optional note and the task it is blocking. */
+  requestRestock: (id, payload) => api.post(`/inventory/${id}/restock-request`, payload),
   /** Ask for something that isn't in the catalogue yet; the Manager approves it into stock. */
   proposeItem: (payload) => api.post('/inventory/proposals', payload),
 };

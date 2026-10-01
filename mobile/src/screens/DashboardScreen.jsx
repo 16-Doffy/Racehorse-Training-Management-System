@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
-import AppHeader, { LogoutButton } from '../components/AppHeader';
-import { Badge, Banner, Button, Card, EmptyState, HorseAvatar, ProgressBar, Row, SectionTitle } from '../components/ui';
+import AppHeader from '../components/AppHeader';
+import { Badge, Banner, Button, Card, EmptyState, HorseAvatar, IconButton, ProgressBar, Row, SectionTitle } from '../components/ui';
 import { useAuth } from '../auth/AuthContext';
 import { useFeedings, useInventory, useRefreshAll, useStableOverview, useToday } from '../hooks/useGroomData';
 import {
@@ -28,7 +28,7 @@ const CARE_TYPES = ['medication', 'monitoring'];
  * the stalls this groom looks after. Detail lives in the tabs — this screen only points at them.
  */
 export default function DashboardScreen({ navigation }) {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const refreshAll = useRefreshAll();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -70,7 +70,7 @@ export default function DashboardScreen({ navigation }) {
         eyebrow={formatDayLabel(new Date())}
         title={user?.name || 'Nhân viên chăm sóc'}
         subtitle={`${myAssignments.length} chiến mã${myBlocks.length ? ` · ${myBlocks.join(', ')}` : ''}`}
-        right={<LogoutButton onPress={signOut} />}
+        right={<IconButton icon="person" label="Hồ sơ của tôi" onPress={() => navigation.navigate('Profile')} />}
       />
 
       <ScrollView
@@ -96,9 +96,9 @@ export default function DashboardScreen({ navigation }) {
 
         {/* What is waiting, split the way the tabs are. */}
         <Row style={{ gap: spacing.sm }}>
-          <WorkTile icon="rations" label="Bữa ăn" value={meals.length} tint={colors.gold} onPress={() => navigation.navigate('Cho ăn')} />
-          <WorkTile icon="medication" label="Thuốc" value={doses.length} tint={colors.red} onPress={() => navigation.navigate('Thuốc')} />
-          <WorkTile icon="tasks" label="Việc chuồng" value={chores.length} tint={colors.green} onPress={() => navigation.navigate('Việc')} />
+          <WorkTile icon="rations" label="Bữa ăn" value={meals.length} tint={colors.gold} onPress={() => navigation.navigate('Chăm sóc', { segment: 'feeding', at: Date.now() })} />
+          <WorkTile icon="medication" label="Thuốc" value={doses.length} tint={colors.red} onPress={() => navigation.navigate('Chăm sóc', { segment: 'medication', at: Date.now() })} />
+          <WorkTile icon="tasks" label="Việc chuồng" value={chores.length} tint={colors.green} onPress={() => navigation.navigate('Chăm sóc', { segment: 'chores', at: Date.now() })} />
         </Row>
 
         {overdue.length > 0 ? (
@@ -106,7 +106,7 @@ export default function DashboardScreen({ navigation }) {
             <Row style={{ gap: spacing.sm }}>
               <Icon name="clock" size={17} color={colors.orange} />
               <Text style={[font.body, { flex: 1 }]}>{overdue.length} việc quá hạn chưa hoàn thành.</Text>
-              <Pressable onPress={() => navigation.navigate('Việc')} hitSlop={6}>
+              <Pressable onPress={() => navigation.navigate('Chăm sóc', { segment: 'chores', at: Date.now() })} hitSlop={6}>
                 <Text style={styles.link}>Xem →</Text>
               </Pressable>
             </Row>
@@ -118,7 +118,7 @@ export default function DashboardScreen({ navigation }) {
             <Row style={{ gap: spacing.sm }}>
               <Icon name="feed" size={17} color={colors.orange} />
               <Text style={[font.body, { flex: 1 }]}>Sắp thiếu {shortages.map((s) => s.kind).join(', ')}.</Text>
-              <Pressable onPress={() => navigation.navigate('Vật tư')} hitSlop={6}>
+              <Pressable onPress={() => navigation.navigate('Kho')} hitSlop={6}>
                 <Text style={styles.link}>Xin thêm →</Text>
               </Pressable>
             </Row>
@@ -130,7 +130,7 @@ export default function DashboardScreen({ navigation }) {
             <Row style={{ gap: spacing.sm }}>
               <Icon name="supplies" size={17} color={colors.blue} />
               <Text style={[font.body, { flex: 1 }]}>{lowStock.length} vật tư sắp hết trong kho.</Text>
-              <Pressable onPress={() => navigation.navigate('Vật tư')} hitSlop={6}>
+              <Pressable onPress={() => navigation.navigate('Kho')} hitSlop={6}>
                 <Text style={styles.link}>Xem →</Text>
               </Pressable>
             </Row>

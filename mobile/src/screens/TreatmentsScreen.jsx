@@ -7,10 +7,34 @@ import AppHeader from '../components/AppHeader';
 import NotDoneModal from '../components/NotDoneModal';
 import DoseDetailSheet from '../components/DoseDetailSheet';
 import StockCard from '../components/StockCard';
-import { Badge, Button, Card, ChipRow, EmptyState, HorseAvatar, Loading, Row, SectionTitle } from '../components/ui';
+import RestockSheet from '../components/RestockSheet';
+import HistorySheet from '../components/HistorySheet';
+import {
+  Badge,
+  Button,
+  Card,
+  ChipRow,
+  EmptyState,
+  HorseAvatar,
+  IconButton,
+  Loading,
+  Row,
+  SectionTitle,
+} from '../components/ui';
 import { taskApi } from '../api/endpoints';
 import { useInventory, useRefreshAll, useStableOverview, useTasks, useTreatments } from '../hooks/useGroomData';
-import { TIMING_STATE, findStock, formatDate, formatTime, isSameDay, refId } from '../utils/groom';
+import {
+  TIMING_STATE,
+  canCompleteTask,
+  findStock,
+  formatDate,
+  formatTime,
+  isSameDay,
+  missingSupplies,
+  refId,
+  restockRequestFor,
+  shortageFromError,
+} from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
 const FILTERS = [
@@ -22,10 +46,12 @@ const FILTERS = [
 /** The note the server writes for a medication task: "Tên thuốc — Liều — Tần suất". */
 const noteFor = (medication) => [medication.name, medication.dosage, medication.frequency].filter(Boolean).join(' — ');
 
-export default function TreatmentsScreen({ navigation }) {
+export default function TreatmentsScreen({ navigation, segments }) {
   const [filter, setFilter] = useState('mine');
   const [openDose, setOpenDose] = useState(null);
   const [notDone, setNotDone] = useState(null);
+  const [restock, setRestock] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const { treatments, isLoading } = useTreatments();
@@ -35,10 +61,18 @@ export default function TreatmentsScreen({ navigation }) {
   const refreshAll = useRefreshAll();
   const queryClient = useQueryClient();
 
+  // The task itself is the variable, so a refusal can say which dose it was.
   const complete = useMutation({
-    mutationFn: (id) => taskApi.complete(id, {}),
+    mutationFn: (task) => taskApi.complete(task._id, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
-    onError: (err) => Alert.alert('Chưa ghi nhận được', err?.message || 'Thử lại sau.'),
+    onError: (err, task) => {
+      const missing = shortageFromError(err);
+      if (missing.length) {
+        setRestock(restockRequestFor({ missing, task, inventory }));
+        return;
+      }
+      Alert.alert('Chưa ghi nhận được', err?.message || 'Thử lại sau.');
+    },
   });
 
   // Today's care tasks, indexed by the treatment and note they were created from.
@@ -48,6 +82,15 @@ export default function TreatmentsScreen({ navigation }) {
         (t) => t.treatment && isSameDay(t.scheduledDate, new Date()) && ['medication', 'monitoring'].includes(t.taskType)
       ),
     [tasks]
+  );
+
+  // Doses already given or missed, for the handover and for the vet's questions.
+  const doseHistory = useMemo(
+    () =>
+      tasks.filter(
+        (t) => ['medication', 'monitoring'].includes(t.taskType) && (filter === 'all' || myHorseIds.has(refId(t.horse)))
+      ),
+    [tasks, filter, myHorseIds]
   );
 
   const taskFor = (treatmentId, note, taskType) =>
@@ -71,7 +114,10 @@ export default function TreatmentsScreen({ navigation }) {
       <AppHeader
         title="Thuốc & y lệnh"
         subtitle={pendingDoses ? `Còn ${pendingDoses} liều/việc theo dõi hôm nay` : 'Đã làm hết y lệnh hôm nay'}
+        right={<IconButton icon="history" label="Lịch sử cho thuốc" onPress={() => setHistoryOpen(true)} />}
       />
+
+      {segments}
 
       <View style={styles.toolbar}>
         <ChipRow options={FILTERS} value={filter} onChange={setFilter} size="sm" />
@@ -86,7 +132,7 @@ export default function TreatmentsScreen({ navigation }) {
           title="Thuốc còn trong kho"
           category="medicine"
           items={inventory}
-          onOpenSupplies={() => navigation.navigate('Vật tư')}
+          onOpenSupplies={() => navigation.navigate('Kho')}
           emptyText="Kho chưa có mặt hàng thuốc nào. Quản lý CLB là người tạo danh mục."
         />
 
@@ -142,8 +188,8 @@ export default function TreatmentsScreen({ navigation }) {
                             inventory,
                           })
                         }
-                        onComplete={() => complete.mutate(task._id)}
-                        completing={complete.isPending && complete.variables === task?._id}
+                        onComplete={() => complete.mutate(task)}
+                        completing={complete.isPending && complete.variables?._id === task?._id}
                       />
                     );
                   })
@@ -167,7 +213,7 @@ export default function TreatmentsScreen({ navigation }) {
                       }
                       onComplete={() => {
                         const task = taskFor(treatment._id, treatment.careInstructions, 'monitoring');
-                        if (task) complete.mutate(task._id);
+                        if (task) complete.mutate(task);
                       }}
                     />
                   </>
@@ -184,14 +230,15 @@ export default function TreatmentsScreen({ navigation }) {
         dose={openDose}
         visible={!!openDose}
         onClose={() => setOpenDose(null)}
-        onAskSupply={() => {
+        onAskSupply={(entry) => {
+          const task = openDose?.task;
           setOpenDose(null);
-          navigation.navigate('Vật tư');
+          setRestock(restockRequestFor({ entry, missing: missingSupplies(task), task, inventory }));
         }}
         onComplete={() => {
           const task = openDose?.task;
           setOpenDose(null);
-          if (task) complete.mutate(task._id);
+          if (task) complete.mutate(task);
         }}
         onNotDone={() => {
           const task = openDose?.task;
@@ -201,6 +248,16 @@ export default function TreatmentsScreen({ navigation }) {
       />
 
       <NotDoneModal task={notDone} visible={!!notDone} onClose={() => setNotDone(null)} />
+
+      <RestockSheet request={restock} visible={!!restock} onClose={() => setRestock(null)} />
+
+      <HistorySheet
+        visible={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title="Lịch sử cho thuốc"
+        tasks={doseHistory}
+        emptyText="Chưa có liều nào được ghi nhận trong khoảng này"
+      />
     </SafeAreaView>
   );
 }
@@ -211,7 +268,8 @@ function DoseRow({ title, dosage, frequency, task, onOpen, onComplete, completin
   const skipped = task?.status === 'skipped';
   const timing = task?.timing || {};
   const timingCfg = TIMING_STATE[timing.state];
-  const canComplete = task && task.status === 'pending' && timing.canComplete !== false;
+  const canComplete = canCompleteTask(task);
+  const short = missingSupplies(task).length > 0;
 
   return (
     <Row style={[styles.dose, done && styles.doseDone]}>
@@ -229,6 +287,7 @@ function DoseRow({ title, dosage, frequency, task, onOpen, onComplete, completin
             {title}
           </Text>
           <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
+            {task?.dueTime ? <Text style={[font.small, { fontWeight: '700', color: colors.forest }]}>{task.dueTime}</Text> : null}
             {dosage ? <Text style={font.small}>Liều {dosage}</Text> : null}
             {frequency ? <Text style={font.small}>· {frequency}</Text> : null}
           </Row>
@@ -240,6 +299,7 @@ function DoseRow({ title, dosage, frequency, task, onOpen, onComplete, completin
             {!done && !skipped && timingCfg && task ? (
               <Badge label={timingCfg.label} color={timingCfg.color} bg={timingCfg.bg} />
             ) : null}
+            {short ? <Badge label="Thiếu thuốc trong kho" color={colors.red} bg={colors.redSoft} /> : null}
             {!task ? <Text style={font.small}>Hôm nay chưa có việc</Text> : null}
           </Row>
         </View>

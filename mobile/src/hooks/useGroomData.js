@@ -33,6 +33,18 @@ export function useIncidents(status) {
   return { ...query, incidents: list(query) };
 }
 
+/**
+ * Rations and prescriptions per horse with the stock behind each line, and what is short — the
+ * server joins ration/dose items to inventory, so the app no longer matches names itself.
+ */
+export function useCarePlan(horseId) {
+  const query = useQuery({
+    queryKey: ['care-plan', horseId || 'all'],
+    queryFn: () => stableApi.carePlan(horseId ? { horse: horseId } : undefined),
+  });
+  return { ...query, sheets: list(query) };
+}
+
 /** Everything every role did to one horse, in order. */
 export function useHorseTimeline(horseId) {
   const query = useQuery({
