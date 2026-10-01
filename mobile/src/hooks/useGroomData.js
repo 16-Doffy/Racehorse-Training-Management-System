@@ -21,6 +21,38 @@ export function useTasks() {
   return { ...query, tasks: list(query) };
 }
 
+/**
+ * Incidents the groom filed, with the vet's handling on them. Served by its own endpoint now, so
+ * reports stay visible even once the task they hang off has scrolled out of the worklist.
+ */
+export function useIncidents(status) {
+  const query = useQuery({
+    queryKey: ['incidents', status || 'all'],
+    queryFn: () => stableApi.incidents(status ? { status } : undefined),
+  });
+  return { ...query, incidents: list(query) };
+}
+
+/** Everything every role did to one horse, in order. */
+export function useHorseTimeline(horseId) {
+  const query = useQuery({
+    queryKey: ['horse-timeline', horseId],
+    queryFn: () => horseApi.timeline(horseId),
+    enabled: !!horseId,
+  });
+  return { ...query, events: query.data?.data?.events || [] };
+}
+
+/**
+ * The vet's treatments. Each ongoing one turns into today's medication / monitoring tasks for the
+ * horse's caretaker (server/src/modules/health/treatmentCare.service.js), so the prescription and
+ * the work to carry it out are two views of the same thing.
+ */
+export function useTreatments() {
+  const query = useQuery({ queryKey: ['treatments'], queryFn: () => healthApi.treatments() });
+  return { ...query, treatments: list(query) };
+}
+
 export function useFeedings() {
   const query = useQuery({ queryKey: ['feeding'], queryFn: () => feedingApi.list() });
   return { ...query, feedings: list(query) };

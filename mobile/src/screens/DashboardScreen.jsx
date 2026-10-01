@@ -1,59 +1,62 @@
 import { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Badge, Banner, Button, Card, EmptyState, HorseAvatar, Row, SectionTitle, StatTile } from '../components/ui';
+import Icon from '../components/Icon';
+import AppHeader, { LogoutButton } from '../components/AppHeader';
+import { Badge, Banner, Button, Card, EmptyState, HorseAvatar, ProgressBar, Row, SectionTitle } from '../components/ui';
 import { useAuth } from '../auth/AuthContext';
-import { useFeedings, useNotifications, useInventory, useRefreshAll, useStableOverview, useToday } from '../hooks/useGroomData';
+import { useFeedings, useInventory, useRefreshAll, useStableOverview, useToday } from '../hooks/useGroomData';
 import {
   HEALTH_STATUS,
   MEAL_CONFIG,
-  MEAL_ORDER,
+  buildFeedCoverage,
   describeDaysLeft,
-  describeTask,
   formatDayLabel,
-  formatDateTime,
   getStockLevel,
   getUpcomingCare,
-  mealTimeOf,
+  nextMealSlot,
   parseStableBlock,
   refId,
 } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
+const CHORE_TYPES = ['cleaning', 'bathing', 'icing'];
+const CARE_TYPES = ['medication', 'monitoring'];
+
+/**
+ * The shift at a glance: how far along the day is, what is waiting in each part of the job, and
+ * the stalls this groom looks after. Detail lives in the tabs — this screen only points at them.
+ */
 export default function DashboardScreen({ navigation }) {
   const { user, signOut } = useAuth();
   const refreshAll = useRefreshAll();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { todayTasks, done, pending, overdue, isLoading } = useToday();
-  const { myAssignments, myHorseIds, myBlocks, horseById } = useStableOverview();
+  const { todayTasks, done, pending, overdue } = useToday();
+  const { myAssignments, myHorseIds, myBlocks, horseById, lockedHorseIds } = useStableOverview();
   const { feedings } = useFeedings();
   const { items } = useInventory();
-  const { notifications } = useNotifications();
 
+  const meals = pending.filter((t) => t.taskType === 'feeding');
+  const doses = pending.filter((t) => CARE_TYPES.includes(t.taskType));
+  const chores = pending.filter((t) => CHORE_TYPES.includes(t.taskType));
   const lowStock = items.filter((i) => getStockLevel(i.quantity).key !== 'ok');
   const percent = todayTasks.length ? Math.round((done.length / todayTasks.length) * 100) : 0;
 
-  const careReminders = useMemo(
+  const shortages = useMemo(
+    () => buildFeedCoverage({ feedings, horseIds: myHorseIds, inventory: items }).filter((c) => c.level === 'critical' || c.level === 'low'),
+    [feedings, myHorseIds, items]
+  );
+
+  const care = useMemo(
     () =>
       [...myHorseIds]
         .flatMap((id) => getUpcomingCare(horseById.get(id), 7).map((c) => ({ ...c, horse: horseById.get(id) })))
-        .sort((a, b) => a.daysLeft - b.daysLeft)
-        .slice(0, 5),
+        .sort((a, b) => a.daysLeft - b.daysLeft),
     [myHorseIds, horseById]
   );
 
-  // Next meal across the horses this groom looks after, using each ration's own clock time.
-  const nextMeal = useMemo(() => {
-    const now = new Date();
-    const minutesNow = now.getHours() * 60 + now.getMinutes();
-    const slots = MEAL_ORDER.map((slot) => {
-      const time = mealTimeOf(slot, feedings.filter((f) => myHorseIds.has(refId(f.horse)))) || MEAL_CONFIG[slot].defaultTime;
-      const [hh, mm] = time.split(':').map(Number);
-      return { slot, time, minutes: hh * 60 + mm };
-    });
-    return slots.find((s) => s.minutes + 60 > minutesNow) || { ...slots[0], tomorrow: true };
-  }, [feedings, myHorseIds]);
+  const meal = useMemo(() => nextMealSlot(feedings.filter((f) => myHorseIds.has(refId(f.horse)))), [feedings, myHorseIds]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -63,106 +66,78 @@ export default function DashboardScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <AppHeader
+        eyebrow={formatDayLabel(new Date())}
+        title={user?.name || 'Nhân viên chăm sóc'}
+        subtitle={`${myAssignments.length} chiến mã${myBlocks.length ? ` · ${myBlocks.join(', ')}` : ''}`}
+        right={<LogoutButton onPress={signOut} />}
+      />
+
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
       >
-        <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={font.tiny}>{formatDayLabel(new Date())}</Text>
-            <Text style={styles.hello}>Xin chào, {user?.name}</Text>
-            <Text style={font.small}>
-              Bạn phụ trách {myAssignments.length} chiến mã{myBlocks.length ? ` tại ${myBlocks.join(', ')}` : ''}
-            </Text>
-          </View>
-          <Pressable onPress={signOut} style={styles.logout} hitSlop={8}>
-            <Text style={styles.logoutText}>Thoát</Text>
-          </Pressable>
-        </View>
-
-        <Card style={styles.progressCard}>
+        <Card style={styles.hero}>
           <Row style={{ justifyContent: 'space-between' }}>
-            <Text style={styles.progressLabel}>Tiến độ hôm nay</Text>
-            <Text style={styles.progressCount}>
-              {done.length}/{todayTasks.length} việc
+            <Text style={styles.heroLabel}>Tiến độ hôm nay</Text>
+            <Text style={styles.heroCount}>
+              {done.length}/{todayTasks.length}
             </Text>
           </Row>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${percent}%` }]} />
-          </View>
-          <Text style={styles.progressMeal}>
-            {MEAL_CONFIG[nextMeal.slot].emoji} {nextMeal.tomorrow ? 'Bữa đầu ngày mai' : `Sắp tới: ${MEAL_CONFIG[nextMeal.slot].label}`} lúc{' '}
-            <Text style={{ color: colors.gold, fontWeight: '700' }}>{nextMeal.time}</Text>
-          </Text>
-          <Row style={{ marginTop: spacing.lg, gap: spacing.md }}>
-            <Button title="Làm việc hôm nay" variant="gold" style={{ flex: 1 }} onPress={() => navigation.navigate('Việc')} />
-            <Button title="Báo sự cố" variant="danger" style={{ flex: 1 }} onPress={() => navigation.navigate('Incidents')} />
+          <ProgressBar percent={percent} />
+          <Row style={{ gap: 6, marginTop: spacing.md }}>
+            <Icon name={MEAL_CONFIG[meal.slot].icon} size={15} color={colors.gold} />
+            <Text style={styles.heroMeal}>
+              {meal.tomorrow ? 'Bữa đầu ngày mai' : MEAL_CONFIG[meal.slot].label} ·{' '}
+              <Text style={{ color: colors.gold, fontWeight: '800' }}>{meal.time}</Text>
+            </Text>
           </Row>
         </Card>
 
-        {overdue.length > 0 && (
+        {/* What is waiting, split the way the tabs are. */}
+        <Row style={{ gap: spacing.sm }}>
+          <WorkTile icon="rations" label="Bữa ăn" value={meals.length} tint={colors.gold} onPress={() => navigation.navigate('Cho ăn')} />
+          <WorkTile icon="medication" label="Thuốc" value={doses.length} tint={colors.red} onPress={() => navigation.navigate('Thuốc')} />
+          <WorkTile icon="tasks" label="Việc chuồng" value={chores.length} tint={colors.green} onPress={() => navigation.navigate('Việc')} />
+        </Row>
+
+        {overdue.length > 0 ? (
           <Banner tone="warning">
-            <Text style={font.body}>⚠️ Còn {overdue.length} việc quá hạn từ những ngày trước.</Text>
-            <Button
-              title="Xem ngay"
-              variant="subtle"
-              size="sm"
-              style={{ marginTop: spacing.md, alignSelf: 'flex-start' }}
-              onPress={() => navigation.navigate('Việc')}
-            />
-          </Banner>
-        )}
-
-        <View style={styles.statRow}>
-          <StatTile label="Việc hôm nay" value={done.length} suffix={`/ ${todayTasks.length}`} tint={colors.green} onPress={() => navigation.navigate('Việc')} />
-          <StatTile label="Còn phải làm" value={pending.length + overdue.length} tint={colors.gold} onPress={() => navigation.navigate('Việc')} />
-        </View>
-        <View style={styles.statRow}>
-          <StatTile label="Chiến mã phụ trách" value={myAssignments.length} onPress={() => navigation.navigate('Chuồng')} />
-          <StatTile label="Vật tư sắp hết" value={lowStock.length} tint={colors.red} onPress={() => navigation.navigate('Vật tư')} />
-        </View>
-
-        <Card>
-          <SectionTitle
-            right={
-              <Pressable onPress={() => navigation.navigate('Việc')} hitSlop={8}>
-                <Text style={styles.link}>Xem tất cả →</Text>
+            <Row style={{ gap: spacing.sm }}>
+              <Icon name="clock" size={17} color={colors.orange} />
+              <Text style={[font.body, { flex: 1 }]}>{overdue.length} việc quá hạn chưa hoàn thành.</Text>
+              <Pressable onPress={() => navigation.navigate('Việc')} hitSlop={6}>
+                <Text style={styles.link}>Xem →</Text>
               </Pressable>
-            }
-          >
-            Việc cần làm
-          </SectionTitle>
-          {isLoading ? (
-            <Text style={font.small}>Đang tải...</Text>
-          ) : pending.length === 0 ? (
-            <EmptyState
-              emoji={todayTasks.length ? '✅' : '📭'}
-              text={todayTasks.length ? 'Đã xong hết việc hôm nay' : 'Chưa có việc nào được giao hôm nay'}
-            />
-          ) : (
-            pending.slice(0, 5).map((task) => {
-              const info = describeTask(task, feedings.filter((f) => refId(f.horse) === refId(task.horse)));
-              return (
-                <Pressable
-                  key={task._id}
-                  style={styles.taskRow}
-                  onPress={() => navigation.navigate('Việc', { taskId: task._id })}
-                >
-                  <Text style={{ fontSize: 20 }}>{info.emoji}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.taskLabel}>{info.label}</Text>
-                    <Text style={font.small}>
-                      {task.horse?.name}
-                      {info.time ? ` • ${info.time}` : ''}
-                    </Text>
-                  </View>
-                  {task.trainingSession ? <Badge label="Sau buổi tập" color={colors.blue} bg={colors.blueSoft} /> : null}
-                </Pressable>
-              );
-            })
-          )}
-        </Card>
+            </Row>
+          </Banner>
+        ) : null}
 
+        {shortages.length > 0 ? (
+          <Banner tone={shortages.some((s) => s.level === 'critical') ? 'danger' : 'warning'}>
+            <Row style={{ gap: spacing.sm }}>
+              <Icon name="feed" size={17} color={colors.orange} />
+              <Text style={[font.body, { flex: 1 }]}>Sắp thiếu {shortages.map((s) => s.kind).join(', ')}.</Text>
+              <Pressable onPress={() => navigation.navigate('Vật tư')} hitSlop={6}>
+                <Text style={styles.link}>Xin thêm →</Text>
+              </Pressable>
+            </Row>
+          </Banner>
+        ) : null}
+
+        {lowStock.length > 0 && shortages.length === 0 ? (
+          <Banner tone="info">
+            <Row style={{ gap: spacing.sm }}>
+              <Icon name="supplies" size={17} color={colors.blue} />
+              <Text style={[font.body, { flex: 1 }]}>{lowStock.length} vật tư sắp hết trong kho.</Text>
+              <Pressable onPress={() => navigation.navigate('Vật tư')} hitSlop={6}>
+                <Text style={styles.link}>Xem →</Text>
+              </Pressable>
+            </Row>
+          </Banner>
+        ) : null}
+
+        {/* The stalls this groom is responsible for; tap one for its daily routine. */}
         <Card>
           <SectionTitle
             right={
@@ -174,9 +149,9 @@ export default function DashboardScreen({ navigation }) {
             Chuồng phụ trách
           </SectionTitle>
           {myAssignments.length === 0 ? (
-            <EmptyState emoji="🏠" text="Bạn chưa được phân công chuồng nào" hint="Liên hệ Quản lý CLB để được xếp chuồng." />
+            <EmptyState icon="stall" text="Bạn chưa được phân công chuồng nào" hint="Quản lý CLB là người xếp chuồng." />
           ) : (
-            myAssignments.map((a) => {
+            myAssignments.slice(0, 4).map((a) => {
               const horseId = refId(a.horse);
               const horse = horseById.get(horseId);
               const health = HEALTH_STATUS[horse?.healthStatus] || HEALTH_STATUS.eligible;
@@ -188,87 +163,92 @@ export default function DashboardScreen({ navigation }) {
                   style={styles.stallRow}
                   onPress={() => navigation.navigate('HorseDetail', { horseId, name: a.horse?.name })}
                 >
-                  <HorseAvatar name={a.horse?.name} size={38} />
+                  <HorseAvatar name={a.horse?.name} size={36} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.taskLabel}>{a.horse?.name}</Text>
-                    <Text style={font.small}>{parseStableBlock(a.stableBlock).stall}</Text>
-                  </View>
-                  <Badge label={health.label} color={health.color} bg={health.bg} />
-                  {horseTasks.length > 0 && (
+                    <Row style={{ gap: 6 }}>
+                      <Text style={font.h3}>{a.horse?.name}</Text>
+                      {lockedHorseIds.has(horseId) ? <Icon name="lock" size={12} color={colors.red} /> : null}
+                    </Row>
                     <Text style={font.small}>
-                      {doneCount}/{horseTasks.length}
+                      {parseStableBlock(a.stableBlock).stall}
+                      {horseTasks.length ? ` · ${doneCount}/${horseTasks.length} việc` : ''}
                     </Text>
-                  )}
+                  </View>
+                  <Badge label={health.label} color={health.color} bg={health.bg} dot />
                 </Pressable>
               );
             })
           )}
+          {myAssignments.length > 4 ? (
+            <Text style={[font.small, { textAlign: 'center', paddingTop: spacing.sm }]}>
+              và {myAssignments.length - 4} chuồng khác
+            </Text>
+          ) : null}
         </Card>
 
-        <Card>
-          <SectionTitle>Nhắc lịch chăm sóc (7 ngày)</SectionTitle>
-          {careReminders.length === 0 ? (
-            <Text style={font.small}>Không có lịch tiêm phòng, tẩy giun hay kiểm tra móng sắp tới.</Text>
-          ) : (
-            careReminders.map((c) => (
+        {care.length > 0 ? (
+          <Card style={{ marginBottom: spacing.lg }}>
+            <SectionTitle>Nhắc lịch chăm sóc</SectionTitle>
+            {care.slice(0, 3).map((c) => (
               <Row key={`${c.horse?._id}-${c.key}`} style={styles.careRow}>
-                <Text style={{ flex: 1 }}>
-                  {c.emoji} {c.label} • <Text style={{ fontWeight: '700' }}>{c.horse?.name}</Text>
+                <Icon name={c.icon} size={15} color={colors.forestLight} />
+                <Text style={[font.body, { flex: 1 }]} numberOfLines={1}>
+                  {c.label} · {c.horse?.name}
                 </Text>
                 <Badge
                   label={describeDaysLeft(c.daysLeft)}
-                  color={c.daysLeft < 0 ? colors.red : c.daysLeft <= 2 ? colors.orange : colors.textMuted}
-                  bg={c.daysLeft < 0 ? colors.redSoft : c.daysLeft <= 2 ? colors.orangeSoft : colors.graySoft}
+                  color={c.daysLeft <= 0 ? colors.red : colors.textMuted}
+                  bg={c.daysLeft <= 0 ? colors.redSoft : colors.graySoft}
                 />
               </Row>
-            ))
-          )}
-        </Card>
+            ))}
+          </Card>
+        ) : null}
 
-        <Card style={{ marginBottom: spacing.xxl }}>
-          <SectionTitle
-            right={
-              <Pressable onPress={() => navigation.navigate('Notifications')} hitSlop={8}>
-                <Text style={styles.link}>Tất cả →</Text>
-              </Pressable>
-            }
-          >
-            Thông báo
-          </SectionTitle>
-          {notifications.length === 0 ? (
-            <Text style={font.small}>Không có thông báo mới.</Text>
-          ) : (
-            notifications.slice(0, 4).map((n) => (
-              <View key={n._id} style={styles.notiRow}>
-                <Text style={[font.body, !n.isRead && { fontWeight: '700' }]}>{n.message}</Text>
-                <Text style={font.small}>{formatDateTime(n.createdAt)}</Text>
-              </View>
-            ))
-          )}
-        </Card>
+        <Button
+          title="Báo sự cố tại chuồng"
+          icon="warning"
+          variant="danger"
+          style={{ marginBottom: spacing.xl }}
+          onPress={() => navigation.navigate('Incidents')}
+        />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+/** Compact counter: one per part of the job, replacing a wall of stat cards. */
+function WorkTile({ icon, label, value, tint, onPress }) {
+  return (
+    <Card style={styles.workTile} onPress={onPress}>
+      <Row style={{ justifyContent: 'space-between' }}>
+        <Icon name={icon} size={16} color={tint} />
+        <Text style={[styles.workValue, { color: value ? tint : colors.textFaint }]}>{value}</Text>
+      </Row>
+      <Text style={font.tiny} numberOfLines={1}>
+        {label}
+      </Text>
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.cream },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  header: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
-  hello: { ...font.h1, marginVertical: 2 },
-  logout: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border },
-  logoutText: { fontSize: 12, color: colors.textMuted, fontWeight: '700' },
-  progressCard: { backgroundColor: colors.forest, borderColor: colors.forest },
-  progressLabel: { ...font.tiny, color: colors.gold },
-  progressCount: { color: colors.white, fontWeight: '700' },
-  progressTrack: { height: 10, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: radius.pill, marginTop: spacing.md, overflow: 'hidden' },
-  progressFill: { height: 10, backgroundColor: colors.gold, borderRadius: radius.pill },
-  progressMeal: { color: 'rgba(255,255,255,0.85)', marginTop: spacing.md, fontSize: 13 },
-  statRow: { flexDirection: 'row', gap: spacing.md },
+  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
+  hero: { backgroundColor: colors.forest, borderColor: colors.forest, gap: spacing.sm, padding: spacing.md },
+  heroLabel: { ...font.tiny, color: colors.gold },
+  heroCount: { color: colors.white, fontWeight: '800', fontSize: 15 },
+  heroMeal: { color: 'rgba(255,255,255,0.9)', fontSize: 13 },
   link: { color: colors.forestLight, fontWeight: '700', fontSize: 13 },
-  taskRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: colors.borderSoft },
-  taskLabel: { fontSize: 15, fontWeight: '600', color: colors.text },
-  stallRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: colors.borderSoft },
-  careRow: { paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderSoft },
-  notiRow: { paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderSoft, gap: 2 },
+  workTile: { flex: 1, padding: spacing.md, gap: 2 },
+  workValue: { fontSize: 20, fontWeight: '800' },
+  stallRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSoft,
+  },
+  careRow: { paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderSoft, gap: spacing.sm },
 });
