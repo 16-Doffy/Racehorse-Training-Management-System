@@ -20,7 +20,7 @@ const FeedingSchedule = require('../src/models/FeedingSchedule');
 const InventoryItem = require('../src/models/InventoryItem');
 const Notification = require('../src/models/Notification');
 const { syncCareTasks } = require('../src/modules/health/treatmentCare.service');
-const { CATALOG } = require('../src/modules/inventory/catalog');
+const { INVENTORY_ITEMS } = require('./data/inventoryItems');
 
 const DEMO_PASSWORD = '123456';
 
@@ -289,15 +289,15 @@ async function run() {
     )
   );
 
-  // The club's standard stock list (modules/inventory/catalog.js) at its starting stock, except a
-  // few items left low or out on purpose so the warnings and the restock flow show on a fresh seed.
+  // The club's stock list (scripts/data/inventoryItems.js), with a few items left low or out on
+  // purpose so the warnings and the restock flow show on a fresh seed.
   const demoStock = {
     'Cỏ khô Timothy (Timothy Hay)': 30, 'Bột điện giải (Electrolyte Powder)': 300, 'Vitamin tổng hợp (Multivitamin)': 900,
     'Kháng sinh Penicillin tiêm': 0, 'Gel kháng viêm bôi ngoài': 60, 'Băng cuốn thú y (Vet Wrap)': 5,
   };
-  for (const { startingStock, ...entry } of CATALOG) {
+  for (const entry of INVENTORY_ITEMS) {
     // One at a time so each item gets the next code of its category (TA-001, YT-001, DC-001…).
-    await InventoryItem.create({ ...entry, quantity: demoStock[entry.name] ?? startingStock, stableBlock: entry.category === 'feed' ? 'Block A' : undefined });
+    await InventoryItem.create({ ...entry, quantity: demoStock[entry.name] ?? entry.quantity, stableBlock: entry.category === 'feed' ? 'Block A' : undefined });
   }
   await InventoryItem.updateOne(
     { name: 'Cỏ khô Timothy (Timothy Hay)' },
@@ -330,7 +330,7 @@ async function run() {
   await syncCareTasks(course);
 
   console.log(`[seed] created ${horses.length} horses, 2 training plans, 4 sessions, 1 health record.`);
-  console.log(`[seed] groom data: ${tasks.length} daily tasks, ${horses.length * 3} feeding schedules, ${CATALOG.length} inventory items.`);
+  console.log(`[seed] groom data: ${tasks.length} daily tasks, ${horses.length * 3} feeding schedules, ${INVENTORY_ITEMS.length} inventory items.`);
   console.log('[seed] done.');
   await mongoose.disconnect();
 }

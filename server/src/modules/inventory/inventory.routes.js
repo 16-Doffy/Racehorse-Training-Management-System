@@ -9,7 +9,6 @@ const InventoryItem = require('../../models/InventoryItem');
 const { pushNotification } = require('../alerts/notification.service');
 const DailyTask = require('../../models/DailyTask');
 const { computeForecast, itemInUse } = require('./stock.service');
-const { CATALOG } = require('./catalog');
 const { logAction } = require('../audit/audit.service');
 
 // Restock requests are reviewed by name on the Manager's screen, so the requester is populated
@@ -49,7 +48,14 @@ function itemProblem(req, { existing }) {
 }
 
 /** "120 kg (4.8 bao)" — stock in the usage unit, and in packs when the item has a pack size. */
-const packNote = (item, quantity) => (item.packUnit && item.packSize ? ` (≈ ${Math.round((quantity / item.packSize) * 10) / 10} ${item.packUnit})` : '');
+// " (2 kiện)", " (1 kiện + 5 kg)", or nothing when the item isn't bought in packs or it is under one pack.
+function packNote(item, quantity) {
+  if (!item.packUnit || !item.packSize) return '';
+  const packs = Math.floor(quantity / item.packSize + 1e-9);
+  if (!packs) return '';
+  const rest = Math.round((quantity - packs * item.packSize) * 100) / 100;
+  return ` (${packs} ${item.packUnit}${rest > 0 ? ` + ${rest} ${item.unit}` : ''})`;
+}
 
 /** A request or a delivery may be given in packs; this turns it into the item's unit. */
 function toUnits(item, body) {
@@ -220,30 +226,7 @@ const receiveStock = asyncHandler(async (req, res) => {
   return ok(res, item, `Đã nhập thêm ${quantity} ${item.unit}${packNote(item, quantity)}.`);
 });
 
-/**
- * Adds the club's standard stock list (catalog.js): only names not already in stock. Safe to run
- * again. With `withStock` each new item comes in with the catalog's starting stock; otherwise with
- * quantity 0 for the Manager to receive. POST /inventory/catalog/import { categories?, withStock? }
- */
-const importCatalog = asyncHandler(async (req, res) => {
-  const wanted = Array.isArray(req.body.categories) && req.body.categories.length ? req.body.categories : CATEGORIES;
-  const withStock = req.body.withStock === true;
-  const existing = new Set((await InventoryItem.find().select('name')).map((i) => i.name.trim().toLowerCase()));
-  const created = [];
-  // One at a time so each new item gets the next code of its category.
-  for (const { startingStock, ...entry } of CATALOG.filter((c) => wanted.includes(c.category))) {
-    if (existing.has(entry.name.toLowerCase())) continue;
-    const quantity = withStock ? startingStock || 0 : 0;
-    // eslint-disable-next-line no-await-in-loop
-    created.push(await InventoryItem.create({ ...entry, quantity, lastRestockedAt: quantity > 0 ? new Date() : null }));
-  }
-  await logAction({ actorId: req.user._id, action: 'inventory.import_catalog', targetModel: 'InventoryItem', metadata: { created: created.length, withStock } });
-  return ok(res, { created: created.length, skipped: CATALOG.filter((c) => wanted.includes(c.category)).length - created.length, items: created }, 'Catalog imported.');
-});
-
 router.use(protect);
-router.get('/catalog', (req, res) => ok(res, { items: CATALOG, units: require('./catalog').UNIT_SUGGESTIONS }, 'Stock catalog.'));
-router.post('/catalog/import', authorize(ROLES.MANAGER), importCatalog);
 router.get('/', ctrl.list);
 // Daily use from rations and ongoing treatments, and how many days the stock lasts.
 router.get('/forecast', asyncHandler(async (req, res) => ok(res, await computeForecast(), 'Inventory forecast computed.')));

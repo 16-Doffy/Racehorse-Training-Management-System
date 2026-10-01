@@ -26,7 +26,6 @@ import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  ImportOutlined,
   DatabaseOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,20 +40,24 @@ const CATEGORIES = [
   { key: 'equipment', label: 'Dụng cụ', hint: 'Đồ dùng lâu dài; theo dõi số lượng và đề xuất mua thêm.' },
 ];
 const CATEGORY_LABELS = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
-// Fallback when the catalog endpoint hasn't answered yet.
-const DEFAULT_UNITS = {
+// Units offered per category in the item form (the Manager can still type another one).
+const UNIT_SUGGESTIONS = {
   feed: { units: ['kg', 'g', 'lít', 'ml', 'viên'], packUnits: ['bao', 'kiện', 'hộp', 'túi', 'chai', 'can'] },
   medicine: { units: ['viên', 'ml', 'g', 'liều', 'tuýp', 'miếng', 'cái', 'cuộn', 'túi'], packUnits: ['hộp', 'lọ', 'chai', 'tuýp', 'gói', 'thùng'] },
   equipment: { units: ['cái', 'bộ', 'đôi', 'sợi', 'cuộn'], packUnits: [] },
 };
 const EXPIRY_SOON_DAYS = 30;
 const vnd = (n) => `${Number(n || 0).toLocaleString('vi-VN')} ₫`;
-const round1 = (n) => Math.round(n * 10) / 10;
+const num = (n) => Number(n || 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 
-/** "120 kg" plus "≈ 4.8 bao" when the item is bought in packs. */
+/** "250 kg · 10 bao", "247 kg · 9 bao + 22 kg", or just "8 cái" when the item isn't bought in packs. */
 function stockText(item, quantity = item.quantity) {
-  const packs = item.packUnit && item.packSize ? ` (≈ ${round1(quantity / item.packSize)} ${item.packUnit})` : '';
-  return `${quantity} ${item.unit}${packs}`;
+  const base = `${num(quantity)} ${item.unit}`;
+  if (!item.packUnit || !item.packSize || quantity <= 0) return base;
+  const packs = Math.floor(quantity / item.packSize + 1e-9);
+  if (!packs) return base;
+  const rest = Math.round((quantity - packs * item.packSize) * 100) / 100;
+  return `${base} · ${num(packs)} ${item.packUnit}${rest > 0 ? ` + ${num(rest)} ${item.unit}` : ''}`;
 }
 
 /** The computed status tags of an item: discontinued, out / low / in stock, expired / expiring. */
@@ -273,80 +276,18 @@ function ReceiveModal({ item, onClose }) {
   );
 }
 
-/** Adds the standard items still missing, either with the catalog's starting stock or with none. */
-function ImportCatalogModal({ open, missing, loading, onCancel, onImport }) {
-  const [withStock, setWithStock] = useState(true);
-  return (
-    <Modal
-      title={`Nhập ${missing.length} vật tư từ danh mục mẫu`}
-      open={open}
-      okText="Nhập vào kho"
-      cancelText="Huỷ"
-      confirmLoading={loading}
-      onCancel={onCancel}
-      onOk={() => onImport(withStock)}
-      destroyOnHidden
-    >
-      <Segmented
-        block
-        value={withStock ? 'stock' : 'zero'}
-        onChange={(v) => setWithStock(v === 'stock')}
-        options={[
-          { value: 'stock', label: 'Kèm số lượng ban đầu' },
-          { value: 'zero', label: 'Tồn = 0, nhập kho sau' },
-        ]}
-      />
-      <Text type="secondary" className="block !text-xs mt-2 mb-3">
-        {withStock
-          ? 'Mỗi vật tư có sẵn số lượng như bên dưới; chỉnh lại bằng "Nhập kho" hoặc "Sửa" bất cứ lúc nào.'
-          : 'Vật tư được tạo với tồn kho bằng 0; dùng "Nhập kho" khi hàng về.'}
-      </Text>
-      <div className="max-h-72 overflow-y-auto flex flex-col gap-3 pr-1">
-        {CATEGORIES.map((c) => {
-          const rows = missing.filter((m) => m.category === c.key);
-          if (!rows.length) return null;
-          return (
-            <div key={c.key}>
-              <Text strong className="!text-sm">
-                {c.label} ({rows.length})
-              </Text>
-              <div className="flex flex-col mt-1">
-                {rows.map((m) => (
-                  <div key={m.name} className="flex justify-between gap-3 text-sm py-0.5">
-                    <span className="min-w-0">{m.name}</span>
-                    <Text type="secondary" className="shrink-0 tabular-nums !text-sm">
-                      {withStock ? stockText(m, m.startingStock || 0) : `0 ${m.unit}`}
-                    </Text>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Modal>
-  );
-}
-
 export default function InventoryPage() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['inventory'], queryFn: () => inventoryApi.list() });
   const items = data?.data || [];
   const { data: forecastData } = useQuery({ queryKey: ['inventory-forecast'], queryFn: () => inventoryApi.forecast() });
   const forecastById = new Map((forecastData?.data || []).map((f) => [String(f._id), f]));
-  const { data: catalogData } = useQuery({ queryKey: ['inventory-catalog'], queryFn: () => inventoryApi.catalog(), staleTime: Infinity });
-  const units = catalogData?.data?.units || DEFAULT_UNITS;
-  const catalogMissingItems = (catalogData?.data?.items || []).filter(
-    (c) => !items.some((i) => i.name.trim().toLowerCase() === c.name.toLowerCase())
-  );
-  const catalogMissing = catalogMissingItems.length;
 
   const [tab, setTab] = useState('feed');
   const [editing, setEditing] = useState(null); // null = closed, {} = new item, item = edit
   const [receiving, setReceiving] = useState(null);
   const [rejecting, setRejecting] = useState(null);
   const [rejectNote, setRejectNote] = useState('');
-  const [importing, setImporting] = useState(false);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['inventory'] });
@@ -371,21 +312,6 @@ export default function InventoryPage() {
       refresh();
     },
     onError: (err) => message.error(err.message || 'Xoá thất bại.'),
-  });
-
-  const importMutation = useMutation({
-    mutationFn: (withStock) => inventoryApi.importCatalog({ withStock }),
-    onSuccess: (res, withStock) => {
-      const created = res.data.created;
-      message.success(
-        created
-          ? `Đã thêm ${created} vật tư từ danh mục mẫu${withStock ? ' kèm số lượng ban đầu' : ' (tồn = 0, hãy nhập kho)'}.`
-          : 'Danh mục mẫu đã có đủ.'
-      );
-      setImporting(false);
-      refresh();
-    },
-    onError: (err) => message.error(err.message || 'Nhập danh mục thất bại.'),
   });
 
   // Pending restock requests live inside each item's subdocument array; flatten them so the
@@ -576,7 +502,7 @@ export default function InventoryPage() {
             loading={isLoading}
             scroll={{ x: 'max-content' }}
             pagination={{ pageSize: 20, hideOnSinglePage: true }}
-            locale={{ emptyText: `Chưa có ${c.label.toLowerCase()} nào. Bấm "Thêm" hoặc "Nhập danh mục mẫu".` }}
+            locale={{ emptyText: `Chưa có ${c.label.toLowerCase()} nào. Bấm "Thêm ${c.label.toLowerCase()}" để tạo.` }}
           />
         </div>
       ),
@@ -596,11 +522,6 @@ export default function InventoryPage() {
           </Text>
         </div>
         <Space wrap>
-          <Tooltip title={catalogMissing ? `Thêm ${catalogMissing} vật tư chuẩn còn thiếu` : 'Danh mục mẫu đã có đủ'}>
-            <Button icon={<ImportOutlined />} disabled={!catalogMissing} onClick={() => setImporting(true)}>
-              Nhập danh mục mẫu{catalogMissing ? ` (${catalogMissing})` : ''}
-            </Button>
-          </Tooltip>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setEditing({ __category: tab })}>
             Thêm vật tư
           </Button>
@@ -630,17 +551,9 @@ export default function InventoryPage() {
         category={editing?.__category || editing?.category || tab}
         open={editing !== null}
         onClose={() => setEditing(null)}
-        units={units}
+        units={UNIT_SUGGESTIONS}
       />
       <ReceiveModal item={receiving} onClose={() => setReceiving(null)} />
-      <ImportCatalogModal
-        open={importing}
-        missing={catalogMissingItems}
-        loading={importMutation.isPending}
-        onCancel={() => setImporting(false)}
-        onImport={(withStock) => importMutation.mutate(withStock)}
-      />
-
       <Modal
         title={rejecting ? `Từ chối đề xuất — ${rejecting.item.name}` : ''}
         open={Boolean(rejecting)}

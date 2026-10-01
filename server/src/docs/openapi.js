@@ -1209,22 +1209,6 @@ module.exports = {
     '/inventory/{id}/restock-request': {
       post: { tags: ['Inventory (scaffold)'], summary: 'Request a restock (Groom, Head Trainer, Veterinarian) — the Manager is notified', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['quantity'], properties: { quantity: { type: 'number', minimum: 1 }, packs: { type: 'number', description: 'Alternative to quantity for items with a pack size' }, note: { type: 'string' }, task: { type: 'string', description: 'The meal/dose task this shortage is blocking — the Manager is told, and the groom is told when it is approved' } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 404: responses[404] } },
     },
-    '/inventory/catalog': {
-      get: {
-        tags: ['Inventory (scaffold)'],
-        summary: 'The standard stock list (35 items: 10 feed, 15 medicine, 10 equipment, each with startingStock) and unit suggestions per category',
-        responses: { 200: responses[200]({ type: 'object', properties: { items: { type: 'array', items: { type: 'object' } }, units: { type: 'object' } } }) },
-      },
-    },
-    '/inventory/catalog/import': {
-      post: {
-        tags: ['Inventory (scaffold)'],
-        summary: 'Add the catalog items not already in stock (Manager) — safe to repeat',
-        description: 'New items come in with quantity 0, or with the startingStock of their catalog entry when withStock is true. Names already in stock are skipped.',
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { categories: { type: 'array', items: { type: 'string', enum: ['feed', 'medicine', 'equipment'] } }, withStock: { type: 'boolean', default: false, description: 'Put in the starting stock instead of 0' } } } } } },
-        responses: { 200: responses[200]({ type: 'object', properties: { created: { type: 'integer' }, skipped: { type: 'integer' } } }), 403: responses[403] },
-      },
-    },
     '/inventory/{id}/receive': {
       post: {
         tags: ['Inventory (scaffold)'],
