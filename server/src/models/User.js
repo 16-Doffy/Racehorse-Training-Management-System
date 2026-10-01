@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: ALL_ROLES, required: true },
     phone: { type: String, trim: true },
+    avatarUrl: { type: String, trim: true }, // from POST /uploads; shown in the app header
     isActive: { type: Boolean, default: true },
     // Separates "self-registered, waiting for a Club Manager to approve" from "existing staff
     // member who was deactivated" — both of which leave isActive false and would otherwise be
