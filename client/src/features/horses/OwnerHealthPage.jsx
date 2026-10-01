@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { horsesApi } from './horsesApi';
 import { healthRecordApi, treatmentApi, injuryMarkerApi } from '../health/healthApi';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { TRAINING_LEVEL_META } from '../../constants/health';
 import dayjs from 'dayjs';
 
 const STATUS_CONFIG = {
@@ -252,6 +253,9 @@ export default function OwnerHealthPage() {
             <span className={`text-xs px-2 py-1 rounded-full font-medium border ${STATUS_CONFIG[selectedHorseObj.healthStatus]?.color === 'green' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-gray-100 border-gray-200'}`}>
               {STATUS_CONFIG[selectedHorseObj.healthStatus]?.label}
             </span>
+            <Tag color={TRAINING_LEVEL_META[selectedHorseObj.trainingClearance?.level || 'high']?.color} className="!m-0">
+              {TRAINING_LEVEL_META[selectedHorseObj.trainingClearance?.level || 'high']?.label}
+            </Tag>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

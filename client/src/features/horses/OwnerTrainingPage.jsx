@@ -9,6 +9,8 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { horsesApi } from './horsesApi';
 import { trainingPlanApi, trainingSessionApi } from '../training/trainingApi';
+import { reportsApi } from '../reports/reportsApi';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from 'recharts';
 import dayjs from 'dayjs';
 
 const SESSION_TYPE_CONFIG = {
@@ -72,6 +74,12 @@ export default function OwnerTrainingPage() {
     queryFn: () => trainingPlanApi.list(),
   });
   const allPlans = plansData?.data || [];
+
+  const { data: chartDataRes } = useQuery({
+    queryKey: ['training-chart', selectedHorse],
+    queryFn: () => reportsApi.trainingChart({ months: 6, horse: selectedHorse || undefined }),
+  });
+  const chartData = chartDataRes?.data || [];
 
   // Filter by selected horse
   const horseSessions = selectedHorse
@@ -149,10 +157,46 @@ export default function OwnerTrainingPage() {
       render: (v) => <span className="text-gray-500 font-medium">{v ? `${v} m` : '—'}</span>,
     },
     {
+      title: 'Mục đích',
+      dataIndex: 'objective',
+      key: 'objective',
+      render: (obj) => <span className="text-gray-600">{obj || '—'}</span>,
+    },
+    {
       title: 'Rating',
       dataIndex: 'performanceRating',
       key: 'performanceRating',
       render: (r) => (r ? <span className="text-yellow-600 font-medium">⭐ {r}/10</span> : <span className="text-gray-400">—</span>),
+    },
+    {
+      title: 'Kết quả',
+      key: 'outcome',
+      render: (_, record) => {
+        if (!record.outcome) return <span className="text-gray-400">—</span>;
+        const isMet = record.outcome.met;
+        return (
+          <div className="flex flex-col gap-1">
+            <Tag color={isMet ? 'success' : 'error'} className="w-max m-0">
+              {isMet ? 'Đạt' : 'Không đạt'}
+            </Tag>
+            {record.outcome.summary && (
+              <span className="text-xs text-gray-500 max-w-[150px] truncate" title={record.outcome.summary}>
+                {record.outcome.summary}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      title: 'Video',
+      dataIndex: 'videoUrl',
+      key: 'videoUrl',
+      render: (url) => url ? (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+          Xem video
+        </a>
+      ) : <span className="text-gray-400">—</span>,
     },
   ];
 
@@ -237,7 +281,7 @@ export default function OwnerTrainingPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-gray-900 m-0 mb-1 tracking-tight">Lịch Huấn luyện</h1>
         <p className="text-sm text-gray-500 m-0">
-          Theo dõi lịch trình tập luyện, giáo án và hiệu suất của chiến mã.
+          Theo dõi lịch trình tập luyện, kế hoạch huấn luyện và hiệu suất của chiến mã.
         </p>
       </div>
 
@@ -260,7 +304,7 @@ export default function OwnerTrainingPage() {
           onChange={setViewMode}
           options={[
             { value: 'sessions', label: '📅 Danh sách buổi tập' },
-            { value: 'plans', label: '📋 Giáo án dài hạn' },
+            { value: 'plans', label: '📋 Kế hoạch dài hạn' },
           ]}
           className="bg-gray-100"
         />
@@ -290,7 +334,7 @@ export default function OwnerTrainingPage() {
           subtitle="Đánh giá từ HLV"
         />
         <StatCard 
-          title="Giáo án đang có" 
+          title="Kế hoạch đang có" 
           value={totalPlans}
           subtitle="Kế hoạch huấn luyện"
         />
@@ -300,7 +344,7 @@ export default function OwnerTrainingPage() {
       {activePlan && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-emerald-800 text-base m-0">Giáo án đang áp dụng</h2>
+            <h2 className="font-semibold text-emerald-800 text-base m-0">Kế hoạch đang áp dụng</h2>
             <span className="text-xs px-2 py-0.5 rounded font-medium bg-emerald-200 text-emerald-800">
               Đang Active
             </span>
@@ -342,11 +386,47 @@ export default function OwnerTrainingPage() {
         </div>
       )}
 
+      {/* Chart Section */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+        <h2 className="text-base font-semibold text-gray-900 m-0 mb-4">Biểu đồ Tập luyện (6 tháng gần đây)</h2>
+        <div className="h-[300px] w-full">
+          {chartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <XAxis dataKey="_id" axisLine={false} tickLine={false} />
+                <YAxis yAxisId="left" axisLine={false} tickLine={false} tickFormatter={(v) => Math.round(v)} />
+                <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  formatter={(value, name) => {
+                    const labelMap = {
+                      sessions: 'Số buổi',
+                      avgScore: 'Điểm TB',
+                      avgSpeed: 'Tốc độ TB',
+                      distance: 'Cự ly (m)',
+                      metGoals: 'Đạt mục tiêu',
+                    };
+                    return [typeof value === 'number' && value % 1 !== 0 ? value.toFixed(1) : value, labelMap[name] || name];
+                  }}
+                />
+                <Legend />
+                <Bar yAxisId="left" dataKey="sessions" name="Số buổi tập" fill="#bae6fd" radius={[4, 4, 0, 0]} />
+                <Bar yAxisId="left" dataKey="metGoals" name="Đạt mục tiêu" fill="#38bdf8" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="right" type="monotone" dataKey="avgScore" name="Điểm TB" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-gray-400">Không đủ dữ liệu biểu đồ</div>
+          )}
+        </div>
+      </div>
+
       {/* Main Table */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="p-5 border-b border-gray-100 flex justify-between items-center">
           <h2 className="text-base font-semibold text-gray-900 m-0">
-            {viewMode === 'sessions' ? 'Bảng thống kê Buổi tập' : 'Danh sách Giáo án Huấn luyện'}
+            {viewMode === 'sessions' ? 'Bảng thống kê Buổi tập' : 'Danh sách Kế hoạch Huấn luyện'}
           </h2>
         </div>
         
@@ -367,7 +447,7 @@ export default function OwnerTrainingPage() {
             dataSource={horsePlans}
             pagination={{ pageSize: 10, position: ['bottomRight'] }}
             className="custom-table"
-            locale={{ emptyText: 'Chưa có giáo án nào' }}
+            locale={{ emptyText: 'Chưa có kế hoạch nào' }}
           />
         )}
       </div>
