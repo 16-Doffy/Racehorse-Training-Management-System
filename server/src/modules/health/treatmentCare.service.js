@@ -58,9 +58,12 @@ function medicationNote(m) {
 
 const keyOf = (t) => `${t.taskType}|${t.note}|${t.dueTime || ''}`;
 
+/** Whether a medicine with its own date range is due on the day between start and end. */
+const medicineDueToday = (m, { start, end }) => !(m.startDate && m.startDate >= end) && !(m.endDate && m.endDate < start);
+
 /** The care a treatment asks of the stable today, as the tasks it should exist as. */
-async function wantedTasks(treatment) {
-  const meds = treatment.medications || [];
+async function wantedTasks(treatment, bounds) {
+  const meds = (treatment.medications || []).filter((m) => medicineDueToday(m, bounds));
   const itemIds = meds.map((m) => m.inventoryItem).filter(Boolean);
   const items = itemIds.length ? await InventoryItem.find({ _id: { $in: itemIds } }).select('name unit') : [];
   const itemById = new Map(items.map((i) => [String(i._id), i]));
@@ -96,7 +99,7 @@ function isActiveToday(treatment, { start, end }) {
 async function syncCareTasks(treatment) {
   const bounds = todayBounds();
   const active = isActiveToday(treatment, bounds);
-  const wanted = active ? await wantedTasks(treatment) : [];
+  const wanted = active ? await wantedTasks(treatment, bounds) : [];
   const wantedKeys = new Set(wanted.map(keyOf));
 
   // A treatment that has ended leaves no pending care behind, whichever day it was created for.

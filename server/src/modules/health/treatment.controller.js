@@ -128,11 +128,32 @@ async function sendCareOrders(treatment, vet, { isNew = false } = {}) {
 }
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+// Clock time of each part of the day the vet can tick instead of typing hours.
+const SLOT_CLOCK = { morning: '07:00', noon: '11:30', afternoon: '15:00', evening: '19:00' };
+
+/** "8:00, 16:00" → ['08:00', '16:00']; returns { times } or { bad } with the first unreadable entry. */
+function parseSpecificTimes(text) {
+  const times = [];
+  for (const raw of String(text || '').split(/[,;\s]+/).filter(Boolean)) {
+    const t = /^\d:\d\d$/.test(raw) ? `0${raw}` : raw;
+    if (!TIME_PATTERN.test(t)) return { bad: raw };
+    times.push(t);
+  }
+  return { times };
+}
+
+const toDate = (v) => {
+  if (v === undefined || v === null || v === '') return undefined;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
 
 /**
  * Checks and tidies a prescription: each medicine has a name (taken from the stock item when one is
  * linked), a stock item that really is a medicine, a positive amount per dose when linked, and
- * valid, distinct times of day. Returns { medications } or { error }.
+ * valid, distinct times of day. Times come from `times`, else from the typed `specificTimes`,
+ * else from the ticked `timeSlots` (morning 07:00, noon 11:30, afternoon 15:00, evening 19:00).
+ * A medicine may carry its own startDate / endDate. Returns { medications } or { error }.
  */
 async function normalizeMedications(list) {
   if (!Array.isArray(list)) return { error: 'medications phải là danh sách.' };
@@ -149,9 +170,22 @@ async function normalizeMedications(list) {
     const amount = m.amount === undefined || m.amount === null || m.amount === '' ? undefined : Number(m.amount);
     if (amount !== undefined && (!Number.isFinite(amount) || amount <= 0)) return { error: `${label}: lượng mỗi liều phải là số dương.` };
     if (item && !amount) return { error: `${label}: nhập lượng mỗi liều (đơn vị ${item.unit}) để trừ kho.` };
-    const times = [...new Set((m.times || []).map((t) => String(t).trim()).filter(Boolean))].sort();
+    const timeSlots = [...new Set((m.timeSlots || []).filter((s) => SLOT_CLOCK[s]))];
+    const specificTimes = String(m.specificTimes || '').trim();
+    let listed = (m.times || []).map((t) => String(t).trim()).filter(Boolean);
+    if (!listed.length && specificTimes) {
+      const parsed = parseSpecificTimes(specificTimes);
+      if (parsed.bad) return { error: `${label}: giờ "${parsed.bad}" không đúng dạng HH:mm (VD: 08:00, 16:00).` };
+      listed = parsed.times;
+    }
+    if (!listed.length) listed = timeSlots.map((s) => SLOT_CLOCK[s]);
+    const times = [...new Set(listed)].sort();
     const bad = times.find((t) => !TIME_PATTERN.test(t));
     if (bad) return { error: `${label}: giờ "${bad}" không đúng dạng HH:mm.` };
+    const startDate = toDate(m.startDate);
+    const endDate = toDate(m.endDate);
+    if (startDate === null || endDate === null) return { error: `${label}: ngày bắt đầu / kết thúc không hợp lệ.` };
+    if (startDate && endDate && endDate < startDate) return { error: `${label}: ngày kết thúc phải sau ngày bắt đầu.` };
     const name = String(m.name || item?.name || '').trim();
     if (!name) return { error: `${label}: thiếu tên thuốc.` };
     out.push({
@@ -161,6 +195,11 @@ async function normalizeMedications(list) {
       inventoryItem: item?._id || null,
       amount,
       times,
+      timeSlots,
+      specificTimes: specificTimes || undefined,
+      startDate,
+      endDate,
+      instructions: String(m.instructions || '').trim() || undefined,
     });
   }
   return { medications: out };
