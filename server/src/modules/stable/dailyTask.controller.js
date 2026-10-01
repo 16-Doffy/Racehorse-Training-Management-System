@@ -7,6 +7,7 @@ const { ROLES } = require('../../constants/roles');
 const { notifyHorseStaff, pushNotification } = require('../alerts/notification.service');
 const { logAction } = require('../audit/audit.service');
 const { announceIncidentUpdate } = require('./incident.service');
+const { taskTiming, dayBounds } = require('../../utils/taskTiming');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
 
@@ -24,6 +25,25 @@ const TASK_LABELS = {
   monitoring: 'theo dõi theo y lệnh',
 };
 const VET_ORDER_MESSAGE = 'Đây là y lệnh của bác sĩ — chỉ bác sĩ thay đổi được qua phác đồ điều trị.';
+
+/**
+ * A task is handed out for today or later — giving someone a job for a day that has already gone
+ * only creates something overdue the moment it exists. For a meal, its own window must still be
+ * open (see utils/taskTiming.js): at 23:00 there is no breakfast left to schedule for today.
+ * Returns an error message, or null when the date is fine.
+ */
+function scheduleProblem({ taskType, mealSlot, scheduledDate }) {
+  if (!scheduledDate) return null;
+  const when = new Date(scheduledDate);
+  if (Number.isNaN(when.getTime())) return 'Ngày thực hiện không hợp lệ.';
+  if (when < dayBounds(new Date()).start) return 'Không giao việc cho ngày đã qua.';
+  const timing = taskTiming({ status: 'pending', taskType, mealSlot, scheduledDate: when });
+  if (timing.state === 'missed') {
+    const by = timing.closesAt ? ` (hạn ${timing.closesAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})` : '';
+    return `Khung giờ của việc này hôm nay đã qua${by} — không tạo hay dời vào đó được nữa.`;
+  }
+  return null;
+}
 
 /** Tells the groom a task is theirs (or no longer needs doing). They see nothing else change. */
 async function tellGroom(task, user, describe) {
@@ -107,6 +127,9 @@ const createTask = asyncHandler(async (req, res) => {
     return fail(res, 'Loại công việc không hợp lệ. Việc dùng thuốc/theo dõi do bác sĩ chỉ định qua phác đồ điều trị.', 400);
   }
 
+  const problem = scheduleProblem({ ...body, scheduledDate: body.scheduledDate || new Date() });
+  if (problem) return fail(res, problem, 400);
+
   const task = await DailyTask.create({ ...body, source: 'trainer' });
   await tellGroom(
     task,
@@ -124,8 +147,19 @@ const updateTask = asyncHandler(async (req, res) => {
   if (!task) return undefined;
   if (task.status === 'completed') return fail(res, 'Không thể sửa công việc đã hoàn thành.', 409);
   if (task.source === 'vet') return fail(res, VET_ORDER_MESSAGE, 409);
+  // A meal whose time has passed, or yesterday's dose, is history now — not something to move.
+  const timing = taskTiming(task);
+  if (!timing.canChange) return fail(res, `Không sửa được nữa: ${timing.reason}`, 409);
 
   const changes = pick(req.body, TASK_FIELDS);
+  if (changes.scheduledDate || changes.taskType || changes.mealSlot) {
+    const problem = scheduleProblem({
+      taskType: changes.taskType || task.taskType,
+      mealSlot: changes.mealSlot !== undefined ? changes.mealSlot : task.mealSlot,
+      scheduledDate: changes.scheduledDate || task.scheduledDate,
+    });
+    if (problem) return fail(res, problem, 400);
+  }
   if (changes.taskType && !MANUAL_TASK_TYPES.includes(changes.taskType)) return fail(res, 'Loại công việc không hợp lệ.', 400);
   const previousAssignee = String(task.assignedTo);
   if (changes.horse && !(await canAccessHorse(req.user, changes.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
@@ -136,6 +170,7 @@ const updateTask = asyncHandler(async (req, res) => {
     if (req.body.status !== 'skipped') return fail(res, 'Chỉ có thể chuyển công việc sang "Đã bỏ qua".', 400);
     if (task.status !== 'pending') return fail(res, 'Chỉ bỏ qua được công việc chưa thực hiện.', 409);
     changes.status = 'skipped';
+    changes.skippedBy = req.user._id;
   }
   if (changes.assignedTo && !(await isActiveGroom(changes.assignedTo))) {
     return fail(res, 'Người được giao phải là nhân viên chăm sóc đang hoạt động.', 400);
@@ -222,19 +257,22 @@ const completeTask = asyncHandler(async (req, res) => {
   const task = await loadTask(req, res);
   if (!task) return undefined;
 
-  // Marking tomorrow's feed as done today would record a meal the horse hasn't had.
-  const endOfToday = new Date();
-  endOfToday.setHours(23, 59, 59, 999);
-  if (task.scheduledDate > endOfToday) return fail(res, 'Chưa tới ngày thực hiện công việc này.', 409);
   // A meal the trainer called off (e.g. fasting before a race) must not be recorded as eaten.
-  if (task.status === 'skipped') return fail(res, 'Công việc này đã được HLV cho bỏ qua.', 409);
+  if (task.status === 'skipped') {
+    return fail(res, task.skipReason ? 'Công việc này đã được ghi nhận là không thực hiện được.' : 'Công việc này đã được HLV cho bỏ qua.', 409);
+  }
 
   // The first completion time is when the horse actually ate; completing again (e.g. to add an
   // observation afterwards) must not move it, or the readiness board would see a meal that never
   // happened.
   if (task.status !== 'completed') {
+    // Only within the task's window on the real clock: breakfast ticked at 23:00 would record a
+    // meal eaten at 23:00, and yesterday's dose can't be given today (utils/taskTiming.js).
+    const timing = taskTiming(task);
+    if (!timing.canComplete) return fail(res, timing.reason, 409, { timing });
     task.status = 'completed';
     task.completedAt = new Date();
+    if (!task.acknowledgedAt) task.acknowledgedAt = task.completedAt;
   }
 
   const observation = readObservation(req.body);
@@ -286,6 +324,54 @@ const reportIncident = asyncHandler(async (req, res) => {
   await notifyHorseStaff({ ...alert, staff: 'trainer' });
 
   return ok(res, task, 'Incident reported.');
+});
+
+/**
+ * The groom taking a task on ("tiếp nhận"). Nothing changes for the horse; it tells the trainer,
+ * manager and vet that someone has seen the order, before it is done. Idempotent.
+ */
+const acknowledgeTask = asyncHandler(async (req, res) => {
+  const task = await loadTask(req, res);
+  if (!task) return undefined;
+  if (task.status !== 'pending') return fail(res, 'Công việc này đã được ghi nhận xong.', 409);
+  if (taskTiming(task).state === 'missed') return fail(res, taskTiming(task).reason, 409);
+  if (!task.acknowledgedAt) {
+    task.acknowledgedAt = new Date();
+    await task.save();
+  }
+  return ok(res, task, 'Task acknowledged.');
+});
+
+/**
+ * The groom could not do the task — the horse would not take the medicine, the hoof was too sore
+ * to wash. Recorded as skipped with the reason, and whoever ordered it is told: the vet (and
+ * trainer) for a care order, the trainer for anything else. Without this the only options were a
+ * false "done" or leaving it to look forgotten.
+ */
+const reportNotDone = asyncHandler(async (req, res) => {
+  const task = await loadTask(req, res);
+  if (!task) return undefined;
+  const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+  if (!reason) return fail(res, 'Hãy ghi rõ vì sao không thực hiện được.', 400);
+  if (task.status !== 'pending') return fail(res, 'Công việc này đã được ghi nhận rồi.', 409);
+
+  Object.assign(task, { status: 'skipped', skipReason: reason, skippedBy: req.user._id });
+  if (!task.acknowledgedAt) task.acknowledgedAt = new Date();
+  await task.save();
+
+  const horse = await Horse.findById(task.horse).select('name');
+  const what = `${TASK_LABELS[task.taskType] || task.taskType}${task.note ? ` (${task.note})` : ''}`;
+  const alert = {
+    horse: task.horse,
+    type: task.source === 'vet' ? 'care_order' : 'task_assigned',
+    severity: 'warning',
+    message: `⚠️ ${req.user.name} không thực hiện được việc ${what} cho ${horse?.name || 'ngựa'}: ${reason}`,
+  };
+  if (task.source === 'vet') await notifyHorseStaff({ ...alert, staff: 'vet' });
+  await notifyHorseStaff({ ...alert, staff: 'trainer' });
+  await logAction({ actorId: req.user._id, action: 'dailyTask.not_done', targetModel: 'DailyTask', targetId: task._id, metadata: { reason } });
+
+  return ok(res, task, 'Task marked as not done.');
 });
 
 /**
@@ -359,4 +445,6 @@ module.exports = {
   reportIncident,
   listIncidents,
   handleIncident,
+  acknowledgeTask,
+  reportNotDone,
 };

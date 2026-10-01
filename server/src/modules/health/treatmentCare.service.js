@@ -58,11 +58,11 @@ async function syncCareTasks(treatment) {
     : { treatment: treatment._id, status: 'pending' };
   const { deletedCount: removed } = await DailyTask.deleteMany(stale);
 
-  if (wanted.length === 0) return { created: 0, removed, caretaker: null };
+  if (wanted.length === 0) return { created: 0, removed, caretaker: null, wanted: 0 };
 
   const assignment = await StableAssignment.findOne({ horse: treatment.horse }).select('assignedCaretaker');
   const caretaker = assignment?.assignedCaretaker || null;
-  if (!caretaker) return { created: 0, removed, caretaker: null };
+  if (!caretaker) return { created: 0, removed, caretaker: null, wanted: wanted.length };
 
   let created = 0;
   for (const item of wanted) {
@@ -88,7 +88,7 @@ async function syncCareTasks(treatment) {
     });
     created += 1;
   }
-  return { created, removed, caretaker };
+  return { created, removed, caretaker, wanted: wanted.length };
 }
 
 /** Daily run: every ongoing treatment gets today's care tasks; ended ones are cleaned up. */

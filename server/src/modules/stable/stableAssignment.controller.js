@@ -75,7 +75,7 @@ const upsertAssignment = asyncHandler(async (req, res) => {
     );
   }
   if (assignment.assignedCaretaker) {
-    await ensureFeedingTasks({ horseIds: [horse], onlyUpcoming: true });
+    await ensureFeedingTasks({ horseIds: [horse] });
     // A horse already under treatment brings its care orders to whoever now looks after it.
     const treatments = await Treatment.find({ horse, status: 'ongoing' });
     for (const treatment of treatments) {

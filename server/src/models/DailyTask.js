@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { taskTiming } = require('../utils/taskTiming');
 
 const incidentReportSchema = new mongoose.Schema(
   {
@@ -43,6 +44,13 @@ const dailyTaskSchema = new mongoose.Schema(
     scheduledDate: { type: Date, required: true, default: Date.now },
     status: { type: String, enum: ['pending', 'completed', 'skipped'], default: 'pending' },
     completedAt: { type: Date },
+    // The groom has seen the task and taken it on — for a vet's order, the trainer and manager can
+    // tell "nobody has picked this up" apart from "picked up, not done yet".
+    acknowledgedAt: { type: Date, default: null },
+    // Set when a task is called off (status skipped): by the trainer (fasting before a race) or by
+    // the groom reporting they could not do it — then with the reason (horse spat the medicine out).
+    skipReason: { type: String },
+    skippedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     // What the groom saw while doing the work. Optional on purpose: completing a task without it
     // behaves exactly as before, so this can ship before any screen collects it.
     observation: {
@@ -56,7 +64,14 @@ const dailyTaskSchema = new mongoose.Schema(
     },
     incidentReport: incidentReportSchema,
   },
-  { timestamps: true }
+  // `timing` is computed, not stored, and goes out with every task so the web and mobile screens
+  // show the same "open / upcoming / missed" the server enforces. `id: false` keeps the default
+  // `id` virtual from being added alongside `_id`.
+  { timestamps: true, id: false, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+dailyTaskSchema.virtual('timing').get(function timing() {
+  return taskTiming(this);
+});
 
 module.exports = mongoose.model('DailyTask', dailyTaskSchema);
