@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
-import { Table, Typography, Tag, Button, Modal, Form, Select, InputNumber, Input } from 'antd';
+import { Table, Typography, Tag, Button, Modal, Form, Select, InputNumber, Input, Row, Col, Statistic, Card } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -38,6 +38,13 @@ export default function FinancePage() {
   });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list(), enabled: !isOwner });
 
+  const { data: summaryData, isLoading: summaryLoading } = useQuery({
+    queryKey: ['finance', 'mine', 'summary'],
+    queryFn: () => financeApi.getMineSummary(),
+    enabled: isOwner,
+  });
+  const summary = summaryData?.data || { totalRevenue: 0, totalCost: 0, netBalance: 0 };
+
   const createMutation = useMutation({
     mutationFn: (payload) => financeApi.create(payload),
     onSuccess: () => {
@@ -61,6 +68,45 @@ export default function FinancePage() {
           </Button>
         )}
       </div>
+
+      {isOwner && (
+        <Row gutter={[16, 16]} className="mb-6">
+          <Col xs={24} md={8}>
+            <Card bordered={false} className="shadow-sm border border-gray-100" loading={summaryLoading}>
+              <Statistic
+                title="Tổng Doanh Thu"
+                value={summary.totalRevenue}
+                suffix="đ"
+                valueStyle={{ color: '#3f8600', fontWeight: 'bold' }}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} md={8}>
+            <Card bordered={false} className="shadow-sm border border-gray-100" loading={summaryLoading}>
+              <Statistic
+                title="Tổng Chi Phí"
+                value={summary.totalCost}
+                suffix="đ"
+                valueStyle={{ color: '#cf1322', fontWeight: 'bold' }}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} md={8}>
+            <Card
+              bordered={false}
+              className={`shadow-sm border border-gray-100 ${summary.netBalance >= 0 ? 'bg-green-50' : 'bg-red-50'}`}
+              loading={summaryLoading}
+            >
+              <Statistic
+                title="Lợi Nhuận Ròng"
+                value={summary.netBalance}
+                suffix="đ"
+                valueStyle={{ color: summary.netBalance >= 0 ? '#10b981' : '#ef4444', fontWeight: 'bold' }}
+              />
+            </Card>
+          </Col>
+        </Row>
+      )}
 
       <Table rowKey="_id" columns={columns(isOwner)} dataSource={data?.data} loading={isLoading} />
 

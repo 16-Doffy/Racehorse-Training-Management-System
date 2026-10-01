@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Typography, Card, Row, Col, Tag, Table, Select, Statistic, Empty, Descriptions, Timeline } from 'antd';
+import { Typography, Row, Col, Tag, Table, Empty, Descriptions, Timeline } from 'antd';
 import {
-  HeartOutlined,
-  AlertOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
   CloseCircleOutlined,
   StopOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { horsesApi } from './horsesApi';
@@ -14,13 +14,11 @@ import { healthRecordApi, treatmentApi, injuryMarkerApi } from '../health/health
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import dayjs from 'dayjs';
 
-const { Title, Text } = Typography;
-
 const STATUS_CONFIG = {
-  eligible: { color: 'green', icon: <CheckCircleOutlined />, label: '🟢 Sẵn sàng thi đấu', bg: '#f6ffed', border: '#b7eb8f' },
-  monitoring: { color: 'gold', icon: <ExclamationCircleOutlined />, label: '🟡 Đang theo dõi', bg: '#fffbe6', border: '#ffe58f' },
-  injured: { color: 'red', icon: <CloseCircleOutlined />, label: '🔴 Chấn thương', bg: '#fff2f0', border: '#ffccc7' },
-  quarantined: { color: 'volcano', icon: <StopOutlined />, label: '⚫ Cách ly', bg: '#fff7e6', border: '#ffd591' },
+  eligible: { color: 'green', icon: <CheckCircleOutlined />, label: '🟢 Sẵn sàng thi đấu' },
+  monitoring: { color: 'gold', icon: <ExclamationCircleOutlined />, label: '🟡 Đang theo dõi' },
+  injured: { color: 'red', icon: <CloseCircleOutlined />, label: '🔴 Chấn thương' },
+  quarantined: { color: 'volcano', icon: <StopOutlined />, label: '⚫ Cách ly' },
 };
 
 export default function OwnerHealthPage() {
@@ -32,7 +30,7 @@ export default function OwnerHealthPage() {
   });
   const horses = horsesData?.data || [];
 
-  const { data: healthData, isLoading: healthLoading } = useQuery({
+  const { data: healthData } = useQuery({
     queryKey: ['health-records'],
     queryFn: () => healthRecordApi.list(),
   });
@@ -99,12 +97,17 @@ export default function OwnerHealthPage() {
       dataIndex: 'name',
       key: 'name',
       render: (name, record) => (
-        <a onClick={() => setSelectedHorse(record._id)} className="font-medium">
+        <a onClick={() => setSelectedHorse(record._id)} className="font-semibold text-gray-800">
           {name}
         </a>
       ),
     },
-    { title: 'Giống', dataIndex: 'breed', key: 'breed' },
+    { 
+      title: 'Giống', 
+      dataIndex: 'breed', 
+      key: 'breed',
+      render: (b) => <span className="text-gray-600">{b}</span>
+    },
     {
       title: 'Trạng thái',
       dataIndex: 'healthStatus',
@@ -112,9 +115,13 @@ export default function OwnerHealthPage() {
       render: (status) => {
         const cfg = STATUS_CONFIG[status] || {};
         return (
-          <Tag color={cfg.color} icon={cfg.icon}>
+          <span className={`border border-gray-200 bg-gray-50 text-xs px-3 py-1 rounded-full font-medium ${
+            status === 'eligible' ? 'text-emerald-600' : 
+            status === 'monitoring' ? 'text-yellow-600' :
+            status === 'injured' ? 'text-red-600' : 'text-gray-600'
+          }`}>
             {cfg.label || status}
-          </Tag>
+          </span>
         );
       },
     },
@@ -122,241 +129,213 @@ export default function OwnerHealthPage() {
       title: 'Cân nặng',
       dataIndex: 'weightKg',
       key: 'weightKg',
-      render: (w) => (w ? `${w} kg` : '—'),
+      render: (w) => <span className="text-gray-500 font-medium">{w ? `${w} kg` : '—'}</span>,
     },
   ];
 
   const treatmentColumns = [
-    { title: 'Ngày tạo', dataIndex: 'createdAt', key: 'createdAt', render: (d) => dayjs(d).format('DD/MM/YYYY') },
+    { title: 'Ngày tạo', dataIndex: 'createdAt', key: 'createdAt', render: (d) => <span className="text-gray-500">{dayjs(d).format('DD/MM/YYYY')}</span> },
     { title: 'Trạng thái', dataIndex: 'status', key: 'status', render: (st) => (
-      <Tag color={st === 'ongoing' ? 'blue' : st === 'completed' ? 'green' : 'default'}>
+      <span className={`text-xs px-2 py-0.5 rounded font-medium ${st === 'ongoing' ? 'bg-blue-50 text-blue-600 border border-blue-200' : st === 'completed' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-gray-100 text-gray-500'}`}>
         {st === 'ongoing' ? 'Đang điều trị' : st === 'completed' ? 'Hoàn thành' : 'Đã hủy'}
-      </Tag>
+      </span>
     )},
-    { title: 'Khóa tập (Y tế)', dataIndex: 'isTrainingLocked', key: 'locked', render: (locked, record) => (
-      locked ? <Tag color="red" icon={<StopOutlined />}>Đang khóa tập ({record.lockReason})</Tag> : <Tag color="green">Bình thường</Tag>
+    { title: 'Khóa tập', dataIndex: 'isTrainingLocked', key: 'locked', render: (locked, record) => (
+      locked ? <span className="text-xs text-red-600 font-medium"><StopOutlined /> Khóa ({record.lockReason})</span> : <span className="text-xs text-emerald-600 font-medium">Bình thường</span>
     )},
     { title: 'Thuốc / Ghi chú', key: 'meds', render: (_, record) => {
       const meds = record.medications?.length > 0 
         ? record.medications.map(m => `${m.name} (${m.dosage})`).join(', ') 
         : 'Không kê thuốc';
-      return <span className="text-gray-600">{meds}</span>;
+      return <span className="text-gray-600 text-sm">{meds}</span>;
     }}
   ];
 
   const injuryColumns = [
-    { title: 'Ngày bị', dataIndex: 'createdAt', key: 'createdAt', render: (d) => dayjs(d).format('DD/MM/YYYY') },
+    { title: 'Ngày bị', dataIndex: 'createdAt', key: 'createdAt', render: (d) => <span className="text-gray-500">{dayjs(d).format('DD/MM/YYYY')}</span> },
     { title: 'Vị trí', dataIndex: 'bodyPart', key: 'bodyPart', render: (val) => <span className="font-semibold text-gray-800">{val}</span> },
     { title: 'Mức độ', dataIndex: 'severity', key: 'severity', render: (sev) => {
-      const colors = { minor: 'blue', moderate: 'orange', severe: 'red', critical: 'purple' };
+      const colors = { minor: 'bg-blue-50 text-blue-600 border-blue-200', moderate: 'bg-yellow-50 text-yellow-600 border-yellow-200', severe: 'bg-red-50 text-red-600 border-red-200', critical: 'bg-purple-50 text-purple-600 border-purple-200' };
       const labels = { minor: 'Nhẹ', moderate: 'Vừa', severe: 'Nghiêm trọng', critical: 'Nguy kịch' };
-      return <Tag color={colors[sev] || 'default'}>{labels[sev] || sev}</Tag>;
+      return <span className={`text-xs px-2 py-0.5 rounded border font-medium ${colors[sev] || 'bg-gray-100'}`}>{labels[sev] || sev}</span>;
     }},
     { title: 'Hồi phục', dataIndex: 'recoveryStatus', key: 'recoveryStatus', render: (rec) => {
-      const colors = { newly_reported: 'red', treating: 'blue', recovering: 'orange', recovered: 'green' };
+      const colors = { newly_reported: 'bg-red-50 text-red-600 border-red-200', treating: 'bg-blue-50 text-blue-600 border-blue-200', recovering: 'bg-yellow-50 text-yellow-600 border-yellow-200', recovered: 'bg-emerald-50 text-emerald-600 border-emerald-200' };
       const labels = { newly_reported: 'Mới bị', treating: 'Đang điều trị', recovering: 'Đang hồi phục', recovered: 'Đã khỏi' };
-      return <Tag color={colors[rec] || 'default'}>{labels[rec] || rec}</Tag>;
+      return <span className={`text-xs px-2 py-0.5 rounded border font-medium ${colors[rec] || 'bg-gray-100'}`}>{labels[rec] || rec}</span>;
     }},
-    { title: 'Ghi chú', dataIndex: 'notes', key: 'notes' }
+    { title: 'Ghi chú', dataIndex: 'notes', key: 'notes', render: (n) => <span className="text-gray-500 text-sm">{n}</span> }
   ];
 
+  const StatCard = ({ title, value, tagText, tagClass, subtitle }) => (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
+      <div className="flex justify-between items-center mb-4">
+        <span className="text-gray-500 text-sm font-medium">{title}</span>
+      </div>
+      <div className="flex items-baseline gap-3 mb-1">
+        <span className="text-3xl font-bold text-gray-900">{value}</span>
+        {tagText && (
+          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${tagClass}`}>
+            {tagText}
+          </span>
+        )}
+      </div>
+      <span className="text-xs text-gray-400 font-medium">{subtitle}</span>
+    </div>
+  );
+
   return (
-    <div>
-      <Title level={3} className="!font-semibold !mb-2 !text-[#022c22]" style={{ fontFamily: 'Georgia, serif' }}>
-        <HeartOutlined className="mr-2 text-[#eab308]" />
-        Giám sát Sức khỏe Ngựa
-      </Title>
-      <Text className="block mb-6 text-gray-500">
-        Theo dõi thể trạng và chỉ số sức khỏe của tất cả ngựa bạn sở hữu.
-      </Text>
+    <div className="min-h-screen bg-[#FAFAFA] text-gray-800 p-4 md:px-8 md:pb-8 md:pt-4 font-sans">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-gray-900 m-0 mb-1 tracking-tight">Giám sát Y tế & Sức khỏe</h1>
+        <p className="text-sm text-gray-500 m-0">
+          Theo dõi thể trạng, lịch sử điều trị và chỉ số sinh tồn của toàn bộ danh mục chiến mã.
+        </p>
+      </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="premium-card p-4 flex items-center gap-4 border-t-4 border-t-green-500">
-          <div className="w-12 h-12 rounded-full bg-green-50 text-green-500 flex items-center justify-center text-xl">
-            <CheckCircleOutlined />
-          </div>
-          <div>
-            <div className="text-gray-500 text-[10px] uppercase font-bold tracking-widest">Sẵn sàng</div>
-            <div className="text-2xl font-bold text-[#022c22]">{statusCounts.eligible}</div>
-          </div>
-        </div>
-        <div className="premium-card p-4 flex items-center gap-4 border-t-4 border-t-yellow-500">
-          <div className="w-12 h-12 rounded-full bg-yellow-50 text-yellow-500 flex items-center justify-center text-xl">
-            <ExclamationCircleOutlined />
-          </div>
-          <div>
-            <div className="text-gray-500 text-[10px] uppercase font-bold tracking-widest">Theo dõi</div>
-            <div className="text-2xl font-bold text-[#022c22]">{statusCounts.monitoring}</div>
-          </div>
-        </div>
-        <div className="premium-card p-4 flex items-center gap-4 border-t-4 border-t-red-500">
-          <div className="w-12 h-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center text-xl">
-            <CloseCircleOutlined />
-          </div>
-          <div>
-            <div className="text-gray-500 text-[10px] uppercase font-bold tracking-widest">Chấn thương</div>
-            <div className="text-2xl font-bold text-[#022c22]">{statusCounts.injured}</div>
-          </div>
-        </div>
-        <div className="premium-card p-4 flex items-center gap-4 border-t-4 border-t-orange-500">
-          <div className="w-12 h-12 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center text-xl">
-            <StopOutlined />
-          </div>
-          <div>
-            <div className="text-gray-500 text-[10px] uppercase font-bold tracking-widest">Cách ly</div>
-            <div className="text-2xl font-bold text-[#022c22]">{statusCounts.quarantined}</div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard 
+          title="Sẵn sàng thi đấu" 
+          value={statusCounts.eligible}
+          tagText="Tốt"
+          tagClass="bg-emerald-100 text-emerald-700"
+          subtitle={`${horses.length > 0 ? Math.round(statusCounts.eligible/horses.length*100) : 0}% tổng số`}
+        />
+        <StatCard 
+          title="Đang theo dõi" 
+          value={statusCounts.monitoring}
+          tagText="Cần lưu ý"
+          tagClass="bg-yellow-100 text-yellow-700"
+          subtitle="Giám sát cường độ"
+        />
+        <StatCard 
+          title="Chấn thương" 
+          value={statusCounts.injured}
+          tagText="Đang điều trị"
+          tagClass="bg-red-100 text-red-700"
+          subtitle="Khóa tập luyện"
+        />
+        <StatCard 
+          title="Đang cách ly" 
+          value={statusCounts.quarantined}
+          tagText="Nghiêm ngặt"
+          tagClass="bg-orange-100 text-orange-700"
+          subtitle="Phòng ngừa"
+        />
       </div>
 
       {/* Horse List Table */}
-      <div className="premium-card p-5 mb-6">
-        <h3 className="font-semibold text-lg text-[#022c22] mb-4">Danh sách Ngựa & Trạng thái</h3>
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-6">
+        <div className="p-5 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-900 m-0">Danh sách Ngựa</h2>
+        </div>
         <Table
           rowKey="_id"
           columns={columns}
           dataSource={horses}
           loading={horsesLoading}
           pagination={false}
-          size="middle"
-          rowClassName={(record) =>
-            record._id === selectedHorse ? 'bg-blue-50 cursor-pointer' : 'cursor-pointer hover:bg-gray-50 transition-colors'
-          }
-          onRow={(record) => ({
-            onClick: () => setSelectedHorse(record._id),
-          })}
+          className="custom-table"
+          rowClassName={(record) => record._id === selectedHorse ? 'bg-blue-50 cursor-pointer' : 'cursor-pointer hover:bg-gray-50 transition-colors'}
+          onRow={(record) => ({ onClick: () => setSelectedHorse(record._id) })}
         />
       </div>
 
       {/* Detail Panel */}
       {selectedHorseObj && (
-        <div className="animate-fade-in">
-          <div className="flex items-center gap-3 mb-4">
-            <h4 className="font-semibold text-xl text-gray-800 m-0">
-              Chi tiết sức khỏe: {selectedHorseObj.name}
-            </h4>
-            <Tag
-              className="rounded-full border-0 font-medium"
-              color={STATUS_CONFIG[selectedHorseObj.healthStatus]?.color}
-            >
+        <div className="animate-fade-in flex flex-col gap-6">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-semibold text-gray-900 m-0">
+              Chi tiết: {selectedHorseObj.name}
+            </h2>
+            <span className={`text-xs px-2 py-1 rounded-full font-medium border ${STATUS_CONFIG[selectedHorseObj.healthStatus]?.color === 'green' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-gray-100 border-gray-200'}`}>
               {STATUS_CONFIG[selectedHorseObj.healthStatus]?.label}
-            </Tag>
+            </span>
           </div>
 
-          <Row gutter={[16, 16]} className="mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Latest Vital Signs */}
-            <Col xs={24} md={12}>
-              <div className="premium-card p-5 h-full">
-                <h4 className="font-bold text-[#022c22] mb-3 border-b pb-2">Chỉ số sinh tồn gần nhất</h4>
-                {latestRecord ? (
-                  <Descriptions column={1} size="small" colon={false} labelStyle={{ color: '#6b7280', width: '120px' }}>
-                    <Descriptions.Item label="Ngày khám">
-                      <span className="font-medium">{dayjs(latestRecord.date).format('DD/MM/YYYY HH:mm')}</span>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Nhịp tim">
-                      {latestRecord.vitalSigns?.heartRate ? <span className="font-medium">{latestRecord.vitalSigns.heartRate} bpm</span> : '—'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Nhiệt độ">
-                      {latestRecord.vitalSigns?.temperatureC ? <span className="font-medium">{latestRecord.vitalSigns.temperatureC} °C</span> : '—'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Nhịp thở">
-                      {latestRecord.vitalSigns?.respiratoryRate ? <span className="font-medium">{latestRecord.vitalSigns.respiratoryRate} lần/phút</span> : '—'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Cân nặng">
-                      {selectedHorseObj.weightKg ? <span className="font-medium">{selectedHorseObj.weightKg} kg</span> : '—'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Chẩn đoán">
-                      <span className="text-gray-800">{latestRecord.diagnosis}</span>
-                    </Descriptions.Item>
-                  </Descriptions>
-                ) : (
-                  <Empty description="Chưa có hồ sơ khám bệnh" />
-                )}
-              </div>
-            </Col>
+            <div className="bg-white border border-gray-200 rounded-xl p-6">
+              <h3 className="font-semibold text-gray-900 text-base mb-4">Chỉ số sinh tồn gần nhất</h3>
+              {latestRecord ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Ngày khám:</span><span className="font-medium text-gray-900">{dayjs(latestRecord.date).format('DD/MM/YYYY HH:mm')}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Nhịp tim:</span><span className="font-medium text-gray-900">{latestRecord.vitalSigns?.heartRate || '—'} bpm</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Nhiệt độ:</span><span className="font-medium text-gray-900">{latestRecord.vitalSigns?.temperatureC || '—'} °C</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Nhịp thở:</span><span className="font-medium text-gray-900">{latestRecord.vitalSigns?.respiratoryRate || '—'} lần/p</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Chẩn đoán:</span><span className="font-medium text-gray-900 text-right">{latestRecord.diagnosis}</span></div>
+                </div>
+              ) : (
+                <Empty description="Chưa có hồ sơ khám bệnh" />
+              )}
+            </div>
 
             {/* Care Schedule */}
-            <Col xs={24} md={12}>
-              <div className="premium-card p-5 h-full">
-                <h4 className="font-bold text-[#022c22] mb-3 border-b pb-2">Lịch chăm sóc định kỳ</h4>
-                {selectedHorseObj.careSchedule ? (
-                  <Descriptions column={1} size="small" colon={false} labelStyle={{ color: '#6b7280', width: '150px' }}>
-                    <Descriptions.Item label="💉 Tiêm phòng tiếp theo">
-                      <span className="font-medium">
-                        {selectedHorseObj.careSchedule.nextVaccinationDue
-                          ? dayjs(selectedHorseObj.careSchedule.nextVaccinationDue).format('DD/MM/YYYY')
-                          : 'Chưa lên lịch'}
-                      </span>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="💊 Tẩy giun tiếp theo">
-                      <span className="font-medium">
-                        {selectedHorseObj.careSchedule.nextDewormingDue
-                          ? dayjs(selectedHorseObj.careSchedule.nextDewormingDue).format('DD/MM/YYYY')
-                          : 'Chưa lên lịch'}
-                      </span>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="🔧 Đóng móng tiếp theo">
-                      <span className="font-medium">
-                        {selectedHorseObj.careSchedule.nextFarrierDue
-                          ? dayjs(selectedHorseObj.careSchedule.nextFarrierDue).format('DD/MM/YYYY')
-                          : 'Chưa lên lịch'}
-                      </span>
-                    </Descriptions.Item>
-                  </Descriptions>
-                ) : (
-                  <Empty description="Chưa có lịch chăm sóc" />
-                )}
-              </div>
-            </Col>
-          </Row>
+            <div className="bg-white border border-gray-200 rounded-xl p-6">
+              <h3 className="font-semibold text-gray-900 text-base mb-4">Lịch chăm sóc y tế định kỳ</h3>
+              {selectedHorseObj.careSchedule ? (
+                 <div className="flex flex-col gap-4">
+                  <div className="flex justify-between items-center text-sm border-b border-gray-100 pb-2">
+                    <span className="text-gray-500 flex items-center gap-2">💉 Tiêm phòng tiếp theo</span>
+                    <span className="font-medium text-gray-900">{selectedHorseObj.careSchedule.nextVaccinationDue ? dayjs(selectedHorseObj.careSchedule.nextVaccinationDue).format('DD/MM/YYYY') : 'Chưa lên lịch'}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm border-b border-gray-100 pb-2">
+                    <span className="text-gray-500 flex items-center gap-2">💊 Tẩy giun tiếp theo</span>
+                    <span className="font-medium text-gray-900">{selectedHorseObj.careSchedule.nextDewormingDue ? dayjs(selectedHorseObj.careSchedule.nextDewormingDue).format('DD/MM/YYYY') : 'Chưa lên lịch'}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm pb-2">
+                    <span className="text-gray-500 flex items-center gap-2">🔧 Đóng móng tiếp theo</span>
+                    <span className="font-medium text-gray-900">{selectedHorseObj.careSchedule.nextFarrierDue ? dayjs(selectedHorseObj.careSchedule.nextFarrierDue).format('DD/MM/YYYY') : 'Chưa lên lịch'}</span>
+                  </div>
+                 </div>
+              ) : (
+                <Empty description="Chưa có lịch chăm sóc" />
+              )}
+            </div>
+          </div>
 
-          <Row gutter={[16, 16]} className="mb-6">
-            <Col xs={24}>
-              <div className="premium-card p-5 h-full">
-                <h4 className="font-bold text-[#022c22] mb-3 border-b pb-2">Phác đồ điều trị & Y lệnh</h4>
-                <Table 
-                  columns={treatmentColumns} 
-                  dataSource={horseTreatments} 
-                  rowKey="_id" 
-                  pagination={{ pageSize: 5 }} 
-                  size="small"
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Ngựa không có phác đồ điều trị nào" /> }}
-                />
-              </div>
-            </Col>
-          </Row>
-          
-          <Row gutter={[16, 16]} className="mb-6">
-            <Col xs={24}>
-              <div className="premium-card p-5 h-full">
-                <h4 className="font-bold text-[#022c22] mb-3 border-b pb-2">Hồ sơ chấn thương</h4>
-                <Table 
-                  columns={injuryColumns} 
-                  dataSource={horseInjuries} 
-                  rowKey="_id" 
-                  pagination={{ pageSize: 5 }} 
-                  size="small"
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Ngựa chưa từng ghi nhận chấn thương" /> }}
-                />
-              </div>
-            </Col>
-          </Row>
+          {/* Treatment & Injury Tables */}
+          <div className="grid grid-cols-1 gap-6">
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="p-5 border-b border-gray-100"><h3 className="font-semibold text-gray-900 m-0">Phác đồ điều trị & Y lệnh</h3></div>
+              <Table 
+                columns={treatmentColumns} 
+                dataSource={horseTreatments} 
+                rowKey="_id" 
+                pagination={{ pageSize: 5 }} 
+                size="middle"
+                className="custom-table"
+                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có phác đồ điều trị" /> }}
+              />
+            </div>
+            
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="p-5 border-b border-gray-100"><h3 className="font-semibold text-gray-900 m-0">Hồ sơ chấn thương</h3></div>
+              <Table 
+                columns={injuryColumns} 
+                dataSource={horseInjuries} 
+                rowKey="_id" 
+                pagination={{ pageSize: 5 }} 
+                size="middle"
+                className="custom-table"
+                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có chấn thương" /> }}
+              />
+            </div>
+          </div>
 
           {/* Vital Signs Chart */}
           {vitalChartData.length > 0 && (
-            <div className="premium-card p-5 mb-6">
-              <h4 className="font-bold text-[#022c22] mb-4">Biểu đồ Chỉ số Sinh tồn</h4>
+            <div className="bg-white border border-gray-200 rounded-xl p-6">
+              <h3 className="font-semibold text-gray-900 m-0 mb-6">Biểu đồ Chỉ số Sinh tồn (20 lần khám gần nhất)</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={vitalChartData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} dy={10} />
                   <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
                   <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                   <Line yAxisId="left" type="monotone" dataKey="Nhịp tim (bpm)" stroke="#ef4444" strokeWidth={2} dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }} />
                   <Line yAxisId="right" type="monotone" dataKey="Nhiệt độ (°C)" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }} />
                   <Line yAxisId="left" type="monotone" dataKey="Nhịp thở" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }} />
@@ -364,50 +343,12 @@ export default function OwnerHealthPage() {
               </ResponsiveContainer>
             </div>
           )}
-
-          {/* Health Records Timeline */}
-          <div className="premium-card p-5">
-            <h4 className="font-bold text-[#022c22] mb-4">Lịch sử Khám bệnh</h4>
-            {horseRecords.length > 0 ? (
-              <Timeline
-                className="mt-2"
-                items={horseRecords.slice(0, 10).map((r) => ({
-                  color: STATUS_CONFIG[r.resultStatus]?.color || 'gray',
-                  children: (
-                    <div className="pb-4">
-                      <span className="font-medium text-gray-800">{dayjs(r.date).format('DD/MM/YYYY')}</span>
-                      <Tag className="ml-2 rounded-full border-0" color={STATUS_CONFIG[r.resultStatus]?.color}>
-                        {STATUS_CONFIG[r.resultStatus]?.label || r.resultStatus}
-                      </Tag>
-                      <div className="mt-2 text-sm text-gray-600">
-                        <span className="text-gray-400 mr-1">Chẩn đoán:</span>
-                        <span className="font-medium">{r.diagnosis}</span>
-                      </div>
-                      {r.notes && (
-                        <div className="mt-1 text-sm text-gray-600">
-                          <span className="text-gray-400 mr-1">Ghi chú:</span>
-                          <span>{r.notes}</span>
-                        </div>
-                      )}
-                      {r.examinedBy?.name && (
-                        <div className="mt-1 text-xs text-gray-400">
-                          Bác sĩ: {r.examinedBy.name}
-                        </div>
-                      )}
-                    </div>
-                  ),
-                }))}
-              />
-            ) : (
-              <Empty description="Chưa có lịch sử khám bệnh cho ngựa này" />
-            )}
-          </div>
         </div>
       )}
 
       {!selectedHorseObj && !horsesLoading && (
-        <div className="premium-card p-10 flex justify-center items-center">
-          <Empty description="Chọn một con ngựa từ bảng trên để xem chi tiết sức khỏe" />
+        <div className="mt-6 flex justify-center items-center py-12 text-gray-400 border border-dashed border-gray-300 rounded-xl bg-gray-50">
+          Vui lòng chọn một chiến mã từ bảng trên để xem hồ sơ bệnh án
         </div>
       )}
     </div>

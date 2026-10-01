@@ -18,6 +18,17 @@ export default function App() {
           colorBgContainer: '#ffffff',
           colorBorderSecondary: '#f0f0f0',
         },
+        components: {
+          Select: {
+            controlItemBgActive: '#e6f4ea', // light green for selected item
+            controlItemBgHover: '#f3f4f6',  // light gray for hover
+            optionSelectedColor: '#022c22',
+          },
+          Dropdown: {
+            controlItemBgActive: '#e6f4ea',
+            controlItemBgHover: '#f3f4f6',
+          }
+        }
       }}
     >
       {/* AntD's App provides the context-aware message/notification/modal instances. Without it,

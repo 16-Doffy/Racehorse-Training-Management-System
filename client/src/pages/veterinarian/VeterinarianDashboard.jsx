@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Container, Row, Col, Card, Button, Table, Badge, ProgressBar } from 'react-bootstrap';
+import { Container, Row, Col, Card, Button, Table, Badge, ProgressBar, Modal, Form } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer,
@@ -23,6 +23,7 @@ import HealthAlert from '../../components/veterinarian/HealthAlert';
 import TrainingLockModal from '../../components/veterinarian/TrainingLockModal';
 import { formatDate } from '../../utils/formatDate';
 import { INJURY_SEVERITY_CONFIG } from '../../utils/healthStatus';
+import veterinarianApi from '../../api/veterinarianApi';
 
 const STATUS_COLORS = {
   eligible: '#198754',
@@ -52,6 +53,30 @@ export default function VeterinarianDashboard() {
   const [selectedHorseForLock, setSelectedHorseForLock] = useState(null);
   const [selectedTreatmentForLock, setSelectedTreatmentForLock] = useState(null);
   const [showLockModal, setShowLockModal] = useState(false);
+
+  // Update Exam Request Modal State
+  const [selectedExamReq, setSelectedExamReq] = useState(null);
+  const [showExamModal, setShowExamModal] = useState(false);
+  const [examStatus, setExamStatus] = useState('done');
+  const [resolutionNote, setResolutionNote] = useState('');
+  const [isUpdatingExam, setIsUpdatingExam] = useState(false);
+
+  const handleUpdateExamRequest = async () => {
+    if (!selectedExamReq) return;
+    setIsUpdatingExam(true);
+    try {
+      await veterinarianApi.updateExamRequest(selectedExamReq._id, {
+        status: examStatus,
+        resolutionNote,
+      });
+      setShowExamModal(false);
+      refreshData();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsUpdatingExam(false);
+    }
+  };
 
   // Statistics Calculations
   const totalHorses = horses.length;
@@ -184,9 +209,19 @@ export default function VeterinarianDashboard() {
                     Lý do: {req.reason}
                   </div>
                 </div>
-                <Button variant="primary" size="sm" onClick={() => navigate(`/veterinarian/horses/${req.horse?._id || req.horse}`)}>
-                  Tiến hành khám
-                </Button>
+                <div className="d-flex gap-2">
+                  <Button variant="outline-secondary" size="sm" onClick={() => {
+                    setSelectedExamReq(req);
+                    setExamStatus('done');
+                    setResolutionNote('');
+                    setShowExamModal(true);
+                  }}>
+                    Cập nhật
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={() => navigate(`/veterinarian/horses/${req.horse?._id || req.horse}`)}>
+                    Tiến hành khám
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -551,7 +586,6 @@ export default function VeterinarianDashboard() {
         </Col>
       </Row>
 
-      {/* Training Lock Modal */}
       <TrainingLockModal
         show={showLockModal}
         onHide={() => setShowLockModal(false)}
@@ -561,6 +595,42 @@ export default function VeterinarianDashboard() {
           refreshData();
         }}
       />
+
+      {/* Update Exam Request Modal */}
+      <Modal show={showExamModal} onHide={() => setShowExamModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Cập nhật Yêu cầu Khám bệnh</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form>
+            <Form.Group className="mb-3">
+              <Form.Label>Trạng thái</Form.Label>
+              <Form.Select value={examStatus} onChange={(e) => setExamStatus(e.target.value)}>
+                <option value="done">Đã giải quyết (Done)</option>
+                <option value="cancelled">Từ chối / Hủy (Cancelled)</option>
+              </Form.Select>
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Ghi chú phản hồi (Tùy chọn)</Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={3}
+                value={resolutionNote}
+                onChange={(e) => setResolutionNote(e.target.value)}
+                placeholder="Ví dụ: Đã khám xong, không có vấn đề gì nghiêm trọng..."
+              />
+            </Form.Group>
+          </Form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowExamModal(false)} disabled={isUpdatingExam}>
+            Đóng
+          </Button>
+          <Button variant="primary" onClick={handleUpdateExamRequest} disabled={isUpdatingExam}>
+            {isUpdatingExam ? 'Đang lưu...' : 'Lưu cập nhật'}
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </Container>
   );
 }

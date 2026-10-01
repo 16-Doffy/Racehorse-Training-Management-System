@@ -4,4 +4,5 @@ import { createCrudApi } from '../../lib/createCrudApi';
 export const financeApi = {
   ...createCrudApi('/finance'),
   listMine: () => axiosClient.get('/finance/mine'),
+  getMineSummary: () => axiosClient.get('/finance/mine/summary'),
 };

@@ -17,6 +17,7 @@ export const dailyTaskApi = {
 export const incidentApi = {
   list: (params) => axiosClient.get('/stable/incidents', { params }),
   handle: (taskId, payload) => axiosClient.patch(`/stable/incidents/${taskId}`, payload),
+  update: (id, payload) => axiosClient.patch(`/stable/incidents/${id}`, payload),
 };
 
 export const stableAssignmentApi = {
