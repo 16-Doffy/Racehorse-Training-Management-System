@@ -9,6 +9,8 @@ const InventoryItem = require('../../models/InventoryItem');
 const { pushNotification } = require('../alerts/notification.service');
 const DailyTask = require('../../models/DailyTask');
 const { computeForecast, itemInUse } = require('./stock.service');
+const { CATALOG } = require('./catalog');
+const { logAction } = require('../audit/audit.service');
 
 // Restock requests are reviewed by name on the Manager's screen, so the requester is populated
 // here — otherwise the list hands back a raw ObjectId and the UI has nothing to show.
@@ -32,7 +34,34 @@ function itemProblem(req, { existing }) {
   if (b.quantity !== undefined && (!Number.isFinite(Number(b.quantity)) || Number(b.quantity) < 0)) {
     return 'Số lượng tồn phải là số không âm.';
   }
+  const nonNegative = { reorderLevel: 'Mức tồn tối thiểu', price: 'Đơn giá' };
+  for (const [field, label] of Object.entries(nonNegative)) {
+    if (b[field] !== undefined && b[field] !== null && b[field] !== '' && (!Number.isFinite(Number(b[field])) || Number(b[field]) < 0)) {
+      return `${label} phải là số không âm.`;
+    }
+  }
+  // A pack is described by both halves or neither: "bao" without "25 kg" can't be converted.
+  const packUnit = b.packUnit !== undefined ? b.packUnit : existing?.packUnit;
+  const packSize = b.packSize !== undefined ? b.packSize : existing?.packSize;
+  if (packUnit && !(Number(packSize) > 0)) return 'Nhập số lượng trong 1 gói (VD: 1 bao = 25 kg).';
+  if (b.expiryDate && Number.isNaN(new Date(b.expiryDate).getTime())) return 'Hạn sử dụng không hợp lệ.';
   return null;
+}
+
+/** "120 kg (4.8 bao)" — stock in the usage unit, and in packs when the item has a pack size. */
+const packNote = (item, quantity) => (item.packUnit && item.packSize ? ` (≈ ${Math.round((quantity / item.packSize) * 10) / 10} ${item.packUnit})` : '');
+
+/** A request or a delivery may be given in packs; this turns it into the item's unit. */
+function toUnits(item, body) {
+  if (body.packs !== undefined && body.packs !== null && body.packs !== '') {
+    if (!item.packUnit || !item.packSize) return { error: `"${item.name}" chưa khai báo quy cách đóng gói — hãy nhập theo ${item.unit}.` };
+    const packs = Number(body.packs);
+    if (!Number.isFinite(packs) || packs <= 0) return { error: 'Số gói phải là số dương.' };
+    return { quantity: packs * item.packSize };
+  }
+  const quantity = Number(body.quantity);
+  if (!Number.isFinite(quantity) || quantity <= 0) return { error: 'Số lượng phải là số dương.' };
+  return { quantity };
 }
 
 const ctrl = crudFactory(InventoryItem, {
@@ -43,7 +72,7 @@ const ctrl = crudFactory(InventoryItem, {
     { path: 'proposedBy', select: 'name role' },
   ],
   // The request history and proposal flags are managed by the endpoints below, not the item form.
-  fields: ['name', 'category', 'quantity', 'unit', 'stableBlock'],
+  fields: ['name', 'category', 'description', 'quantity', 'unit', 'packUnit', 'packSize', 'reorderLevel', 'price', 'expiryDate', 'stableBlock', 'isActive'],
   validate: checkItem,
 });
 
@@ -53,15 +82,12 @@ async function tellManagers(message) {
 }
 
 const requestRestock = asyncHandler(async (req, res) => {
-  const quantity = Number(req.body.quantity);
-  // Approving adds this number to stock, so a zero, negative or non-numeric request would quietly
-  // shrink or corrupt the count the moment a Manager clicked approve.
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    return fail(res, 'Số lượng đề xuất phải là số dương.', 400);
-  }
-
   const item = await InventoryItem.findById(req.params.id);
   if (!item) return fail(res, 'Inventory item not found.', 404);
+  // Approving adds this number to stock, so a zero, negative or non-numeric request would quietly
+  // shrink or corrupt the count the moment a Manager clicked approve. { packs } is converted.
+  const { quantity, error } = toUnits(item, req.body);
+  if (error) return fail(res, error, 400);
 
   const note = typeof req.body.note === 'string' ? req.body.note.trim() : undefined;
   // A request raised from a meal or dose that can't be recorded for lack of stock says so.
@@ -77,7 +103,7 @@ const requestRestock = asyncHandler(async (req, res) => {
     recipientRole: ROLES.MANAGER,
     type: 'restock_request',
     severity: task ? 'warning' : 'info',
-    message: `📦 ${req.user.name} đề xuất bổ sung ${quantity} ${item.unit} "${item.name}"${blocking}${note ? `: ${note}` : '.'}`,
+    message: `📦 ${req.user.name} đề xuất bổ sung ${quantity} ${item.unit}${packNote(item, quantity)} "${item.name}"${blocking}${note ? `: ${note}` : '.'}`,
   });
   return ok(res, item, 'Restock requested.');
 });
@@ -143,6 +169,7 @@ const reviewRestockRequest = asyncHandler(async (req, res) => {
   });
   if (status === 'approved') {
     item.quantity += request.quantity;
+    item.lastRestockedAt = new Date();
     item.isProposed = false; // a proposed item becomes part of the stock list
   }
 
@@ -170,7 +197,50 @@ const reviewRestockRequest = asyncHandler(async (req, res) => {
   return ok(res, dropProposal ? null : item, `Restock request ${status}.`);
 });
 
+/**
+ * The Manager recording a delivery: stock goes up by a quantity (in the item's unit) or a number of
+ * packs, and the time is kept as the last restock. POST /inventory/:id/receive { quantity | packs, note }
+ */
+const receiveStock = asyncHandler(async (req, res) => {
+  const item = await InventoryItem.findById(req.params.id);
+  if (!item) return fail(res, 'Inventory item not found.', 404);
+  const { quantity, error } = toUnits(item, req.body);
+  if (error) return fail(res, error, 400);
+  item.quantity += quantity;
+  item.lastRestockedAt = new Date();
+  if (item.isProposed) item.isProposed = false;
+  await item.save();
+  await logAction({
+    actorId: req.user._id,
+    action: 'inventory.receive',
+    targetModel: 'InventoryItem',
+    targetId: item._id,
+    metadata: { quantity, unit: item.unit, note: req.body.note },
+  });
+  return ok(res, item, `Đã nhập thêm ${quantity} ${item.unit}${packNote(item, quantity)}.`);
+});
+
+/**
+ * Adds the club's standard stock list (catalog.js): only names not already in stock, with quantity
+ * 0 for the Manager to fill in. Safe to run again. POST /inventory/catalog/import { categories? }
+ */
+const importCatalog = asyncHandler(async (req, res) => {
+  const wanted = Array.isArray(req.body.categories) && req.body.categories.length ? req.body.categories : CATEGORIES;
+  const existing = new Set((await InventoryItem.find().select('name')).map((i) => i.name.trim().toLowerCase()));
+  const created = [];
+  // One at a time so each new item gets the next code of its category.
+  for (const entry of CATALOG.filter((c) => wanted.includes(c.category))) {
+    if (existing.has(entry.name.toLowerCase())) continue;
+    // eslint-disable-next-line no-await-in-loop
+    created.push(await InventoryItem.create({ ...entry, quantity: 0 }));
+  }
+  await logAction({ actorId: req.user._id, action: 'inventory.import_catalog', targetModel: 'InventoryItem', metadata: { created: created.length } });
+  return ok(res, { created: created.length, skipped: CATALOG.filter((c) => wanted.includes(c.category)).length - created.length, items: created }, 'Catalog imported.');
+});
+
 router.use(protect);
+router.get('/catalog', (req, res) => ok(res, { items: CATALOG, units: require('./catalog').UNIT_SUGGESTIONS }, 'Stock catalog.'));
+router.post('/catalog/import', authorize(ROLES.MANAGER), importCatalog);
 router.get('/', ctrl.list);
 // Daily use from rations and ongoing treatments, and how many days the stock lasts.
 router.get('/forecast', asyncHandler(async (req, res) => ok(res, await computeForecast(), 'Inventory forecast computed.')));
@@ -188,6 +258,7 @@ const refuseItemInUse = asyncHandler(async (req, res, next) => {
 router.delete('/:id', authorize(ROLES.MANAGER), refuseItemInUse, ctrl.removeOne);
 router.post('/proposals', authorize(ROLES.GROOM, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN), proposeItem);
 router.post('/:id/restock-request', authorize(ROLES.GROOM, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN), requestRestock);
+router.post('/:id/receive', authorize(ROLES.MANAGER), receiveStock);
 router.patch('/:id/restock-requests/:reqId', authorize(ROLES.MANAGER), reviewRestockRequest);
 
 module.exports = router;

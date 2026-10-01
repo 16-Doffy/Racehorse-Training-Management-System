@@ -100,7 +100,7 @@ async function consumeSupplies(supplies, { actor, task }) {
  */
 async function computeForecast() {
   const [items, rations, treatments] = await Promise.all([
-    InventoryItem.find({ isProposed: { $ne: true } }).select('name unit quantity category stableBlock lowStockNotifiedAt'),
+    InventoryItem.find({ isProposed: { $ne: true } }).select('name unit quantity category stableBlock lowStockNotifiedAt reorderLevel packUnit packSize'),
     FeedingSchedule.find({ 'items.inventoryItem': { $ne: null } }).populate('horse', 'name').select('horse mealTime items'),
     Treatment.find({ status: 'ongoing', 'medications.inventoryItem': { $ne: null } }).populate('horse', 'name').select('horse medications'),
   ]);
@@ -136,6 +136,7 @@ async function computeForecast() {
       category: item.category,
       stableBlock: item.stableBlock,
       quantity: item.quantity,
+      reorderLevel: item.reorderLevel || 0,
       dailyUsage,
       daysLeft: dailyUsage > 0 ? Math.floor(item.quantity / dailyUsage) : null,
       usedBy: u?.usedBy || [],
@@ -155,14 +156,17 @@ async function warnLowStock(itemIds) {
   for (const f of forecast) {
     if (wanted && !wanted.has(String(f._id))) continue;
     const used = f.dailyUsage > 0;
-    const low = (used && f.daysLeft < LOW_STOCK_DAYS) || (used && f.quantity <= 0);
+    // Low when a used item runs out within days, or when stock reaches the Manager's minimum.
+    const low = (used && (f.daysLeft < LOW_STOCK_DAYS || f.quantity <= 0)) || (f.reorderLevel > 0 && f.quantity <= f.reorderLevel);
     if (!low) continue;
     if (f.lowStockNotifiedAt && now - new Date(f.lowStockNotifiedAt).getTime() < RENOTIFY_MS) continue;
 
     const message =
       f.quantity <= 0
-        ? `📦 "${f.name}" đã hết — đang được dùng cho ${f.usedBy.length} khẩu phần/đơn thuốc. Cần nhập thêm ngay.`
-        : `📦 "${f.name}" chỉ còn ${f.quantity} ${f.unit}, đủ dùng khoảng ${f.daysLeft} ngày (mỗi ngày dùng ${f.dailyUsage} ${f.unit}).`;
+        ? `📦 "${f.name}" đã hết${used ? ` — đang được dùng cho ${f.usedBy.length} khẩu phần/đơn thuốc` : ''}. Cần nhập thêm ngay.`
+        : used && f.daysLeft < LOW_STOCK_DAYS
+          ? `📦 "${f.name}" chỉ còn ${f.quantity} ${f.unit}, đủ dùng khoảng ${f.daysLeft} ngày (mỗi ngày dùng ${f.dailyUsage} ${f.unit}).`
+          : `📦 "${f.name}" còn ${f.quantity} ${f.unit} — đã chạm mức tồn tối thiểu ${f.reorderLevel} ${f.unit}.`;
     for (const role of [ROLES.MANAGER, ROLES.HEAD_TRAINER]) {
       // eslint-disable-next-line no-await-in-loop
       await pushNotification({ recipientRole: role, type: 'low_stock', severity: f.quantity <= 0 ? 'critical' : 'warning', message });

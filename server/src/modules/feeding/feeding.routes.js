@@ -20,7 +20,7 @@ async function normalizeRationItems(req, res, next) {
     if (req.body.items === undefined) return next();
     if (!Array.isArray(req.body.items)) return res.status(400).json({ success: false, data: null, message: 'items phải là danh sách.' });
     const ids = req.body.items.map((i) => i?.inventoryItem).filter(Boolean);
-    const stock = ids.length ? await InventoryItem.find({ _id: { $in: ids } }).select('name unit category') : [];
+    const stock = ids.length ? await InventoryItem.find({ _id: { $in: ids } }).select('name unit category isActive') : [];
     const byId = new Map(stock.map((s) => [String(s._id), s]));
     const items = [];
     for (const [i, raw] of req.body.items.entries()) {
@@ -33,6 +33,7 @@ async function normalizeRationItems(req, res, next) {
       const fail400 = (message) => res.status(400).json({ success: false, data: null, message: `Món thứ ${i + 1}: ${message}` });
       if (!item) return fail400('không tìm thấy mặt hàng trong kho.');
       if (item.category !== 'feed') return fail400(`"${item.name}" không thuộc loại thức ăn.`);
+      if (item.isActive === false) return fail400(`"${item.name}" đã ngừng sử dụng.`);
       const amount = Number(raw.amount);
       if (!Number.isFinite(amount) || amount <= 0) return fail400('lượng mỗi bữa phải là số dương.');
       items.push({ type: item.name, quantity: `${amount} ${item.unit}`, inventoryItem: item._id, amount, unit: item.unit });

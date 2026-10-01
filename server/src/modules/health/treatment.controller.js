@@ -137,7 +137,7 @@ const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 async function normalizeMedications(list) {
   if (!Array.isArray(list)) return { error: 'medications phải là danh sách.' };
   const ids = list.map((m) => m.inventoryItem).filter(Boolean);
-  const items = ids.length ? await InventoryItem.find({ _id: { $in: ids } }).select('name unit category') : [];
+  const items = ids.length ? await InventoryItem.find({ _id: { $in: ids } }).select('name unit category isActive') : [];
   const byId = new Map(items.map((i) => [String(i._id), i]));
   const out = [];
   for (const [i, m] of list.entries()) {
@@ -145,6 +145,7 @@ async function normalizeMedications(list) {
     const item = m.inventoryItem ? byId.get(String(m.inventoryItem)) : null;
     if (m.inventoryItem && !item) return { error: `${label}: không tìm thấy mặt hàng trong kho.` };
     if (item && item.category !== 'medicine') return { error: `${label}: "${item.name}" không phải thuốc/vật tư y tế.` };
+    if (item && item.isActive === false) return { error: `${label}: "${item.name}" đã ngừng sử dụng.` };
     const amount = m.amount === undefined || m.amount === null || m.amount === '' ? undefined : Number(m.amount);
     if (amount !== undefined && (!Number.isFinite(amount) || amount <= 0)) return { error: `${label}: lượng mỗi liều phải là số dương.` };
     if (item && !amount) return { error: `${label}: nhập lượng mỗi liều (đơn vị ${item.unit}) để trừ kho.` };
