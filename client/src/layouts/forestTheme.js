@@ -8,13 +8,15 @@ import { ROLES } from '../constants/roles';
  * Applied by MainLayout through a nested ConfigProvider, so every Ant Design component inside the
  * layout (tables, cards, forms, modals) picks it up without page-by-page changes.
  */
-export const FOREST_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER];
+export const FOREST_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN];
 export const usesForestTheme = (role) => FOREST_ROLES.includes(role);
 
 // Small label above the sidebar menu.
 export const MENU_SECTION_LABEL = {
   [ROLES.MANAGER]: 'Điều hành CLB',
   [ROLES.HEAD_TRAINER]: 'Huấn luyện',
+  [ROLES.VETERINARIAN]: 'Y Tế & Thú Y',
+  [ROLES.OWNER]: 'Chủ Sở Hữu',
 };
 
 export const FOREST = {

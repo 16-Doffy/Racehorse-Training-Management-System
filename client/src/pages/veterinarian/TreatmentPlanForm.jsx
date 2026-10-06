@@ -21,6 +21,7 @@ export default function TreatmentPlanForm() {
 
   const [horses, setHorses] = useState([]);
   const [healthRecords, setHealthRecords] = useState([]);
+  const [inventoryItems, setInventoryItems] = useState([]);
 
   const [formData, setFormData] = useState({
     horse: preselectedHorseId || '',
@@ -29,9 +30,13 @@ export default function TreatmentPlanForm() {
     endDate: '',
     status: 'ongoing',
     isTrainingLocked: false,
+    trainingLevel: 'high',
     lockReason: '',
     medications: [
       {
+        inventoryItem: '',
+        amount: '',
+        unit: '',
         name: '',
         dosage: '',
         frequency: '',
@@ -48,41 +53,55 @@ export default function TreatmentPlanForm() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [horsesRes, recordsRes] = await Promise.all([
+        const [horsesRes, recordsRes, invRes] = await Promise.all([
           veterinarianApi.getHorses(),
           veterinarianApi.getHealthRecords(preselectedHorseId ? { horse: preselectedHorseId } : {}),
+          veterinarianApi.getInventory(),
         ]);
 
         setHorses(horsesRes.data || []);
         setHealthRecords(recordsRes.data || []);
+        const allInv = invRes.data || [];
+        setInventoryItems(allInv.filter((item) => item.category === 'medicine'));
 
         if (isEditMode) {
           const trRes = await veterinarianApi.getTreatmentById(id);
           const tr = trRes.data;
+          const trLevel = tr.trainingLevel || (tr.isTrainingLocked ? 'none' : 'high');
           setFormData({
             horse: tr.horse?._id || tr.horse || '',
             healthRecord: tr.healthRecord?._id || tr.healthRecord || '',
             startDate: formatDateForInput(tr.startDate || tr.createdAt),
             endDate: formatDateForInput(tr.endDate),
             status: tr.status || 'ongoing',
-            isTrainingLocked: tr.isTrainingLocked || false,
+            isTrainingLocked: trLevel === 'none' || tr.isTrainingLocked || false,
+            trainingLevel: trLevel,
             lockReason: tr.lockReason || '',
             medications: tr.medications?.length
-              ? tr.medications.map((m) => ({
-                  name: m.name,
-                  dosage: m.dosage,
-                  frequency: m.frequency || '',
-                  timeSlots: {
-                    morning: (m.timeSlots || []).includes('morning'),
-                    noon: (m.timeSlots || []).includes('noon'),
-                    afternoon: (m.timeSlots || []).includes('afternoon'),
-                    evening: (m.timeSlots || []).includes('evening'),
-                  },
-                  specificTimes: m.specificTimes || '',
-                  instructions: m.instructions || '',
-                }))
+              ? tr.medications.map((m) => {
+                  const invId = m.inventoryItem?._id || m.inventoryItem || '';
+                  return {
+                    inventoryItem: invId,
+                    amount: m.amount || '',
+                    unit: m.inventoryItem?.unit || '',
+                    name: m.name,
+                    dosage: m.dosage,
+                    frequency: m.frequency || '',
+                    timeSlots: {
+                      morning: (m.timeSlots || []).includes('morning'),
+                      noon: (m.timeSlots || []).includes('noon'),
+                      afternoon: (m.timeSlots || []).includes('afternoon'),
+                      evening: (m.timeSlots || []).includes('evening'),
+                    },
+                    specificTimes: m.specificTimes || '',
+                    instructions: m.instructions || '',
+                  };
+                })
               : [
                   {
+                    inventoryItem: '',
+                    amount: '',
+                    unit: '',
                     name: '',
                     dosage: '',
                     frequency: '',
@@ -148,6 +167,31 @@ export default function TreatmentPlanForm() {
     });
   };
 
+  const handleSelectInventoryItem = (index, itemId) => {
+    const item = inventoryItems.find((i) => i._id === itemId);
+    setFormData((prev) => {
+      const updated = [...prev.medications];
+      if (item) {
+        const amt = updated[index].amount || 1;
+        updated[index] = {
+          ...updated[index],
+          inventoryItem: item._id,
+          name: item.name,
+          unit: item.unit,
+          amount: amt,
+          dosage: `${amt} ${item.unit}/lần`,
+        };
+      } else {
+        updated[index] = {
+          ...updated[index],
+          inventoryItem: '',
+          unit: '',
+        };
+      }
+      return { ...prev, medications: updated };
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -160,6 +204,14 @@ export default function TreatmentPlanForm() {
 
     if (!formData.horse) {
       setError('Vui lòng chọn chiến mã.');
+      return;
+    }
+
+    const itemMissingAmount = formData.medications.find(
+      (m) => m.name.trim() && m.inventoryItem && (!m.amount || Number(m.amount) <= 0)
+    );
+    if (itemMissingAmount) {
+      setError(`Thuốc "${itemMissingAmount.name}" chọn từ kho cần nhập lượng mỗi liều (> 0) để tự trừ kho.`);
       return;
     }
 
@@ -187,7 +239,7 @@ export default function TreatmentPlanForm() {
         if (m.specificTimes?.trim()) freqParts.push(`Giờ: ${m.specificTimes.trim()}`);
         if (!freqParts.length && m.frequency) freqParts.push(m.frequency);
 
-        return {
+        const medItem = {
           name: m.name.trim(),
           dosage: m.dosage.trim(),
           timeSlots: slots,
@@ -195,16 +247,33 @@ export default function TreatmentPlanForm() {
           frequency: freqParts.join(' - ') || 'Theo chỉ dẫn',
           instructions: m.instructions?.trim() || '',
         };
+
+        if (m.inventoryItem) {
+          medItem.inventoryItem = m.inventoryItem;
+          medItem.amount = Number(m.amount);
+        }
+
+        if (m.specificTimes) {
+          const parsedTimes = m.specificTimes
+            .split(/[,;\s]+/)
+            .map((t) => t.trim())
+            .filter((t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t));
+          if (parsedTimes.length > 0) medItem.times = parsedTimes;
+        }
+
+        return medItem;
       });
 
+    const isLocked = formData.trainingLevel === 'none' || formData.isTrainingLocked;
     const payload = {
       horse: formData.horse,
       healthRecord: formData.healthRecord || undefined,
       startDate: formData.startDate ? new Date(formData.startDate) : new Date(),
       endDate: formData.endDate ? new Date(formData.endDate) : undefined,
       status: formData.status,
-      isTrainingLocked: formData.isTrainingLocked,
-      lockReason: formData.isTrainingLocked ? formData.lockReason.trim() : undefined,
+      trainingLevel: formData.trainingLevel || (isLocked ? 'none' : 'high'),
+      isTrainingLocked: isLocked,
+      lockReason: isLocked ? (formData.lockReason?.trim() || 'Theo chỉ định phác đồ điều trị') : undefined,
       medications: validMedications,
     };
 
@@ -358,21 +427,40 @@ export default function TreatmentPlanForm() {
                   <div className="d-flex align-items-center">
                     <i className={`bi ${formData.isTrainingLocked ? 'bi-lock-fill text-danger' : 'bi-unlock text-success'} fs-4 me-2`}></i>
                     <div>
-                      <h6 className="fw-bold mb-0">Y lệnh Khóa Huấn Luyện Khẩn Cấp (Emergency Training Lock)</h6>
-                      <small className="text-muted">Chặn lên lịch tập nặng trong thời gian chiến mã đang điều trị</small>
+                      <h6 className="fw-bold mb-0">Mức Huấn Luyện & Khóa Tập Y Tế (Training Level & Medical Lock)</h6>
+                      <small className="text-muted">Chỉ định mức độ vận động cho phép trong thời gian điều trị / hồi phục</small>
                     </div>
                   </div>
 
-                  <Form.Check
-                    type="switch"
-                    id="lock-switch"
-                    checked={formData.isTrainingLocked}
-                    onChange={(e) => setFormData({ ...formData, isTrainingLocked: e.target.checked })}
-                    disabled={submitting}
-                  />
+                  <div className="d-flex flex-wrap gap-2 my-2">
+                    {[
+                      { key: 'none', label: '🛑 Khóa tập (Nghỉ tuyệt đối)', color: 'danger' },
+                      { key: 'light', label: '🚶 Mức nhẹ (Đi dạo / Phục hồi)', color: 'warning' },
+                      { key: 'moderate', label: '🐎 Mức vừa (Nước kiệu nhẹ)', color: 'info' },
+                      { key: 'high', label: '🏃 Bình thường (Không giới hạn)', color: 'success' },
+                    ].map((lvl) => (
+                      <Button
+                        key={lvl.key}
+                        size="sm"
+                        variant={formData.trainingLevel === lvl.key ? lvl.color : `outline-${lvl.color}`}
+                        className={formData.trainingLevel === lvl.key ? 'fw-bold' : ''}
+                        type="button"
+                        onClick={() =>
+                          setFormData({
+                            ...formData,
+                            trainingLevel: lvl.key,
+                            isTrainingLocked: lvl.key === 'none',
+                          })
+                        }
+                        disabled={submitting}
+                      >
+                        {lvl.label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
 
-                {formData.isTrainingLocked && (
+                {formData.trainingLevel === 'none' && (
                   <Form.Group className="mt-3">
                     <Form.Label className="fw-semibold text-danger">
                       Lý do y tế yêu cầu khóa huấn luyện <span className="text-danger">*</span>
@@ -382,7 +470,7 @@ export default function TreatmentPlanForm() {
                       placeholder="Ví dụ: Kháng viêm khớp gối, bắt buộc nghỉ ngơi tuyệt đối trong 7 ngày"
                       value={formData.lockReason}
                       onChange={(e) => setFormData({ ...formData, lockReason: e.target.value })}
-                      required={formData.isTrainingLocked}
+                      required={formData.trainingLevel === 'none'}
                       disabled={submitting}
                     />
                   </Form.Group>
@@ -419,23 +507,88 @@ export default function TreatmentPlanForm() {
                       )}
                     </div>
 
+                    {/* Inventory Item Selection */}
+                    <Form.Group className="mb-2">
+                      <div className="d-flex justify-content-between align-items-center mb-1">
+                        <Form.Label className="small fw-semibold mb-0">
+                          <i className="bi bi-box-seam me-1 text-primary"></i>
+                          Chọn từ kho thuốc (để tự động trừ kho khi thực hiện):
+                        </Form.Label>
+                        {med.inventoryItem && (
+                          <Badge bg="success-subtle" text="success" className="border border-success-subtle">
+                            <i className="bi bi-check-circle me-1"></i>Đã liên kết kho dược phẩm
+                          </Badge>
+                        )}
+                      </div>
+                      <Form.Select
+                        size="sm"
+                        value={med.inventoryItem || ''}
+                        onChange={(e) => handleSelectInventoryItem(index, e.target.value)}
+                        disabled={submitting}
+                      >
+                        <option value="">-- Nhập thủ công (không liên kết kho) --</option>
+                        {inventoryItems.map((item) => (
+                          <option key={item._id} value={item._id}>
+                            {item.name} — Tồn kho: {item.quantity} {item.unit} {item.stableBlock ? `(${item.stableBlock})` : ''}
+                          </option>
+                        ))}
+                      </Form.Select>
+                    </Form.Group>
+
+                    {/* Medicine Name, Amount per dose & Dosage */}
                     <Row className="g-2 mb-2">
-                      <Col xs={12} md={7}>
-                        <Form.Label className="small fw-semibold mb-1">Tên thuốc / Dược phẩm *</Form.Label>
+                      <Col xs={12} md={med.inventoryItem ? 5 : 7}>
+                        <Form.Label className="small fw-semibold mb-1 text-nowrap d-block" style={{ minHeight: '22px' }}>
+                          Tên thuốc / Dược phẩm <span className="text-danger">*</span>
+                        </Form.Label>
                         <Form.Control
+                          size="sm"
                           placeholder="Tên thuốc (Ví dụ: Phenylbutazone, Banamine...)"
                           value={med.name}
                           onChange={(e) => handleMedChange(index, 'name', e.target.value)}
                           disabled={submitting}
+                          required
                         />
                       </Col>
-                      <Col xs={12} md={5}>
-                        <Form.Label className="small fw-semibold mb-1">Liều lượng *</Form.Label>
+
+                      {med.inventoryItem && (
+                        <Col xs={12} md={3}>
+                          <Form.Label className="small fw-semibold mb-1 text-primary text-nowrap d-block" style={{ minHeight: '22px' }} title="Số lượng trừ kho cho mỗi lần dùng">
+                            Lượng trừ kho <span className="text-danger">*</span>
+                          </Form.Label>
+                          <div className="input-group input-group-sm">
+                            <Form.Control
+                              type="number"
+                              min="0.01"
+                              step="any"
+                              placeholder="VD: 1"
+                              value={med.amount || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                handleMedChange(index, 'amount', val);
+                                if (val && med.unit) {
+                                  handleMedChange(index, 'dosage', `${val} ${med.unit}/lần`);
+                                }
+                              }}
+                              required
+                              disabled={submitting}
+                            />
+                            <span className="input-group-text">{med.unit || 'đv'}</span>
+                          </div>
+                        </Col>
+                      )}
+
+                      <Col xs={12} md={med.inventoryItem ? 4 : 5}>
+                        <Form.Label className="small fw-semibold mb-1 text-nowrap d-block" style={{ minHeight: '22px' }}>
+                          Liều lượng <span className="text-danger">*</span>
+                        </Form.Label>
                         <Form.Control
+                          size="sm"
                           placeholder="Liều lượng (Ví dụ: 2g, 10ml, 1 viên...)"
                           value={med.dosage}
                           onChange={(e) => handleMedChange(index, 'dosage', e.target.value)}
                           disabled={submitting}
+                          required
                         />
                       </Col>
                     </Row>

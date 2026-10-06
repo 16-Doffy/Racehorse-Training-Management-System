@@ -21,8 +21,10 @@ import ErrorAlert from '../../components/common/ErrorAlert';
 import HealthStatusBadge from '../../components/veterinarian/HealthStatusBadge';
 import HealthAlert from '../../components/veterinarian/HealthAlert';
 import TrainingLockModal from '../../components/veterinarian/TrainingLockModal';
+import IncidentManagementModal from '../../components/veterinarian/IncidentManagementModal';
 import { formatDate } from '../../utils/formatDate';
 import { INJURY_SEVERITY_CONFIG } from '../../utils/healthStatus';
+import { INCIDENT_STATUS_META, INCIDENT_SEVERITY_META, incidentStatusOf } from '../../constants/care';
 import veterinarianApi from '../../api/veterinarianApi';
 
 const STATUS_COLORS = {
@@ -44,10 +46,15 @@ export default function VeterinarianDashboard() {
     notifications,
     examRequests,
     clearances,
+    incidents = [],
     refreshData,
   } = useVeterinarianData();
 
   const { alerts, clearAlert, clearAllAlerts } = useSocket();
+
+  // Incident Management State
+  const [selectedTaskForIncident, setSelectedTaskForIncident] = useState(null);
+  const [showIncidentModal, setShowIncidentModal] = useState(false);
 
   // Training Lock Modal State
   const [selectedHorseForLock, setSelectedHorseForLock] = useState(null);
@@ -486,6 +493,119 @@ export default function VeterinarianDashboard() {
         </Col>
       </Row>
 
+      {/* Groom Reported Incidents Section */}
+      <Card className="border-0 shadow-sm mb-4 bg-white border-start border-danger border-4">
+        <Card.Header className="bg-white py-3 d-flex justify-content-between align-items-center">
+          <div>
+            <h5 className="fw-bold mb-0 text-danger">
+              <i className="bi bi-shield-exclamation me-2"></i>
+              Sự Cố Chuồng Trại & Sức Khỏe Do Nhân Viên Báo Cáo
+            </h5>
+            <small className="text-muted">
+              Tiếp nhận và xử lý các sự cố phát sinh trong quá trình chăm sóc của Groom (GET/PATCH /stable/incidents)
+            </small>
+          </div>
+          <Badge bg={incidents.filter((t) => incidentStatusOf(t.incidentReport) !== 'resolved').length > 0 ? 'danger' : 'success'}>
+            {incidents.filter((t) => incidentStatusOf(t.incidentReport) !== 'resolved').length > 0
+              ? `${incidents.filter((t) => incidentStatusOf(t.incidentReport) !== 'resolved').length} sự cố cần xử lý`
+              : 'Tất cả sự cố đã xử lý'}
+          </Badge>
+        </Card.Header>
+        <Card.Body className="p-0">
+          <div className="table-responsive">
+            <Table hover className="align-middle mb-0">
+              <thead className="table-light">
+                <tr>
+                  <th>Chiến mã</th>
+                  <th>Nhân viên báo (Groom)</th>
+                  <th>Công việc</th>
+                  <th>Mức độ</th>
+                  <th>Mô tả sự cố</th>
+                  <th>Thời gian</th>
+                  <th>Trạng thái</th>
+                  <th className="text-center" style={{ width: '130px' }}>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {incidents.slice(0, 6).map((task) => {
+                  const ir = task.incidentReport;
+                  const st = incidentStatusOf(ir);
+                  const sevMeta = INCIDENT_SEVERITY_META[ir?.severity] || { label: ir?.severity || 'Nhẹ', color: 'gold' };
+                  return (
+                    <tr key={task._id} className={st === 'open' ? 'table-danger-subtle' : ''}>
+                      <td className="fw-bold text-primary">
+                        {task.horse?.name || 'Chiến mã'}
+                      </td>
+                      <td>
+                        <i className="bi bi-person me-1 text-muted"></i>
+                        {task.assignedTo?.name || 'Nhân viên chăm sóc'}
+                      </td>
+                      <td className="small">{task.taskType}</td>
+                      <td>
+                        <Badge bg={sevMeta.color === 'red' ? 'danger' : sevMeta.color === 'orange' ? 'warning' : 'info'}>
+                          {sevMeta.label}
+                        </Badge>
+                      </td>
+                      <td className="small" style={{ maxWidth: '320px' }}>
+                        <div className="text-truncate" title={ir?.description}>
+                          {ir?.description || '-'}
+                        </div>
+                        {ir?.photos?.length > 0 && (
+                          <span className="badge bg-secondary-subtle text-secondary me-1 mt-1">
+                            <i className="bi bi-camera me-1"></i>{ir.photos.length} ảnh
+                          </span>
+                        )}
+                        {ir?.response && (
+                          <div className="text-success small text-truncate mt-1">
+                            <i className="bi bi-check2 me-1"></i>BS: {ir.response}
+                          </div>
+                        )}
+                      </td>
+                      <td className="small text-muted">
+                        {formatDate(ir?.reportedAt || task.updatedAt)}
+                      </td>
+                      <td>
+                        <Badge bg={st === 'resolved' ? 'success' : st === 'acknowledged' ? 'warning' : 'danger'}>
+                          {INCIDENT_STATUS_META[st]?.label || st}
+                        </Badge>
+                      </td>
+                      <td className="text-center">
+                        <Button
+                          variant={st === 'resolved' ? 'outline-secondary' : 'danger'}
+                          size="sm"
+                          onClick={() => {
+                            setSelectedTaskForIncident(task);
+                            setShowIncidentModal(true);
+                          }}
+                        >
+                          {st === 'resolved' ? (
+                            <>
+                              <i className="bi bi-eye me-1"></i>Xem
+                            </>
+                          ) : (
+                            <>
+                              <i className="bi bi-wrench-adjustable me-1"></i>Xử lý
+                            </>
+                          )}
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {incidents.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="text-center py-4 text-muted">
+                      <i className="bi bi-check-circle-fill text-success fs-4 d-block mb-1"></i>
+                      Hiện không có sự cố nào được nhân viên báo cáo.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+          </div>
+        </Card.Body>
+      </Card>
+
       {/* Recent Medical Records and Care Schedules */}
       <Row className="g-3">
         <Col xs={12} lg={7}>
@@ -621,6 +741,19 @@ export default function VeterinarianDashboard() {
         onHide={() => setShowLockModal(false)}
         horse={selectedHorseForLock}
         currentTreatment={selectedTreatmentForLock}
+        onSuccess={() => {
+          refreshData();
+        }}
+      />
+
+      {/* Groom Reported Incident Management Modal */}
+      <IncidentManagementModal
+        show={showIncidentModal}
+        onHide={() => {
+          setShowIncidentModal(false);
+          setSelectedTaskForIncident(null);
+        }}
+        task={selectedTaskForIncident}
         onSuccess={() => {
           refreshData();
         }}

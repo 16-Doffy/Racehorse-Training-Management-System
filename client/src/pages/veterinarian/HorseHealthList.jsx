@@ -304,13 +304,21 @@ export default function HorseHealthList() {
                           )}
                         </td>
                         <td>
-                          {isLocked ? (
+                          {activeTr?.trainingLevel === 'none' || isLocked ? (
                             <Badge bg="danger" className="px-2 py-1">
-                              🔴 ĐANG KHÓA
+                              🛑 Khóa tập
+                            </Badge>
+                          ) : activeTr?.trainingLevel === 'light' ? (
+                            <Badge bg="warning" text="dark" className="px-2 py-1">
+                              🚶 Tập nhẹ
+                            </Badge>
+                          ) : activeTr?.trainingLevel === 'moderate' ? (
+                            <Badge bg="info" className="px-2 py-1">
+                              🐎 Tập vừa
                             </Badge>
                           ) : (
-                            <Badge bg="light" text="dark" className="border">
-                              Cho phép tập
+                            <Badge bg="success" className="px-2 py-1">
+                              🏃 Bình thường
                             </Badge>
                           )}
                         </td>
@@ -333,9 +341,9 @@ export default function HorseHealthList() {
                             <Button
                               variant={isLocked ? 'danger' : 'outline-danger'}
                               onClick={() => handleToggleLock(horse, isLocked)}
-                              title={isLocked ? 'Mở khóa huấn luyện' : 'Khóa huấn luyện khẩn cấp'}
+                              title="Chỉ định mức tập / Khóa tập y tế"
                             >
-                              <i className={`bi ${isLocked ? 'bi-lock-fill' : 'bi-unlock'}`}></i>
+                              <i className={`bi ${isLocked ? 'bi-lock-fill' : 'bi-speedometer2'}`}></i>
                             </Button>
                           </ButtonGroup>
                         </td>

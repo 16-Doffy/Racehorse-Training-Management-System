@@ -37,6 +37,21 @@ export const veterinarianApi = {
 
   // Realtime / Role Notifications
   getNotifications: (params) => axiosClient.get('/notifications', { params }),
+
+  // Attachments for Health Records
+  uploadRecordAttachments: (recordId, formData) =>
+    axiosClient.post(`/health/records/${recordId}/attachments`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  deleteRecordAttachment: (recordId, attachmentId) =>
+    axiosClient.delete(`/health/records/${recordId}/attachments/${attachmentId}`),
+
+  // Stable Incident Reports
+  getIncidents: (params) => axiosClient.get('/stable/incidents', { params }),
+  handleIncident: (taskId, payload) => axiosClient.patch(`/stable/incidents/${taskId}`, payload),
+
+  // Inventory New Item Proposal
+  proposeItem: (payload) => axiosClient.post('/inventory/proposals', payload),
 };
 
 export default veterinarianApi;

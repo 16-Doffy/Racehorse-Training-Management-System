@@ -96,6 +96,29 @@ export default function MedicalHistory({ records = [], horseId, onNewExam }) {
                   <td className="fw-semibold text-primary">{formatDate(record.date || record.createdAt)}</td>
                   <td>
                     <div className="fw-bold">{record.diagnosis}</div>
+                    {record.attachments?.length > 0 && (
+                      <div className="mt-1 d-flex flex-wrap gap-1">
+                        {record.attachments.map((att) => (
+                          <a
+                            key={att._id}
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="badge bg-light text-primary border text-decoration-none"
+                            title={att.name}
+                          >
+                            <i
+                              className={
+                                att.contentType?.startsWith('image/')
+                                  ? 'bi bi-image me-1 text-info'
+                                  : 'bi bi-file-earmark-pdf me-1 text-danger'
+                              }
+                            ></i>
+                            {att.name?.length > 18 ? `${att.name.slice(0, 15)}...` : att.name}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <div className="small">

@@ -1,7 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Button, Form, Alert, Spinner, Row, Col, Badge } from 'react-bootstrap';
+import { Modal, Button, Form, Alert, Spinner, Row, Col, Badge, Card } from 'react-bootstrap';
 import veterinarianApi from '../../api/veterinarianApi';
 import axiosClient from '../../api/axiosClient';
+
+const TRAINING_LEVEL_OPTIONS = [
+  {
+    key: 'none',
+    label: '🛑 Khóa tập hoàn toàn',
+    shortLabel: 'Khóa tập',
+    variant: 'danger',
+    description: 'Nghỉ ngơi hoàn toàn tại chuồng. Hệ thống chặn mọi buổi tập nặng và giải đua.',
+    recommendedStatus: 'injured',
+  },
+  {
+    key: 'light',
+    label: '🚶 Mức nhẹ (Đi dạo / Phục hồi)',
+    shortLabel: 'Tập nhẹ',
+    variant: 'warning',
+    description: 'Chỉ cho phép đi bộ thả lỏng, vận động nhẹ, vật lý trị liệu có người dắt.',
+    recommendedStatus: 'monitoring',
+  },
+  {
+    key: 'moderate',
+    label: '🐎 Mức vừa (Nước kiệu có kiểm soát)',
+    shortLabel: 'Tập vừa',
+    variant: 'info',
+    description: 'Cho phép bài tập cường độ trung bình, chạy nước kiệu, bài tập cơ bản.',
+    recommendedStatus: 'monitoring',
+  },
+  {
+    key: 'high',
+    label: '🏃 Bình thường (Tập luyện đầy đủ)',
+    shortLabel: 'Bình thường',
+    variant: 'success',
+    description: 'Chiến mã đã bình phục hoàn toàn, được phép luyện tập tự do và thi đấu.',
+    recommendedStatus: 'eligible',
+  },
+];
 
 export default function TrainingLockModal({
   show,
@@ -10,8 +45,11 @@ export default function TrainingLockModal({
   currentTreatment,
   onSuccess,
 }) {
-  const isLocked = currentTreatment?.isTrainingLocked || (horse && horse.healthStatus !== 'eligible');
-  const hasLock = currentTreatment?.isTrainingLocked;
+  const currentLevel =
+    currentTreatment?.trainingLevel ||
+    (currentTreatment?.isTrainingLocked ? 'none' : horse?.healthStatus === 'eligible' ? 'high' : 'none');
+
+  const [trainingLevel, setTrainingLevel] = useState(currentLevel);
   const [lockReason, setLockReason] = useState('');
   const [targetHealthStatus, setTargetHealthStatus] = useState('eligible');
   const [markInjuriesRecovered, setMarkInjuriesRecovered] = useState(true);
@@ -25,9 +63,19 @@ export default function TrainingLockModal({
 
   useEffect(() => {
     if (show && horse?._id) {
+      const initLevel =
+        currentTreatment?.trainingLevel ||
+        (currentTreatment?.isTrainingLocked ? 'none' : horse?.healthStatus === 'eligible' ? 'high' : 'none');
+      setTrainingLevel(initLevel);
       setLockReason(currentTreatment?.lockReason || '');
-      setTargetHealthStatus(isLocked ? 'eligible' : 'injured');
-      setRecoveryNotes(isLocked ? 'Chiến mã đã hồi phục thể lực, đủ điều kiện an toàn để trở lại luyện tập.' : '');
+      setTargetHealthStatus(
+        initLevel === 'high' ? 'eligible' : initLevel === 'none' ? 'injured' : 'monitoring'
+      );
+      setRecoveryNotes(
+        initLevel === 'high'
+          ? 'Chiến mã đã hồi phục thể lực, đủ điều kiện an toàn để trở lại luyện tập bình thường.'
+          : ''
+      );
       setError(null);
 
       setLoadingTrainingInfo(true);
@@ -42,13 +90,24 @@ export default function TrainingLockModal({
         .catch(() => {})
         .finally(() => setLoadingTrainingInfo(false));
     }
-  }, [show, horse, currentTreatment, isLocked]);
+  }, [show, horse, currentTreatment]);
+
+  const handleSelectLevel = (levelKey) => {
+    setTrainingLevel(levelKey);
+    const opt = TRAINING_LEVEL_OPTIONS.find((o) => o.key === levelKey);
+    if (opt) {
+      setTargetHealthStatus(opt.recommendedStatus);
+    }
+    if (levelKey === 'high' && !recoveryNotes) {
+      setRecoveryNotes('Chiến mã đã hồi phục thể lực, đủ điều kiện an toàn để trở lại luyện tập bình thường.');
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!horse) return;
 
-    if (!isLocked && !lockReason.trim()) {
+    if (trainingLevel === 'none' && !lockReason.trim()) {
       setError('Vui lòng nhập lý do khóa huấn luyện y tế.');
       return;
     }
@@ -57,56 +116,81 @@ export default function TrainingLockModal({
     setError(null);
 
     try {
-      if (isLocked) {
-        // UNLOCK FLOW:
-        // 1. Lift training locks from ALL treatments associated with this horse
+      const isLocked = trainingLevel === 'none';
+
+      // 1. Cập nhật hoặc đồng bộ Training Lock / Level lên Treatment
+      if (currentTreatment?._id) {
+        await veterinarianApi.setTrainingLock(currentTreatment._id, {
+          trainingLevel,
+          lockReason: isLocked ? lockReason.trim() : recoveryNotes.trim() || undefined,
+        });
+
+        if (trainingLevel === 'high') {
+          await veterinarianApi.updateTreatment(currentTreatment._id, {
+            status: 'completed',
+            isTrainingLocked: false,
+            trainingLevel: 'high',
+            endDate: new Date(),
+          });
+        }
+      } else if (isLocked || trainingLevel !== 'high') {
+        // Tạo phiếu khám & phác đồ mang trainingLevel nếu chưa có treatment
+        const rec = await veterinarianApi.createHealthRecord({
+          horse: horse._id,
+          diagnosis: `Y lệnh chỉ định mức tập y tế: ${
+            TRAINING_LEVEL_OPTIONS.find((o) => o.key === trainingLevel)?.label || trainingLevel
+          }`,
+          resultStatus: targetHealthStatus,
+          notes: lockReason.trim() || recoveryNotes.trim(),
+          date: new Date(),
+        });
+
+        await veterinarianApi.createTreatment({
+          healthRecord: rec.data?._id,
+          horse: horse._id,
+          isTrainingLocked: isLocked,
+          trainingLevel,
+          lockReason: isLocked ? lockReason.trim() : undefined,
+          status: 'ongoing',
+          startDate: new Date(),
+        });
+      }
+
+      // 2. Nếu chuyển sang HIGH (Hồi phục hoàn toàn / Mở khóa)
+      if (trainingLevel === 'high') {
+        // Giải phóng các treatment đang khóa của ngựa này
         try {
           const treatmentsRes = await veterinarianApi.getTreatments({ horse: horse._id });
           const horseTreatments = (treatmentsRes?.data || []).filter(
-            (t) => t.isTrainingLocked || t.status === 'ongoing' || (currentTreatment && t._id === currentTreatment._id)
+            (t) => t.isTrainingLocked || t.status === 'ongoing'
           );
-
           for (const tr of horseTreatments) {
             await veterinarianApi.setTrainingLock(tr._id, {
+              trainingLevel: 'high',
               isTrainingLocked: false,
               lockReason: '',
             });
             await veterinarianApi.updateTreatment(tr._id, {
               status: 'completed',
               isTrainingLocked: false,
+              trainingLevel: 'high',
               endDate: new Date(),
             });
           }
         } catch (tErr) {
-          console.warn('Error releasing treatment locks:', tErr);
+          console.warn('Error releasing locks on other treatments:', tErr);
         }
 
-        if (currentTreatment?._id) {
-          try {
-            await veterinarianApi.setTrainingLock(currentTreatment._id, {
-              isTrainingLocked: false,
-              lockReason: '',
-            });
-            await veterinarianApi.updateTreatment(currentTreatment._id, {
-              status: 'completed',
-              isTrainingLocked: false,
-              endDate: new Date(),
-            });
-          } catch (tErr) {
-            // ignore if already updated
-          }
-        }
-
-        // 2. Create recovery health record to update horse.healthStatus in MongoDB
+        // Tạo phiếu xác nhận hồi phục
         await veterinarianApi.createHealthRecord({
           horse: horse._id,
-          diagnosis: 'Đánh giá phục hồi & Mở khóa huấn luyện y tế',
-          resultStatus: targetHealthStatus, // 'eligible' or 'monitoring'
+          diagnosis: 'Đánh giá phục hồi & Cho phép luyện tập mức bình thường',
+          resultStatus: targetHealthStatus || 'eligible',
           notes: recoveryNotes.trim() || 'Mở khóa huấn luyện sau điều trị.',
           date: new Date(),
         });
 
-        // 3. Mark active injuries as recovered if checked
+        // Đánh dấu các điểm chấn thương là đã bình phục nếu tích chọn
         if (markInjuriesRecovered) {
           const markersRes = await veterinarianApi.getInjuryMarkers({ horse: horse._id });
           const activeMarkers = (markersRes.data || []).filter((m) => m.recoveryStatus !== 'recovered');
@@ -118,38 +202,22 @@ export default function TrainingLockModal({
           }
         }
       } else {
-        // LOCK FLOW:
-        // 1. Create health record setting horse status to injured/quarantined
-        const rec = await veterinarianApi.createHealthRecord({
+        // Mức tập none, light, moderate -> ghi nhận HealthRecord cập nhật
+        await veterinarianApi.createHealthRecord({
           horse: horse._id,
-          diagnosis: 'Y lệnh khóa huấn luyện khẩn cấp',
-          resultStatus: targetHealthStatus, // 'injured' or 'quarantined'
-          notes: lockReason.trim(),
+          diagnosis: `Y lệnh điều chỉnh mức tập: ${
+            TRAINING_LEVEL_OPTIONS.find((o) => o.key === trainingLevel)?.label || trainingLevel
+          }`,
+          resultStatus: targetHealthStatus,
+          notes: (trainingLevel === 'none' ? lockReason : recoveryNotes).trim(),
           date: new Date(),
         });
-
-        // 2. Set/create treatment with training lock
-        if (currentTreatment?._id) {
-          await veterinarianApi.setTrainingLock(currentTreatment._id, {
-            isTrainingLocked: true,
-            lockReason: lockReason.trim(),
-          });
-        } else {
-          await veterinarianApi.createTreatment({
-            healthRecord: rec.data?._id,
-            horse: horse._id,
-            isTrainingLocked: true,
-            lockReason: lockReason.trim(),
-            status: 'ongoing',
-            startDate: new Date(),
-          });
-        }
       }
 
-      if (onSuccess) onSuccess(!isLocked);
+      if (onSuccess) onSuccess(trainingLevel);
       onHide();
     } catch (err) {
-      setError(err?.message || 'Không thể cập nhật trạng thái khóa huấn luyện.');
+      setError(err?.message || 'Không thể cập nhật mức huấn luyện.');
     } finally {
       setLoading(false);
     }
@@ -160,37 +228,82 @@ export default function TrainingLockModal({
   return (
     <Modal show={show} onHide={onHide} centered backdrop="static" size="lg">
       <Form onSubmit={handleSubmit}>
-        <Modal.Header closeButton={!loading} className={isLocked ? 'bg-success text-white' : 'bg-danger text-white'}>
+        <Modal.Header closeButton={!loading} className="bg-dark text-white">
           <Modal.Title className="fs-5">
-            <i className={`bi ${isLocked ? 'bi-unlock-fill' : 'bi-lock-fill'} me-2`}></i>
-            {isLocked ? 'Mở Khóa Huấn Luyện & Cập Nhật Phục Hồi' : 'Kích Hoạt Khóa Huấn Luyện Khẩn Cấp'}
+            <i className="bi bi-shield-shaded me-2 text-warning"></i>
+            Chỉ Định Mức Huấn Luyện Y Tế & Hồi Phục
           </Modal.Title>
         </Modal.Header>
 
         <Modal.Body>
           {error && <Alert variant="danger">{error}</Alert>}
 
-          <div className="mb-3 p-2 bg-light rounded d-flex justify-content-between align-items-center">
+          {/* Horse Header Info */}
+          <div className="mb-3 p-3 bg-light rounded d-flex justify-content-between align-items-center">
             <div>
-              <div className="fw-bold">
+              <div className="fw-bold fs-6">
                 Chiến mã: <span className="text-primary">{horse.name}</span> (#{horse._id?.slice(-6).toUpperCase()})
               </div>
               <div className="small text-muted">Giống: {horse.breed || 'Chưa rõ'}</div>
             </div>
             <div className="text-end">
-              <span className="small text-muted d-block">Trạng thái sức khỏe hiện tại:</span>
-              <span className={`badge ${horse.healthStatus === 'injured' ? 'bg-danger' : horse.healthStatus === 'monitoring' ? 'bg-warning text-dark' : 'bg-success'}`}>
+              <span className="small text-muted d-block">Trạng thái sức khỏe:</span>
+              <span
+                className={`badge ${
+                  horse.healthStatus === 'injured'
+                    ? 'bg-danger'
+                    : horse.healthStatus === 'monitoring'
+                    ? 'bg-warning text-dark'
+                    : 'bg-success'
+                }`}
+              >
                 {horse.healthStatus}
               </span>
             </div>
           </div>
 
-          {/* Active Training Plans & Sessions Inspection */}
+          {/* Training Level Options (4 Levels) */}
+          <div className="mb-3">
+            <Form.Label className="fw-bold text-dark d-block mb-2">
+              <i className="bi bi-speedometer2 me-1 text-primary"></i>
+              Chọn Mức Tập Khi Điều Trị / Hồi Phục (trainingLevel):
+            </Form.Label>
+            <Row className="g-2">
+              {TRAINING_LEVEL_OPTIONS.map((opt) => {
+                const isSelected = trainingLevel === opt.key;
+                return (
+                  <Col xs={12} sm={6} key={opt.key}>
+                    <Card
+                      className={`h-100 cursor-pointer border-2 transition-all ${
+                        isSelected ? `border-${opt.variant} bg-${opt.variant}-subtle shadow-sm` : 'border-light-subtle'
+                      }`}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => handleSelectLevel(opt.key)}
+                    >
+                      <Card.Body className="p-3">
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                          <span className={`fw-bold text-${opt.variant}`}>{opt.label}</span>
+                          {isSelected && (
+                            <Badge bg={opt.variant}>
+                              <i className="bi bi-check-lg me-1"></i>Đang chọn
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="small text-muted">{opt.description}</div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                );
+              })}
+            </Row>
+          </div>
+
+          {/* Active Training Info */}
           <div className="mb-3 p-3 bg-light border rounded">
             <div className="fw-bold text-dark mb-2 d-flex align-items-center justify-content-between">
               <span>
                 <i className="bi bi-calendar-event me-2 text-primary"></i>
-                Lịch Tập & Giáo Án Hiện Tại Của Chiến Mã ({trainingSessions.length} buổi tập, {trainingPlans.length} giáo án)
+                Lịch tập hiện tại ({trainingSessions.length} buổi tập, {trainingPlans.length} giáo án)
               </span>
               {loadingTrainingInfo && <Spinner animation="border" size="sm" />}
             </div>
@@ -205,7 +318,8 @@ export default function TrainingLockModal({
                     <ul className="mb-1 ps-3">
                       {trainingPlans.map((p) => (
                         <li key={p._id}>
-                          Giai đoạn: <strong>{p.phase}</strong> ({p.distanceTarget}m, {p.weeklyVolumeKm}km/tuần) - <Badge bg="info">{p.status}</Badge>
+                          Giai đoạn: <strong>{p.phase}</strong> ({p.distanceTarget}m, {p.weeklyVolumeKm}km/tuần) -{' '}
+                          <Badge bg="info">{p.status}</Badge>
                         </li>
                       ))}
                     </ul>
@@ -214,11 +328,12 @@ export default function TrainingLockModal({
 
                 {trainingSessions.length > 0 && (
                   <div>
-                    <strong>🏃 Buổi tập sắp tới / đang diễn ra:</strong>
+                    <strong>🏃 Buổi tập sắp tới:</strong>
                     <ul className="mb-0 ps-3">
                       {trainingSessions.slice(0, 3).map((s) => (
                         <li key={s._id}>
-                          {new Date(s.scheduledAt).toLocaleString('vi-VN')} ({s.sessionType === 'trial_run' ? 'Chạy thử' : 'Buổi tập'}) - <Badge bg={s.status === 'in_progress' ? 'danger' : 'secondary'}>{s.status}</Badge>
+                          {new Date(s.scheduledAt).toLocaleString('vi-VN')} ({s.sessionType === 'trial_run' ? 'Chạy thử' : 'Buổi tập'}) -{' '}
+                          <Badge bg={s.status === 'in_progress' ? 'danger' : 'secondary'}>{s.status}</Badge>
                         </li>
                       ))}
                     </ul>
@@ -228,19 +343,20 @@ export default function TrainingLockModal({
             )}
           </div>
 
-          {!isLocked ? (
+          {/* Form details based on chosen training level */}
+          {trainingLevel === 'none' ? (
             <>
-              <Alert variant="warning" className="d-flex align-items-center mb-3">
-                <i className="bi bi-exclamation-triangle-fill fs-3 me-2 text-danger"></i>
+              <Alert variant="danger" className="d-flex align-items-center mb-3">
+                <i className="bi bi-slash-circle-fill fs-3 me-2 text-danger"></i>
                 <div className="small">
-                  Khi kích hoạt <strong>Khóa Huấn Luyện (Training Lock)</strong>, Huấn Luyện Viên Trưởng sẽ bị chặn không thể gán ngựa này vào các buổi tập nặng. Một cảnh báo khẩn cấp sẽ được phát tức thời qua Socket.io.
+                  Khi chọn <strong>Khóa tập hoàn toàn</strong>, Huấn Luyện Viên Trưởng sẽ bị chặn không thể gán ngựa này vào các buổi tập. Một thông báo y tế khẩn cấp sẽ được phát tới toàn bộ đội ngũ.
                 </div>
               </Alert>
 
-              <Row className="g-3 mb-3">
+              <Row className="g-3 mb-2">
                 <Col xs={12} md={6}>
                   <Form.Group>
-                    <Form.Label className="fw-semibold">Cập nhật trạng thái sức khỏe của ngựa</Form.Label>
+                    <Form.Label className="fw-semibold">Trạng thái sức khỏe y tế</Form.Label>
                     <Form.Select
                       value={targetHealthStatus}
                       onChange={(e) => setTargetHealthStatus(e.target.value)}
@@ -255,13 +371,13 @@ export default function TrainingLockModal({
 
                 <Col xs={12}>
                   <Form.Group>
-                    <Form.Label className="fw-semibold">
-                      Lý do y tế yêu cầu dừng tập <span className="text-danger">*</span>
+                    <Form.Label className="fw-semibold text-danger">
+                      Lý do y tế yêu cầu khóa tập <span className="text-danger">*</span>
                     </Form.Label>
                     <Form.Control
                       as="textarea"
-                      rows={3}
-                      placeholder="Ví dụ: Nghi ngờ viêm gân cổ chân sau buổi chạy; Sốt cao 39.2°C cần cách ly..."
+                      rows={2}
+                      placeholder="Ví dụ: Kháng viêm khớp gối cấp tính, cấm vận động nặng trong 7 ngày..."
                       value={lockReason}
                       onChange={(e) => setLockReason(e.target.value)}
                       required
@@ -271,30 +387,28 @@ export default function TrainingLockModal({
                 </Col>
               </Row>
             </>
-          ) : (
+          ) : trainingLevel === 'high' ? (
             <>
               <Alert variant="success" className="mb-3">
-                <div className="fw-bold mb-1"><i className="bi bi-check-circle-fill me-1"></i> Xác nhận đánh giá phục hồi & cấp phép (Clearance)</div>
+                <div className="fw-bold mb-1">
+                  <i className="bi bi-check-circle-fill me-1"></i> Phục hồi hoàn toàn & Cấp phép tập luyện bình thường
+                </div>
                 <div className="small">
-                  {hasLock 
-                    ? `Ngựa hiện đang bị khóa với lý do: "${currentTreatment?.lockReason || 'Chỉ định y tế'}". Mở khóa sẽ cho phép Huấn Luyện Viên Trưởng lên lịch bài tập trở lại.`
-                    : `Ngựa hiện đang có trạng thái "${horse?.healthStatus}". Cấp phép sẽ chuyển trạng thái của ngựa về bình thường và cho phép thi đấu / huấn luyện.`}
+                  Mở khóa toàn bộ hạn chế. Huấn Luyện Viên Trưởng có thể lên lịch huấn luyện và đăng ký giải đua bình thường.
                 </div>
               </Alert>
 
-              <Row className="g-3 mb-3">
+              <Row className="g-3 mb-2">
                 <Col xs={12} md={6}>
                   <Form.Group>
-                    <Form.Label className="fw-semibold">
-                      Chuyển trạng thái sức khỏe của ngựa thành <span className="text-danger">*</span>
-                    </Form.Label>
+                    <Form.Label className="fw-semibold">Cập nhật trạng thái sức khỏe</Form.Label>
                     <Form.Select
                       value={targetHealthStatus}
                       onChange={(e) => setTargetHealthStatus(e.target.value)}
                       disabled={loading}
                     >
                       <option value="eligible">🟢 Đủ điều kiện (Eligible) - Bình phục hoàn toàn</option>
-                      <option value="monitoring">🟡 Cần theo dõi (Monitoring) - Cho phép tập nhẹ</option>
+                      <option value="monitoring">🟡 Cần theo dõi (Monitoring)</option>
                     </Form.Select>
                   </Form.Group>
                 </Col>
@@ -303,7 +417,7 @@ export default function TrainingLockModal({
                   <Form.Check
                     type="checkbox"
                     id="mark-recovered"
-                    label="Đánh dấu các điểm chấn thương hiện tại là 'Đã bình phục'"
+                    label="Đánh dấu các vết chấn thương hiện tại là 'Đã bình phục'"
                     checked={markInjuriesRecovered}
                     onChange={(e) => setMarkInjuriesRecovered(e.target.checked)}
                     disabled={loading}
@@ -313,12 +427,59 @@ export default function TrainingLockModal({
 
                 <Col xs={12}>
                   <Form.Group>
-                    <Form.Label className="fw-semibold">Kết luận lâm sàng & Ghi chú mở khóa</Form.Label>
+                    <Form.Label className="fw-semibold">Kết luận lâm sàng & Ghi chú hồi phục</Form.Label>
                     <Form.Control
                       as="textarea"
                       rows={2}
                       value={recoveryNotes}
                       onChange={(e) => setRecoveryNotes(e.target.value)}
+                      placeholder="Ghi chú về tình trạng thể lực phục hồi..."
+                      disabled={loading}
+                    />
+                  </Form.Group>
+                </Col>
+              </Row>
+            </>
+          ) : (
+            <>
+              <Alert variant={trainingLevel === 'light' ? 'warning' : 'info'} className="mb-3">
+                <div className="fw-bold mb-1">
+                  <i className="bi bi-info-circle-fill me-1"></i> Cho phép tập ở mức{' '}
+                  {trainingLevel === 'light' ? 'Nhẹ (Phục hồi)' : 'Vừa (Có kiểm soát)'}
+                </div>
+                <div className="small">
+                  Huấn luyện viên chỉ được giao các bài tập phù hợp với mức thể lực này, tránh tái phát chấn thương.
+                </div>
+              </Alert>
+
+              <Row className="g-3 mb-2">
+                <Col xs={12} md={6}>
+                  <Form.Group>
+                    <Form.Label className="fw-semibold">Cập nhật trạng thái sức khỏe</Form.Label>
+                    <Form.Select
+                      value={targetHealthStatus}
+                      onChange={(e) => setTargetHealthStatus(e.target.value)}
+                      disabled={loading}
+                    >
+                      <option value="monitoring">🟡 Cần theo dõi (Monitoring) - Phục hồi có giới hạn</option>
+                      <option value="eligible">🟢 Đủ điều kiện (Eligible)</option>
+                    </Form.Select>
+                  </Form.Group>
+                </Col>
+
+                <Col xs={12}>
+                  <Form.Group>
+                    <Form.Label className="fw-semibold">Chỉ dẫn y tế cho HLV khi huấn luyện</Form.Label>
+                    <Form.Control
+                      as="textarea"
+                      rows={2}
+                      value={recoveryNotes}
+                      onChange={(e) => setRecoveryNotes(e.target.value)}
+                      placeholder={
+                        trainingLevel === 'light'
+                          ? 'Ví dụ: Đi bộ thả lỏng 20-30 phút/ngày, không cho chạy nước kiệu...'
+                          : 'Ví dụ: Bài tập nước kiệu nhẹ, giới hạn cự ly dưới 2000m...'
+                      }
                       disabled={loading}
                     />
                   </Form.Group>
@@ -332,19 +493,21 @@ export default function TrainingLockModal({
           <Button variant="secondary" onClick={onHide} disabled={loading}>
             Hủy bỏ
           </Button>
-          <Button variant={isLocked ? 'success' : 'danger'} type="submit" disabled={loading}>
+          <Button
+            variant={TRAINING_LEVEL_OPTIONS.find((o) => o.key === trainingLevel)?.variant || 'primary'}
+            type="submit"
+            disabled={loading}
+          >
             {loading ? (
               <>
                 <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-1" />
-                Đang xử lý...
-              </>
-            ) : isLocked ? (
-              <>
-                <i className="bi bi-unlock-fill me-1"></i> Xác Nhận Mở Khóa & Chuyển Trạng Thái Khỏe Mạnh
+                Đang lưu...
               </>
             ) : (
               <>
-                <i className="bi bi-lock-fill me-1"></i> Xác Nhận Khóa Tập & Đặt Trạng Thái Chấn Thương
+                <i className="bi bi-check2-circle me-1"></i>
+                Xác Nhận Thiết Lập Mức:{' '}
+                {TRAINING_LEVEL_OPTIONS.find((o) => o.key === trainingLevel)?.shortLabel || trainingLevel}
               </>
             )}
           </Button>

@@ -15,6 +15,7 @@ const medicationSchema = new mongoose.Schema(
     startDate: { type: Date },
     endDate: { type: Date },
     instructions: { type: String },
+    isDeducted: { type: Boolean, default: false },
   },
   { _id: false }
 );

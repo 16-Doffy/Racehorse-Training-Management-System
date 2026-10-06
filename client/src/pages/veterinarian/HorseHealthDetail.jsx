@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Container, Row, Col, Card, Tabs, Tab, Button, Badge, Alert, Table, Dropdown } from 'react-bootstrap';
+import { Container, Row, Col, Card, Tabs, Tab, Button, Badge, Alert, Table, Dropdown, Modal, Form, Spinner } from 'react-bootstrap';
 import { useParams, useNavigate } from 'react-router-dom';
 import veterinarianApi from '../../api/veterinarianApi';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -28,6 +28,14 @@ export default function HorseHealthDetail() {
 
   // Training lock modal state
   const [showLockModal, setShowLockModal] = useState(false);
+
+  // Recovery clearance modal state
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryNote, setRecoveryNote] = useState(
+    'Khám tái khám: Chiến mã đã hoàn toàn hồi phục sức khỏe sau điều trị, đủ điều kiện tham gia huấn luyện và thi đấu.'
+  );
+  const [completeOngoingTreatment, setCompleteOngoingTreatment] = useState(true);
+  const [recovering, setRecovering] = useState(false);
 
   const fetchHorseDetails = useCallback(async () => {
     if (!id) return;
@@ -86,6 +94,50 @@ export default function HorseHealthDetail() {
 
   const defaultPhoto = 'https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=800&q=80';
 
+  const handleConfirmRecovery = async (e) => {
+    e?.preventDefault();
+    if (!horse?._id) return;
+    setRecovering(true);
+    try {
+      // 1. Create health record with eligible status
+      await veterinarianApi.createHealthRecord({
+        horse: horse._id,
+        diagnosis: recoveryNote.trim() || 'Khám tái khám: Chiến mã đã hoàn toàn bình phục sau điều trị, đủ điều kiện thi đấu.',
+        resultStatus: 'eligible',
+      });
+
+      // 2. Complete ongoing treatment if selected
+      if (completeOngoingTreatment && activeTreatment?._id) {
+        await veterinarianApi.updateTreatment(activeTreatment._id, {
+          status: 'completed',
+          trainingLevel: 'high',
+          isTrainingLocked: false,
+        });
+      }
+
+      setShowRecoveryModal(false);
+      await fetchHorseDetails();
+    } catch (err) {
+      alert(err?.message || 'Có lỗi khi cập nhật trạng thái bình phục.');
+    } finally {
+      setRecovering(false);
+    }
+  };
+
+  const handleCompleteTreatment = async (treatmentId) => {
+    if (!window.confirm('Xác nhận đánh dấu hoàn thành đợt điều trị này?')) return;
+    try {
+      await veterinarianApi.updateTreatment(treatmentId, {
+        status: 'completed',
+        trainingLevel: 'high',
+        isTrainingLocked: false,
+      });
+      await fetchHorseDetails();
+    } catch (err) {
+      alert(err?.message || 'Không thể cập nhật đợt điều trị.');
+    }
+  };
+
   return (
     <Container fluid className="p-0">
       {/* Top Breadcrumb & Navigation */}
@@ -133,12 +185,12 @@ export default function HorseHealthDetail() {
           </Button>
 
           <Button
-            variant={isTrainingLocked ? 'danger' : 'outline-danger'}
+            variant={isTrainingLocked ? 'danger' : 'outline-primary'}
             size="sm"
             onClick={() => setShowLockModal(true)}
           >
-            <i className={`bi ${isTrainingLocked ? 'bi-lock-fill' : 'bi-unlock'} me-1`}></i>
-            {isTrainingLocked ? 'Mở Khóa Tập' : 'Khóa Huấn Luyện'}
+            <i className={`bi ${isTrainingLocked ? 'bi-lock-fill' : 'bi-speedometer2'} me-1`}></i>
+            {isTrainingLocked ? 'Mở Khóa / Đổi Mức Tập' : 'Chỉ Định Mức Huấn Luyện'}
           </Button>
         </div>
       </div>
@@ -168,8 +220,20 @@ export default function HorseHealthDetail() {
                   </div>
                 </div>
 
-                <div className="d-flex gap-2">
+                <div className="d-flex flex-wrap gap-2 align-items-center">
                   <HealthStatusBadge status={horse.healthStatus} className="fs-6 px-3 py-2" />
+
+                  {horse.healthStatus !== 'eligible' && (
+                    <Button
+                      variant="success"
+                      size="sm"
+                      className="px-3 py-2 fw-semibold d-flex align-items-center shadow-sm"
+                      onClick={() => setShowRecoveryModal(true)}
+                      title="Xác nhận chiến mã đã bình phục và cấp lại trạng thái Đủ điều kiện"
+                    >
+                      <i className="bi bi-check-circle-fill me-1"></i> Xác Nhận Bình Phục (Đủ Điều Kiện)
+                    </Button>
+                  )}
 
                   {isTrainingLocked && (
                     <Badge bg="danger" className="fs-6 px-3 py-2 d-flex align-items-center">
@@ -479,6 +543,18 @@ export default function HorseHealthDetail() {
                               <Badge bg={st.bg} pill>
                                 {st.label}
                               </Badge>
+                              {tr.status === 'ongoing' && (
+                                <Button
+                                  variant="outline-success"
+                                  size="sm"
+                                  className="ms-2 py-0 px-2 fw-semibold"
+                                  style={{ fontSize: '0.72rem' }}
+                                  onClick={() => handleCompleteTreatment(tr._id)}
+                                  title="Đánh dấu đã hoàn thành đợt điều trị"
+                                >
+                                  <i className="bi bi-check-lg me-1"></i>Xong
+                                </Button>
+                              )}
                             </td>
                             <td className="small text-muted">
                               {tr.endDate ? `Đến ${formatDate(tr.endDate)}` : 'Đang tiến hành'}
@@ -517,6 +593,71 @@ export default function HorseHealthDetail() {
           fetchHorseDetails();
         }}
       />
+
+      {/* Recovery Clearance Modal */}
+      <Modal show={showRecoveryModal} onHide={() => !recovering && setShowRecoveryModal(false)} centered>
+        <Form onSubmit={handleConfirmRecovery}>
+          <Modal.Header closeButton={!recovering} className="bg-success text-white">
+            <Modal.Title className="fs-5 fw-bold">
+              <i className="bi bi-check-circle-fill me-2"></i> Xác Nhận Bình Phục & Cấp "Đủ Điều Kiện"
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="mb-3">
+              <p className="mb-1">
+                Chiến mã: <strong className="text-primary">{horse.name}</strong> (#{horse._id})
+              </p>
+              <p className="small text-muted mb-0">
+                Xác nhận ngựa đã hết bệnh, hồi phục hoàn toàn để chuyển trạng thái sức khỏe sang{' '}
+                <span className="badge bg-success">ĐỦ ĐIỀU KIỆN</span> và sẵn sàng cho việc tập luyện, thi đấu.
+              </p>
+            </div>
+
+            <Form.Group className="mb-3">
+              <Form.Label className="fw-semibold small">Ghi chú kết luận tái khám *</Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={3}
+                value={recoveryNote}
+                onChange={(e) => setRecoveryNote(e.target.value)}
+                placeholder="Nhập ghi chú chẩn đoán tái khám..."
+                required
+                disabled={recovering}
+              />
+            </Form.Group>
+
+            {activeTreatment && (
+              <Form.Group className="p-2 border rounded bg-light mb-2">
+                <Form.Check
+                  type="checkbox"
+                  id="complete-treatment-check"
+                  label="Đồng thời kết thúc và đánh dấu hoàn thành đợt điều trị hiện tại"
+                  checked={completeOngoingTreatment}
+                  onChange={(e) => setCompleteOngoingTreatment(e.target.checked)}
+                  disabled={recovering}
+                  className="small fw-semibold"
+                />
+              </Form.Group>
+            )}
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowRecoveryModal(false)} disabled={recovering}>
+              Hủy
+            </Button>
+            <Button variant="success" type="submit" disabled={recovering}>
+              {recovering ? (
+                <>
+                  <Spinner size="sm" animation="border" className="me-1" /> Đang cập nhật...
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-check-lg me-1"></i> Xác Nhận Đủ Điều Kiện
+                </>
+              )}
+            </Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
     </Container>
   );
 }

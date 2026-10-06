@@ -20,6 +20,10 @@ export default function MedicalExaminationForm() {
   const [successMessage, setSuccessMessage] = useState(null);
 
   const [horses, setHorses] = useState([]);
+  const [existingAttachments, setExistingAttachments] = useState([]);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState(null);
+
   const [formData, setFormData] = useState({
     horse: horseId || '',
     date: formatDateForInput(new Date()),
@@ -45,6 +49,7 @@ export default function MedicalExaminationForm() {
         if (isEditMode) {
           const recRes = await veterinarianApi.getHealthRecordById(id);
           const rec = recRes.data;
+          setExistingAttachments(rec.attachments || []);
           setFormData({
             horse: rec.horse?._id || rec.horse || '',
             date: formatDateForInput(rec.date || rec.createdAt),
@@ -77,6 +82,35 @@ export default function MedicalExaminationForm() {
 
     fetchData();
   }, [horseId, id, isEditMode]);
+
+  const handleFileChange = (e) => {
+    if (e.target.files) {
+      const filesArray = Array.from(e.target.files);
+      const totalCount = existingAttachments.length + selectedFiles.length + filesArray.length;
+      if (totalCount > 10) {
+        setError('Mỗi phiếu khám tối đa 10 tệp đính kèm.');
+        return;
+      }
+      setSelectedFiles((prev) => [...prev, ...filesArray]);
+    }
+  };
+
+  const handleRemoveSelectedFile = (index) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDeleteExistingAttachment = async (attachmentId) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa tệp đính kèm này?')) return;
+    setDeletingAttachmentId(attachmentId);
+    try {
+      await veterinarianApi.deleteRecordAttachment(id, attachmentId);
+      setExistingAttachments((prev) => prev.filter((att) => att._id !== attachmentId));
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || 'Lỗi khi xóa tệp đính kèm.');
+    } finally {
+      setDeletingAttachmentId(null);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -123,19 +157,32 @@ export default function MedicalExaminationForm() {
     };
 
     try {
+      let savedRecordId = id;
       if (isEditMode) {
         await veterinarianApi.updateHealthRecord(id, payload);
-        setSuccessMessage('Cập nhật hồ sơ khám bệnh thành công!');
       } else {
-        await veterinarianApi.createHealthRecord(payload);
-        setSuccessMessage('Lập hồ sơ khám bệnh mới và cập nhật trạng thái sức khỏe thành công!');
+        const createRes = await veterinarianApi.createHealthRecord(payload);
+        savedRecordId = createRes.data?._id;
       }
+
+      // Upload selected files if any (POST /health/records/:id/attachments)
+      if (selectedFiles.length > 0 && savedRecordId) {
+        const formDataUpload = new FormData();
+        selectedFiles.forEach((f) => formDataUpload.append('files', f));
+        await veterinarianApi.uploadRecordAttachments(savedRecordId, formDataUpload);
+      }
+
+      setSuccessMessage(
+        isEditMode
+          ? 'Cập nhật hồ sơ khám bệnh và tệp đính kèm thành công!'
+          : 'Lập hồ sơ khám bệnh mới và tải tệp đính kèm thành công!'
+      );
 
       setTimeout(() => {
         navigate(`/veterinarian/horses/${formData.horse}`);
       }, 1200);
     } catch (err) {
-      setError(err?.message || 'Lỗi khi lưu hồ sơ khám bệnh.');
+      setError(err?.response?.data?.message || err?.message || 'Lỗi khi lưu hồ sơ khám bệnh.');
       setSubmitting(false);
     }
   };
@@ -361,6 +408,105 @@ export default function MedicalExaminationForm() {
                 </Form.Group>
               </Col>
             </Row>
+
+            {/* Attachments Section (POST /health/records/:id/attachments) */}
+            <div className="mb-4 p-3 bg-light rounded border">
+              <div className="d-flex justify-content-between align-items-center mb-2">
+                <Form.Label className="fw-bold text-dark mb-0">
+                  <i className="bi bi-paperclip me-1 text-primary"></i>
+                  Tài Liệu Y Tế & Hình Ảnh Đính Kèm (Ảnh X-Quang, Kết Quả Xét Nghiệm, Đơn Thuốc Scan)
+                </Form.Label>
+                <span className="small text-muted">Tối đa 10 tệp (ảnh hoặc PDF)</span>
+              </div>
+
+              {/* Existing Attachments (if editing) */}
+              {existingAttachments.length > 0 && (
+                <div className="mb-3">
+                  <span className="small fw-bold text-muted d-block mb-1">Tệp đã đính kèm hiện tại:</span>
+                  <div className="d-flex flex-wrap gap-2">
+                    {existingAttachments.map((att) => (
+                      <div key={att._id} className="p-2 bg-white rounded border d-flex align-items-center gap-2">
+                        {att.contentType?.startsWith('image/') ? (
+                          <img
+                            src={att.url}
+                            alt={att.name}
+                            style={{ width: '32px', height: '32px', objectFit: 'cover' }}
+                            className="rounded"
+                          />
+                        ) : (
+                          <i className="bi bi-file-earmark-pdf fs-4 text-danger"></i>
+                        )}
+                        <div className="small">
+                          <a
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-decoration-none fw-semibold"
+                          >
+                            {att.name}
+                          </a>
+                          <div className="text-muted" style={{ fontSize: '11px' }}>
+                            {att.size ? `${Math.round(att.size / 1024)} KB` : ''}
+                          </div>
+                        </div>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="text-danger p-0 ms-1 border-0"
+                          onClick={() => handleDeleteExistingAttachment(att._id)}
+                          disabled={deletingAttachmentId === att._id}
+                          title="Xóa tệp này"
+                        >
+                          {deletingAttachmentId === att._id ? (
+                            <Spinner size="sm" animation="border" />
+                          ) : (
+                            <i className="bi bi-trash"></i>
+                          )}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* File Input */}
+              <Form.Group>
+                <Form.Control
+                  type="file"
+                  multiple
+                  accept="image/*,application/pdf"
+                  onChange={handleFileChange}
+                  disabled={submitting}
+                />
+                <Form.Text className="text-muted">
+                  Hỗ trợ định dạng hình ảnh (.jpg, .png) và tài liệu (.pdf). Tải lên đồng thời tối đa 5 tệp/lần.
+                </Form.Text>
+              </Form.Group>
+
+              {/* Staged files for upload */}
+              {selectedFiles.length > 0 && (
+                <div className="mt-2">
+                  <span className="small fw-semibold text-primary d-block mb-1">
+                    Tệp mới chuẩn bị tải lên ({selectedFiles.length}):
+                  </span>
+                  <div className="d-flex flex-wrap gap-2">
+                    {selectedFiles.map((file, idx) => (
+                      <span key={idx} className="badge bg-white text-dark border p-2 d-flex align-items-center gap-2">
+                        <i className="bi bi-file-earmark-arrow-up text-primary"></i>
+                        <span>
+                          {file.name} ({Math.round(file.size / 1024)} KB)
+                        </span>
+                        <i
+                          className="bi bi-x-circle text-danger cursor-pointer ms-1"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => handleRemoveSelectedFile(idx)}
+                        ></i>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Actions */}
             <div className="d-flex justify-content-end gap-2 pt-3 border-top">

@@ -8,8 +8,11 @@ import EmptyState from '../../components/common/EmptyState';
 import { formatDate, formatDateForInput } from '../../utils/formatDate';
 
 const createEmptyMedication = () => ({
+  inventoryItem: '',
   name: '',
   dosage: '',
+  amount: '',
+  unit: '',
   timeSlots: {
     morning: true,
     noon: false,
@@ -32,6 +35,7 @@ export default function PrescriptionForm() {
 
   const [horses, setHorses] = useState([]);
   const [treatments, setTreatments] = useState([]);
+  const [inventoryItems, setInventoryItems] = useState([]);
 
   // Form states
   const [selectedHorse, setSelectedHorse] = useState('');
@@ -42,12 +46,15 @@ export default function PrescriptionForm() {
     setLoading(true);
     setError(null);
     try {
-      const [horsesRes, treatmentsRes] = await Promise.all([
+      const [horsesRes, treatmentsRes, inventoryRes] = await Promise.all([
         veterinarianApi.getHorses(),
         veterinarianApi.getTreatments(),
+        veterinarianApi.getInventory(),
       ]);
       setHorses(horsesRes.data || []);
       setTreatments(treatmentsRes.data || []);
+      const allInv = inventoryRes.data || [];
+      setInventoryItems(allInv.filter((item) => item.category === 'medicine'));
     } catch (err) {
       setError(err?.message || 'Không thể tải dữ liệu đơn thuốc.');
     } finally {
@@ -85,6 +92,31 @@ export default function PrescriptionForm() {
     });
   };
 
+  const handleSelectInventoryItem = (index, itemId) => {
+    const item = inventoryItems.find((i) => i._id === itemId);
+    setMedications((prev) => {
+      const updated = [...prev];
+      if (item) {
+        const amt = updated[index].amount || 1;
+        updated[index] = {
+          ...updated[index],
+          inventoryItem: item._id,
+          name: item.name,
+          unit: item.unit,
+          amount: amt,
+          dosage: `${amt} ${item.unit}/lần`,
+        };
+      } else {
+        updated[index] = {
+          ...updated[index],
+          inventoryItem: '',
+          unit: '',
+        };
+      }
+      return updated;
+    });
+  };
+
   const handleCreatePrescription = async (e) => {
     e.preventDefault();
     if (!selectedHorse) {
@@ -95,6 +127,14 @@ export default function PrescriptionForm() {
     const validMeds = medications.filter((m) => m.name.trim() && m.dosage.trim());
     if (validMeds.length === 0) {
       setError('Vui lòng nhập tên thuốc và liều lượng cho ít nhất 1 loại thuốc.');
+      return;
+    }
+
+    const itemMissingAmount = validMeds.find(
+      (m) => m.inventoryItem && (!m.amount || Number(m.amount) <= 0)
+    );
+    if (itemMissingAmount) {
+      setError(`Thuốc "${itemMissingAmount.name}" chọn từ kho cần nhập lượng mỗi liều (> 0) để tự trừ kho.`);
       return;
     }
 
@@ -119,7 +159,7 @@ export default function PrescriptionForm() {
         if (slotLabels.length) freqParts.push(`Buổi: ${slotLabels.join(', ')}`);
         if (m.specificTimes?.trim()) freqParts.push(`Giờ: ${m.specificTimes.trim()}`);
 
-        return {
+        const itemObj = {
           name: m.name.trim(),
           dosage: m.dosage.trim(),
           timeSlots: slots,
@@ -129,6 +169,23 @@ export default function PrescriptionForm() {
           endDate: m.endDate ? new Date(m.endDate) : undefined,
           instructions: m.instructions?.trim() || '',
         };
+
+        if (m.inventoryItem) {
+          itemObj.inventoryItem = m.inventoryItem;
+          itemObj.amount = Number(m.amount);
+        }
+
+        if (m.specificTimes) {
+          const parsedTimes = m.specificTimes
+            .split(/[,;\s]+/)
+            .map((t) => t.trim())
+            .filter((t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t));
+          if (parsedTimes.length > 0) {
+            itemObj.times = parsedTimes;
+          }
+        }
+
+        return itemObj;
       });
 
       // Calculate max endDate across all medications
@@ -325,11 +382,39 @@ export default function PrescriptionForm() {
                         )}
                       </div>
 
-                      {/* Medicine Name & Dosage */}
+                      {/* Inventory Item Selection */}
+                      <Form.Group className="mb-2">
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                          <Form.Label className="small fw-semibold mb-0">
+                            <i className="bi bi-box-seam me-1 text-primary"></i>
+                            Chọn thuốc từ kho (để tự động trừ kho khi thực hiện):
+                          </Form.Label>
+                          {med.inventoryItem && (
+                            <Badge bg="success-subtle" text="success" className="border border-success-subtle">
+                              <i className="bi bi-check-circle me-1"></i>Đã liên kết kho dược phẩm
+                            </Badge>
+                          )}
+                        </div>
+                        <Form.Select
+                          size="sm"
+                          value={med.inventoryItem || ''}
+                          onChange={(e) => handleSelectInventoryItem(index, e.target.value)}
+                          disabled={submitting}
+                        >
+                          <option value="">-- Nhập thủ công (không liên kết kho) --</option>
+                          {inventoryItems.map((item) => (
+                            <option key={item._id} value={item._id}>
+                              {item.name} — Tồn kho: {item.quantity} {item.unit} {item.stableBlock ? `(${item.stableBlock})` : ''}
+                            </option>
+                          ))}
+                        </Form.Select>
+                      </Form.Group>
+
+                      {/* Medicine Name, Amount per dose & Dosage */}
                       <Row className="g-2 mb-2">
-                        <Col xs={12} md={7}>
+                        <Col xs={12} md={med.inventoryItem ? 5 : 7}>
                           <Form.Group>
-                            <Form.Label className="small fw-semibold mb-1">
+                            <Form.Label className="small fw-semibold mb-1 text-nowrap d-block" style={{ minHeight: '22px' }}>
                               Tên thuốc / Dược phẩm <span className="text-danger">*</span>
                             </Form.Label>
                             <Form.Control
@@ -343,9 +428,39 @@ export default function PrescriptionForm() {
                             />
                           </Form.Group>
                         </Col>
-                        <Col xs={12} md={5}>
+
+                        {med.inventoryItem && (
+                          <Col xs={12} md={3}>
+                            <Form.Group>
+                              <Form.Label className="small fw-semibold mb-1 text-primary text-nowrap d-block" style={{ minHeight: '22px' }} title="Số lượng trừ kho cho mỗi lần dùng">
+                                Lượng trừ kho <span className="text-danger">*</span>
+                              </Form.Label>
+                              <div className="input-group input-group-sm">
+                                <Form.Control
+                                  type="number"
+                                  min="0.01"
+                                  step="any"
+                                  placeholder="VD: 1"
+                                  value={med.amount || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    handleMedChange(index, 'amount', val);
+                                    if (val && med.unit) {
+                                      handleMedChange(index, 'dosage', `${val} ${med.unit}/lần`);
+                                    }
+                                  }}
+                                  required
+                                  disabled={submitting}
+                                />
+                                <span className="input-group-text">{med.unit || 'đv'}</span>
+                              </div>
+                            </Form.Group>
+                          </Col>
+                        )}
+
+                        <Col xs={12} md={med.inventoryItem ? 4 : 5}>
                           <Form.Group>
-                            <Form.Label className="small fw-semibold mb-1">
+                            <Form.Label className="small fw-semibold mb-1 text-nowrap d-block" style={{ minHeight: '22px' }}>
                               Liều lượng <span className="text-danger">*</span>
                             </Form.Label>
                             <Form.Control

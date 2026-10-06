@@ -71,7 +71,7 @@ async function wantedTasks(treatment, bounds) {
   const wanted = [];
   for (const m of meds) {
     const item = m.inventoryItem ? itemById.get(String(m.inventoryItem)) : null;
-    const supplies = item && m.amount ? [{ inventoryItem: item._id, name: item.name, amount: m.amount, unit: item.unit }] : [];
+    const supplies = item && m.amount && !m.isDeducted ? [{ inventoryItem: item._id, name: item.name, amount: m.amount, unit: item.unit }] : [];
     const note = medicationNote(m);
     const times = (m.times || []).length ? m.times : [null];
     for (const dueTime of times) wanted.push({ taskType: 'medication', note, dueTime, supplies });

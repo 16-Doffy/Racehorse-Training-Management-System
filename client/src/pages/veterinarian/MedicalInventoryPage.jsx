@@ -13,12 +13,25 @@ export default function MedicalInventoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
 
-  // Restock modal state
+  // Restock modal state (cho món đã có)
   const [selectedItem, setSelectedItem] = useState(null);
   const [showRestockModal, setShowRestockModal] = useState(false);
   const [quantity, setQuantity] = useState(10);
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState(null);
+
+  // Propose New Item modal state (cho món thuốc mới hoàn toàn)
+  const [showNewItemModal, setShowNewItemModal] = useState(false);
+  const [newItemData, setNewItemData] = useState({
+    name: '',
+    category: 'medicine',
+    unit: 'lọ',
+    quantity: 10,
+    stableBlock: 'Phòng Y Tế',
+    note: '',
+  });
+  const [submittingNewItem, setSubmittingNewItem] = useState(false);
+  const [newItemError, setNewItemError] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -62,6 +75,53 @@ export default function MedicalInventoryPage() {
     }
   };
 
+  const handleProposeNewItem = async (e) => {
+    e.preventDefault();
+    if (!newItemData.name.trim()) {
+      setNewItemError('Vui lòng nhập tên thuốc / dược phẩm mới.');
+      return;
+    }
+    if (!newItemData.unit.trim()) {
+      setNewItemError('Vui lòng nhập đơn vị tính.');
+      return;
+    }
+    if (!newItemData.quantity || Number(newItemData.quantity) <= 0) {
+      setNewItemError('Số lượng đề xuất phải lớn hơn 0.');
+      return;
+    }
+
+    setSubmittingNewItem(true);
+    setNewItemError(null);
+    try {
+      await veterinarianApi.proposeItem({
+        name: newItemData.name.trim(),
+        category: newItemData.category,
+        unit: newItemData.unit.trim(),
+        quantity: Number(newItemData.quantity),
+        stableBlock: newItemData.stableBlock?.trim() || undefined,
+        note: newItemData.note?.trim() || undefined,
+      });
+      setSuccessMsg(
+        `Đã gửi đề xuất món thuốc mới "${newItemData.name.trim()}" (${newItemData.quantity} ${newItemData.unit}) tới Ban Quản Lý!`
+      );
+      setShowNewItemModal(false);
+      setNewItemData({
+        name: '',
+        category: 'medicine',
+        unit: 'lọ',
+        quantity: 10,
+        stableBlock: 'Phòng Y Tế',
+        note: '',
+      });
+      fetchData();
+      setTimeout(() => setSuccessMsg(null), 5000);
+    } catch (err) {
+      setNewItemError(err?.response?.data?.message || err?.message || 'Lỗi khi gửi đề xuất vật tư mới.');
+    } finally {
+      setSubmittingNewItem(false);
+    }
+  };
+
   const filteredItems = inventory.filter((item) => {
     const q = searchTerm.toLowerCase();
     const matchesSearch =
@@ -90,9 +150,14 @@ export default function MedicalInventoryPage() {
           </p>
         </div>
 
-        <Button variant="outline-primary" size="sm" onClick={fetchData}>
-          <i className="bi bi-arrow-clockwise me-1"></i> Làm mới
-        </Button>
+        <div className="d-flex gap-2">
+          <Button variant="primary" size="sm" onClick={() => setShowNewItemModal(true)}>
+            <i className="bi bi-plus-circle me-1"></i> Đề xuất thuốc / vật tư mới
+          </Button>
+          <Button variant="outline-primary" size="sm" onClick={fetchData}>
+            <i className="bi bi-arrow-clockwise me-1"></i> Làm mới
+          </Button>
+        </div>
       </div>
 
       {error && <ErrorAlert message={error} onRetry={fetchData} />}
@@ -265,6 +330,139 @@ export default function MedicalInventoryPage() {
             </Button>
             <Button variant="primary" type="submit" disabled={submitting}>
               {submitting ? <Spinner animation="border" size="sm" /> : 'Gửi Đề Xuất'}
+            </Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      {/* Propose Brand New Medicine / Supply Modal (POST /inventory/proposals) */}
+      <Modal show={showNewItemModal} onHide={() => setShowNewItemModal(false)} centered size="lg">
+        <Form onSubmit={handleProposeNewItem}>
+          <Modal.Header closeButton={!submittingNewItem}>
+            <Modal.Title className="fs-5">
+              <i className="bi bi-capsule-pill me-2 text-primary"></i>
+              Đề Xuất Món Thuốc / Dược Phẩm Mới (Chưa có trong danh mục)
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            {newItemError && <Alert variant="danger">{newItemError}</Alert>}
+
+            <Alert variant="info" className="small mb-3">
+              <i className="bi bi-info-circle-fill me-1"></i>
+              Món thuốc hoặc vật tư y tế mới chưa có trong danh mục kho sẽ được gửi tới Ban Quản Lý (Manager). Sau khi Ban Quản Lý phê duyệt, món thuốc sẽ được thêm vào kho và sẵn sàng để kê đơn.
+            </Alert>
+
+            <Row className="g-3">
+              <Col xs={12} md={8}>
+                <Form.Group>
+                  <Form.Label className="fw-semibold">
+                    Tên thuốc / Dược phẩm mới <span className="text-danger">*</span>
+                  </Form.Label>
+                  <Form.Control
+                    type="text"
+                    placeholder="Ví dụ: Dexamethasone 2mg/ml, Banamine Injectable, Gel hạ nhiệt cơ..."
+                    value={newItemData.name}
+                    onChange={(e) => setNewItemData({ ...newItemData, name: e.target.value })}
+                    required
+                    disabled={submittingNewItem}
+                  />
+                </Form.Group>
+              </Col>
+
+              <Col xs={12} md={4}>
+                <Form.Group>
+                  <Form.Label className="fw-semibold">
+                    Danh mục <span className="text-danger">*</span>
+                  </Form.Label>
+                  <Form.Select
+                    value={newItemData.category}
+                    onChange={(e) => setNewItemData({ ...newItemData, category: e.target.value })}
+                    disabled={submittingNewItem}
+                  >
+                    <option value="medicine">💊 Thuốc / Dược phẩm (Medicine)</option>
+                    <option value="equipment">🩺 Vật tư / Y cụ (Equipment)</option>
+                    <option value="feed">🌾 Dinh dưỡng bổ sung (Feed)</option>
+                  </Form.Select>
+                </Form.Group>
+              </Col>
+
+              <Col xs={12} md={4}>
+                <Form.Group>
+                  <Form.Label className="fw-semibold">
+                    Đơn vị tính <span className="text-danger">*</span>
+                  </Form.Label>
+                  <Form.Control
+                    type="text"
+                    placeholder="lọ, chai, ống, viên, hộp, tuýp, ml, kg..."
+                    value={newItemData.unit}
+                    onChange={(e) => setNewItemData({ ...newItemData, unit: e.target.value })}
+                    required
+                    disabled={submittingNewItem}
+                  />
+                </Form.Group>
+              </Col>
+
+              <Col xs={12} md={4}>
+                <Form.Group>
+                  <Form.Label className="fw-semibold">
+                    Số lượng đề xuất ban đầu <span className="text-danger">*</span>
+                  </Form.Label>
+                  <Form.Control
+                    type="number"
+                    min={1}
+                    value={newItemData.quantity}
+                    onChange={(e) => setNewItemData({ ...newItemData, quantity: e.target.value })}
+                    required
+                    disabled={submittingNewItem}
+                  />
+                </Form.Group>
+              </Col>
+
+              <Col xs={12} md={4}>
+                <Form.Group>
+                  <Form.Label className="fw-semibold">Khu vực lưu trữ dự kiến</Form.Label>
+                  <Form.Control
+                    type="text"
+                    placeholder="VD: Phòng Y Tế, Tủ Thuốc Khu A..."
+                    value={newItemData.stableBlock}
+                    onChange={(e) => setNewItemData({ ...newItemData, stableBlock: e.target.value })}
+                    disabled={submittingNewItem}
+                  />
+                </Form.Group>
+              </Col>
+
+              <Col xs={12}>
+                <Form.Group>
+                  <Form.Label className="fw-semibold">
+                    Ghi chú / Chỉ định lâm sàng cần dùng thuốc này
+                  </Form.Label>
+                  <Form.Control
+                    as="textarea"
+                    rows={2}
+                    placeholder="Nêu rõ mục đích điều trị, bệnh lý cần áp dụng hoặc phác đồ yêu cầu..."
+                    value={newItemData.note}
+                    onChange={(e) => setNewItemData({ ...newItemData, note: e.target.value })}
+                    disabled={submittingNewItem}
+                  />
+                </Form.Group>
+              </Col>
+            </Row>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowNewItemModal(false)} disabled={submittingNewItem}>
+              Hủy
+            </Button>
+            <Button variant="primary" type="submit" disabled={submittingNewItem}>
+              {submittingNewItem ? (
+                <>
+                  <Spinner animation="border" size="sm" className="me-1" />
+                  Đang gửi...
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-send-fill me-1"></i> Gửi Đề Xuất Cho Quản Lý
+                </>
+              )}
             </Button>
           </Modal.Footer>
         </Form>

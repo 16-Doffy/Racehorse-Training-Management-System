@@ -238,9 +238,59 @@ export default function MainLayout() {
         .forest-layout {
           --bs-link-color-rgb: 15, 90, 67;
           --bs-link-hover-color-rgb: 11, 63, 47;
+          --bs-primary: #0F5A43;
+          --bs-primary-rgb: 15, 90, 67;
         }
         .forest-layout a {
           text-decoration: none;
+        }
+        .forest-layout .btn-primary {
+          background-color: #0F5A43 !important;
+          border-color: #0F5A43 !important;
+        }
+        .forest-layout .btn-primary:hover,
+        .forest-layout .btn-primary:focus,
+        .forest-layout .btn-primary:active {
+          background-color: #0B4634 !important;
+          border-color: #0B4634 !important;
+        }
+        .forest-layout .btn-outline-primary {
+          color: #0F5A43 !important;
+          border-color: #0F5A43 !important;
+        }
+        .forest-layout .btn-outline-primary:hover,
+        .forest-layout .btn-outline-primary:focus,
+        .forest-layout .btn-outline-primary:active {
+          background-color: #0F5A43 !important;
+          border-color: #0F5A43 !important;
+          color: #ffffff !important;
+        }
+        .forest-layout .text-primary {
+          color: #0F5A43 !important;
+        }
+        .forest-layout .bg-primary {
+          background-color: #0F5A43 !important;
+        }
+        .forest-layout .border-primary {
+          border-color: #0F5A43 !important;
+        }
+        .forest-layout .bg-primary-subtle {
+          background-color: #E7F2EA !important;
+          color: #0F5A43 !important;
+        }
+        .forest-layout .border-primary-subtle {
+          border-color: #BCD9C6 !important;
+        }
+        .forest-layout .badge.bg-primary {
+          background-color: #0F5A43 !important;
+        }
+        .forest-layout .badge.bg-primary-subtle {
+          background-color: #E7F2EA !important;
+          color: #0F5A43 !important;
+          border-color: #BCD9C6 !important;
+        }
+        .forest-layout .card {
+          border-color: #E4DFD3 !important;
         }
         /* Page titles in Lora (loaded in index.html, as on the login screen) */
         .forest-layout h1.ant-typography,
