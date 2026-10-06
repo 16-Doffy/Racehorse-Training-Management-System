@@ -84,7 +84,7 @@ export function useVeterinarianData() {
 
       const lockedHorseIds = new Set(
         fetchedTreatments
-          .filter((t) => t.isTrainingLocked)
+          .filter((t) => t.status === 'ongoing' && (t.isTrainingLocked || t.trainingLevel === 'none'))
           .map((t) => (t.horse?._id || t.horse)?.toString())
       );
 

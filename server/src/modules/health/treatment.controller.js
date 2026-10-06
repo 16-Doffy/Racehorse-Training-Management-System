@@ -397,6 +397,10 @@ const updateTreatment = asyncHandler(async (req, res) => {
     if (error) return fail(res, error, 400);
     changes.medications = medications;
   }
+  if (changes.status && changes.status !== 'ongoing') {
+    changes.isTrainingLocked = false;
+    changes.trainingLevel = 'high';
+  }
   const levelError = applyTrainingLevel(changes, treatment);
   if (levelError) return fail(res, levelError, 400);
   Object.assign(treatment, changes);

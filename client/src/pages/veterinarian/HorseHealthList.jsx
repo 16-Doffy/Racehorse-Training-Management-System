@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Form, InputGroup, Button, Table, Badge, ButtonGroup } from 'react-bootstrap';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import useVeterinarianData from '../../hooks/useVeterinarianData';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorAlert from '../../components/common/ErrorAlert';
@@ -13,6 +13,7 @@ import { calculateAge, formatDate } from '../../utils/formatDate';
 
 export default function HorseHealthList() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const {
     loading,
     error,
@@ -25,8 +26,15 @@ export default function HorseHealthList() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [lockFilter, setLockFilter] = useState('all');
+  const [lockFilter, setLockFilter] = useState(searchParams.get('lock') || 'all');
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
+
+  useEffect(() => {
+    const lockParam = searchParams.get('lock');
+    if (lockParam) {
+      setLockFilter(lockParam);
+    }
+  }, [searchParams]);
 
   // Training Lock Modal state
   const [selectedHorseForLock, setSelectedHorseForLock] = useState(null);
@@ -43,12 +51,14 @@ export default function HorseHealthList() {
   });
 
   const activeTreatmentsByHorse = {};
-  treatments.forEach((t) => {
-    const horseId = (t.horse?._id || t.horse)?.toString();
-    if (t.isTrainingLocked || !activeTreatmentsByHorse[horseId]) {
-      activeTreatmentsByHorse[horseId] = t;
-    }
-  });
+  treatments
+    .filter((t) => t.status === 'ongoing')
+    .forEach((t) => {
+      const horseId = (t.horse?._id || t.horse)?.toString();
+      if (t.isTrainingLocked || t.trainingLevel === 'none' || !activeTreatmentsByHorse[horseId]) {
+        activeTreatmentsByHorse[horseId] = t;
+      }
+    });
 
   const injuryCountsByHorse = {};
   injuryMarkers.forEach((m) => {
@@ -77,7 +87,8 @@ export default function HorseHealthList() {
       horse.healthStatus === statusFilter ||
       (statusFilter === 'quarantined' && horse.healthStatus === 'isolated');
 
-    const isLocked = activeTreatmentsByHorse[horse._id?.toString()]?.isTrainingLocked;
+    const activeTr = activeTreatmentsByHorse[horse._id?.toString()];
+    const isLocked = Boolean(activeTr && (activeTr.isTrainingLocked || activeTr.trainingLevel === 'none'));
     const matchesLock =
       lockFilter === 'all' ||
       (lockFilter === 'locked' && isLocked) ||
@@ -216,7 +227,7 @@ export default function HorseHealthList() {
             const horseId = horse._id?.toString();
             const latestRec = latestRecordsByHorse[horseId];
             const activeTr = activeTreatmentsByHorse[horseId];
-            const isLocked = activeTr?.isTrainingLocked;
+            const isLocked = Boolean(activeTr && (activeTr.isTrainingLocked || activeTr.trainingLevel === 'none'));
             const injuriesCount = injuryCountsByHorse[horseId] || 0;
 
             return (

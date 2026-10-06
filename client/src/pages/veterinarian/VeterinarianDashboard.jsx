@@ -92,7 +92,15 @@ export default function VeterinarianDashboard() {
   const injuredHorses = horses.filter((h) => h.healthStatus === 'injured').length;
   const quarantinedHorses = horses.filter((h) => h.healthStatus === 'quarantined').length;
 
-  const lockedTreatments = treatments.filter((t) => t.isTrainingLocked);
+  // Chỉ tính ngựa đang có phác đồ điều trị ĐANG DIỄN RA (ongoing) bị khóa hoặc cấm tập (none),
+  // và ngựa đó phải thuộc danh sách ngựa đang quản lý
+  const activeHorseIdSet = new Set(horses.map((h) => (h._id || h).toString()));
+  const lockedTreatments = treatments.filter((t) => {
+    const horseId = (t.horse?._id || t.horse)?.toString();
+    const isOngoing = t.status === 'ongoing';
+    const isLocked = t.isTrainingLocked === true || t.trainingLevel === 'none';
+    return isOngoing && isLocked && activeHorseIdSet.has(horseId);
+  });
   const lockedHorseIds = new Set(lockedTreatments.map((t) => (t.horse?._id || t.horse)?.toString()));
   const lockedHorsesCount = lockedHorseIds.size;
 
@@ -137,7 +145,10 @@ export default function VeterinarianDashboard() {
 
   const handleOpenLockModal = (horse) => {
     const activeTreatment = treatments.find(
-      (t) => (t.horse?._id || t.horse)?.toString() === horse._id?.toString() && t.isTrainingLocked
+      (t) =>
+        (t.horse?._id || t.horse)?.toString() === horse._id?.toString() &&
+        t.status === 'ongoing' &&
+        (t.isTrainingLocked || t.trainingLevel === 'none')
     );
     setSelectedHorseForLock(horse);
     setSelectedTreatmentForLock(activeTreatment || null);
@@ -192,7 +203,7 @@ export default function VeterinarianDashboard() {
               </div>
             </div>
           </div>
-          <Button variant="outline-danger" size="sm" onClick={() => navigate('/veterinarian/horses')}>
+          <Button variant="outline-danger" size="sm" onClick={() => navigate('/veterinarian/horses?lock=locked')}>
             Xem danh sách bị khóa
           </Button>
         </div>
