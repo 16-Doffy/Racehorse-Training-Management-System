@@ -8,11 +8,6 @@ const {
   canTransition,
 } = require('../src/constants/training');
 
-test('allowed transitions match the lifecycle as it is today', () => {
-  assert.deepEqual(SESSION_TRANSITIONS[S.SCHEDULED], [S.IN_PROGRESS, S.COMPLETED, S.CANCELLED]);
-  assert.deepEqual(SESSION_TRANSITIONS[S.IN_PROGRESS], [S.COMPLETED, S.CANCELLED]);
-});
-
 test('completed and cancelled are final', () => {
   for (const to of Object.values(S)) {
     assert.equal(canTransition(S.COMPLETED, to), false, `completed -> ${to}`);
@@ -39,14 +34,30 @@ test('every status has a label and the tables are frozen', () => {
   });
 });
 
-test('the new statuses exist but nothing can reach them yet', () => {
-  const unreachable = [S.READY, S.BLOCKED, S.EVALUATED, S.ABORTED, S.MISSED];
-  for (const target of unreachable) {
-    for (const from of Object.values(S)) {
-      assert.equal(canTransition(from, target), false, `${from} -> ${target}`);
-    }
-    assert.deepEqual(SESSION_TRANSITIONS[target], [], `${target} has no way out yet`);
+test('allowed transitions: pre-check edges are in, aborted/evaluated/missed still have no way in', () => {
+  assert.deepEqual(SESSION_TRANSITIONS[S.SCHEDULED], [S.READY, S.BLOCKED, S.IN_PROGRESS, S.COMPLETED, S.CANCELLED]);
+  assert.deepEqual(SESSION_TRANSITIONS[S.READY], [S.IN_PROGRESS, S.CANCELLED]);
+  assert.deepEqual(SESSION_TRANSITIONS[S.BLOCKED], [S.READY, S.CANCELLED]);
+  for (const target of [S.EVALUATED, S.ABORTED, S.MISSED]) {
+    for (const from of Object.values(S)) assert.equal(canTransition(from, target), false, `${from} -> ${target}`);
   }
+});
+
+test('a request body can only ask for in_progress, completed or cancelled', () => {
+  const { SESSION_BODY_STATUSES } = require('../src/constants/training');
+  assert.deepEqual([...SESSION_BODY_STATUSES].sort(), [S.CANCELLED, S.COMPLETED, S.IN_PROGRESS].sort());
+});
+
+test('the pre-check window runs from 60 minutes before to 30 minutes after the session', () => {
+  const { preCheckWindow } = require('../src/constants/training');
+  const at = new Date('2026-10-08T08:00:00Z');
+  const at2 = (min) => new Date(at.getTime() + min * 60000);
+  assert.equal(preCheckWindow(at, at2(-61)).open, false);
+  assert.equal(preCheckWindow(at, at2(-60)).open, true);
+  assert.equal(preCheckWindow(at, at2(0)).open, true);
+  assert.equal(preCheckWindow(at, at2(30)).open, true);
+  assert.equal(preCheckWindow(at, at2(31)).open, false);
+  assert.equal(preCheckWindow(at, at2(0)).opensAt.getTime(), at2(-60).getTime());
 });
 
 test('every status has a table entry', () => {

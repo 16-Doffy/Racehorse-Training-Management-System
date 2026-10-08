@@ -17,6 +17,8 @@ const {
   SESSION_STATUS,
   SESSION_STATUS_LABELS,
   SESSION_ERROR,
+  SESSION_BODY_STATUSES,
+  preCheckWindow,
   canTransition,
 } = require('../../constants/training');
 const { ROLES } = require('../../constants/roles');
@@ -56,7 +58,7 @@ async function reportOverride({ session, readiness, reason, user, moment }) {
     trainingSession: session._id,
     type: 'readiness_override',
     severity: 'warning',
-    message: `⚠️ ${user.name} vẫn ${moment === 'start' ? 'bắt đầu' : 'xếp'} buổi tập cho ${readiness.horse.name} dù có ${
+    message: `⚠️ ${user.name} vẫn ${{ start: 'bắt đầu', precheck: 'xác nhận sẵn sàng' }[moment] || 'xếp'} buổi tập cho ${readiness.horse.name} dù có ${
       cautions.length
     } cảnh báo (${cautions.map((g) => g.label).join(', ')}). Lý do: ${reason}`,
   });
@@ -253,6 +255,18 @@ async function applyStatusChange(session, next, { user, overrideReason }) {
   const current = session.status;
   if (!next || next === current) return { effects: {} };
 
+  // Ready and blocked are not something a request can ask for: they are reached only through the
+  // pre-check, which is what looks at the horse.
+  if (!SESSION_BODY_STATUSES.includes(next)) {
+    return {
+      error: {
+        status: 409,
+        message: `Không thể đặt trực tiếp trạng thái "${SESSION_STATUS_LABELS[next] || next}".`,
+        data: { code: SESSION_ERROR.INVALID_TRANSITION, from: current, to: next },
+      },
+    };
+  }
+
   if (!canTransition(current, next)) {
     return {
       error: {
@@ -427,6 +441,100 @@ const startSession = asyncHandler(async (req, res) => {
   return ok(res, session, 'Training session started.');
 });
 
+/**
+ * Pre-check: the trainer looks at the horse close to the session and the system re-runs the readiness
+ * gates for *now*. Passing makes the session READY, which is the only state a session is started from.
+ * A medical block (vet's lock, injury) makes it BLOCKED, and a pre-check can be filed again from there
+ * once the block is gone. An amber gate needs an `overrideReason`. Confirming is itself required: the
+ * trainer, not the system, says the horse was seen.
+ */
+const preCheckSession = asyncHandler(async (req, res) => {
+  const session = await loadSession(req, res);
+  if (!session) return undefined;
+
+  if (!canTransition(session.status, SESSION_STATUS.READY)) {
+    return fail(res, `Không thể kiểm tra sẵn sàng khi buổi tập đang "${SESSION_STATUS_LABELS[session.status]}".`, 409, {
+      code: SESSION_ERROR.INVALID_TRANSITION,
+      from: session.status,
+      to: SESSION_STATUS.READY,
+    });
+  }
+
+  const body = req.body || {};
+  if (body.confirmed !== true) {
+    return fail(res, 'Hãy xác nhận bạn đã quan sát ngựa trước khi buổi tập.', 400, { code: SESSION_ERROR.PRECHECK_NOT_CONFIRMED });
+  }
+
+  let bodyTempC;
+  if (body.bodyTempC !== undefined && body.bodyTempC !== null && body.bodyTempC !== '') {
+    bodyTempC = Number(body.bodyTempC);
+    if (!Number.isFinite(bodyTempC) || bodyTempC < 30 || bodyTempC > 45) {
+      return fail(res, 'Nhiệt độ cơ thể không hợp lệ (30–45 °C).', 400);
+    }
+  }
+
+  const window = preCheckWindow(session.scheduledAt);
+  if (!window.open) {
+    return fail(res, 'Chưa tới (hoặc đã quá) giờ kiểm tra sẵn sàng của buổi tập này.', 409, {
+      code: SESSION_ERROR.OUTSIDE_PRECHECK_WINDOW,
+      opensAt: window.opensAt,
+      closesAt: window.closesAt,
+    });
+  }
+
+  const overrideReason = typeof body.overrideReason === 'string' ? body.overrideReason.trim() : '';
+  const { readiness, error } = await checkReadiness(
+    session.horse,
+    { scheduledAt: new Date(), intensity: session.intensity, sessionType: session.sessionType, objective: session.objective },
+    overrideReason || undefined
+  );
+
+  if (error) {
+    const medicalBlock = error.status === 409 && error.data?.readiness && !error.data.requiresOverride;
+    if (!medicalBlock) return fail(res, error.message, error.status, error.data);
+
+    session.status = SESSION_STATUS.BLOCKED;
+    session.blockedReason = error.message;
+    session.readiness = toSnapshot(error.data.readiness, { userId: req.user._id });
+    await session.save();
+    await logAction({
+      actorId: req.user._id,
+      action: 'trainingSession.pre_check',
+      targetModel: 'TrainingSession',
+      targetId: session._id,
+      metadata: { result: 'blocked', reason: error.message },
+    });
+    return fail(res, error.message, 409, { code: SESSION_ERROR.READINESS_BLOCKED, readiness: error.data.readiness });
+  }
+
+  const snapshot = toSnapshot(readiness, { overrideReason: overrideReason || undefined, userId: req.user._id });
+  // Keep a booking-time override on record if the pre-check raised nothing new.
+  if (!snapshot.overrideReason && session.readiness?.overrideReason) {
+    snapshot.overrideReason = session.readiness.overrideReason;
+    snapshot.overriddenBy = session.readiness.overriddenBy;
+  }
+  snapshot.confirmedBy = req.user._id;
+  if (bodyTempC !== undefined) snapshot.bodyTempC = bodyTempC;
+  if (typeof body.trackCondition === 'string' && body.trackCondition.trim()) snapshot.trackCondition = body.trackCondition.trim();
+  if (typeof body.weather === 'string' && body.weather.trim()) snapshot.weather = body.weather.trim();
+
+  session.readiness = snapshot;
+  session.status = SESSION_STATUS.READY;
+  session.blockedReason = undefined;
+  await session.save();
+
+  const overridden = cautionGates(readiness).length > 0;
+  if (overridden) await reportOverride({ session, readiness, reason: overrideReason, user: req.user, moment: 'precheck' });
+  await logAction({
+    actorId: req.user._id,
+    action: 'trainingSession.pre_check',
+    targetModel: 'TrainingSession',
+    targetId: session._id,
+    metadata: { result: 'ready', overridden },
+  });
+  return ok(res, session, 'Pre-check passed: the session is ready.');
+});
+
 // Trainer's post-session evaluation: performance rating, professional comment, measured metrics.
 const recordEvaluation = asyncHandler(async (req, res) => {
   const { trainerComment, performanceRating, metrics, status, overrideReason, videoUrl } = req.body;
@@ -494,6 +602,7 @@ module.exports = {
   createSession,
   updateSession,
   startSession,
+  preCheckSession,
   recordEvaluation,
   deleteSession,
 };

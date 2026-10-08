@@ -77,6 +77,11 @@ const trainingSessionSchema = new mongoose.Schema(
       ],
       overrideReason: { type: String },
       overriddenBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      // Filed with the pre-check: who confirmed they looked at the horse, and what they noted.
+      confirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      bodyTempC: { type: Number },
+      trackCondition: { type: String, trim: true },
+      weather: { type: String, trim: true },
     },
     // Actual vs. prescribed, computed when the trainer files the evaluation.
     outcome: {

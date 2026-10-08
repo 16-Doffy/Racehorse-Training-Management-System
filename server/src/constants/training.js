@@ -33,21 +33,44 @@ const SESSION_STATUS = Object.freeze({
   MISSED: 'missed', // never started and past its grace period
 });
 
-// Only SCHEDULED and IN_PROGRESS have edges today. READY, BLOCKED, ABORTED, EVALUATED and MISSED
-// exist in the schema but have no way in yet: each gets its edges in the task that adds the endpoint
-// for it (pre-check, start, end/abort, evaluation, missed job). Leaving them out of this table until
-// then keeps PUT/evaluation from moving a session there with a bare `status`.
+// Edges are added together with the endpoint that uses them. ABORTED, EVALUATED and MISSED have no
+// way in yet (end/abort, evaluation and the missed job come later). SCHEDULED -> IN_PROGRESS and
+// -> COMPLETED are legacy edges that the start/end endpoints replace.
 const SESSION_TRANSITIONS = Object.freeze({
-  [SESSION_STATUS.SCHEDULED]: [SESSION_STATUS.IN_PROGRESS, SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED],
+  [SESSION_STATUS.SCHEDULED]: [
+    SESSION_STATUS.READY,
+    SESSION_STATUS.BLOCKED,
+    SESSION_STATUS.IN_PROGRESS,
+    SESSION_STATUS.COMPLETED,
+    SESSION_STATUS.CANCELLED,
+  ],
+  [SESSION_STATUS.READY]: [SESSION_STATUS.IN_PROGRESS, SESSION_STATUS.CANCELLED],
+  [SESSION_STATUS.BLOCKED]: [SESSION_STATUS.READY, SESSION_STATUS.CANCELLED],
   [SESSION_STATUS.IN_PROGRESS]: [SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED],
-  [SESSION_STATUS.READY]: [],
-  [SESSION_STATUS.BLOCKED]: [],
   [SESSION_STATUS.COMPLETED]: [],
   [SESSION_STATUS.EVALUATED]: [],
   [SESSION_STATUS.ABORTED]: [],
   [SESSION_STATUS.CANCELLED]: [],
   [SESSION_STATUS.MISSED]: [],
 });
+
+// Statuses a client may ask for with a bare `status` (PUT, evaluation). Everything else - ready,
+// blocked, and later aborted/evaluated - is reached only through the endpoint that checks its
+// conditions, so a request body can never skip them.
+const SESSION_BODY_STATUSES = Object.freeze([SESSION_STATUS.IN_PROGRESS, SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED]);
+
+// The pre-check is done close to the session, not days ahead: the horse's condition has to be
+// judged for now. CONFIGURABLE, simplified for the capstone: move to SystemSetting (T8-01).
+const PRECHECK_WINDOW = Object.freeze({ opensBeforeMin: 60, closesAfterMin: 30 });
+
+/** When a session's pre-check may be filed, and whether `now` falls inside that window. */
+function preCheckWindow(scheduledAt, now = new Date()) {
+  const at = new Date(scheduledAt).getTime();
+  const opensAt = new Date(at - PRECHECK_WINDOW.opensBeforeMin * 60 * 1000);
+  const closesAt = new Date(at + PRECHECK_WINDOW.closesAfterMin * 60 * 1000);
+  const t = new Date(now).getTime();
+  return { opensAt, closesAt, open: t >= opensAt.getTime() && t <= closesAt.getTime() };
+}
 
 // Sessions that are booked or running, i.e. not yet finished one way or another. What an archived
 // horse's sessions are cancelled from.
@@ -92,6 +115,9 @@ const SESSION_ERROR = Object.freeze({
   INVALID_TRANSITION: 'INVALID_TRANSITION',
   NOT_EDITABLE: 'SESSION_NOT_EDITABLE',
   NOT_DELETABLE: 'SESSION_NOT_DELETABLE',
+  PRECHECK_NOT_CONFIRMED: 'PRECHECK_NOT_CONFIRMED',
+  OUTSIDE_PRECHECK_WINDOW: 'OUTSIDE_PRECHECK_WINDOW',
+  READINESS_BLOCKED: 'READINESS_BLOCKED',
 });
 
 module.exports = {
@@ -102,6 +128,9 @@ module.exports = {
   SESSION_OPEN_STATUSES,
   SESSION_LOCK_CANCELS,
   SESSION_DONE_STATUSES,
+  SESSION_BODY_STATUSES,
+  PRECHECK_WINDOW,
+  preCheckWindow,
   ABORT_CATEGORIES,
   SESSION_ERROR,
   canTransition,

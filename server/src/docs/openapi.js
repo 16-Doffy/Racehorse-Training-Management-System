@@ -861,6 +861,38 @@ module.exports = {
       put: { tags: ['Training (Head Trainer)'], summary: 'Update training session', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/TrainingSession' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 404: responses[404] } },
       delete: { tags: ['Training (Head Trainer)'], summary: 'Delete training session', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
+    '/training/sessions/{id}/pre-check': {
+      post: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'Pre-check: the trainer looks at the horse and the readiness gates re-run for now',
+        description:
+          'Moves a `scheduled` (or `blocked`) session to `ready`. Only allowed from 60 minutes before to 30 minutes after ' +
+          '`scheduledAt`. `confirmed: true` is required: the trainer says the horse was seen. A medical block (vet lock, ' +
+          'injury) makes the session `blocked` and answers 409 `READINESS_BLOCKED`; pre-check again once it is lifted. An ' +
+          'amber gate answers 409 with `requiresOverride` until an `overrideReason` is sent (audited, the Manager is told). ' +
+          'Other 409 codes: `INVALID_TRANSITION` (wrong status), `OUTSIDE_PRECHECK_WINDOW` (with `opensAt`/`closesAt`).',
+        parameters: [idParam('id')],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['confirmed'],
+                properties: {
+                  confirmed: { type: 'boolean', description: 'Must be true' },
+                  overrideReason: { type: 'string', description: 'Required only when a gate is amber' },
+                  bodyTempC: { type: 'number', description: 'Optional, 30-45' },
+                  trackCondition: { type: 'string' },
+                  weather: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
     '/training/sessions/{id}/start': {
       post: {
         tags: ['Training (Head Trainer)'],
