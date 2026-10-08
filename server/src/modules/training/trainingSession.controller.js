@@ -12,29 +12,19 @@ const pick = require('../../utils/pick');
 const { pushNotification, notifyCaretaker } = require('../alerts/notification.service');
 const { openExamRequest } = require('../health/examRequest.service');
 const { computeReadiness, cautionGates, toSnapshot, MIN_DIGEST_MINUTES } = require('./readiness.service');
-const { OBJECTIVE_LABELS } = require('../../constants/training');
+const {
+  OBJECTIVE_LABELS,
+  SESSION_STATUS,
+  SESSION_STATUS_LABELS,
+  SESSION_ERROR,
+  canTransition,
+} = require('../../constants/training');
 const { ROLES } = require('../../constants/roles');
 
 // What the trainer describes when booking a session. Status, metrics, rating, outcome and the
 // readiness snapshot are all server-owned or set through their own endpoints — accepting them
 // here let a client create a session that was already "completed" with a made-up result.
 const PLAN_FIELDS = ['sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'scheduledAt', 'assignedTo'];
-
-// How a session may move. Completed and cancelled are final: a session the vet's lock cancelled
-// must not be reopened into in_progress, which is what re-arms the sensor feed.
-const TRANSITIONS = {
-  scheduled: ['in_progress', 'completed', 'cancelled'],
-  in_progress: ['completed', 'cancelled'],
-  completed: [],
-  cancelled: [],
-};
-
-const STATUS_LABELS = {
-  scheduled: 'đã lên lịch',
-  in_progress: 'đang diễn ra',
-  completed: 'đã hoàn thành',
-  cancelled: 'đã hủy',
-};
 
 /** Loads a session the caller may act on, or sends the appropriate error and returns null. */
 async function loadSession(req, res) {
@@ -263,9 +253,13 @@ async function applyStatusChange(session, next, { user, overrideReason }) {
   const current = session.status;
   if (!next || next === current) return { effects: {} };
 
-  if (!TRANSITIONS[current]?.includes(next)) {
+  if (!canTransition(current, next)) {
     return {
-      error: { status: 409, message: `Không thể chuyển buổi tập từ "${STATUS_LABELS[current]}" sang "${STATUS_LABELS[next]}".` },
+      error: {
+        status: 409,
+        message: `Không thể chuyển buổi tập từ "${SESSION_STATUS_LABELS[current]}" sang "${SESSION_STATUS_LABELS[next]}".`,
+        data: { code: SESSION_ERROR.INVALID_TRANSITION, from: current, to: next },
+      },
     };
   }
 
@@ -373,7 +367,7 @@ const createSession = asyncHandler(async (req, res) => {
     horse,
     // Creating a session only books it. Running it is a separate act (POST /:id/start), so a
     // `status` sent in the body is ignored: otherwise creating one would switch the sensor feed on.
-    status: 'scheduled',
+    status: SESSION_STATUS.SCHEDULED,
     readiness: toSnapshot(readiness, { overrideReason, userId: req.user._id }),
   });
 
@@ -393,7 +387,9 @@ const updateSession = asyncHandler(async (req, res) => {
 
   const changes = pick(req.body, PLAN_FIELDS);
   if (Object.keys(changes).length > 0 && session.status !== 'scheduled') {
-    return fail(res, 'Chỉ sửa được nội dung buổi tập khi buổi tập còn ở trạng thái "đã lên lịch".', 409);
+    return fail(res, 'Chỉ sửa được nội dung buổi tập khi buổi tập còn ở trạng thái "đã lên lịch".', 409, {
+      code: SESSION_ERROR.NOT_EDITABLE,
+    });
   }
   const previousTime = new Date(session.scheduledAt).getTime();
   Object.assign(session, changes);
@@ -482,7 +478,9 @@ const deleteSession = asyncHandler(async (req, res) => {
   const session = await loadSession(req, res);
   if (!session) return undefined;
   if (['completed', 'in_progress'].includes(session.status)) {
-    return fail(res, 'Không xoá được buổi tập đang diễn ra hoặc đã hoàn thành — đó là hồ sơ huấn luyện.', 409);
+    return fail(res, 'Không xoá được buổi tập đang diễn ra hoặc đã hoàn thành — đó là hồ sơ huấn luyện.', 409, {
+      code: SESSION_ERROR.NOT_DELETABLE,
+    });
   }
   await session.deleteOne();
   await logAction({ actorId: req.user._id, action: 'trainingSession.delete', targetModel: 'TrainingSession', targetId: session._id });
