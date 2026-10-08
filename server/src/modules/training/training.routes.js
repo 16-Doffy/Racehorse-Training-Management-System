@@ -9,9 +9,13 @@ router.use(protect);
 
 // Training plans: authored by the Head Trainer, viewable by everyone (owner, vet, groom need visibility).
 router.get('/plans', planCtrl.listPlans);
+// Before '/plans/:id', otherwise "suggest" is read as an id.
+router.get('/plans/suggest', planCtrl.suggestPlan);
 router.get('/plans/:id', planCtrl.getPlan);
 router.post('/plans', authorize(ROLES.HEAD_TRAINER), planCtrl.createPlan);
 router.put('/plans/:id', authorize(ROLES.HEAD_TRAINER), planCtrl.updatePlan);
+// Books the plan's normal week as sessions: { weekStart? } (next week by default).
+router.post('/plans/:id/generate-week', authorize(ROLES.HEAD_TRAINER), planCtrl.generateWeek);
 router.delete('/plans/:id', authorize(ROLES.HEAD_TRAINER), planCtrl.deletePlan);
 
 // Training sessions.
@@ -23,6 +27,8 @@ router.get('/sessions/:id', sessionCtrl.getSession);
 router.post('/sessions', authorize(ROLES.HEAD_TRAINER), sessionCtrl.createSession);
 router.put('/sessions/:id', authorize(ROLES.HEAD_TRAINER), sessionCtrl.updateSession);
 // Start now: rechecks readiness against the current moment. Optional { overrideReason }.
+// Pre-check: the trainer looks at the horse and the gates re-run for now. scheduled/blocked -> ready.
+router.post('/sessions/:id/pre-check', authorize(ROLES.HEAD_TRAINER), sessionCtrl.preCheckSession);
 router.post('/sessions/:id/start', authorize(ROLES.HEAD_TRAINER), sessionCtrl.startSession);
 router.patch('/sessions/:id/evaluation', authorize(ROLES.HEAD_TRAINER), sessionCtrl.recordEvaluation);
 router.delete('/sessions/:id', authorize(ROLES.HEAD_TRAINER), sessionCtrl.deleteSession);

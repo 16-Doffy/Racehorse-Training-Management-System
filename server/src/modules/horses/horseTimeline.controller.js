@@ -8,7 +8,7 @@ const RaceEntry = require('../../models/RaceEntry');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, fail } = require('../../utils/apiResponse');
 const { canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
-const { OBJECTIVE_LABELS } = require('../../constants/training');
+const { OBJECTIVE_LABELS, SESSION_STATUS_LABELS } = require('../../constants/training');
 
 /**
  * One horse, everything every role did to it, in order.
@@ -24,7 +24,6 @@ const MAX_DAYS = 90;
 const UPCOMING_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const SESSION_STATUS = { scheduled: 'đã lên lịch', in_progress: 'đang diễn ra', completed: 'đã hoàn thành', cancelled: 'đã hủy' };
 const HEALTH_STATUS = { eligible: 'đủ điều kiện', monitoring: 'cần theo dõi', injured: 'chấn thương', quarantined: 'cách ly' };
 const TASK_LABELS = {
   feeding: 'Cho ăn',
@@ -56,7 +55,7 @@ function sessionEvents(sessions) {
       at: s.scheduledAt,
       kind: 'session',
       role: 'head_trainer',
-      title: `Buổi tập "${OBJECTIVE_LABELS[s.objective] || 'huấn luyện'}" — ${SESSION_STATUS[s.status] || s.status}`,
+      title: `Buổi tập "${OBJECTIVE_LABELS[s.objective] || 'huấn luyện'}" — ${SESSION_STATUS_LABELS[s.status] || s.status}`,
       detail: join([
         plan,
         s.outcome?.summary,

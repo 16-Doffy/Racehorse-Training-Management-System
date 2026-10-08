@@ -129,6 +129,10 @@ module.exports = {
       },
       TrainingPlan: {
         type: 'object',
+        description:
+          'A training cycle for one horse (one active plan per horse), usually aimed at a race: phases laid end to end from startDate. ' +
+          'phase / distanceTarget / weeklyVolumeKm / intensity / surface describe the phase the horse is in now (kept in sync by the server). ' +
+          'Plans from before phases existed read as one phase. List and get responses add progress.',
         properties: {
           _id: { type: 'string' },
           horse: { type: 'string' },
@@ -143,7 +147,45 @@ module.exports = {
           startDate: { type: 'string', format: 'date-time' },
           endDate: { type: 'string', format: 'date-time' },
           notes: { type: 'string' },
-          status: { type: 'string', enum: ['draft', 'active', 'completed', 'cancelled'] },
+          status: { type: 'string', enum: ['draft', 'active', 'completed', 'cancelled'], description: 'Only one active plan per horse (409 otherwise). Completing or cancelling cancels its future scheduled sessions.' },
+          sessionTime: { type: 'string', example: '07:30', description: 'Time sessions are booked at when a week is generated' },
+          phases: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['key', 'weeks'],
+              properties: {
+                key: { type: 'string', enum: ['base_building', 'strength', 'speed', 'peak', 'recovery'] },
+                weeks: { type: 'integer', minimum: 1, maximum: 12 },
+                startDate: { type: 'string', format: 'date-time', readOnly: true },
+                endDate: { type: 'string', format: 'date-time', readOnly: true },
+                distanceTarget: { type: 'number', minimum: 100, maximum: 6000 },
+                weeklyVolumeKm: { type: 'number' },
+                intensity: { type: 'string', enum: ['light', 'moderate', 'high'] },
+                surface: { type: 'string', enum: ['turf', 'dirt', 'synthetic', 'sand'] },
+                week: {
+                  type: 'array',
+                  description: 'The phase\'s normal week; days not listed are rest days',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      day: { type: 'integer', minimum: 0, maximum: 6, description: '0 = Sunday … 6 = Saturday' },
+                      kind: { type: 'string', enum: ['walk', 'canter', 'hill', 'breeze', 'trial'] },
+                      distanceM: { type: 'number' },
+                      reps: { type: 'number' },
+                      targetSpeedKmh: { type: 'number' },
+                      targetHeartRateMax: { type: 'number' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          progress: {
+            type: 'object',
+            readOnly: true,
+            description: 'week (0 = not started) of totalWeeks, phaseIndex, phaseWeek, phaseSessions {planned, completed, met}, totalCompleted, raceInDays, upcoming (next 3 scheduled sessions)',
+          },
         },
       },
       ExamRequest: {
@@ -171,7 +213,8 @@ module.exports = {
         description:
           'Whether a horse is fit to do a given piece of work. Four gates, each owned by a different role: ' +
           'medical (vet), vet_clearance (vet), nutrition (groom), care_assignment (manager). ' +
-          'Only `medical` can return "blocked"; the rest are advisory and a trainer may proceed past them ' +
+          '`medical` returns "blocked" on a vet order; `nutrition` returns "blocked" when the meal before the session was given under 60 min earlier ' +
+          '(caution under 90 min; only the meal right before the session is judged). Other cautions are advisory and a trainer may proceed past them ' +
           'by supplying `overrideReason`, which is audit-logged and reported to the manager.',
         properties: {
           overall: { type: 'string', enum: ['ready', 'caution', 'blocked'] },
@@ -199,6 +242,14 @@ module.exports = {
           horse: { type: 'string' },
           assignedTo: { type: 'string' },
           sessionType: { type: 'string', enum: ['training', 'trial_run'], description: '"lượt chạy thử" vs a normal training rep' },
+          kind: {
+            type: 'string',
+            enum: ['walk', 'canter', 'hill', 'breeze', 'trial'],
+            description:
+              'Kind of work: walk (đi bộ & kiệu), canter (phi chậm), hill (tập dốc), breeze (phi nhanh), trial (chạy thử). On create it fills objective, intensity, ' +
+              'sessionType and any prescription field left out with the kind\'s default workout.',
+          },
+          generated: { type: 'boolean', readOnly: true, description: 'Booked by "generate week" from the plan' },
           objective: {
             type: 'string',
             enum: ['endurance', 'speed', 'interval', 'recovery', 'technique', 'race_simulation'],
@@ -227,7 +278,21 @@ module.exports = {
             },
           },
           scheduledAt: { type: 'string', format: 'date-time' },
-          status: { type: 'string', enum: ['scheduled', 'in_progress', 'completed', 'cancelled'] },
+          status: {
+            type: 'string',
+            enum: ['scheduled', 'ready', 'blocked', 'in_progress', 'completed', 'evaluated', 'aborted', 'cancelled', 'missed'],
+            description:
+              'Only scheduled, in_progress, completed and cancelled can be reached today. ready, blocked, aborted, evaluated ' +
+              'and missed are in the schema but get their endpoints in later steps (pre-check, end/abort, evaluation, missed job).',
+          },
+          actualStartAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true, description: 'Server time when the session was started; never sent by a client' },
+          actualEndAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true, description: 'Server time when the session ended or was stopped' },
+          actualDurationSec: { type: 'integer', nullable: true, readOnly: true },
+          abortReason: { type: 'string', readOnly: true },
+          abortCategory: { type: 'string', enum: ['health', 'weather', 'equipment', 'other'], readOnly: true },
+          blockedReason: { type: 'string', readOnly: true },
+          cancelReason: { type: 'string', readOnly: true },
+          evaluatedAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true },
           metrics: {
             type: 'object',
             properties: {
@@ -324,7 +389,7 @@ module.exports = {
           assignedTo: { type: 'string' },
           taskType: {
             type: 'string',
-            enum: ['feeding', 'cleaning', 'bathing', 'icing', 'medication', 'monitoring'],
+            enum: ['feeding', 'cleaning', 'bathing', 'icing', 'medication', 'monitoring', 'other'],
             description: 'medication / monitoring are created from a vet treatment only; they cannot be assigned by hand',
           },
           source: {
@@ -347,7 +412,7 @@ module.exports = {
           note: { type: 'string', description: "The trainer's instruction attached to the task" },
           scheduledDate: { type: 'string', format: 'date-time' },
           status: { type: 'string', enum: ['pending', 'completed', 'skipped'] },
-          dueTime: { type: 'string', nullable: true, description: 'Time of a vet\'s dose (HH:mm); recordable 1h before to 4h after' },
+          dueTime: { type: 'string', nullable: true, description: 'Time of day (HH:mm) of a vet\'s dose or a hand-given job; recordable from 1h before. A dose closes 4h after; a job past that shows as late but can still be recorded' },
           supplies: {
             type: 'array',
             description: 'What completing the task takes out of stock (ration items, a dose). Completing without enough stock → 409 with data.missing.',
@@ -786,6 +851,32 @@ module.exports = {
       get: { tags: ['Training (Head Trainer)'], summary: 'List training plans', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/TrainingPlan' } }) } },
       post: { tags: ['Training (Head Trainer)'], summary: 'Create training plan', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/TrainingPlan' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/TrainingPlan' }), 403: responses[403] } },
     },
+    '/training/plans/suggest': {
+      get: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'Phases to propose for a new cycle, counted back from the race',
+        description: 'Weeks to race day shared out base 35% / strength 25% / speed 25% / peak 15% (race week included), then 2 weeks recovery; 4/3/3 without a race. Each phase comes with its normal week.',
+        parameters: [
+          { name: 'horse', in: 'query', required: true, schema: { type: 'string' } },
+          { name: 'targetRace', in: 'query', schema: { type: 'string' } },
+          { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date' } },
+        ],
+        responses: { 200: responses[200]({ type: 'object', properties: { startDate: { type: 'string' }, phases: { type: 'array', items: { type: 'object' } }, race: { type: 'object', nullable: true }, activePlan: { type: 'object', nullable: true } } }), 400: responses[400], 403: responses[403] },
+      },
+    },
+    '/training/plans/{id}/generate-week': {
+      post: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'Book a week of the plan as scheduled sessions',
+        description:
+          'Each day takes the template of its phase at the plan\'s sessionTime; 8 days before the plan\'s race becomes a trial over the race distance. ' +
+          'Skips days already booked, past, outside the plan or on race day. A locked/injured horse gets nothing (409); a recovering horse gets lighter work. ' +
+          'Advisory readiness gates are checked when the session is started, not here. The groom gets one summary notification.',
+        parameters: [idParam('id')],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { weekStart: { type: 'string', format: 'date', description: 'Any day of the week; default next week' } } } } } },
+        responses: { 201: responses[201]({ type: 'object', properties: { weekStart: { type: 'string' }, created: { type: 'array', items: { $ref: '#/components/schemas/TrainingSession' } }, skipped: { type: 'array', items: { type: 'object' } } } }), 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
     '/training/plans/{id}': {
       get: { tags: ['Training (Head Trainer)'], summary: 'Get training plan', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingPlan' }), 404: responses[404] } },
       put: { tags: ['Training (Head Trainer)'], summary: 'Update training plan', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/TrainingPlan' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingPlan' }), 403: responses[403], 404: responses[404] } },
@@ -806,7 +897,9 @@ module.exports = {
           'Also refused with 409 when any advisory gate is amber and no `overrideReason` was supplied — the body then ' +
           'carries `{ readiness, requiresOverride: true }` so the client can show the warnings and ask for a reason. ' +
           'Resending with `overrideReason` creates the session, stores the readiness snapshot on it, writes an audit ' +
-          'log entry, and notifies the Club Manager.',
+          'log entry, and notifies the Club Manager. ' +
+          'The session is always created `scheduled`: a `status` in the body is ignored. Running a session is a ' +
+          'separate step (`POST /training/sessions/{id}/start`), which is what switches the sensor feed on.',
         requestBody: {
           required: true,
           content: {
@@ -845,15 +938,50 @@ module.exports = {
       put: { tags: ['Training (Head Trainer)'], summary: 'Update training session', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/TrainingSession' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 404: responses[404] } },
       delete: { tags: ['Training (Head Trainer)'], summary: 'Delete training session', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
+    '/training/sessions/{id}/pre-check': {
+      post: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'Pre-check: the trainer looks at the horse and the readiness gates re-run for now',
+        description:
+          'Moves a `scheduled` (or `blocked`) session to `ready`. Only allowed from 60 minutes before to 30 minutes after ' +
+          '`scheduledAt`. `confirmed: true` is required: the trainer says the horse was seen. A medical block (vet lock, ' +
+          'injury) makes the session `blocked` and answers 409 `READINESS_BLOCKED`; pre-check again once it is lifted. An ' +
+          'amber gate answers 409 with `requiresOverride` until an `overrideReason` is sent (audited, the Manager is told). ' +
+          'Other 409 codes: `INVALID_TRANSITION` (wrong status), `OUTSIDE_PRECHECK_WINDOW` (with `opensAt`/`closesAt`).',
+        parameters: [idParam('id')],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['confirmed'],
+                properties: {
+                  confirmed: { type: 'boolean', description: 'Must be true' },
+                  overrideReason: { type: 'string', description: 'Required only when a gate is amber' },
+                  bodyTempC: { type: 'number', description: 'Optional, 30-45' },
+                  trackCondition: { type: 'string' },
+                  weather: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
     '/training/sessions/{id}/start': {
       post: {
         tags: ['Training (Head Trainer)'],
-        summary: 'Start a session now — rechecks readiness against the current moment',
+        summary: 'Start a session now: only from ready, server stamps actualStartAt',
         description:
-          'Moves a scheduled session to in_progress. The readiness gates are re-run for *now*, not the booked time: ' +
-          'a horse locked since booking is refused (409), and one fed twenty minutes ago returns 409 with ' +
-          '`{ readiness, requiresOverride: true }` until `overrideReason` is sent. Completed and cancelled sessions ' +
-          'cannot be restarted.',
+          'Moves a `ready` session to `in_progress`, sets `actualStartAt` to the server time and is what turns the sensor ' +
+          'feed on. Refused with 409: `NOT_READY` (scheduled/blocked: do the pre-check first), `PRECHECK_EXPIRED` (pre-check ' +
+          'older than 2 hours), `ANOTHER_SESSION_RUNNING` (the horse already has a running session), `READINESS_BLOCKED` ' +
+          '(the horse is locked or injured now; the session becomes `blocked`), `INVALID_TRANSITION` (any other status, or ' +
+          'started by someone else a moment earlier). A caution gate (e.g. fed twenty minutes ago) returns 409 with ' +
+          '`{ readiness, requiresOverride: true }` until `overrideReason` is sent. In_progress can no longer be set through ' +
+          'PUT or the evaluation endpoint.',
         parameters: [idParam('id')],
         requestBody: { required: false, content: { 'application/json': { schema: { type: 'object', properties: { overrideReason: { type: 'string' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 403: responses[403], 404: responses[404], 409: responses[409] },
@@ -1050,7 +1178,7 @@ module.exports = {
         tags: ['Stable (Groom)'],
         summary: 'Edit an assigned task — reassign to another Groom, move the date, or correct the type (Head Trainer / Manager). Refused with 409 once the task is completed.',
         parameters: [idParam('id')],
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { horse: { type: 'string' }, assignedTo: { type: 'string' }, taskType: { type: 'string', enum: ['feeding', 'cleaning', 'bathing', 'icing'] }, scheduledDate: { type: 'string', format: 'date-time' } } } } } },
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { horse: { type: 'string' }, assignedTo: { type: 'string' }, taskType: { type: 'string', enum: ['feeding', 'cleaning', 'bathing', 'icing', 'other'] }, scheduledDate: { type: 'string', format: 'date-time', description: 'Day of the job' }, dueTime: { type: 'string', example: '09:30', description: 'Required for every type but feeding (whose time is its mealSlot)' }, mealSlot: { type: 'string', enum: ['morning', 'noon', 'evening'] }, note: { type: 'string', description: 'Required for "other": what the job is' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404], 409: responses[409] },
       },
       delete: {

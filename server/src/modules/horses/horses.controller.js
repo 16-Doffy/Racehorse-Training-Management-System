@@ -12,6 +12,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { ROLES } = require('../../constants/roles');
+const { SESSION_OPEN_STATUSES } = require('../../constants/training');
 const { getScopedHorseIds, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { pushNotification } = require('../alerts/notification.service');
 const { clearanceMap } = require('../health/trainingClearance');
@@ -229,7 +230,7 @@ const archiveHorse = asyncHandler(async (req, res) => {
   if (!reason) return fail(res, 'Hãy ghi lý do ngừng quản lý (VD: đã bán, nghỉ hưu).', 400);
 
   const [sessions, races, plans] = await Promise.all([
-    TrainingSession.updateMany({ horse: horse._id, status: { $in: ['scheduled', 'in_progress'] } }, { status: 'cancelled' }),
+    TrainingSession.updateMany({ horse: horse._id, status: { $in: SESSION_OPEN_STATUSES } }, { status: 'cancelled' }),
     RaceEntry.updateMany({ horse: horse._id, status: { $in: ['registered', 'confirmed'] }, raceDate: { $gte: new Date() } }, { status: 'withdrawn' }),
     TrainingPlan.updateMany({ horse: horse._id, status: { $in: ['draft', 'active'] } }, { status: 'cancelled' }),
     StableAssignment.deleteMany({ horse: horse._id }),

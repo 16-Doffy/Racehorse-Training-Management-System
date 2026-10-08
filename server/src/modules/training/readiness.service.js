@@ -19,15 +19,17 @@ const INTENSITY_WORDS = { light: 'nhẹ', moderate: 'vừa', high: 'cao' };
  * Each gate returns one of:
  *   'ok'      — nothing to say
  *   'caution' — the trainer should know, but it is their call (override with a recorded reason)
- *   'blocked' — a medical order; not the trainer's call at all
+ *   'blocked' — a medical order, or a horse that has just eaten; not the trainer's call
  *
- * The overall result is the worst gate. Only `medical` can ever return 'blocked', deliberately:
- * feeding and staffing are judgement calls a trainer is entitled to make, a vet's training lock
- * is not.
+ * The overall result is the worst gate. `medical` blocks on a vet's order; `nutrition` blocks only
+ * a horse that ate less than an hour ago — galloping on a full stomach is a colic risk, not a
+ * judgement call. Everything else about feeding and staffing is the trainer's call.
  */
 
 // A horse needs time between a full feed and hard work — galloping on a full stomach risks colic.
+// Under an hour after a meal it is not allowed at all; up to an hour and a half it is a warning.
 const MIN_DIGEST_MINUTES = 90;
+const HARD_DIGEST_MINUTES = 60;
 // And it cannot have been fasting all day either; an empty horse has no fuel for the work.
 const MAX_FAST_HOURS = 6;
 // How long a clean bill of health stays good for before a hard session needs a fresh one.
@@ -217,55 +219,66 @@ async function nutritionGate(horse, when) {
     return gate;
   }
 
-  const eaten = feedings
-    .filter((t) => t.status === 'completed' && t.completedAt && t.completedAt <= when)
-    .map((t) => ({ task: t, at: t.completedAt, planned: false }));
-  const upcoming = feedings
-    .filter((t) => t.status === 'pending' && t.scheduledDate >= now)
-    .map((t) => ({ task: t, at: t.scheduledDate, planned: true }));
-  const lastEatenAt = eaten.length ? Math.max(...eaten.map((m) => m.at.getTime())) : 0;
+  // Only the meal right before the session matters: that is what the horse has in its stomach (or
+  // is missing) when it works. An unmarked breakfast says nothing about an evening session once a
+  // later meal has been given — judging by the oldest unmarked meal used to flag nearly every
+  // session and push trainers into overriding everything.
+  const before = feedings.filter((t) => t.scheduledDate <= when);
+  const lastMeal = before[before.length - 1];
+  const done = (t) => t.status === 'completed' && t.completedAt && t.completedAt <= when;
+  const lastEaten = [...before].reverse().find(done);
 
-  // A meal whose time has passed with nobody marking it done, after the last one that was.
-  const missed = feedings.find(
-    (t) => t.status === 'pending' && t.scheduledDate < now && t.scheduledDate.getTime() > lastEatenAt
-  );
-  if (missed) {
-    gate.status = 'caution';
-    gate.detail = `${mealLabel(missed)} (${formatTime(missed.scheduledDate)}) chưa được đánh dấu đã cho ăn.`;
-    return gate;
-  }
-
-  const meals = [...eaten, ...upcoming];
-  if (meals.length === 0) {
+  if (!lastMeal) {
     gate.status = 'caution';
     gate.detail = 'Không có bữa ăn nào trong 24 giờ trước giờ tập — tập khi đói ngựa sẽ không đủ sức.';
     return gate;
   }
 
-  const last = meals.reduce((a, b) => (a.at > b.at ? a : b));
-  const gapMinutes = Math.round((when.getTime() - last.at.getTime()) / 60000);
-  const which = last.planned
-    ? `Theo lịch, ${mealLabel(last.task).toLowerCase()} lúc ${formatTime(last.at)}`
-    : `Ăn lần cuối lúc ${formatTime(last.at)}`;
-
-  if (gapMinutes < MIN_DIGEST_MINUTES) {
-    gate.status = 'caution';
-    gate.detail = `${which}, chỉ cách giờ tập ${gapMinutes} phút — cần tối thiểu ${MIN_DIGEST_MINUTES} phút để tiêu hóa, chạy khi no dễ bị đau bụng.`;
+  // The meal before the session has been given: judge the real gap.
+  if (lastEaten && (lastEaten === lastMeal || lastEaten.completedAt >= lastMeal.scheduledDate)) {
+    const gapMinutes = Math.round((when.getTime() - lastEaten.completedAt.getTime()) / 60000);
+    const which = `${mealLabel(lastEaten)} cho ăn lúc ${formatTime(lastEaten.completedAt)}`;
+    if (gapMinutes < HARD_DIGEST_MINUTES) {
+      const from = new Date(lastEaten.completedAt.getTime() + MIN_DIGEST_MINUTES * 60000);
+      gate.status = 'blocked';
+      gate.detail = `${which}, mới ${gapMinutes} phút trước giờ tập — không được tập khi vừa ăn xong (nguy cơ đau bụng, xoắn ruột). Cần ít nhất ${MIN_DIGEST_MINUTES} phút sau bữa chính: tập được từ ${formatTime(from)}.`;
+      return gate;
+    }
+    if (gapMinutes < MIN_DIGEST_MINUTES) {
+      gate.status = 'caution';
+      gate.detail = `${which}, chỉ cách giờ tập ${gapMinutes} phút — nên chờ đủ ${MIN_DIGEST_MINUTES} phút sau bữa chính trước khi tập nặng.`;
+      return gate;
+    }
+    if (gapMinutes > MAX_FAST_HOURS * 60) {
+      gate.status = 'caution';
+      gate.detail = `${which}, đã ${describeGap(gapMinutes)} trước giờ tập — ngựa có thể đã đói.`;
+      return gate;
+    }
+    gate.detail = `${which}, cách giờ tập ${describeGap(gapMinutes)} — đủ thời gian tiêu hóa.`;
+    if (lastEaten.observation?.appetite === 'partial') {
+      gate.status = 'caution';
+      gate.detail += ` Nhưng ngựa chỉ ăn ${lastEaten.observation.amountEatenPercent ?? 'một phần'}% khẩu phần.`;
+    }
     return gate;
   }
 
-  if (gapMinutes > MAX_FAST_HOURS * 60) {
-    gate.status = 'caution';
-    gate.detail = `${which}, đã ${describeGap(gapMinutes)} trước giờ tập — ngựa có thể đã đói.`;
+  // The meal before the session is still to come (a session later today): judge the planned gap.
+  if (lastMeal.status === 'pending' && lastMeal.scheduledDate > now) {
+    const gapMinutes = Math.round((when.getTime() - lastMeal.scheduledDate.getTime()) / 60000);
+    if (gapMinutes < MIN_DIGEST_MINUTES) {
+      gate.status = 'caution';
+      gate.detail = `Theo lịch, ${mealLabel(lastMeal).toLowerCase()} lúc ${formatTime(lastMeal.scheduledDate)}, chỉ cách giờ tập ${gapMinutes} phút — hãy dời giờ tập hoặc báo nhân viên cho ăn sớm hơn (cần ít nhất ${MIN_DIGEST_MINUTES} phút).`;
+      return gate;
+    }
+    gate.detail = `Theo lịch, ${mealLabel(lastMeal).toLowerCase()} lúc ${formatTime(lastMeal.scheduledDate)}, cách giờ tập ${describeGap(gapMinutes)} — đủ thời gian tiêu hóa.`;
     return gate;
   }
 
-  gate.detail = `${which}, cách giờ tập ${describeGap(gapMinutes)} — hợp lý.`;
-  const partial = eaten.find((m) => m.task.observation?.appetite === 'partial');
-  if (partial) {
-    gate.status = 'caution';
-    gate.detail += ` Nhưng có bữa ngựa chỉ ăn ${partial.task.observation.amountEatenPercent ?? 'một phần'}% khẩu phần.`;
-  }
+  // Its time has passed and nobody marked it given.
+  gate.status = 'caution';
+  gate.detail = `${mealLabel(lastMeal)} (${formatTime(lastMeal.scheduledDate)}) — bữa ngay trước giờ tập — chưa được nhân viên đánh dấu đã cho ăn.${
+    lastEaten ? ` Lần ăn gần nhất được ghi nhận: ${formatTime(lastEaten.completedAt)}.` : ''
+  }`;
   return gate;
 }
 
@@ -375,6 +388,7 @@ module.exports = {
   toSnapshot,
   needsVetClearance,
   MIN_DIGEST_MINUTES,
+  HARD_DIGEST_MINUTES,
   MAX_FAST_HOURS,
   CLEARANCE_DAYS,
 };

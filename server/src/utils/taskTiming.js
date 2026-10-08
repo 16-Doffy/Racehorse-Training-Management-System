@@ -58,13 +58,17 @@ function taskTiming(task, now = new Date()) {
     return { state: 'upcoming', canComplete: false, canChange: true, opensAt: start, reason: 'Chưa tới ngày thực hiện công việc này.' };
   }
 
-  // A meal, or a vet's dose given at a set time: recordable around that time only.
+  // A meal, a vet's dose or a job given at a set time: recordable from an hour before. A meal or a
+  // dose that slipped past its window can't be recorded late; other work just shows as overdue.
   const isMeal = task.taskType === 'feeding' && task.mealSlot;
   if (isMeal || task.dueTime) {
-    const what = isMeal ? 'bữa này' : 'liều thuốc này';
+    const what = isMeal ? 'bữa này' : task.taskType === 'medication' ? 'liều thuốc này' : 'việc này';
     const { opensAt, closesAt } = mealWindow(scheduled);
     if (now < opensAt) {
       return { state: 'upcoming', canComplete: false, canChange: true, opensAt, closesAt, reason: `Chưa tới giờ ${what} — ghi nhận được từ ${clock(opensAt)}.` };
+    }
+    if (now > closesAt && !DAY_BOUND_TYPES.includes(task.taskType)) {
+      return { state: 'late', canComplete: true, canChange: true, opensAt, closesAt };
     }
     if (now > closesAt) {
       return {

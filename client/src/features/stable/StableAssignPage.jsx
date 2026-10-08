@@ -74,6 +74,7 @@ function TaskList() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form] = Form.useForm();
+  const formTaskType = Form.useWatch('taskType', form);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({ queryKey: ['daily-tasks-all'], queryFn: () => dailyTaskApi.list() });
@@ -124,9 +125,11 @@ function TaskList() {
             assignedTo: record.assignedTo?._id || record.assignedTo,
             taskType: record.taskType,
             scheduledDate: record.scheduledDate ? dayjs(record.scheduledDate) : null,
+            dueTime: record.dueTime ? dayjs().hour(Number(record.dueTime.slice(0, 2))).minute(Number(record.dueTime.slice(3, 5))).second(0) : null,
             note: record.note,
           }
-        : { scheduledDate: dayjs() }
+        : // Next full hour: a job given now is for later today, not for the minute it was typed.
+          { scheduledDate: dayjs(), dueTime: dayjs().add(1, 'hour').startOf('hour') }
     );
     setOpen(true);
   };
@@ -147,7 +150,7 @@ function TaskList() {
           <Space size={4} wrap>
             <span>{TASK_LABELS[r.taskType] || r.taskType}</span>
             {r.mealSlot && <Tag>{MEAL_LABELS[r.mealSlot]}</Tag>}
-            {r.dueTime && <Tag color="purple">💊 {r.dueTime}</Tag>}
+            {r.dueTime && r.taskType === 'medication' && <Tag color="purple">💊 {r.dueTime}</Tag>}
             {r.source === 'vet' && (
               // The vet's care order, created from a treatment — shown here so the trainer sees
               // the horse is under treatment, but not theirs to change.
@@ -179,7 +182,18 @@ function TaskList() {
       title: 'Thời gian',
       dataIndex: 'scheduledDate',
       key: 'scheduledDate',
-      render: (d) => new Date(d).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+      // When the job is due: the meal's time, the dose's or job's hour. A job without an hour
+      // (given before hours existed) is for the whole day — it never showed the time it was typed.
+      render: (d, r) =>
+        r.mealSlot || r.dueTime ? (
+          <span className="whitespace-nowrap tabular-nums">
+            <b>{r.dueTime || dayjs(d).format('HH:mm')}</b> {dayjs(d).format('DD/MM')}
+          </span>
+        ) : (
+          <span className="whitespace-nowrap tabular-nums">
+            {dayjs(d).format('DD/MM')} <Text type="secondary">· cả ngày</Text>
+          </span>
+        ),
     },
     {
       title: 'Trạng thái',
@@ -341,7 +355,7 @@ function TaskList() {
           onFinish={(values) =>
             saveMutation.mutate({ 
               id: editing?._id, 
-              payload: { ...values, scheduledDate: values.scheduledDate?.toISOString() } 
+              payload: { ...values, scheduledDate: values.scheduledDate?.toISOString(), dueTime: values.dueTime ? values.dueTime.format('HH:mm') : undefined }
             })
           }
         >
@@ -361,15 +375,37 @@ function TaskList() {
               }))}
             />
           </Form.Item>
-          <Form.Item name="scheduledDate" label="Ngày thực hiện" rules={[{ required: true }]}>
-            <DatePicker
-              className="w-full"
-              // Work is handed out for today or later; a meal's day is fixed by its ration.
-              disabled={editing?.taskType === 'feeding'}
-              disabledDate={(d) => d && d < dayjs().startOf('day')}
-            />
-          </Form.Item>
-          <Form.Item name="note" label="Dặn dò cho nhân viên" extra="Hiện ngay trên việc của họ.">
+          <div className="grid grid-cols-2 gap-x-4">
+            <Form.Item name="scheduledDate" label="Ngày thực hiện" rules={[{ required: true }]}>
+              <DatePicker
+                className="w-full"
+                format="DD/MM/YYYY"
+                // Work is handed out for today or later; a meal's day is fixed by its ration.
+                disabled={editing?.taskType === 'feeding'}
+                disabledDate={(d) => d && d < dayjs().startOf('day')}
+              />
+            </Form.Item>
+            {formTaskType === 'feeding' ? (
+              <Form.Item label="Giờ thực hiện" extra="Giờ của bữa theo khẩu phần.">
+                <Input disabled value={editing?.scheduledDate ? dayjs(editing.scheduledDate).format('HH:mm') : ''} />
+              </Form.Item>
+            ) : (
+              <Form.Item
+                name="dueTime"
+                label="Giờ thực hiện"
+                rules={[{ required: true, message: 'Chọn giờ thực hiện' }]}
+                extra="Nhân viên ghi nhận được từ 1 tiếng trước giờ này."
+              >
+                <TimePicker className="w-full" format="HH:mm" minuteStep={15} needConfirm={false} />
+              </Form.Item>
+            )}
+          </div>
+          <Form.Item
+            name="note"
+            label={formTaskType === 'other' ? 'Nội dung công việc' : 'Dặn dò cho nhân viên'}
+            rules={formTaskType === 'other' ? [{ required: true, message: 'Ghi rõ công việc cần làm' }] : []}
+            extra="Hiện ngay trên việc của họ."
+          >
             <Input.TextArea rows={2} placeholder="VD: Ngâm chân trước 20 phút, kiểm tra kỹ gân chân trái." />
           </Form.Item>
         </Form>

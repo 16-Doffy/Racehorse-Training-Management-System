@@ -6,6 +6,7 @@ const ExamRequest = require('../../models/ExamRequest');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, fail } = require('../../utils/apiResponse');
 const { horseFilter } = require('../../utils/horseScope');
+const { SESSION_DONE_STATUSES } = require('../../constants/training');
 const { parsePeriodQuery, emptyPeriods, foldRecords } = require('../finance/financeSeries');
 
 /** Builds a { $gte, $lte } range filter from optional `from`/`to` query params, or {} if neither given. */
@@ -167,7 +168,7 @@ const getTrainingChart = asyncHandler(async (req, res) => {
   start.setHours(0, 0, 0, 0);
   start.setMonth(start.getMonth() - (months - 1));
 
-  const filter = { status: 'completed', scheduledAt: { $gte: start } };
+  const filter = { status: { $in: SESSION_DONE_STATUSES }, scheduledAt: { $gte: start } };
   const horse = await horseFilter(req.user, req.query.horse);
   if (horse !== undefined) filter.horse = horse;
   const sessions = await TrainingSession.find(filter).populate('horse', 'name').select('horse scheduledAt performanceRating metrics outcome');
