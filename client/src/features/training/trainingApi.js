@@ -18,6 +18,9 @@ export const trainingSessionApi = {
   // The four readiness gates for a proposed session (medical, vet clearance, nutrition, care
   // assignment). Open to every role, so other screens can show the same board.
   readiness: (params) => axiosClient.get('/training/sessions/readiness', { params }),
-  // Start now; rechecks readiness for the current moment. Payload: { overrideReason? }.
+  // Pre-check: the trainer looks at the horse and the gates re-run for now; scheduled/blocked -> ready.
+  // Payload: { confirmed: true, overrideReason?, bodyTempC?, trackCondition?, weather? }.
+  preCheck: (id, payload) => axiosClient.post(`/training/sessions/${id}/pre-check`, payload),
+  // Start: only from ready; the server stamps the start time. Payload: { overrideReason? }.
   start: (id, payload) => axiosClient.post(`/training/sessions/${id}/start`, payload),
 };

@@ -1,17 +1,25 @@
 import { Button, Popover, Tag, Typography, Tooltip, Empty } from 'antd';
-import { LeftOutlined, RightOutlined, PlayCircleOutlined, EditOutlined, ScheduleOutlined } from '@ant-design/icons';
+import { LeftOutlined, RightOutlined, PlayCircleOutlined, EditOutlined, ScheduleOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, mondayOf, actualTimeLabel } from './trainingVocab';
+import { SESSION_STATUS_LABELS } from './sessionStatus';
 
 const { Text } = Typography;
 
-const STATUS_META = {
-  scheduled: { label: 'Đã lên lịch', dot: 'bg-gray-400' },
-  in_progress: { label: 'Đang diễn ra', dot: 'bg-blue-500 animate-pulse' },
-  completed: { label: 'Đã hoàn thành', dot: 'bg-green-600' },
-  cancelled: { label: 'Đã hủy', dot: 'bg-red-500' },
+// The colour of the dot; the words come from the shared status vocabulary.
+const STATUS_DOT = {
+  scheduled: 'bg-gray-400',
+  ready: 'bg-cyan-500',
+  blocked: 'bg-amber-500',
+  in_progress: 'bg-blue-500 animate-pulse',
+  completed: 'bg-green-600',
+  evaluated: 'bg-green-600',
+  aborted: 'bg-orange-500',
+  cancelled: 'bg-red-500',
+  missed: 'bg-gray-400',
 };
+const statusMeta = (status) => ({ label: SESSION_STATUS_LABELS[status] || status, dot: STATUS_DOT[status] || STATUS_DOT.scheduled });
 
 /** "800m · 58 km/h · nhịp tim ≤ 215" */
 function workout(p) {
@@ -24,9 +32,9 @@ function workout(p) {
   return parts.join(' · ');
 }
 
-function SessionChip({ session, onStart, onEvaluate, starting }) {
+function SessionChip({ session, onStart, onPreCheck, onEvaluate, starting }) {
   const kind = SESSION_KINDS[session.kind];
-  const status = STATUS_META[session.status] || STATUS_META.scheduled;
+  const status = statusMeta(session.status);
   const met = session.outcome?.met;
   const detail = (
     <div className="flex max-w-[280px] flex-col gap-1.5 text-sm">
@@ -48,7 +56,12 @@ function SessionChip({ session, onStart, onEvaluate, starting }) {
       </div>
       {session.outcome?.summary && <div className="text-xs">{session.outcome.summary}</div>}
       <div className="mt-1 flex gap-2">
-        {session.status === 'scheduled' && (
+        {['scheduled', 'blocked'].includes(session.status) && (
+          <Button size="small" type="primary" icon={<SafetyCertificateOutlined />} onClick={() => onPreCheck(session)}>
+            {session.status === 'blocked' ? 'Kiểm tra lại' : 'Kiểm tra sẵn sàng'}
+          </Button>
+        )}
+        {session.status === 'ready' && (
           <Button size="small" type="primary" icon={<PlayCircleOutlined />} loading={starting} onClick={() => onStart(session)}>
             Bắt đầu
           </Button>
@@ -89,7 +102,7 @@ function SessionChip({ session, onStart, onEvaluate, starting }) {
  * A week of training: one row per horse, one column per day (Monday first). A row whose horse
  * follows an active plan can book its week from the plan's template.
  */
-export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], plans = [], onGenerate, generatingPlanId, onStart, startingId, onEvaluate }) {
+export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], plans = [], onGenerate, generatingPlanId, onStart, onPreCheck, startingId, onEvaluate }) {
   const days = WEEK_DAYS.map((w, i) => ({ ...w, date: weekStart.add(i, 'day') }));
   const weekEnd = weekStart.add(7, 'day');
   const inWeek = sessions.filter((s) => {
@@ -175,7 +188,7 @@ export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], p
                       <td key={d.day} className={`px-1.5 py-2 ${d.date.isSame(dayjs(), 'day') ? 'bg-black/[0.025]' : ''}`}>
                         <div className="flex flex-col gap-1">
                           {list.map((s) => (
-                            <SessionChip key={s._id} session={s} onStart={onStart} onEvaluate={onEvaluate} starting={startingId === s._id} />
+                            <SessionChip key={s._id} session={s} onStart={onStart} onPreCheck={onPreCheck} onEvaluate={onEvaluate} starting={startingId === s._id} />
                           ))}
                           {!list.length && <span className="text-[11px] text-gray-400">Nghỉ</span>}
                         </div>

@@ -23,6 +23,11 @@ const SESSION_STATUS_CONFIG = {
   in_progress: { color: 'bg-blue-50 text-blue-600 border-blue-200', label: 'Đang diễn ra' },
   completed: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: 'Hoàn thành' },
   cancelled: { color: 'bg-red-50 text-red-600 border-red-200', label: 'Đã huỷ' },
+  ready: { color: 'bg-cyan-50 text-cyan-600 border-cyan-200', label: 'Sẵn sàng' },
+  blocked: { color: 'bg-amber-50 text-amber-600 border-amber-200', label: 'Tạm hoãn' },
+  evaluated: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: 'Đã đánh giá' },
+  aborted: { color: 'bg-red-50 text-red-600 border-red-200', label: 'Dừng giữa chừng' },
+  missed: { color: 'bg-gray-100 text-gray-600 border-gray-200', label: 'Đã lỡ giờ' },
 };
 
 const PHASE_LABELS = {
@@ -93,8 +98,8 @@ export default function OwnerTrainingPage() {
   const activePlan = horsePlans.find((p) => p.status === 'active');
 
   // Session stats
-  const completedCount = horseSessions.filter((s) => s.status === 'completed').length;
-  const scheduledCount = horseSessions.filter((s) => s.status === 'scheduled').length;
+  const completedCount = horseSessions.filter((s) => ['completed', 'evaluated'].includes(s.status)).length;
+  const scheduledCount = horseSessions.filter((s) => ['scheduled', 'ready', 'blocked'].includes(s.status)).length;
   const totalPlans = horsePlans.length;
   const avgRating =
     horseSessions.filter((s) => s.performanceRating).length > 0

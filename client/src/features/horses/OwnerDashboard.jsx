@@ -97,7 +97,7 @@ export default function OwnerDashboard() {
   const eligibleHorses = horses.filter(h => h.healthStatus === 'eligible').length;
   const eligibleRate = horses.length > 0 ? (eligibleHorses / horses.length) * 100 : 28.4;
   
-  const upcomingSessions = allSessions.filter(s => s.status === 'scheduled' || s.status === 'in_progress');
+  const upcomingSessions = allSessions.filter(s => ['scheduled', 'ready', 'blocked', 'in_progress'].includes(s.status));
 
   // Top Card Component
   const StatCard = ({ title, value, change, isPositive, prevText }) => (

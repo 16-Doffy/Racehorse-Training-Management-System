@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, Respons
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { reportsApi } from './reportsApi';
+import { SESSION_STATUS_LABELS, SESSION_STATUS_COLORS } from '../training/sessionStatus';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -16,19 +17,6 @@ const HUE_REVENUE = '#eb6834';
 const GRID_COLOR = '#e1e0d9';
 const AXIS_COLOR = '#898781';
 const INK_SECONDARY = '#52514e';
-
-const SESSION_STATUS_LABELS = {
-  scheduled: 'Đã lên lịch',
-  in_progress: 'Đang diễn ra',
-  completed: 'Đã hoàn thành',
-  cancelled: 'Đã hủy',
-};
-const SESSION_STATUS_COLORS = {
-  scheduled: 'default',
-  in_progress: 'processing',
-  completed: 'success',
-  cancelled: 'error',
-};
 
 const RACE_STATUS_LABELS = {
   registered: 'Đã đăng ký',

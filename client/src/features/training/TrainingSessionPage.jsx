@@ -19,7 +19,16 @@ import {
   Space,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { PlusOutlined, EditOutlined, CloseCircleOutlined, AimOutlined, PlayCircleOutlined, CalendarOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  EditOutlined,
+  CloseCircleOutlined,
+  AimOutlined,
+  PlayCircleOutlined,
+  CalendarOutlined,
+  UnorderedListOutlined,
+  SafetyCertificateOutlined,
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -29,6 +38,8 @@ import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
 import { useLockedHorseIds, useHorseClearances } from './useLockedHorses';
 import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } from '../../constants/health';
 import ReadinessPanel from './ReadinessPanel';
+import PreCheckModal from './PreCheckModal';
+import { SESSION_STATUS_LABELS as STATUS_LABELS, SESSION_STATUS_COLORS as STATUS_COLORS } from './sessionStatus';
 import SessionOutcome from './SessionOutcome';
 import confirmReadinessOverride, { needsOverride } from './confirmReadinessOverride';
 import WeekCalendar from './WeekCalendar';
@@ -53,16 +64,14 @@ import {
 
 const { Title, Text } = Typography;
 
-const STATUS_LABELS = {
-  scheduled: 'Đã lên lịch',
-  in_progress: 'Đang diễn ra',
-  completed: 'Đã hoàn thành',
-  cancelled: 'Đã hủy',
+// What the evaluation form may still set with a bare status; the server accepts only completed and
+// cancelled that way. Ready and blocked come from the pre-check, in_progress from "Bắt đầu".
+const NEXT_STATUSES = {
+  scheduled: ['completed', 'cancelled'],
+  ready: ['cancelled'],
+  blocked: ['cancelled'],
+  in_progress: ['completed', 'cancelled'],
 };
-const STATUS_COLORS = { scheduled: 'default', in_progress: 'processing', completed: 'success', cancelled: 'error' };
-// Mirrors the server's allowed transitions (trainingSession.controller.js). Starting a session goes
-// through the "Bắt đầu" button, which rechecks readiness, so it isn't offered here.
-const NEXT_STATUSES = { scheduled: ['completed', 'cancelled'], in_progress: ['completed', 'cancelled'], completed: [], cancelled: [] };
 const statusOptionsFor = (current) =>
   [current, ...(NEXT_STATUSES[current] || [])].map((value) => ({ value, label: STATUS_LABELS[value] }));
 const SESSION_TYPE_LABELS = { training: 'Buổi tập thường', trial_run: 'Lượt chạy thử' };
@@ -93,6 +102,7 @@ export default function TrainingSessionPage() {
   const draftKind = Form.useWatch('kind', createForm);
   const [examForm] = Form.useForm();
   const [examOpen, setExamOpen] = useState(false);
+  const [preCheckSession, setPreCheckSession] = useState(null);
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const planFilter = searchParams.get('plan');
@@ -184,6 +194,9 @@ export default function TrainingSessionPage() {
       invalidate();
     },
     onError: (err, variables) => {
+      // A refusal usually means the session is no longer in the state the table shows (held back by
+      // a lock, pre-check too old): show it as it is now.
+      if (err?.status === 409) invalidate();
       if (needsOverride(err)) {
         confirmReadinessOverride({
           readiness: err.data.readiness,
@@ -331,7 +344,13 @@ export default function TrainingSessionPage() {
       key: 'status',
       render: (s, r) => (
         <div>
-          <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s] || s}</Tag>
+          {s === 'blocked' && r.blockedReason ? (
+            <Tooltip title={r.blockedReason}>
+              <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s]}</Tag>
+            </Tooltip>
+          ) : (
+            <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s] || s}</Tag>
+          )}
           {r.readiness?.overrideReason && (
             <Tooltip title={`Đã ghi đè cảnh báo: ${r.readiness.overrideReason}`}>
               <Tag color="orange" className="!mt-1">
@@ -354,7 +373,12 @@ export default function TrainingSessionPage() {
       fixed: 'right',
       render: (_, record) => (
         <Space size={4}>
-          {record.status === 'scheduled' && (
+          {['scheduled', 'blocked'].includes(record.status) && (
+            <Button size="small" type="primary" icon={<SafetyCertificateOutlined />} onClick={() => setPreCheckSession(record)}>
+              {record.status === 'blocked' ? 'Kiểm tra lại' : 'Kiểm tra sẵn sàng'}
+            </Button>
+          )}
+          {record.status === 'ready' && (
             <Button
               size="small"
               type="primary"
@@ -378,9 +402,19 @@ export default function TrainingSessionPage() {
   ];
 
   const activePrescription = activeSession?.prescription;
+  const preCheckModal = (
+    <PreCheckModal
+      session={preCheckSession}
+      open={Boolean(preCheckSession)}
+      onClose={() => setPreCheckSession(null)}
+      onDone={invalidate}
+      onRequestExam={() => setExamOpen(true)}
+    />
+  );
 
   return (
     <div>
+      {preCheckModal}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
         <div>
           <Title level={3} className="!mb-0">
@@ -448,6 +482,7 @@ export default function TrainingSessionPage() {
           onGenerate={(plan, start) => generateMutation.mutate({ plan, start })}
           generatingPlanId={generateMutation.isPending ? generateMutation.variables?.plan._id : null}
           onStart={(session) => startMutation.mutate({ id: session._id })}
+          onPreCheck={setPreCheckSession}
           startingId={startMutation.isPending ? startMutation.variables?.id : null}
           onEvaluate={openEvaluation}
         />
