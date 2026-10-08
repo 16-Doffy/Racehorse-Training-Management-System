@@ -567,15 +567,6 @@ export default function TrainingSessionPage() {
               <Form.Item name="coachNote" label="Dặn dò trước buổi tập">
                 <Input.TextArea rows={2} placeholder="VD: Giữ nhịp đều 2 hiệp đầu, bung sức hiệp cuối. Chú ý chân trước phải." />
               </Form.Item>
-
-              <Form.Item name="status" label="Trạng thái" initialValue="scheduled">
-                <Select
-                  options={[
-                    { value: 'scheduled', label: 'Đã lên lịch' },
-                    { value: 'in_progress', label: 'Đang diễn ra (bật cảm biến thể lực mô phỏng)' },
-                  ]}
-                />
-              </Form.Item>
             </Col>
             <Col xs={24} lg={9}>
               <div className="lg:sticky lg:top-0">

@@ -344,7 +344,6 @@ const getReadiness = asyncHandler(async (req, res) => {
 // sessions, along with the three advisory gates (see readiness.service.js).
 const createSession = asyncHandler(async (req, res) => {
   const { trainingPlan: planId, horse, overrideReason } = req.body;
-  const status = req.body.status === 'in_progress' ? 'in_progress' : 'scheduled';
 
   if (!(await canAccessHorse(req.user, horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
 
@@ -372,7 +371,9 @@ const createSession = asyncHandler(async (req, res) => {
     ...body,
     trainingPlan: plan._id,
     horse,
-    status,
+    // Creating a session only books it. Running it is a separate act (POST /:id/start), so a
+    // `status` sent in the body is ignored: otherwise creating one would switch the sensor feed on.
+    status: 'scheduled',
     readiness: toSnapshot(readiness, { overrideReason, userId: req.user._id }),
   });
 

@@ -806,7 +806,9 @@ module.exports = {
           'Also refused with 409 when any advisory gate is amber and no `overrideReason` was supplied — the body then ' +
           'carries `{ readiness, requiresOverride: true }` so the client can show the warnings and ask for a reason. ' +
           'Resending with `overrideReason` creates the session, stores the readiness snapshot on it, writes an audit ' +
-          'log entry, and notifies the Club Manager.',
+          'log entry, and notifies the Club Manager. ' +
+          'The session is always created `scheduled`: a `status` in the body is ignored. Running a session is a ' +
+          'separate step (`POST /training/sessions/{id}/start`), which is what switches the sensor feed on.',
         requestBody: {
           required: true,
           content: {
