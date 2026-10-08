@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 
-// Scaffold model: full CRUD is exposed, results/leaderboard integration comes in a later phase.
+// Same surfaces as a training plan, so a plan aimed at a race can take the race's surface.
+const SURFACES = ['turf', 'dirt', 'synthetic', 'sand'];
+
 const raceEntrySchema = new mongoose.Schema(
   {
     horse: { type: mongoose.Schema.Types.ObjectId, ref: 'Horse', required: true },
@@ -8,6 +10,8 @@ const raceEntrySchema = new mongoose.Schema(
     raceName: { type: String, required: true },
     raceDate: { type: Date, required: true },
     distance: { type: Number },
+    venue: { type: String, trim: true }, // the racecourse, e.g. "Trường đua Đại Nam"
+    surface: { type: String, enum: SURFACES },
     status: {
       type: String,
       enum: ['registered', 'confirmed', 'completed', 'withdrawn'],
@@ -24,3 +28,4 @@ const raceEntrySchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model('RaceEntry', raceEntrySchema);
+module.exports.SURFACES = SURFACES;

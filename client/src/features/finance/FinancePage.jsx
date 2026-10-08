@@ -8,6 +8,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { financeApi } from './financeApi';
 import { horsesApi } from '../horses/horsesApi';
 import { ROLES } from '../../constants/roles';
+import dayjs from 'dayjs';
+import { FINANCE_CATEGORIES, categoryLabel } from './financeLabels';
 
 const { Title } = Typography;
 
@@ -19,9 +21,9 @@ const columns = (isOwner) => [
     key: 'type',
     render: (t) => <Tag color={t === 'revenue' ? 'green' : 'red'}>{t === 'revenue' ? 'Doanh thu' : 'Chi phí'}</Tag>,
   },
-  { title: 'Hạng mục', dataIndex: 'category', key: 'category' },
+  { title: 'Hạng mục', dataIndex: 'category', key: 'category', render: categoryLabel },
   { title: 'Số tiền', dataIndex: 'amount', key: 'amount', render: (v) => v.toLocaleString('vi-VN') + ' đ' },
-  { title: 'Ngày', dataIndex: 'date', key: 'date', render: (d) => new Date(d).toLocaleDateString() },
+  { title: 'Ngày', dataIndex: 'date', key: 'date', render: (d) => dayjs(d).format('DD/MM/YYYY') },
   ...(isOwner ? [] : [{ title: 'Ghi chú', dataIndex: 'note', key: 'note' }]),
 ];
 
@@ -44,7 +46,10 @@ export default function FinancePage() {
     queryFn: () => financeApi.getMineSummary(),
     enabled: isOwner,
   });
-  const summary = summaryData?.data || { totalRevenue: 0, totalCost: 0, netBalance: 0 };
+  // The statement for this year: GET /finance/mine/summary answers { totals: { revenue, cost, net } }.
+  const totals = summaryData?.data?.totals || {};
+  const summary = { totalRevenue: totals.revenue || 0, totalCost: totals.cost || 0, netBalance: totals.net || 0 };
+  const entryType = Form.useWatch('type', form);
 
   const createMutation = useMutation({
     mutationFn: (payload) => financeApi.create(payload),
@@ -134,6 +139,7 @@ export default function FinancePage() {
             </Form.Item>
             <Form.Item name="type" label="Loại" rules={[{ required: true }]}>
               <Select
+                onChange={() => form.setFieldValue('category', undefined)}
                 options={[
                   { value: 'cost', label: 'Chi phí' },
                   { value: 'revenue', label: 'Doanh thu' },
@@ -141,7 +147,7 @@ export default function FinancePage() {
               />
             </Form.Item>
             <Form.Item name="category" label="Hạng mục" rules={[{ required: true }]}>
-              <Input placeholder="Thức ăn, y tế, tiền thưởng, tài trợ..." />
+              <Select placeholder={entryType ? 'Chọn hạng mục' : 'Chọn loại trước'} disabled={!entryType} options={FINANCE_CATEGORIES[entryType] || []} />
             </Form.Item>
             <Form.Item name="amount" label="Số tiền (VNĐ)" rules={[{ required: true }]}>
               <InputNumber min={0} className="w-full" />

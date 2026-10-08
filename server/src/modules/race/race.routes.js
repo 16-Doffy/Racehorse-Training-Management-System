@@ -125,6 +125,8 @@ const recordResults = asyncHandler(async (req, res) => {
  * recording a result or withdrawing a grounded horse stays possible.
  */
 async function refuseGroundedHorse(req, { existing }) {
+  const invalid = entryProblem(req.body, existing);
+  if (invalid) return { status: 400, message: invalid };
   const horseId = req.body.horse || existing?.horse;
   const nextStatus = req.body.status || existing?.status || 'registered';
   const entering = !existing || (req.body.horse && String(req.body.horse) !== String(existing.horse));
@@ -133,6 +135,38 @@ async function refuseGroundedHorse(req, { existing }) {
 
   const block = await getRaceBlock(horseId);
   return block ? `Không thể đăng ký giải cho ngựa này: ${block}` : null;
+}
+
+// A race is entered before it is run, over a distance a racecourse actually holds. The result of a
+// race (and "completed") goes through PATCH /:id/results, which also books the prize money.
+const RACE_DISTANCE = [400, 6000];
+function entryProblem(body, existing) {
+  if (body.status === 'completed' && existing?.status !== 'completed') {
+    return 'Nhập kết quả giải qua "Cập nhật kết quả" (thứ hạng, thời gian, tiền thưởng).';
+  }
+  if (body.status !== undefined && !['registered', 'confirmed', 'completed', 'withdrawn'].includes(body.status)) {
+    return 'Trạng thái đăng ký không hợp lệ.';
+  }
+  if (body.raceDate !== undefined) {
+    const date = new Date(body.raceDate);
+    if (Number.isNaN(date.getTime())) return 'Ngày đua không hợp lệ.';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const moved = !existing || date.getTime() !== new Date(existing.raceDate).getTime();
+    if (moved && date < today) return 'Ngày đua phải từ hôm nay trở đi — không đăng ký giải đã diễn ra.';
+  }
+  if (body.distance !== undefined && body.distance !== null && body.distance !== '') {
+    const d = Number(body.distance);
+    if (!Number.isFinite(d) || d < RACE_DISTANCE[0] || d > RACE_DISTANCE[1]) {
+      return `Cự ly giải phải trong khoảng ${RACE_DISTANCE[0]}–${RACE_DISTANCE[1]} m.`;
+    }
+  } else if (!existing) {
+    return 'Nhập cự ly của giải — kế hoạch huấn luyện chia giai đoạn theo cự ly này.';
+  }
+  if (body.surface !== undefined && body.surface !== null && body.surface !== '' && !RaceEntry.SURFACES.includes(body.surface)) {
+    return 'Mặt sân không hợp lệ.';
+  }
+  return null;
 }
 
 const ctrl = crudFactory(RaceEntry, {
@@ -145,6 +179,8 @@ const ctrl = crudFactory(RaceEntry, {
   stamp: (req, { isCreate }) => (isCreate ? { registeredBy: req.user._id } : {}),
   afterWrite: recordAchievement,
   validate: refuseGroundedHorse,
+  // Results, prize money and who registered are the server's to write.
+  fields: ['horse', 'raceName', 'raceDate', 'distance', 'venue', 'surface', 'status'],
 });
 
 router.use(protect);

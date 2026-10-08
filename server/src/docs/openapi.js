@@ -557,8 +557,10 @@ module.exports = {
           horse: { type: 'string' },
           raceName: { type: 'string' },
           raceDate: { type: 'string', format: 'date-time' },
-          distance: { type: 'number' },
-          status: { type: 'string', enum: ['registered', 'confirmed', 'completed', 'withdrawn'] },
+          distance: { type: 'number', description: 'Required on create, 400-6000 m' },
+          venue: { type: 'string', example: 'Trường đua Đại Nam' },
+          surface: { type: 'string', enum: ['turf', 'dirt', 'synthetic', 'sand'] },
+          status: { type: 'string', enum: ['registered', 'confirmed', 'completed', 'withdrawn'], description: 'completed only through PATCH /races/{id}/results' },
           result: { type: 'string' },
           position: { type: 'integer', minimum: 1 },
           finishTime: { type: 'string', example: '1:12.45' },
@@ -967,7 +969,9 @@ module.exports = {
           '`scheduledAt`. `confirmed: true` is required: the trainer says the horse was seen. A medical block (vet lock, ' +
           'injury) makes the session `blocked` and answers 409 `READINESS_BLOCKED`; pre-check again once it is lifted. An ' +
           'amber gate answers 409 with `requiresOverride` until an `overrideReason` is sent (audited, the Manager is told). ' +
-          'Other 409 codes: `INVALID_TRANSITION` (wrong status), `OUTSIDE_PRECHECK_WINDOW` (with `opensAt`/`closesAt`).',
+          'Other 409 codes: `INVALID_TRANSITION` (wrong status), `OUTSIDE_PRECHECK_WINDOW` (with `opensAt`/`closesAt`). ' +
+          'The gates are judged at the booked time (or now, once it has passed). A bodyTempC of 38.6 °C or more is a fever: the session ' +
+          'becomes `blocked` with the temperature on record and the vet gets a high-priority exam request (unless one is pending).',
         parameters: [idParam('id')],
         requestBody: {
           required: true,
@@ -979,7 +983,7 @@ module.exports = {
                 properties: {
                   confirmed: { type: 'boolean', description: 'Must be true' },
                   overrideReason: { type: 'string', description: 'Required only when a gate is amber' },
-                  bodyTempC: { type: 'number', description: 'Optional, 30-45' },
+                  bodyTempC: { type: 'number', description: 'Optional, 30-45; from 38.6 the session is blocked (fever)' },
                   trackCondition: { type: 'string' },
                   weather: { type: 'string' },
                 },
@@ -1428,7 +1432,7 @@ module.exports = {
     },
     '/races': {
       get: { tags: ['Races (scaffold)'], summary: 'List race entries', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/RaceEntry' } }) } },
-      post: { tags: ['Races (scaffold)'], summary: 'Register a horse for a race (Head Trainer) — 409 if the vet has grounded the horse (training lock, injured, quarantined)', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/RaceEntry' }), 403: responses[403] } },
+      post: { tags: ['Races (scaffold)'], summary: 'Register a horse for a race (Head Trainer) — 409 if the vet has grounded the horse (training lock, injured, quarantined)', description: 'Writable fields: horse, raceName, raceDate (today or later), distance (required, 400-6000 m), venue, surface, status. Results go through PATCH /races/{id}/results (400 otherwise).', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/RaceEntry' }), 403: responses[403] } },
     },
     '/races/{id}/results': {
       patch: {

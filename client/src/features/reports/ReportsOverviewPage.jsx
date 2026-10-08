@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { reportsApi } from './reportsApi';
 import { SESSION_STATUS_LABELS, SESSION_STATUS_COLORS } from '../training/sessionStatus';
+import { categoryLabel } from '../finance/financeLabels';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -110,7 +111,7 @@ function CategoryBreakdownChart({ title, rows, hue, total }) {
     );
   }
 
-  const sorted = [...rows].sort((a, b) => b.total - a.total);
+  const sorted = [...rows].map((r) => ({ ...r, category: categoryLabel(r.category) })).sort((a, b) => b.total - a.total);
 
   return (
     <Card title={title} className="h-full">
@@ -413,12 +414,12 @@ export default function ReportsOverviewPage() {
           dataSource={[
             ...(cost?.byCategory || []).map((c) => ({
               group: 'Chi phí',
-              label: c.category,
+              label: categoryLabel(c.category),
               value: formatVnd(c.total),
             })),
             ...(revenue?.byCategory || []).map((c) => ({
               group: 'Doanh thu',
-              label: c.category,
+              label: categoryLabel(c.category),
               value: formatVnd(c.total),
             })),
             ...Object.entries(training?.sessionsByStatus || {}).map(([s, count]) => ({
