@@ -21,6 +21,21 @@ const FORBIDDEN_HORSE_MESSAGE = 'Forbidden: this horse is not assigned to you.';
  * dashboard surfaces unassigned horses so they can't be forgotten instead.
  */
 async function getScopedHorseIds(user) {
+  if (user.role === ROLES.VETERINARIAN) {
+    const ExamRequest = require('../models/ExamRequest');
+    const [assignedHorses, pendingRequests, unassignedHorses] = await Promise.all([
+      Horse.find({ assignedVet: user._id }).select('_id'),
+      ExamRequest.find({ status: 'pending' }).select('horse'),
+      Horse.find({ $or: [{ assignedVet: null }, { assignedVet: { $exists: false } }] }).select('_id'),
+    ]);
+    const idSet = new Set([
+      ...assignedHorses.map((h) => String(h._id)),
+      ...pendingRequests.filter((r) => r.horse).map((r) => String(r.horse)),
+      ...unassignedHorses.map((h) => String(h._id)),
+    ]);
+    return Array.from(idSet);
+  }
+
   const field = SCOPE_FIELD_BY_ROLE[user.role];
   if (!field) return null;
 
@@ -52,6 +67,24 @@ async function horseFilter(user, requestedHorse) {
  */
 async function canAccessHorse(user, horseId) {
   if (!horseId) return false;
+  if (user.role === ROLES.MANAGER) return true;
+  if (user.role === ROLES.VETERINARIAN) {
+    // 1. Assigned directly to this vet
+    const isAssigned = await Horse.exists({ _id: horseId, assignedVet: user._id });
+    if (isAssigned) return true;
+    // 2. Has an open exam request that any clinical staff should be able to fulfill
+    const ExamRequest = require('../models/ExamRequest');
+    const hasPendingExam = await ExamRequest.exists({ horse: horseId, status: 'pending' });
+    if (hasPendingExam) return true;
+    // 3. Or horse has no vet assigned yet
+    const isUnassigned = await Horse.exists({
+      _id: horseId,
+      $or: [{ assignedVet: null }, { assignedVet: { $exists: false } }],
+    });
+    if (isUnassigned) return true;
+    return false;
+  }
+
   const field = SCOPE_FIELD_BY_ROLE[user.role];
   if (!field) return true;
   return Boolean(await Horse.exists({ _id: horseId, [field]: user._id }));

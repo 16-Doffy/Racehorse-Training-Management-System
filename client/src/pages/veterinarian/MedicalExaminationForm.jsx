@@ -44,14 +44,25 @@ export default function MedicalExaminationForm() {
       setLoading(true);
       try {
         const horsesRes = await veterinarianApi.getHorses();
-        setHorses(horsesRes.data || []);
+        let loadedHorses = horsesRes.data || [];
 
         if (isEditMode) {
           const recRes = await veterinarianApi.getHealthRecordById(id);
           const rec = recRes.data;
           setExistingAttachments(rec.attachments || []);
+          const recHorseId = rec.horse?._id || rec.horse || '';
+          if (recHorseId && !loadedHorses.some((h) => h._id === recHorseId)) {
+            if (rec.horse && typeof rec.horse === 'object' && rec.horse.name) {
+              loadedHorses = [rec.horse, ...loadedHorses];
+            } else {
+              try {
+                const singleHorseRes = await veterinarianApi.getHorseById(recHorseId);
+                if (singleHorseRes?.data) loadedHorses = [singleHorseRes.data, ...loadedHorses];
+              } catch (_) {}
+            }
+          }
           setFormData({
-            horse: rec.horse?._id || rec.horse || '',
+            horse: recHorseId,
             date: formatDateForInput(rec.date || rec.createdAt),
             temperatureC: rec.vitalSigns?.temperatureC || '',
             heartRate: rec.vitalSigns?.heartRate || '',
@@ -63,7 +74,18 @@ export default function MedicalExaminationForm() {
             notes: rec.notes || '',
           });
         } else if (horseId) {
-          const targetHorse = horsesRes.data?.find((h) => h._id === horseId);
+          let targetHorse = loadedHorses.find((h) => h._id === horseId);
+          if (!targetHorse) {
+            try {
+              const singleHorseRes = await veterinarianApi.getHorseById(horseId);
+              if (singleHorseRes?.data) {
+                targetHorse = singleHorseRes.data;
+                loadedHorses = [targetHorse, ...loadedHorses];
+              }
+            } catch (e) {
+              console.warn('Could not fetch single horse by ID:', e);
+            }
+          }
           if (targetHorse) {
             setFormData((prev) => ({
               ...prev,
@@ -73,6 +95,7 @@ export default function MedicalExaminationForm() {
             }));
           }
         }
+        setHorses(loadedHorses);
       } catch (err) {
         setError(err?.message || 'Không thể tải thông tin hồ sơ khám.');
       } finally {
@@ -270,6 +293,11 @@ export default function MedicalExaminationForm() {
                       </option>
                     ))}
                   </Form.Select>
+                  {horseId && formData.horse === horseId && (
+                    <Form.Text className="text-primary small mt-1 d-block fw-medium">
+                      <i className="bi bi-info-circle me-1"></i> Đang lập hồ sơ khám cho chiến mã theo yêu cầu khám bệnh.
+                    </Form.Text>
+                  )}
                   <Form.Control.Feedback type="invalid">Vui lòng chọn chiến mã.</Form.Control.Feedback>
                 </Form.Group>
               </Col>
