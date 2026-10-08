@@ -16,6 +16,7 @@ const { SESSION_OPEN_STATUSES } = require('../../constants/training');
 const { getScopedHorseIds, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { pushNotification } = require('../alerts/notification.service');
 const { clearanceMap } = require('../health/trainingClearance');
+const { closeLeftoversFor } = require('./archive.service');
 
 /** Adds the vet's current training level (lock / recovery / clear) to each horse. */
 async function withClearance(horses) {
@@ -234,17 +235,22 @@ const archiveHorse = asyncHandler(async (req, res) => {
     RaceEntry.updateMany({ horse: horse._id, status: { $in: ['registered', 'confirmed'] }, raceDate: { $gte: new Date() } }, { status: 'withdrawn' }),
     TrainingPlan.updateMany({ horse: horse._id, status: { $in: ['draft', 'active'] } }, { status: 'cancelled' }),
     StableAssignment.deleteMany({ horse: horse._id }),
-    DailyTask.deleteMany({ horse: horse._id, status: 'pending' }),
+    // Keep observations and incident reports as history when the work is called off.
+    DailyTask.updateMany(
+      { horse: horse._id, status: 'pending' },
+      { status: 'skipped', skipReason: `Ngựa đã ngừng quản lý: ${reason}`, skippedBy: req.user._id }
+    ),
   ]);
   Object.assign(horse, { isArchived: true, archivedAt: new Date(), archivedReason: reason });
   await horse.save();
+  const closed = await closeLeftoversFor(horse, reason);
 
   await logAction({
     actorId: req.user._id,
     action: 'horse.archive',
     targetModel: 'Horse',
     targetId: horse._id,
-    metadata: { reason, cancelledSessions: sessions.modifiedCount, withdrawnRaces: races.modifiedCount, cancelledPlans: plans.modifiedCount },
+    metadata: { reason, cancelledSessions: sessions.modifiedCount, withdrawnRaces: races.modifiedCount, cancelledPlans: plans.modifiedCount, ...closed },
   });
   const message = `📁 Ngựa "${horse.name}" đã ngừng quản lý tại câu lạc bộ: ${reason}.`;
   for (const userId of [horse.owner, horse.assignedTrainer, horse.assignedVet].filter(Boolean)) {
@@ -254,7 +260,7 @@ const archiveHorse = asyncHandler(async (req, res) => {
   return ok(
     res,
     horse,
-    `Đã ngừng quản lý ${horse.name}: hủy ${sessions.modifiedCount} buổi tập, rút ${races.modifiedCount} giải, đóng ${plans.modifiedCount} kế hoạch, gỡ chuồng.`
+    `Đã ngừng quản lý ${horse.name}: hủy ${sessions.modifiedCount} buổi tập, rút ${races.modifiedCount} giải, đóng ${plans.modifiedCount} kế hoạch, ${closed.exams} yêu cầu khám, ${closed.treatments} phác đồ, ${closed.incidents} sự cố; gỡ chuồng.`
   );
 });
 

@@ -75,6 +75,12 @@ const NEXT_STATUSES = {
 const statusOptionsFor = (current) =>
   [current, ...(NEXT_STATUSES[current] || [])].map((value) => ({ value, label: STATUS_LABELS[value] }));
 const SESSION_TYPE_LABELS = { training: 'Buổi tập thường', trial_run: 'Lượt chạy thử' };
+const futureTimeRule = {
+  validator: (_, value) =>
+    !value || value.isAfter(dayjs())
+      ? Promise.resolve()
+      : Promise.reject(new Error('Chọn giờ bắt đầu ở tương lai.')),
+};
 
 /** Renders the prescribed workout as a sentence a reader can follow without knowing the schema. */
 function describePrescription(p) {
@@ -103,6 +109,8 @@ export default function TrainingSessionPage() {
   const [examForm] = Form.useForm();
   const [examOpen, setExamOpen] = useState(false);
   const [preCheckSession, setPreCheckSession] = useState(null);
+  const [scheduleSession, setScheduleSession] = useState(null);
+  const [scheduleForm] = Form.useForm();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const planFilter = searchParams.get('plan');
@@ -125,7 +133,11 @@ export default function TrainingSessionPage() {
         ...(horseFilter ? { horse: horseFilter } : {}),
       }),
     // A running session fills in from the sensor feed and closes itself: keep the board current.
-    refetchInterval: (query) => (query.state.data?.data?.some((x) => x.status === 'in_progress') ? 5000 : false),
+    refetchInterval: (query) => {
+      const sessions = query.state.data?.data || [];
+      if (sessions.some((x) => x.status === 'in_progress')) return 5000;
+      return sessions.some((x) => ['scheduled', 'ready', 'blocked'].includes(x.status)) ? 30000 : false;
+    },
   });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
@@ -236,6 +248,30 @@ export default function TrainingSessionPage() {
     });
     setEvalOpen(true);
   };
+
+  const openSchedule = (record) => {
+    setScheduleSession(record);
+    scheduleForm.setFieldsValue({ scheduledAt: dayjs().add(1, 'hour').startOf('minute') });
+  };
+
+  const scheduleMutation = useMutation({
+    mutationFn: ({ session, scheduledAt }) =>
+      session.status === 'missed'
+        ? trainingSessionApi.reschedule(session._id, { scheduledAt })
+        : trainingSessionApi.update(session._id, { scheduledAt }),
+    onSuccess: (res, { session, scheduledAt }) => {
+      message.success(session.status === 'missed' ? 'Đã xếp lại buổi tập. Buổi lỡ giờ được giữ trong lịch sử.' : 'Đã đổi giờ. Hãy kiểm tra sẵn sàng lại trước khi bắt đầu.');
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+      setWeekStart(mondayOf(dayjs(res.data?.scheduledAt || scheduledAt)));
+      setScheduleSession(null);
+      scheduleForm.resetFields();
+    },
+    onError: (err) => {
+      if (err?.status === 409) invalidate();
+      message.error(err.message || 'Không đổi được giờ tập.');
+    },
+  });
 
   const generateMutation = useMutation({
     mutationFn: ({ plan, start }) => trainingPlanApi.generateWeek(plan._id, { weekStart: start.toISOString() }),
@@ -351,6 +387,11 @@ export default function TrainingSessionPage() {
           ) : (
             <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s] || s}</Tag>
           )}
+          {s === 'missed' && (
+            <Text type="secondary" className="block !text-xs">
+              {r.rescheduledTo ? 'Đã xếp lại lịch' : 'Chưa kiểm tra hoặc bắt đầu kịp; hãy xếp lại lịch.'}
+            </Text>
+          )}
           {r.readiness?.overrideReason && (
             <Tooltip title={`Đã ghi đè cảnh báo: ${r.readiness.overrideReason}`}>
               <Tag color="orange" className="!mt-1">
@@ -372,7 +413,7 @@ export default function TrainingSessionPage() {
       // Pinned so Start/Evaluate stay reachable without scrolling the wide table sideways.
       fixed: 'right',
       render: (_, record) => (
-        <Space size={4}>
+        <Space size={4} wrap>
           {['scheduled', 'blocked'].includes(record.status) && (
             <Button size="small" type="primary" icon={<SafetyCertificateOutlined />} onClick={() => setPreCheckSession(record)}>
               {record.status === 'blocked' ? 'Kiểm tra lại' : 'Kiểm tra sẵn sàng'}
@@ -389,13 +430,16 @@ export default function TrainingSessionPage() {
               Bắt đầu
             </Button>
           )}
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => openEvaluation(record)}
-          >
-            Đánh giá
-          </Button>
+          {(['scheduled', 'ready', 'blocked'].includes(record.status) || (record.status === 'missed' && !record.rescheduledTo)) && (
+            <Button size="small" icon={<CalendarOutlined />} onClick={() => openSchedule(record)}>
+              {record.status === 'missed' ? 'Xếp lại lịch' : 'Đổi giờ'}
+            </Button>
+          )}
+          {!['missed', 'cancelled'].includes(record.status) && (
+            <Button size="small" icon={<EditOutlined />} onClick={() => openEvaluation(record)}>
+              Đánh giá
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -408,7 +452,10 @@ export default function TrainingSessionPage() {
       open={Boolean(preCheckSession)}
       onClose={() => setPreCheckSession(null)}
       onDone={invalidate}
-      onRequestExam={() => setExamOpen(true)}
+      onRequestExam={() => {
+        setDraft((current) => ({ ...current, horse: preCheckSession?.horse?._id }));
+        setExamOpen(true);
+      }}
     />
   );
 
@@ -429,6 +476,14 @@ export default function TrainingSessionPage() {
           Tạo buổi tập
         </Button>
       </div>
+
+      <Alert
+        className="!mb-4"
+        type="info"
+        showIcon
+        title="Xếp lịch → Kiểm tra sẵn sàng → Bắt đầu → Kết thúc → Đánh giá"
+        description="Xếp lịch chưa chạy cảm biến. Kiểm tra từ 60 phút trước đến 30 phút sau giờ dự kiến; kết quả kiểm tra có hiệu lực 2 giờ. Không kiểm tra hoặc bắt đầu kịp thì buổi chuyển sang Lỡ giờ và có thể xếp lại. Lịch tuần hỗ trợ buổi sáng và buổi chiều nhẹ."
+      />
 
       {filteredPlan && (
         <Tag
@@ -485,6 +540,8 @@ export default function TrainingSessionPage() {
           onPreCheck={setPreCheckSession}
           startingId={startMutation.isPending ? startMutation.variables?.id : null}
           onEvaluate={openEvaluation}
+          onSchedule={openSchedule}
+          schedulingId={scheduleMutation.isPending ? scheduleMutation.variables?.session._id : null}
         />
       )}
 
@@ -666,10 +723,10 @@ export default function TrainingSessionPage() {
                   <Form.Item
                     name="scheduledAt"
                     label="Giờ bắt đầu dự kiến"
-                    rules={[{ required: true, message: 'Chọn ngày giờ dự kiến bắt đầu' }]}
+                    rules={[{ required: true, message: 'Chọn ngày giờ dự kiến bắt đầu' }, futureTimeRule]}
                     extra="Giờ thực tế được ghi khi bấm Bắt đầu."
                   >
-                    <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" />
+                    <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
                   </Form.Item>
                 </Col>
               </Row>
@@ -863,6 +920,36 @@ export default function TrainingSessionPage() {
               title="Khi hoàn thành, chủ sở hữu sẽ nhận được thông báo kết quả buổi tập."
             />
           ) : null}
+        </Form>
+      </Modal>
+
+      <Modal
+        title={scheduleSession?.status === 'missed' ? 'Xếp lại buổi tập đã lỡ giờ' : 'Đổi giờ buổi tập'}
+        open={Boolean(scheduleSession)}
+        onCancel={() => setScheduleSession(null)}
+        onOk={() => scheduleForm.submit()}
+        okText="Lưu giờ tập mới"
+        cancelText="Hủy"
+        confirmLoading={scheduleMutation.isPending}
+        destroyOnHidden
+      >
+        <Text className="block mb-3">
+          {scheduleSession?.horse?.name} · Dự kiến cũ {scheduleSession ? sessionTimeLabel(scheduleSession.scheduledAt) : ''}
+        </Text>
+        <Alert
+          className="!mb-3"
+          type="info"
+          showIcon
+          title={scheduleSession?.status === 'missed' ? 'Buổi cũ được giữ làm lịch sử; hệ thống tạo buổi mới với cùng bài tập.' : 'Đổi giờ sẽ đưa buổi về Đã lên lịch. Bạn cần kiểm tra sẵn sàng lại.'}
+        />
+        <Form
+          form={scheduleForm}
+          layout="vertical"
+          onFinish={(values) => scheduleMutation.mutate({ session: scheduleSession, scheduledAt: values.scheduledAt.toISOString() })}
+        >
+          <Form.Item name="scheduledAt" label="Giờ bắt đầu dự kiến mới" rules={[{ required: true, message: 'Chọn ngày giờ mới' }, futureTimeRule]}>
+            <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
+          </Form.Item>
         </Form>
       </Modal>
 

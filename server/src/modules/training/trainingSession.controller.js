@@ -7,7 +7,7 @@ const { logAction } = require('../audit/audit.service');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
 const { pushNotification } = require('../alerts/notification.service');
-const { computeReadiness, cautionGates, toSnapshot } = require('./readiness.service');
+const { computeReadiness, cautionGates, toSnapshot, getMedicalBlock } = require('./readiness.service');
 const {
   SESSION_STATUS,
   SESSION_STATUS_LABELS,
@@ -220,6 +220,9 @@ const createSession = asyncHandler(async (req, res) => {
   }
 
   const body = pick(req.body, PLAN_FIELDS);
+  if (!(new Date(body.scheduledAt) > new Date())) {
+    return fail(res, 'Chọn giờ tập ở tương lai.', 400);
+  }
   const problem = applyKind(body) || rangeProblem(body.prescription, PRESCRIPTION_RANGES) || kindSpeedProblem(body.kind, body.prescription?.targetSpeedKmh);
   if (problem) return fail(res, problem, 400);
   const { readiness, error } = await checkReadiness(
@@ -257,6 +260,26 @@ const updateSession = asyncHandler(async (req, res) => {
   if (!session) return undefined;
 
   const changes = pick(req.body, PLAN_FIELDS);
+  // Moving the booking invalidates the old observation: it must be pre-checked at its new time.
+  // Claim by status and time so a session that started meanwhile cannot be moved back to scheduled.
+  const timeOnly = Object.keys(changes).length === 1 && changes.scheduledAt !== undefined && req.body.status === undefined;
+  if (timeOnly) {
+    if (![SESSION_STATUS.SCHEDULED, SESSION_STATUS.READY, SESSION_STATUS.BLOCKED].includes(session.status)) {
+      return fail(res, 'Chỉ đổi giờ được buổi tập chưa bắt đầu.', 409, { code: SESSION_ERROR.NOT_EDITABLE });
+    }
+    const scheduledAt = new Date(changes.scheduledAt);
+    if (!(scheduledAt > new Date())) return fail(res, 'Giờ tập mới phải ở tương lai.', 400);
+    const moved = await TrainingSession.findOneAndUpdate(
+      { _id: session._id, status: session.status, scheduledAt: session.scheduledAt },
+      { $set: { scheduledAt, status: SESSION_STATUS.SCHEDULED }, $unset: { readiness: 1, blockedReason: 1 } },
+      { new: true }
+    );
+    if (!moved) return fail(res, 'Buổi tập đã thay đổi hoặc bắt đầu — tải lại trước khi đổi giờ.', 409, { code: SESSION_ERROR.NOT_EDITABLE });
+    const horse = await Horse.findById(moved.horse).select('name');
+    await announceSessionToGroom(moved, horse?.name || 'Ngựa');
+    await logAction({ actorId: req.user._id, action: 'trainingSession.update', targetModel: 'TrainingSession', targetId: moved._id });
+    return ok(res, moved, 'Training session updated.');
+  }
   if (Object.keys(changes).length > 0 && session.status !== 'scheduled') {
     return fail(res, 'Chỉ sửa được nội dung buổi tập khi buổi tập còn ở trạng thái "đã lên lịch".', 409, {
       code: SESSION_ERROR.NOT_EDITABLE,
@@ -267,6 +290,9 @@ const updateSession = asyncHandler(async (req, res) => {
     rangeProblem(changes.prescription, PRESCRIPTION_RANGES) ||
     kindSpeedProblem(changes.kind || session.kind, changes.prescription?.targetSpeedKmh);
   if (problem) return fail(res, problem, 400);
+  if (changes.scheduledAt !== undefined && !(new Date(changes.scheduledAt) > new Date())) {
+    return fail(res, 'Giờ tập mới phải ở tương lai.', 400);
+  }
   const previousTime = new Date(session.scheduledAt).getTime();
   Object.assign(session, changes);
 
@@ -344,10 +370,11 @@ const startSession = asyncHandler(async (req, res) => {
   Object.assign(snapshot, { confirmedBy: before.confirmedBy, bodyTempC: before.bodyTempC, trackCondition: before.trackCondition, weather: before.weather });
   for (const key of Object.keys(snapshot)) if (snapshot[key] === undefined) delete snapshot[key];
 
-  // Claiming by status makes a double click (or two trainers) start the session once, not twice.
+  // Claiming by status starts once; matching time and pre-check rejects observations made before
+  // a concurrent move or another pre-check.
   const started = await TrainingSession.findOneAndUpdate(
-    { _id: session._id, status: SESSION_STATUS.READY },
-    { $set: { status: SESSION_STATUS.IN_PROGRESS, actualStartAt: new Date(), blockedReason: null, readiness: snapshot } },
+    { _id: session._id, status: SESSION_STATUS.READY, scheduledAt: session.scheduledAt, 'readiness.checkedAt': checkedAt },
+    { $set: { status: SESSION_STATUS.IN_PROGRESS, actualStartAt: new Date(), startedBy: req.user._id, blockedReason: null, readiness: snapshot } },
     { new: true }
   );
   if (!started) {
@@ -367,10 +394,12 @@ const startSession = asyncHandler(async (req, res) => {
 
 /** A medical block found at a decision point: the session is held back, the reason kept, the 409 sent. */
 async function markBlocked(res, session, error, user, action) {
-  session.status = SESSION_STATUS.BLOCKED;
-  session.blockedReason = error.message;
-  session.readiness = toSnapshot(error.data.readiness, { userId: user._id });
-  await session.save();
+  const blocked = await TrainingSession.findOneAndUpdate(
+    { _id: session._id, status: session.status, scheduledAt: session.scheduledAt },
+    { $set: { status: SESSION_STATUS.BLOCKED, blockedReason: error.message, readiness: toSnapshot(error.data.readiness, { userId: user._id }) } },
+    { new: true }
+  );
+  if (!blocked) return fail(res, 'Buổi tập đã thay đổi — tải lại trước khi kiểm tra.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });
   await logAction({
     actorId: user._id,
     action,
@@ -447,13 +476,15 @@ const preCheckSession = asyncHandler(async (req, res) => {
   if (typeof body.trackCondition === 'string' && body.trackCondition.trim()) snapshot.trackCondition = body.trackCondition.trim();
   if (typeof body.weather === 'string' && body.weather.trim()) snapshot.weather = body.weather.trim();
 
-  session.readiness = snapshot;
-  session.status = SESSION_STATUS.READY;
-  session.blockedReason = undefined;
-  await session.save();
+  const ready = await TrainingSession.findOneAndUpdate(
+    { _id: session._id, status: session.status, scheduledAt: session.scheduledAt },
+    { $set: { readiness: snapshot, status: SESSION_STATUS.READY }, $unset: { blockedReason: 1 } },
+    { new: true }
+  );
+  if (!ready) return fail(res, 'Buổi tập đã thay đổi — tải lại trước khi kiểm tra.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });
 
   const overridden = cautionGates(readiness).length > 0;
-  if (overridden) await reportOverride({ session, readiness, reason: overrideReason, user: req.user, moment: 'precheck' });
+  if (overridden) await reportOverride({ session: ready, readiness, reason: overrideReason, user: req.user, moment: 'precheck' });
   await logAction({
     actorId: req.user._id,
     action: 'trainingSession.pre_check',
@@ -461,7 +492,7 @@ const preCheckSession = asyncHandler(async (req, res) => {
     targetId: session._id,
     metadata: { result: 'ready', overridden },
   });
-  return ok(res, session, 'Pre-check passed: the session is ready.');
+  return ok(res, ready, 'Pre-check passed: the session is ready.');
 });
 
 // Trainer's post-session evaluation: performance rating, professional comment, measured metrics.
@@ -526,7 +557,67 @@ const deleteSession = asyncHandler(async (req, res) => {
   return ok(res, null, 'Training session deleted.');
 });
 
+// What a booking is, without its outcome: copied when a missed session is booked again.
+const BOOKING_FIELDS = ['kind', 'sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'assignedTo', 'trainingPlan', 'horse'];
+
+/**
+ * POST /training/sessions/:id/reschedule { scheduledAt } — books a missed session again at a new
+ * time: a new scheduled session with the same work, the missed one kept as history and pointing to
+ * it. Only for missed sessions; the vet's block still applies (checked again at the pre-check).
+ */
+const rescheduleSession = asyncHandler(async (req, res) => {
+  const session = await loadSession(req, res);
+  if (!session) return undefined;
+  if (session.status !== SESSION_STATUS.MISSED) {
+    return fail(res, 'Chỉ xếp lại được buổi đã lỡ giờ — buổi chưa chạy thì dùng "Đổi giờ".', 409, {
+      code: SESSION_ERROR.INVALID_TRANSITION,
+      from: session.status,
+    });
+  }
+  if (session.rescheduledTo) return fail(res, 'Buổi này đã được xếp lại rồi.', 409);
+  const scheduledAt = new Date(req.body?.scheduledAt);
+  if (Number.isNaN(scheduledAt.getTime()) || scheduledAt <= new Date()) return fail(res, 'Chọn giờ tập mới ở tương lai.', 400);
+
+  const plan = await TrainingPlan.findById(session.trainingPlan).select('status');
+  if (!plan || ['completed', 'cancelled'].includes(plan.status)) {
+    return fail(res, 'Kế hoạch của buổi này đã kết thúc hoặc bị hủy — không xếp lại được.', 409);
+  }
+  const blocked = await getMedicalBlock(session.horse);
+  if (blocked) return fail(res, `Không xếp lại được: ${blocked}`, 409);
+
+  const booking = pick(session.toObject(), BOOKING_FIELDS);
+  const next = new TrainingSession({ ...booking, scheduledAt, status: SESSION_STATUS.SCHEDULED, generated: false });
+  // Reserve this booking before saving it: simultaneous requests must not both create a copy.
+  const claimed = await TrainingSession.updateOne(
+    { _id: session._id, status: SESSION_STATUS.MISSED, rescheduledTo: null },
+    { $set: { rescheduledTo: next._id } }
+  );
+  if (!claimed.modifiedCount) return fail(res, 'Buổi này đã được xếp lại rồi.', 409);
+  try {
+    await next.save();
+  } catch (err) {
+    // A failed booking leaves the missed session available for another attempt. Only undo our claim.
+    await TrainingSession.updateOne(
+      { _id: session._id, rescheduledTo: next._id },
+      { $set: { rescheduledTo: null } }
+    );
+    throw err;
+  }
+
+  await logAction({
+    actorId: req.user._id,
+    action: 'trainingSession.reschedule',
+    targetModel: 'TrainingSession',
+    targetId: session._id,
+    metadata: { newSession: next._id, scheduledAt },
+  });
+  const horse = await Horse.findById(session.horse).select('name');
+  await announceSessionToGroom(next, horse?.name || 'Ngựa');
+  return created(res, next, 'Đã xếp lại buổi tập.');
+});
+
 module.exports = {
+  rescheduleSession,
   listSessions,
   getSession,
   getReadiness,

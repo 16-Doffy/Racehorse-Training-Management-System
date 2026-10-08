@@ -34,15 +34,23 @@ test('every status has a label and the tables are frozen', () => {
   });
 });
 
-test('a session is started only from ready; aborted/evaluated/missed still have no way in', () => {
-  assert.deepEqual(SESSION_TRANSITIONS[S.SCHEDULED], [S.READY, S.BLOCKED, S.COMPLETED, S.CANCELLED]);
-  assert.deepEqual(SESSION_TRANSITIONS[S.READY], [S.IN_PROGRESS, S.BLOCKED, S.CANCELLED]);
+test('a session is started only from ready; aborted/evaluated still have no way in', () => {
+  assert.deepEqual(SESSION_TRANSITIONS[S.SCHEDULED], [S.READY, S.BLOCKED, S.COMPLETED, S.CANCELLED, S.MISSED]);
+  assert.deepEqual(SESSION_TRANSITIONS[S.READY], [S.IN_PROGRESS, S.BLOCKED, S.CANCELLED, S.MISSED]);
   assert.equal(canTransition(S.SCHEDULED, S.IN_PROGRESS), false);
   assert.equal(canTransition(S.BLOCKED, S.IN_PROGRESS), false);
-  assert.deepEqual(SESSION_TRANSITIONS[S.BLOCKED], [S.READY, S.CANCELLED]);
-  for (const target of [S.EVALUATED, S.ABORTED, S.MISSED]) {
+  assert.deepEqual(SESSION_TRANSITIONS[S.BLOCKED], [S.READY, S.CANCELLED, S.MISSED]);
+  for (const target of [S.EVALUATED, S.ABORTED]) {
     for (const from of Object.values(S)) assert.equal(canTransition(from, target), false, `${from} -> ${target}`);
   }
+});
+
+test('missed is reached only from a session that never ran (set by the missed-session job)', () => {
+  const into = Object.values(S).filter((from) => canTransition(from, S.MISSED)).sort();
+  assert.deepEqual(into, [S.BLOCKED, S.READY, S.SCHEDULED].sort());
+  assert.deepEqual(SESSION_TRANSITIONS[S.MISSED], []);
+  const { SESSION_BODY_STATUSES } = require('../src/constants/training');
+  assert.equal(SESSION_BODY_STATUSES.includes(S.MISSED), false);
 });
 
 test('a request body can only ask for completed or cancelled', () => {

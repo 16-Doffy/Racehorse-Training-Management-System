@@ -10,6 +10,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const templateDaySchema = new mongoose.Schema(
   {
     day: { type: Number, min: 0, max: 6, required: true }, // 0 = Sunday … 6 = Saturday
+    // The main workout is in the morning; an afternoon slot is for light work (walk, easy canter).
+    slot: { type: String, enum: ['morning', 'afternoon'], default: 'morning' },
     kind: { type: String, enum: KINDS, required: true },
     // Optional overrides of the kind's default workout (constants/training.js SESSION_KINDS).
     distanceM: { type: Number },
@@ -62,6 +64,7 @@ const trainingPlanSchema = new mongoose.Schema(
     phases: [phaseSchema],
     // Time sessions are booked at when a week is generated: early morning, 1.5 h after breakfast.
     sessionTime: { type: String, default: '07:30', match: /^([01]\d|2[0-3]):[0-5]\d$/ },
+    afternoonTime: { type: String, default: '16:00', match: /^([01]\d|2[0-3]):[0-5]\d$/ },
     notes: { type: String },
     status: { type: String, enum: ['draft', 'active', 'completed', 'cancelled'], default: 'draft' },
   },

@@ -115,6 +115,9 @@ const listExamRequests = asyncHandler(async (req, res) => {
     if (horse !== undefined) filter.horse = horse;
   } else if (req.user.role === ROLES.HEAD_TRAINER) {
     filter.requestedBy = req.user._id;
+    // Only horses still in their care: a sold or retired horse's requests leave the queue.
+    const horse = await horseFilter(req.user, req.query.horse);
+    if (horse !== undefined) filter.horse = horse;
   }
   if (req.query.status) filter.status = req.query.status;
 

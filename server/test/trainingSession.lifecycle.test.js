@@ -49,7 +49,10 @@ function fakeSession(overrides = {}) {
   TrainingSession.exists = async () => otherRunning;
   TrainingSession.findOneAndUpdate = async (filter, update) => {
     if (session.status !== filter.status) return null;
+    if (filter.scheduledAt && session.scheduledAt.getTime() !== new Date(filter.scheduledAt).getTime()) return null;
+    if (filter['readiness.checkedAt'] && new Date(session.readiness?.checkedAt).getTime() !== new Date(filter['readiness.checkedAt']).getTime()) return null;
     Object.assign(session, update.$set);
+    for (const key of Object.keys(update.$unset || {})) delete session[key];
     session.claimedAt = update.$set.actualStartAt;
     return session;
   };
@@ -120,7 +123,7 @@ test('passes: the session becomes ready and the confirmation is recorded', async
   const res = await call(controller.preCheckSession, { confirmed: true, bodyTempC: 37.8, weather: 'nắng nhẹ', trackCondition: 'khô' });
   assert.equal(res.code, 200);
   assert.equal(session.status, 'ready');
-  assert.equal(session.saved, 1);
+  assert.equal(session.saved, 0, 'the pre-check is claimed atomically rather than saved from a stale document');
   assert.equal(session.readiness.confirmedBy, 'u1');
   assert.equal(session.readiness.bodyTempC, 37.8);
   assert.equal(session.readiness.weather, 'nắng nhẹ');

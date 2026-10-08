@@ -31,18 +31,20 @@ const SESSION_STATUS = Object.freeze({
   MISSED: 'missed', // never started and past its grace period
 });
 
-// Edges are added together with the endpoint that uses them. ABORTED, EVALUATED and MISSED have no
-// way in yet (end/abort, evaluation and the missed job come later). SCHEDULED -> COMPLETED is a legacy
-// edge that the end endpoint replaces. A session is started only from READY.
+// Edges are added together with the endpoint that uses them. ABORTED and EVALUATED have no way in
+// yet (end/abort and evaluation come later). MISSED is reached only by the missed-session job
+// (markMissedSessions), never by a request. SCHEDULED -> COMPLETED is a legacy edge that the end
+// endpoint replaces. A session is started only from READY.
 const SESSION_TRANSITIONS = Object.freeze({
   [SESSION_STATUS.SCHEDULED]: [
     SESSION_STATUS.READY,
     SESSION_STATUS.BLOCKED,
     SESSION_STATUS.COMPLETED,
     SESSION_STATUS.CANCELLED,
+    SESSION_STATUS.MISSED,
   ],
-  [SESSION_STATUS.READY]: [SESSION_STATUS.IN_PROGRESS, SESSION_STATUS.BLOCKED, SESSION_STATUS.CANCELLED],
-  [SESSION_STATUS.BLOCKED]: [SESSION_STATUS.READY, SESSION_STATUS.CANCELLED],
+  [SESSION_STATUS.READY]: [SESSION_STATUS.IN_PROGRESS, SESSION_STATUS.BLOCKED, SESSION_STATUS.CANCELLED, SESSION_STATUS.MISSED],
+  [SESSION_STATUS.BLOCKED]: [SESSION_STATUS.READY, SESSION_STATUS.CANCELLED, SESSION_STATUS.MISSED],
   [SESSION_STATUS.IN_PROGRESS]: [SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED],
   [SESSION_STATUS.COMPLETED]: [],
   [SESSION_STATUS.EVALUATED]: [],
@@ -209,6 +211,8 @@ const PHASE_DEFAULTS = {
     week: [
       { day: 1, kind: 'canter' }, { day: 2, kind: 'breeze' }, { day: 3, kind: 'walk' },
       { day: 4, kind: 'canter' }, { day: 5, kind: 'breeze', distanceM: 1000 }, { day: 6, kind: 'canter', distanceM: 3200 },
+      // An easy walk the afternoon after fast work, to loosen the horse up.
+      { day: 2, slot: 'afternoon', kind: 'walk' }, { day: 5, slot: 'afternoon', kind: 'walk' },
     ],
   },
   peak: {
@@ -217,6 +221,7 @@ const PHASE_DEFAULTS = {
     week: [
       { day: 1, kind: 'canter' }, { day: 2, kind: 'breeze', distanceM: 600 }, { day: 3, kind: 'walk' },
       { day: 4, kind: 'canter', distanceM: 2000 }, { day: 5, kind: 'walk' },
+      { day: 2, slot: 'afternoon', kind: 'walk' },
     ],
   },
   recovery: {
@@ -230,16 +235,43 @@ const PHASE_DEFAULTS = {
 };
 
 const BUILD_UP = ['base_building', 'strength', 'speed', 'peak'];
-const BUILD_UP_SHARE = { base_building: 0.35, strength: 0.25, speed: 0.25, peak: 0.15 };
+// How the weeks before a race are shared out depends on its distance: a sprinter needs more speed
+// work, a stayer a longer base.
+const SHARE_BY_DISTANCE = [
+  { upTo: 1200, label: 'nước rút', share: { base_building: 0.3, strength: 0.25, speed: 0.3, peak: 0.15 } },
+  { upTo: 2000, label: 'trung bình', share: { base_building: 0.35, strength: 0.25, speed: 0.25, peak: 0.15 } },
+  { upTo: Infinity, label: 'đường dài', share: { base_building: 0.45, strength: 0.25, speed: 0.15, peak: 0.15 } },
+];
+const shareFor = (distance) => SHARE_BY_DISTANCE.find((b) => (distance || 1600) <= b.upTo);
+// Only light work in the afternoon: the main workout is in the morning.
+const AFTERNOON_KINDS = ['walk', 'canter'];
 const RECOVERY_WEEKS_AFTER_RACE = 2;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** The two daily slots must stay on their own side of noon, including for API clients. */
+function slotTimeProblem(sessionTime, afternoonTime) {
+  for (const [value, afternoon, label] of [
+    [sessionTime, false, 'Giờ tập buổi sáng'],
+    [afternoonTime, true, 'Giờ tập buổi chiều'],
+  ]) {
+    if (value === undefined) continue; // the model supplies the default
+    if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+      return `${label} phải có định dạng HH:mm hợp lệ.`;
+    }
+    if ((Number(value.slice(0, 2)) >= 12) !== afternoon) {
+      return `${label} phải trong khoảng ${afternoon ? '12:00–23:59' : '00:00–11:59'}.`;
+    }
+  }
+  return null;
+}
+
 /**
- * The phases leading to a race: the weeks between start and race day shared out base 35%,
- * strength 25%, speed 25%, peak 15% (at least one week each, dropping the earliest phases when
- * time is short), then two weeks of recovery. Without a race: 4 weeks base, 3 strength, 3 speed.
+ * The phases leading to a race: the weeks between start and race day (race week included) shared
+ * out by the race's distance (see SHARE_BY_DISTANCE; at least one week each, dropping the earliest
+ * phases when time is short), then two weeks of recovery. Without a race: 4 base, 3 strength, 3 speed.
  */
-function suggestPhases(startDate, raceDate) {
+function suggestPhases(startDate, raceDate, distance) {
+  const BUILD_UP_SHARE = shareFor(distance).share;
   let plan;
   if (raceDate) {
     // The race's own week belongs to the build-up; recovery starts the Monday after.
@@ -321,6 +353,73 @@ function rangeProblem(values, ranges) {
   return null;
 }
 
+/** The phases laid end to end from the start date: [{ key, weeks, start, end }] (Dates). */
+function layPhases(startDate, phases) {
+  const first = new Date(startDate);
+  first.setHours(0, 0, 0, 0);
+  let cursor = first.getTime();
+  return phases.map((p) => {
+    const start = new Date(cursor);
+    cursor += (Number(p.weeks) || 0) * 7 * DAY_MS;
+    return { key: p.key, weeks: Number(p.weeks) || 0, start, end: new Date(cursor - 1) };
+  });
+}
+
+const ORDER = { base_building: 0, strength: 1, speed: 2, peak: 3, recovery: 4 };
+const pad = (n) => String(n).padStart(2, '0');
+const ddmm = (d) => { const x = new Date(d); return `${pad(x.getDate())}/${pad(x.getMonth() + 1)}`; };
+
+/**
+ * What is wrong or risky about a cycle's phases. 'error' makes the plan unusable (the race falls
+ * outside the build-up, recovery before the race); 'warning' is the trainer's call (too rushed, odd
+ * order, unusual distance). Same rules on the client (trainingVocab.js) to show them while typing.
+ */
+function planWarnings(phases, { startDate, raceDate, distance } = {}) {
+  const out = [];
+  if (!phases?.length || !startDate) return out;
+  const laid = layPhases(startDate, phases);
+  const buildUp = laid.filter((p) => p.key !== 'recovery');
+  const buildUpWeeks = buildUp.reduce((n, p) => n + p.weeks, 0);
+  const firstRecovery = laid.findIndex((p) => p.key === 'recovery');
+  if (firstRecovery >= 0 && laid.slice(firstRecovery).some((p) => p.key !== 'recovery')) {
+    out.push({ level: 'error', text: 'Giai đoạn Hồi phục phải đứng cuối, sau ngày đua.' });
+  }
+
+  if (raceDate) {
+    const race = new Date(raceDate);
+    const inPhase = laid.find((p) => race >= p.start && race <= p.end);
+    const buildUpEnd = buildUp.length ? buildUp[buildUp.length - 1].end : null;
+    const daysLeft = Math.ceil((race - new Date(startDate)) / DAY_MS);
+    if (!inPhase) {
+      out.push({ level: 'error', text: `Ngày đua ${ddmm(race)} nằm ngoài lộ trình (${ddmm(laid[0].start)} – ${ddmm(laid[laid.length - 1].end)}).` });
+    } else if (inPhase.key === 'recovery') {
+      out.push({ level: 'error', text: `Ngày đua ${ddmm(race)} rơi vào giai đoạn Hồi phục — cần thêm tuần cho các giai đoạn trước giải.` });
+    } else if (buildUpEnd && buildUpEnd - race > 7 * DAY_MS) {
+      out.push({ level: 'error', text: `Các giai đoạn trước giải kéo dài tới ${ddmm(buildUpEnd)}, quá ngày đua ${ddmm(race)} hơn một tuần — bớt số tuần.` });
+    } else if (inPhase.key !== 'peak') {
+      out.push({ level: 'warning', text: `Ngày đua rơi vào giai đoạn ${PHASE_LABELS[inPhase.key]} — thường đua ở cuối giai đoạn Giảm tải.` });
+    }
+    if (daysLeft < 14) out.push({ level: 'warning', text: `Chỉ còn ${daysLeft} ngày tới giải — không đủ thời gian xây thể lực, chỉ nên giữ phong độ.` });
+  }
+
+  if (buildUpWeeks > 0 && buildUpWeeks < 6) {
+    out.push({ level: 'warning', text: `Chỉ ${buildUpWeeks} tuần chuẩn bị — thực tế cần 8–12 tuần, chuẩn bị gấp dễ chấn thương.` });
+  }
+  const base = laid.filter((p) => p.key === 'base_building').reduce((n, p) => n + p.weeks, 0);
+  if (base > 0 && base < 2) out.push({ level: 'warning', text: 'Nền tảng chỉ 1 tuần — nền sức bền mỏng, nên ít nhất 2 tuần.' });
+  const peak = laid.filter((p) => p.key === 'peak').reduce((n, p) => n + p.weeks, 0);
+  if (peak > 2) out.push({ level: 'warning', text: `Giảm tải ${peak} tuần là quá dài — ngựa mất thể lực, thường 1–2 tuần.` });
+  const order = buildUp.map((p) => ORDER[p.key]);
+  if (order.some((o, i) => i > 0 && o < order[i - 1])) {
+    out.push({ level: 'warning', text: 'Thứ tự giai đoạn khác thông lệ (nền tảng → sức mạnh → tốc độ → giảm tải).' });
+  }
+  if (distance > 2000 && buildUpWeeks > 0 && base / buildUpWeeks < 0.35) {
+    out.push({ level: 'warning', text: `Giải ${distance}m là cự ly dài — nên dành ít nhất 35% thời gian cho Nền tảng (đang ${Math.round((base / buildUpWeeks) * 100)}%).` });
+  }
+  if (distance > 3200) out.push({ level: 'warning', text: `Đua phẳng hiếm khi vượt 3200m — kiểm tra lại cự ly ${distance}m.` });
+  return out;
+}
+
 module.exports = {
   SESSION_STATUS,
   SESSION_TRANSITIONS,
@@ -342,6 +441,11 @@ module.exports = {
   KIND_BY_INTENSITY,
   PHASE_DEFAULTS,
   suggestPhases,
+  layPhases,
+  planWarnings,
+  shareFor,
+  AFTERNOON_KINDS,
+  slotTimeProblem,
   PRESCRIPTION_RANGES,
   METRIC_RANGES,
   rangeProblem,

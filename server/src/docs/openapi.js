@@ -144,11 +144,12 @@ module.exports = {
           surface: { type: 'string', enum: ['turf', 'dirt', 'synthetic', 'sand'] },
           goal: { type: 'string', description: 'What the whole plan is building towards, in plain words' },
           targetRace: { type: 'string', nullable: true, description: 'RaceEntry this plan is preparing the horse for' },
-          startDate: { type: 'string', format: 'date-time' },
+          startDate: { type: 'string', format: 'date-time', description: 'Club calendar date (Vietnam time by default). New plans and changed start dates must be today or later; a draft whose start date has passed must be updated before activation.' },
           endDate: { type: 'string', format: 'date-time' },
           notes: { type: 'string' },
-          status: { type: 'string', enum: ['draft', 'active', 'completed', 'cancelled'], description: 'Only one active plan per horse (409 otherwise). Completing or cancelling cancels its future scheduled sessions.' },
-          sessionTime: { type: 'string', example: '07:30', description: 'Time sessions are booked at when a week is generated' },
+          status: { type: 'string', enum: ['draft', 'active', 'completed', 'cancelled'], description: 'Only one active plan per horse (409 otherwise). Completing or cancelling cancels every unstarted scheduled/ready/blocked session, including bookings still within their start grace window.' },
+          sessionTime: { type: 'string', pattern: '^(0\\d|1[01]):[0-5]\\d$', default: '07:30', example: '07:30', description: 'Morning booking time in the club timezone, HH:mm from 00:00 through 11:59.' },
+          afternoonTime: { type: 'string', pattern: '^(1[2-9]|2[0-3]):[0-5]\\d$', default: '16:00', example: '16:00', description: 'Afternoon booking time in the club timezone, HH:mm from 12:00 through 23:59; only walk or canter in afternoon templates.' },
           phases: {
             type: 'array',
             items: {
@@ -170,6 +171,7 @@ module.exports = {
                     type: 'object',
                     properties: {
                       day: { type: 'integer', minimum: 0, maximum: 6, description: '0 = Sunday … 6 = Saturday' },
+                      slot: { type: 'string', enum: ['morning', 'afternoon'], default: 'morning', description: 'One morning and one afternoon entry per day at most; afternoon only walk or canter' },
                       kind: { type: 'string', enum: ['walk', 'canter', 'hill', 'breeze', 'trial'] },
                       distanceM: { type: 'number' },
                       reps: { type: 'number' },
@@ -250,6 +252,7 @@ module.exports = {
               'sessionType and any prescription field left out with the kind\'s default workout.',
           },
           generated: { type: 'boolean', readOnly: true, description: 'Booked by "generate week" from the plan' },
+          rescheduledTo: { type: 'string', nullable: true, readOnly: true, description: 'Replacement TrainingSession id after a missed session is rebooked; the original session remains missed as history.' },
           objective: {
             type: 'string',
             enum: ['endurance', 'speed', 'interval', 'recovery', 'technique', 'race_simulation'],
@@ -277,13 +280,14 @@ module.exports = {
               summary: { type: 'string' },
             },
           },
-          scheduledAt: { type: 'string', format: 'date-time' },
+          scheduledAt: { type: 'string', format: 'date-time', description: 'A valid future instant is required when creating, moving or rebooking a session; use an ISO timestamp with a timezone offset.' },
           status: {
             type: 'string',
             enum: ['scheduled', 'ready', 'blocked', 'in_progress', 'completed', 'evaluated', 'aborted', 'cancelled', 'missed'],
             description:
-              'Only scheduled, in_progress, completed and cancelled can be reached today. ready, blocked, aborted, evaluated ' +
-              'and missed are in the schema but get their endpoints in later steps (pre-check, end/abort, evaluation, missed job).',
+              'Created as scheduled. Pre-check reaches ready or blocked; start reaches in_progress. The server marks an unstarted ' +
+              'scheduled/blocked session missed after its 30-minute pre-check window, or a ready session after its pre-check expires ' +
+              '(2 hours). Only completed/cancelled may be requested as a bare body status. Aborted/evaluated are reserved for later lifecycle endpoints.',
           },
           actualStartAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true, description: 'Server time when the session was started; never sent by a client' },
           actualEndAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true, description: 'Server time when the session ended or was stopped' },
@@ -849,19 +853,20 @@ module.exports = {
     },
     '/training/plans': {
       get: { tags: ['Training (Head Trainer)'], summary: 'List training plans', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/TrainingPlan' } }) } },
-      post: { tags: ['Training (Head Trainer)'], summary: 'Create training plan', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/TrainingPlan' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/TrainingPlan' }), 403: responses[403] } },
+      post: { tags: ['Training (Head Trainer)'], summary: 'Create training plan', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/TrainingPlan' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/TrainingPlan' }), 400: responses[400], 403: responses[403], 409: responses[409] } },
     },
     '/training/plans/suggest': {
       get: {
         tags: ['Training (Head Trainer)'],
         summary: 'Phases to propose for a new cycle, counted back from the race',
-        description: 'Weeks to race day shared out base 35% / strength 25% / speed 25% / peak 15% (race week included), then 2 weeks recovery; 4/3/3 without a race. Each phase comes with its normal week.',
+        description: 'Includes race week, followed by 2 weeks recovery. Base/strength/speed/peak shares depend on race distance: sprint <=1200 m 30/25/30/15%, middle <=2000 m 35/25/25/15%, long 45/25/15/15%. Short preparation keeps the last phases; without a race, proposes 4/3/3 weeks base/strength/speed. Each phase includes its normal AM/PM template. Returns error/warning advice for race alignment, phase order, short preparation and unusual distance.',
         parameters: [
           { name: 'horse', in: 'query', required: true, schema: { type: 'string' } },
           { name: 'targetRace', in: 'query', schema: { type: 'string' } },
-          { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Today or later (400 otherwise)' },
+          { name: 'distance', in: 'query', schema: { type: 'number' }, description: 'Race distance when no targetRace: decides the share (sprint ≤1200 / middle ≤2000 / long)' },
         ],
-        responses: { 200: responses[200]({ type: 'object', properties: { startDate: { type: 'string' }, phases: { type: 'array', items: { type: 'object' } }, race: { type: 'object', nullable: true }, activePlan: { type: 'object', nullable: true } } }), 400: responses[400], 403: responses[403] },
+        responses: { 200: responses[200]({ type: 'object', properties: { startDate: { type: 'string' }, phases: { type: 'array', items: { type: 'object' } }, race: { type: 'object', nullable: true }, warnings: { type: 'array', items: { type: 'object', properties: { level: { type: 'string', enum: ['error', 'warning'] }, text: { type: 'string' } } } }, activePlan: { type: 'object', nullable: true } } }), 400: responses[400], 403: responses[403] },
       },
     },
     '/training/plans/{id}/generate-week': {
@@ -869,8 +874,10 @@ module.exports = {
         tags: ['Training (Head Trainer)'],
         summary: 'Book a week of the plan as scheduled sessions',
         description:
-          'Each day takes the template of its phase at the plan\'s sessionTime; 8 days before the plan\'s race becomes a trial over the race distance. ' +
-          'Skips days already booked, past, outside the plan or on race day. A locked/injured horse gets nothing (409); a recovering horse gets lighter work. ' +
+          'Requires an active plan. Morning entries use sessionTime and afternoon entries use afternoonTime in the club timezone. ' +
+          'Eight days before the race, one morning trial over the race distance replaces that day\'s template. ' +
+          'Skips past slots, slots already booked for this horse (including manual/other-plan sessions), dates outside the plan and race day. ' +
+          'An elapsed morning is skipped while a future afternoon on the same day can still be booked. A locked/injured horse gets nothing (409); a recovering horse gets lighter work. ' +
           'Advisory readiness gates are checked when the session is started, not here. The groom gets one summary notification.',
         parameters: [idParam('id')],
         requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { weekStart: { type: 'string', format: 'date', description: 'Any day of the week; default next week' } } } } } },
@@ -879,7 +886,7 @@ module.exports = {
     },
     '/training/plans/{id}': {
       get: { tags: ['Training (Head Trainer)'], summary: 'Get training plan', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingPlan' }), 404: responses[404] } },
-      put: { tags: ['Training (Head Trainer)'], summary: 'Update training plan', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/TrainingPlan' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingPlan' }), 403: responses[403], 404: responses[404] } },
+      put: { tags: ['Training (Head Trainer)'], summary: 'Update training plan', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/TrainingPlan' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingPlan' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] } },
       delete: { tags: ['Training (Head Trainer)'], summary: 'Delete training plan', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
     },
     '/training/sessions': {
@@ -913,7 +920,7 @@ module.exports = {
             },
           },
         },
-        responses: { 201: responses[201]({ $ref: '#/components/schemas/TrainingSession' }), 403: responses[403], 409: responses[409] },
+        responses: { 201: responses[201]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 409: responses[409] },
       },
     },
     '/training/sessions/readiness': {
@@ -935,7 +942,20 @@ module.exports = {
     },
     '/training/sessions/{id}': {
       get: { tags: ['Training (Head Trainer)'], summary: 'Get training session', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 404: responses[404] } },
-      put: { tags: ['Training (Head Trainer)'], summary: 'Update training session', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/TrainingSession' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 404: responses[404] } },
+      put: {
+        tags: ['Training (Head Trainer)'], summary: 'Update a booking or move an unstarted session',
+        description:
+          'Sending only { scheduledAt } with no status moves a scheduled/ready/blocked session to a valid future time, resets it to scheduled, ' +
+          'and clears readiness/blockedReason so a fresh pre-check is required. A concurrent start or booking change returns 409. ' +
+          'Other booking edits (kind, sessionType, objective, intensity, prescription, coachNote, assignedTo) require scheduled status. ' +
+          'Bare body status may request only completed/cancelled through the lifecycle rules; ready, blocked, in_progress and missed are server-owned.',
+        parameters: [idParam('id')],
+        requestBody: { content: { 'application/json': { schema: { allOf: [
+          { $ref: '#/components/schemas/TrainingSession' },
+          { type: 'object', properties: { status: { type: 'string', enum: ['completed', 'cancelled'] }, overrideReason: { type: 'string' } } },
+        ] }, examples: { moveTime: { summary: 'Move an unstarted booking and invalidate its pre-check', value: { scheduledAt: '2030-01-07T08:00:00+07:00' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
       delete: { tags: ['Training (Head Trainer)'], summary: 'Delete training session', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
     '/training/sessions/{id}/pre-check': {
@@ -943,7 +963,7 @@ module.exports = {
         tags: ['Training (Head Trainer)'],
         summary: 'Pre-check: the trainer looks at the horse and the readiness gates re-run for now',
         description:
-          'Moves a `scheduled` (or `blocked`) session to `ready`. Only allowed from 60 minutes before to 30 minutes after ' +
+          'Moves a `scheduled` (or `blocked`) session to `ready`, or refreshes an existing ready session\'s check. Only allowed from 60 minutes before to 30 minutes after ' +
           '`scheduledAt`. `confirmed: true` is required: the trainer says the horse was seen. A medical block (vet lock, ' +
           'injury) makes the session `blocked` and answers 409 `READINESS_BLOCKED`; pre-check again once it is lifted. An ' +
           'amber gate answers 409 with `requiresOverride` until an `overrideReason` is sent (audited, the Manager is told). ' +
@@ -968,6 +988,16 @@ module.exports = {
           },
         },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
+    '/training/sessions/{id}/reschedule': {
+      post: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'Book a missed session again at a new time',
+        description: 'Only for status missed (set by the server after the pre-check window closes, or a ready pre-check expires after 2 h without a start; the watcher checks every 5 min). Requires a valid future scheduledAt, an existing plan not completed/cancelled and no current medical block. Creates one new scheduled session with the same work requiring a fresh pre-check; the missed original remains history and points to it through rescheduledTo. Duplicate or concurrent rebooking returns 409.',
+        parameters: [idParam('id')],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['scheduledAt'], properties: { scheduledAt: { type: 'string', format: 'date-time' } } } } } },
+        responses: { 201: responses[201]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
     '/training/sessions/{id}/start': {

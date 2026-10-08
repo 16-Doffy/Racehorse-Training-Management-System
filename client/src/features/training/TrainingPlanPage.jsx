@@ -83,7 +83,8 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, onOpen
               Cường độ {INTENSITY_LABELS[plan.intensity]}
             </Tag>
             <Tag className="!m-0">{plan.weeklyVolumeKm} km/tuần</Tag>
-            <Tag className="!m-0">Cự ly {plan.distanceTarget}m</Tag>
+            <Tag className="!m-0">Cự ly thi đấu {plan.distanceTarget}m</Tag>
+            <Tag className="!m-0">Sáng {plan.sessionTime || '07:30'} · Chiều {plan.afternoonTime || '16:00'} (nếu có)</Tag>
             <Tag className="!m-0">{SURFACE_LABELS[plan.surface]}</Tag>
           </Space>
         </div>
@@ -199,7 +200,7 @@ export default function TrainingPlanPage() {
             <div className="mb-1">Các ngày không xếp:</div>
             <ul className="list-disc pl-5">
               {skipped.map((s) => (
-                <li key={s.date}>{s.reason}</li>
+                <li key={`${s.date}-${s.slot || s.reason}`}>{s.reason}</li>
               ))}
             </ul>
           </div>

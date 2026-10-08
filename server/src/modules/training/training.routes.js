@@ -30,6 +30,8 @@ router.put('/sessions/:id', authorize(ROLES.HEAD_TRAINER), sessionCtrl.updateSes
 // Pre-check: the trainer looks at the horse and the gates re-run for now. scheduled/blocked -> ready.
 router.post('/sessions/:id/pre-check', authorize(ROLES.HEAD_TRAINER), sessionCtrl.preCheckSession);
 router.post('/sessions/:id/start', authorize(ROLES.HEAD_TRAINER), sessionCtrl.startSession);
+// Book a missed session again at a new time: { scheduledAt }.
+router.post('/sessions/:id/reschedule', authorize(ROLES.HEAD_TRAINER), sessionCtrl.rescheduleSession);
 router.patch('/sessions/:id/evaluation', authorize(ROLES.HEAD_TRAINER), sessionCtrl.recordEvaluation);
 router.delete('/sessions/:id', authorize(ROLES.HEAD_TRAINER), sessionCtrl.deleteSession);
 

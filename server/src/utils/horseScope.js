@@ -9,12 +9,18 @@ const SCOPE_FIELD_BY_ROLE = {
 
 const FORBIDDEN_HORSE_MESSAGE = 'Forbidden: this horse is not assigned to you.';
 
+// Staff stop seeing a horse the club no longer manages (sold, retired, dead): its plans, exams and
+// care leave their working screens. The owner keeps its history — the costs and records are theirs.
+const HIDES_ARCHIVED = new Set([ROLES.HEAD_TRAINER, ROLES.VETERINARIAN]);
+const scopeQuery = (user, field) => ({ [field]: user._id, ...(HIDES_ARCHIVED.has(user.role) ? { isArchived: { $ne: true } } : {}) });
+
 /**
  * Returns the set of horse ids a user is allowed to see/act on, or `null` when the role has no
  * such restriction (Manager sees everything; Groom is scoped separately via DailyTask.assignedTo,
  * not through this horse-level mechanism).
  *
- * Owner/Head Trainer/Veterinarian see ONLY the horses assigned to them — strictly. An unassigned
+ * Owner/Head Trainer/Veterinarian see ONLY the horses assigned to them — strictly (trainer and vet
+ * only while the club still manages the horse). An unassigned
  * horse is deliberately visible to nobody but the Manager: the Manager is the one who decides who
  * handles which horse, and a horse quietly showing up on every trainer's screen until someone
  * remembers to assign it would make the assignment step look like it does nothing. Manager's
@@ -42,7 +48,7 @@ async function getScopedHorseIds(user) {
   const field = SCOPE_FIELD_BY_ROLE[user.role];
   if (!field) return null;
 
-  const horses = await Horse.find({ [field]: user._id }).select('_id');
+  const horses = await Horse.find(scopeQuery(user, field)).select('_id');
   return horses.map((h) => h._id);
 }
 
@@ -94,7 +100,7 @@ async function canAccessHorse(user, horseId) {
 
   const field = SCOPE_FIELD_BY_ROLE[user.role];
   if (!field) return true;
-  return Boolean(await Horse.exists({ _id: horseId, [field]: user._id }));
+  return Boolean(await Horse.exists({ _id: horseId, ...scopeQuery(user, field) }));
 }
 
 module.exports = { getScopedHorseIds, isHorseInScope, horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE };

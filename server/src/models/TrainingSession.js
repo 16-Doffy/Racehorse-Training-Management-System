@@ -16,6 +16,8 @@ const trainingSessionSchema = new mongoose.Schema(
     // Set when a week is generated from the plan, so generating again doesn't book the day twice.
     generated: { type: Boolean, default: false },
     startedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // who pressed "Bắt đầu"
+    // A missed session booked again: the new booking it was moved to.
+    rescheduledTo: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingSession', default: null },
     // What the session is FOR. sessionType only says "normal rep vs. timed trial"; this says what
     // the horse is meant to gain from the work, which is what decides distance, pace and recovery.
     objective: {

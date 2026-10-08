@@ -5,7 +5,7 @@ const { getMedicalBlock } = require('./readiness.service');
 const { getTrainingClearance, allows } = require('../health/trainingClearance');
 const { notifyCaretaker } = require('../alerts/notification.service');
 const { buildFromKind } = require('./trainingSession.service');
-const { PHASE_LABELS, SESSION_KINDS, KIND_BY_INTENSITY } = require('../../constants/training');
+const { PHASE_LABELS, SESSION_KINDS, KIND_BY_INTENSITY, slotTimeProblem } = require('../../constants/training');
 
 const { phasesOf, currentPhaseIndex } = TrainingPlan;
 
@@ -18,7 +18,14 @@ const startOfDay = (d) => {
   x.setHours(0, 0, 0, 0);
   return x;
 };
-const ddmm = (d) => new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+const pad = (n) => String(n).padStart(2, '0');
+const ddmm = (d) => {
+  const x = new Date(d);
+  return `${pad(x.getDate())}/${pad(x.getMonth() + 1)}`;
+};
+// A session before noon belongs to the morning slot, the rest to the afternoon.
+const slotOf = (date) => (new Date(date).getHours() < 12 ? 'morning' : 'afternoon');
+const SLOT_LABEL = { morning: 'sáng', afternoon: 'chiều' };
 
 /** Monday 00:00 of the week containing the given date. */
 function mondayOf(d) {
@@ -42,76 +49,88 @@ function mondayOf(d) {
  * Returns { weekStart, created, skipped } or { error }. `notify: false` skips the groom's message (seed).
  */
 async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify = true }) {
+  const timeProblem = slotTimeProblem(plan.sessionTime, plan.afternoonTime);
+  if (timeProblem) return { error: timeProblem };
+  if (requestedWeek && !Number.isFinite(new Date(requestedWeek).getTime())) {
+    return { error: 'Ngày bắt đầu tuần không hợp lệ.' };
+  }
   const horseId = plan.horse._id;
   const blocked = await getMedicalBlock(horseId);
   if (blocked) return { error: `Không sinh lịch tập: ${blocked}` };
   const clearance = await getTrainingClearance(horseId);
 
   const weekStart = mondayOf(requestedWeek || new Date(Date.now() + 7 * DAY_MS));
-  const today = startOfDay(new Date());
   const phases = phasesOf(plan);
   const planStart = phases[0].startDate;
   const planEnd = phases[phases.length - 1].endDate;
   const race = plan.targetRace && plan.targetRace.status !== 'withdrawn' ? plan.targetRace : null;
   const raceDay = race ? startOfDay(race.raceDate).getTime() : null;
   const trialDay = race ? raceDay - TRIAL_DAYS_BEFORE_RACE * DAY_MS : null;
-  const [hh, mm] = (plan.sessionTime || '07:30').split(':').map(Number);
+  const clockOf = { morning: plan.sessionTime || '07:30', afternoon: plan.afternoonTime || '16:00' };
 
   const booked = await TrainingSession.find({
-    trainingPlan: plan._id,
+    // A manual session or another plan's booking occupies the horse's slot too.
+    horse: horseId,
     status: { $ne: 'cancelled' },
     scheduledAt: { $gte: weekStart, $lt: new Date(weekStart.getTime() + 7 * DAY_MS) },
   }).select('scheduledAt');
-  const bookedDays = new Set(booked.map((s) => startOfDay(s.scheduledAt).getTime()));
+  const bookedSlots = new Set(booked.map((s) => `${startOfDay(s.scheduledAt).getTime()}|${slotOf(s.scheduledAt)}`));
 
   const createdSessions = [];
   const skipped = [];
   for (let i = 0; i < 7; i += 1) {
     const day = new Date(weekStart.getTime() + i * DAY_MS);
     const t = day.getTime();
-    const label = day.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' });
+    const label = day.toLocaleDateString('vi-VN', { weekday: 'short' }) + ' ' + ddmm(day);
     if (day < planStart || day > planEnd) continue; // outside the cycle: not this plan's day
     if (t === raceDay) {
       skipped.push({ date: day, reason: `${label}: ngày đua ${race.raceName}.` });
       continue;
     }
     const phase = phases[currentPhaseIndex(phases, day)];
-    let template = (phase.week || []).find((d) => d.day === day.getDay());
-    if (t === trialDay) template = { day: day.getDay(), kind: 'trial', distanceM: race.distance || plan.distanceTarget };
-    if (!template) continue; // rest day
-    const scheduledAt = new Date(day);
-    scheduledAt.setHours(hh, mm, 0, 0);
-    if (day < today || scheduledAt < new Date()) {
-      skipped.push({ date: day, reason: `${label}: đã qua giờ tập.` });
-      continue;
-    }
-    if (bookedDays.has(t)) {
-      skipped.push({ date: day, reason: `${label}: đã có buổi tập.` });
-      continue;
-    }
+    let entries = (phase.week || []).filter((d) => d.day === day.getDay());
+    // About a week before the race: a timed trial over its distance in the morning, nothing else.
+    if (t === trialDay) entries = [{ day: day.getDay(), slot: 'morning', kind: 'trial', distanceM: race.distance || plan.distanceTarget }];
 
-    let kind = template.kind;
-    let note = '';
-    if (!allows(clearance, SESSION_KINDS[kind].intensity)) {
-      if (clearance.level === 'none') {
-        skipped.push({ date: day, reason: `${label}: bác sĩ đang khóa huấn luyện.` });
+    for (const template of entries) {
+      const slot = template.slot || 'morning';
+      const where = `${label} (${SLOT_LABEL[slot]})`;
+      const [hh, mm] = clockOf[slot].split(':').map(Number);
+      const scheduledAt = new Date(day);
+      scheduledAt.setHours(hh, mm, 0, 0);
+      if (scheduledAt < new Date()) {
+        skipped.push({ date: day, reason: `${where}: đã qua giờ tập.` });
         continue;
       }
-      kind = KIND_BY_INTENSITY[clearance.level];
-      note = ` Đổi từ "${SESSION_KINDS[template.kind].label}" vì bác sĩ chỉ cho ${clearance.label}.`;
+      if (bookedSlots.has(`${t}|${slot}`)) {
+        skipped.push({ date: day, reason: `${where}: đã có buổi tập.` });
+        continue;
+      }
+
+      let kind = template.kind;
+      let note = '';
+      if (!allows(clearance, SESSION_KINDS[kind].intensity)) {
+        if (clearance.level === 'none') {
+          skipped.push({ date: day, reason: `${where}: bác sĩ đang khóa huấn luyện.` });
+          continue;
+        }
+        kind = KIND_BY_INTENSITY[clearance.level];
+        note = ` Đổi từ "${SESSION_KINDS[template.kind].label}" vì bác sĩ chỉ cho ${clearance.label}.`;
+      }
+      const content = buildFromKind(kind, kind === template.kind ? template : {});
+      // eslint-disable-next-line no-await-in-loop
+      const session = await TrainingSession.create({
+        ...content,
+        trainingPlan: plan._id,
+        horse: horseId,
+        scheduledAt,
+        status: 'scheduled',
+        generated: true,
+        coachNote: `${PHASE_LABELS[phase.key]} — ${SESSION_KINDS[kind].label.toLowerCase()} buổi ${SLOT_LABEL[slot]}.${note}`.trim(),
+      });
+      bookedSlots.add(`${t}|${slot}`);
+      createdSessions.push(session);
     }
-    const content = buildFromKind(kind, kind === template.kind ? template : {});
-    // eslint-disable-next-line no-await-in-loop
-    const session = await TrainingSession.create({
-      ...content,
-      trainingPlan: plan._id,
-      horse: horseId,
-      scheduledAt,
-      status: 'scheduled',
-      generated: true,
-      coachNote: `${PHASE_LABELS[phase.key]} — ${SESSION_KINDS[kind].label.toLowerCase()}.${note}`.trim(),
-    });
-    createdSessions.push(session);
   }
 
   if (createdSessions.length > 0) {
@@ -123,13 +142,13 @@ async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify 
       metadata: { weekStart, created: createdSessions.length, skipped: skipped.length },
     });
     const list = createdSessions
-      .map((s) => `${new Date(s.scheduledAt).toLocaleDateString('vi-VN', { weekday: 'short' })} ${SESSION_KINDS[s.kind].label.toLowerCase()}`)
+      .map((s) => `${new Date(s.scheduledAt).toLocaleDateString('vi-VN', { weekday: 'short' })} ${SLOT_LABEL[slotOf(s.scheduledAt)]} ${SESSION_KINDS[s.kind].label.toLowerCase()}`)
       .join(', ');
     if (notify) await notifyCaretaker({
       horse: horseId,
       type: 'session_scheduled',
       severity: 'info',
-      message: `🏇 Lịch tập tuần ${ddmm(weekStart)} của ${plan.horse.name}: ${createdSessions.length} buổi lúc ${plan.sessionTime || '07:30'} (${list}). Cho ăn sáng xong trước giờ tập ít nhất 1,5 tiếng.`,
+      message: `🏇 Lịch tập tuần ${ddmm(weekStart)} của ${plan.horse.name}: ${createdSessions.length} buổi — sáng ${clockOf.morning}${createdSessions.some((s) => slotOf(s.scheduledAt) === 'afternoon') ? `, chiều ${clockOf.afternoon}` : ''} (${list}). Cho ăn sáng xong trước giờ tập ít nhất 1,5 tiếng.`,
     });
   }
   return { weekStart, created: createdSessions, skipped };

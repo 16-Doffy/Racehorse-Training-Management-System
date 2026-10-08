@@ -179,3 +179,73 @@ export function actualTimeLabel(s) {
   const minutes = Math.max(1, Math.round((s.actualDurationSec || 0) / 60));
   return `${hhmm(s.actualStartAt)}–${hhmm(s.actualEndAt)} (${minutes} phút)`;
 }
+
+// Only light work in the afternoon: the main workout is in the morning (server: AFTERNOON_KINDS).
+export const AFTERNOON_KINDS = ['walk', 'canter'];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const PHASE_ORDER = { base_building: 0, strength: 1, speed: 2, peak: 3, recovery: 4 };
+const ddmmOf = (d) => {
+  const x = new Date(d);
+  return `${String(x.getDate()).padStart(2, '0')}/${String(x.getMonth() + 1).padStart(2, '0')}`;
+};
+
+/** The phases laid end to end from the start date: [{ key, weeks, start, end }] (Dates). */
+export function layPhases(startDate, phases) {
+  const first = new Date(startDate);
+  first.setHours(0, 0, 0, 0);
+  let cursor = first.getTime();
+  return phases.map((p) => {
+    const start = new Date(cursor);
+    cursor += (Number(p.weeks) || 0) * 7 * DAY_MS;
+    return { key: p.key, weeks: Number(p.weeks) || 0, start, end: new Date(cursor - 1) };
+  });
+}
+
+/**
+ * What is wrong or risky about a cycle's phases — the same rules as the server (constants/training.js
+ * planWarnings): 'error' blocks the plan, 'warning' is the trainer's call.
+ */
+export function planWarnings(phases, { startDate, raceDate, distance } = {}) {
+  const out = [];
+  if (!phases?.length || !startDate) return out;
+  const laid = layPhases(startDate, phases);
+  const buildUp = laid.filter((p) => p.key !== 'recovery');
+  const buildUpWeeks = buildUp.reduce((n, p) => n + p.weeks, 0);
+  const firstRecovery = laid.findIndex((p) => p.key === 'recovery');
+  if (firstRecovery >= 0 && laid.slice(firstRecovery).some((p) => p.key !== 'recovery')) {
+    out.push({ level: 'error', text: 'Giai đoạn Hồi phục phải đứng cuối, sau ngày đua.' });
+  }
+  if (raceDate) {
+    const race = new Date(raceDate);
+    const inPhase = laid.find((p) => race >= p.start && race <= p.end);
+    const buildUpEnd = buildUp.length ? buildUp[buildUp.length - 1].end : null;
+    const daysLeft = Math.ceil((race - new Date(startDate)) / DAY_MS);
+    if (!inPhase) {
+      out.push({ level: 'error', text: `Ngày đua ${ddmmOf(race)} nằm ngoài lộ trình (${ddmmOf(laid[0].start)} – ${ddmmOf(laid[laid.length - 1].end)}).` });
+    } else if (inPhase.key === 'recovery') {
+      out.push({ level: 'error', text: `Ngày đua ${ddmmOf(race)} rơi vào giai đoạn Hồi phục — cần thêm tuần cho các giai đoạn trước giải.` });
+    } else if (buildUpEnd && buildUpEnd - race > 7 * DAY_MS) {
+      out.push({ level: 'error', text: `Các giai đoạn trước giải kéo dài tới ${ddmmOf(buildUpEnd)}, quá ngày đua ${ddmmOf(race)} hơn một tuần — bớt số tuần.` });
+    } else if (inPhase.key !== 'peak') {
+      out.push({ level: 'warning', text: `Ngày đua rơi vào giai đoạn ${PHASE_LABELS[inPhase.key]} — thường đua ở cuối giai đoạn Giảm tải.` });
+    }
+    if (daysLeft < 14) out.push({ level: 'warning', text: `Chỉ còn ${daysLeft} ngày tới giải — không đủ thời gian xây thể lực, chỉ nên giữ phong độ.` });
+  }
+  if (buildUpWeeks > 0 && buildUpWeeks < 6) {
+    out.push({ level: 'warning', text: `Chỉ ${buildUpWeeks} tuần chuẩn bị — thực tế cần 8–12 tuần, chuẩn bị gấp dễ chấn thương.` });
+  }
+  const base = laid.filter((p) => p.key === 'base_building').reduce((n, p) => n + p.weeks, 0);
+  if (base > 0 && base < 2) out.push({ level: 'warning', text: 'Nền tảng chỉ 1 tuần — nền sức bền mỏng, nên ít nhất 2 tuần.' });
+  const peak = laid.filter((p) => p.key === 'peak').reduce((n, p) => n + p.weeks, 0);
+  if (peak > 2) out.push({ level: 'warning', text: `Giảm tải ${peak} tuần là quá dài — ngựa mất thể lực, thường 1–2 tuần.` });
+  const order = buildUp.map((p) => PHASE_ORDER[p.key]);
+  if (order.some((o, i) => i > 0 && o < order[i - 1])) {
+    out.push({ level: 'warning', text: 'Thứ tự giai đoạn khác thông lệ (nền tảng → sức mạnh → tốc độ → giảm tải).' });
+  }
+  if (distance > 2000 && buildUpWeeks > 0 && base / buildUpWeeks < 0.35) {
+    out.push({ level: 'warning', text: `Giải ${distance}m là cự ly dài — nên dành ít nhất 35% thời gian cho Nền tảng (đang ${Math.round((base / buildUpWeeks) * 100)}%).` });
+  }
+  if (distance > 3200) out.push({ level: 'warning', text: `Đua phẳng hiếm khi vượt 3200m — kiểm tra lại cự ly ${distance}m.` });
+  return out;
+}

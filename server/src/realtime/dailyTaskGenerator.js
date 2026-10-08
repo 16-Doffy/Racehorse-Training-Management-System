@@ -4,6 +4,7 @@ const DailyTask = require('../models/DailyTask');
 const { syncAllCareTasks } = require('../modules/health/treatmentCare.service');
 const { mealWindow } = require('../utils/taskTiming');
 const { warnLowStock } = require('../modules/inventory/stock.service');
+const { closeArchivedLeftovers } = require('../modules/horses/archive.service');
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly is enough for day-granularity tasks
 
@@ -123,6 +124,9 @@ function startDailyTaskGenerator() {
   const check = async () => {
     try {
       await ensureFeedingTasks();
+      // A horse the club stopped managing leaves no exam request or treatment open (before the care
+      // orders are synced, so a closed treatment's pending doses go too).
+      await closeArchivedLeftovers();
       // The vet's care orders repeat every day a treatment is ongoing, like meals do.
       await syncAllCareTasks();
       // Stock that runs out within days is announced before it stops a meal or a dose.

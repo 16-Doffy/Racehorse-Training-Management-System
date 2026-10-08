@@ -8,7 +8,15 @@ const { logAction } = require('../audit/audit.service');
 const { pushNotification, notifyCaretaker } = require('../alerts/notification.service');
 const { openExamRequest } = require('../health/examRequest.service');
 const { MIN_DIGEST_MINUTES } = require('./readiness.service');
-const { OBJECTIVE_LABELS, SESSION_KINDS } = require('../../constants/training');
+const {
+  OBJECTIVE_LABELS,
+  SESSION_KINDS,
+  SESSION_STATUS,
+  PRECHECK_WINDOW,
+  PRECHECK_VALID_HOURS,
+  canTransition,
+} = require('../../constants/training');
+const { notifyHorseStaff } = require('../alerts/notification.service');
 
 /*
  * What happens around a training session that more than the HTTP routes need: judging it against
@@ -229,7 +237,70 @@ async function autoComplete(session, { workedSeconds } = {}) {
   return true;
 }
 
+/**
+ * Sessions nobody ran: past the pre-check window (30 min after the booked time) without a pre-check,
+ * or pre-checked but not started while the check was still valid (2 h). They become "missed" and
+ * the trainer is told, so they can book it again — instead of sitting "scheduled" forever.
+ * Returns how many were marked.
+ */
+async function markMissedSessions(now = new Date()) {
+  const windowClosed = new Date(now.getTime() - PRECHECK_WINDOW.closesAfterMin * 60 * 1000);
+  const checkExpired = now.getTime() - PRECHECK_VALID_HOURS * 60 * 60 * 1000;
+  const candidates = await TrainingSession.find({
+    status: { $in: [SESSION_STATUS.SCHEDULED, SESSION_STATUS.BLOCKED, SESSION_STATUS.READY] },
+    scheduledAt: { $lt: windowClosed },
+  }).populate('horse', 'name assignedTrainer');
+
+  let marked = 0;
+  for (const s of candidates) {
+    const checkedAt = s.readiness?.checkedAt ? new Date(s.readiness.checkedAt).getTime() : null;
+    // A ready session can still be started while its pre-check is valid.
+    if (s.status === SESSION_STATUS.READY && checkedAt !== null && checkedAt >= checkExpired) continue;
+    if (!canTransition(s.status, SESSION_STATUS.MISSED)) continue;
+    // The trainer may have moved or pre-checked the session since it was read. Claim only the
+    // same booking, and recheck that a ready session still has no valid pre-check.
+    const filter = { _id: s._id, status: s.status, scheduledAt: s.scheduledAt };
+    if (s.status === SESSION_STATUS.READY) {
+      filter.$or = [
+        { 'readiness.checkedAt': null },
+        { 'readiness.checkedAt': { $lt: new Date(checkExpired) } },
+      ];
+    }
+    // eslint-disable-next-line no-await-in-loop
+    const claimed = await TrainingSession.updateOne(filter, { $set: { status: SESSION_STATUS.MISSED } });
+    if (!claimed.modifiedCount) continue;
+    marked += 1;
+
+    const what = (SESSION_KINDS[s.kind]?.label || OBJECTIVE_LABELS[s.objective] || 'buổi tập').toLowerCase();
+    const at = hhmm(new Date(s.scheduledAt));
+    const day = new Date(s.scheduledAt).toLocaleDateString('vi-VN');
+    const horseName = s.horse?.name || 'Ngựa';
+    // A failed notification must not stop the other sessions from being marked.
+    // eslint-disable-next-line no-await-in-loop
+    await notifyHorseStaff({
+      staff: 'trainer',
+      horse: s.horse?._id || s.horse,
+      trainingSession: s._id,
+      type: 'session_scheduled',
+      severity: 'warning',
+      message: `⏰ Buổi ${what} ${at} ngày ${day} của ${horseName} đã lỡ giờ (không kiểm tra/bắt đầu kịp) — vào Buổi tập để xếp lại.`,
+    }).catch((err) => console.error('[missed-sessions] notify failed:', err.message));
+    if (s.horse?.assignedTrainer) {
+      // eslint-disable-next-line no-await-in-loop
+      await logAction({
+        actorId: s.horse.assignedTrainer,
+        action: 'trainingSession.missed',
+        targetModel: 'TrainingSession',
+        targetId: s._id,
+        metadata: { from: s.status, scheduledAt: s.scheduledAt },
+      });
+    }
+  }
+  return marked;
+}
+
 module.exports = {
+  markMissedSessions,
   computeOutcome,
   announceSessionToGroom,
   raiseExamIfOverexerted,

@@ -18,6 +18,9 @@ const {
   rangeProblem,
   kindSpeedProblem,
   SESSION_DONE_STATUSES,
+  AFTERNOON_KINDS,
+  planWarnings,
+  slotTimeProblem,
 } = require('../../constants/training');
 
 const { phasesOf, currentPhaseIndex } = TrainingPlan;
@@ -26,7 +29,7 @@ const { phasesOf, currentPhaseIndex } = TrainingPlan;
 // since every session under it was planned for that horse.
 const CREATE_FIELDS = [
   'horse', 'phase', 'goal', 'targetRace', 'distanceTarget', 'weeklyVolumeKm',
-  'intensity', 'surface', 'startDate', 'endDate', 'notes', 'status', 'phases', 'sessionTime',
+  'intensity', 'surface', 'startDate', 'endDate', 'notes', 'status', 'phases', 'sessionTime', 'afternoonTime',
 ];
 const UPDATE_FIELDS = CREATE_FIELDS.filter((f) => f !== 'horse');
 
@@ -48,6 +51,7 @@ function normalizePhases(list) {
   const phases = [];
   for (const [i, p] of list.entries()) {
     const label = `Giai đoạn ${i + 1}`;
+    if (!p || typeof p !== 'object') return { error: `${label}: dữ liệu không hợp lệ.` };
     if (!PHASE_KEYS.includes(p.key)) return { error: `${label}: loại giai đoạn không hợp lệ.` };
     const weeks = Number(p.weeks);
     if (!Number.isInteger(weeks) || weeks < 1 || weeks > 12) return { error: `${label}: số tuần phải từ 1 đến 12.` };
@@ -60,16 +64,24 @@ function normalizePhases(list) {
 
     const week = [];
     const seen = new Set();
+    if (p.week !== undefined && !Array.isArray(p.week)) return { error: `${label}: tuần mẫu không hợp lệ.` };
     for (const d of p.week || []) {
+      if (!d || typeof d !== 'object') return { error: `${label}: bài tập trong tuần không hợp lệ.` };
       const day = Number(d.day);
       if (!Number.isInteger(day) || day < 0 || day > 6) return { error: `${label}: ngày trong tuần không hợp lệ.` };
-      if (seen.has(day)) return { error: `${label}: một ngày chỉ xếp một buổi.` };
-      seen.add(day);
+      if (d.slot !== undefined && !['morning', 'afternoon'].includes(d.slot)) return { error: `${label}: buổi trong ngày không hợp lệ.` };
+      const slot = d.slot || 'morning';
+      // At most a morning and an afternoon session a day.
+      if (seen.has(`${day}|${slot}`)) return { error: `${label}: mỗi buổi (sáng/chiều) trong ngày chỉ xếp một bài tập.` };
+      seen.add(`${day}|${slot}`);
       if (!SESSION_KINDS[d.kind]) return { error: `${label}: loại buổi tập không hợp lệ.` };
+      if (slot === 'afternoon' && !AFTERNOON_KINDS.includes(d.kind)) {
+        return { error: `${label}: buổi chiều chỉ tập nhẹ (đi bộ hoặc phi chậm) — bài nặng để buổi sáng.` };
+      }
       const overrides = pick(d, ['distanceM', 'reps', 'targetSpeedKmh', 'targetHeartRateMax']);
       const problem = rangeProblem(overrides, PRESCRIPTION_RANGES) || kindSpeedProblem(d.kind, overrides.targetSpeedKmh);
       if (problem) return { error: `${label}: ${problem}` };
-      week.push({ day, kind: d.kind, ...overrides });
+      week.push({ day, slot, kind: d.kind, ...overrides });
     }
     phases.push({
       key: p.key,
@@ -85,19 +97,33 @@ function normalizePhases(list) {
 }
 
 /** Checks that only make sense against the plan as it will be saved. Returns an error or null. */
-async function validatePlan({ horse, targetRace, startDate, endDate, phases }) {
+async function validatePlan({ horse, targetRace, startDate, endDate, phases, distanceTarget, sessionTime, afternoonTime }, { checkPhases = true } = {}) {
+  if (!startDate || !Number.isFinite(new Date(startDate).getTime())) return 'Ngày bắt đầu không hợp lệ.';
+  if (endDate && !Number.isFinite(new Date(endDate).getTime())) return 'Ngày kết thúc không hợp lệ.';
+  const timeProblem = slotTimeProblem(sessionTime, afternoonTime);
+  if (timeProblem) return timeProblem;
   if (!phases?.length && startDate && endDate && new Date(endDate) < new Date(startDate)) {
     return 'Ngày kết thúc không được trước ngày bắt đầu.';
   }
+  let race = null;
   if (targetRace) {
     // A plan prepares one horse for one of *its* races; pointing it at another horse's entry
     // would make "Hướng tới" name a race this horse isn't running.
-    const race = await RaceEntry.findById(targetRace).select('horse');
+    race = await RaceEntry.findById(targetRace).select('horse raceDate distance');
     if (!race) return 'Không tìm thấy giải đua đã chọn.';
     if (String(race.horse) !== String(horse)) return 'Giải đua đã chọn không phải của ngựa này.';
+    if (checkPhases && startOfDay(race.raceDate) <= startOfDay(startDate)) return 'Ngày đua phải sau ngày bắt đầu kế hoạch.';
+  }
+  // A cycle whose race falls outside the build-up, or with recovery before the race, can't work.
+  if (checkPhases && phases?.length && startDate) {
+    const errors = planWarnings(phases, { startDate, raceDate: race?.raceDate, distance: race?.distance || distanceTarget }).filter((w) => w.level === 'error');
+    if (errors.length) return errors.map((e) => e.text).join(' ');
   }
   return null;
 }
+
+/** A new cycle starts today or later. */
+const startsInPast = (startDate) => startDate && startOfDay(startDate) < startOfDay(new Date());
 
 /** A horse follows one training cycle at a time. The other active plan, or null. */
 async function otherActivePlan(horse, exceptId) {
@@ -202,6 +228,8 @@ const suggestPlan = asyncHandler(async (req, res) => {
   if (!horse) return fail(res, 'horse is required.', 400);
   if (!(await canAccessHorse(req.user, horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
   const startDate = startOfDay(req.query.startDate || new Date());
+  if (!Number.isFinite(startDate.getTime())) return fail(res, 'Ngày bắt đầu không hợp lệ.', 400);
+  if (startsInPast(startDate)) return fail(res, 'Ngày bắt đầu không được ở quá khứ.', 400);
 
   let race = null;
   if (targetRace) {
@@ -209,7 +237,8 @@ const suggestPlan = asyncHandler(async (req, res) => {
     if (!race || String(race.horse) !== String(horse)) return fail(res, 'Giải đua đã chọn không phải của ngựa này.', 400);
     if (startOfDay(race.raceDate) <= startDate) return fail(res, 'Ngày đua phải sau ngày bắt đầu kế hoạch.', 400);
   }
-  const phases = suggestPhases(startDate, race?.raceDate).map((p) => ({ ...p, distanceTarget: race?.distance || undefined }));
+  const distance = race?.distance || Number(req.query.distance) || undefined;
+  const phases = suggestPhases(startDate, race?.raceDate, distance).map((p) => ({ ...p, distanceTarget: distance }));
   const other = await otherActivePlan(horse);
   return ok(
     res,
@@ -217,6 +246,7 @@ const suggestPlan = asyncHandler(async (req, res) => {
       startDate,
       phases,
       race: race ? { _id: race._id, raceName: race.raceName, raceDate: race.raceDate, distance: race.distance } : null,
+      warnings: planWarnings(phases, { startDate, raceDate: race?.raceDate, distance }),
       activePlan: other ? { _id: other._id, goal: other.goal, phase: other.phase } : null,
     },
     'Plan suggestion.'
@@ -238,6 +268,7 @@ const createPlan = asyncHandler(async (req, res) => {
   const blocked = await getMedicalBlock(body.horse);
   if (blocked) return fail(res, `Không thể lập kế hoạch huấn luyện: ${blocked}`, 409);
 
+  if (startsInPast(body.startDate)) return fail(res, 'Ngày bắt đầu không được ở quá khứ.', 400);
   const phaseError = await preparePhases(body);
   if (phaseError) return fail(res, phaseError, 400);
   const invalid = await validatePlan(body);
@@ -262,9 +293,20 @@ const updatePlan = asyncHandler(async (req, res) => {
   if (!(await canAccessHorse(req.user, plan.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
 
   const changes = pick(req.body, UPDATE_FIELDS);
+  if (changes.startDate !== undefined && startsInPast(changes.startDate)) {
+    return fail(res, 'Ngày bắt đầu không được ở quá khứ.', 400);
+  }
+  if (changes.status === 'active' && plan.status !== 'active' && startsInPast(changes.startDate ?? plan.startDate)) {
+    return fail(res, 'Ngày bắt đầu không được ở quá khứ — hãy cập nhật ngày trước khi áp dụng kế hoạch.', 400);
+  }
   const phaseError = await preparePhases(changes);
   if (phaseError) return fail(res, phaseError, 400);
-  const invalid = await validatePlan({ ...plan.toObject(), ...changes });
+  // The phases are only re-judged when they, the start or the race change: ending an old plan must
+  // not be refused over rules it was created before.
+  const invalid = await validatePlan(
+    { ...plan.toObject(), ...changes },
+    { checkPhases: ['phases', 'startDate', 'targetRace'].some((k) => changes[k] !== undefined) }
+  );
   if (invalid) return fail(res, invalid, 400);
 
   if (changes.status === 'active' && plan.status !== 'active') {
@@ -277,10 +319,11 @@ const updatePlan = asyncHandler(async (req, res) => {
 
   Object.assign(plan, changes);
   await plan.save();
-  // A cycle that ends takes its future bookings with it.
+  // Closing a cycle also closes every workout that has not begun, including one whose start
+  // time has just passed but whose pre-check/start grace window is still open.
   if (['completed', 'cancelled'].includes(changes.status)) {
     await TrainingSession.updateMany(
-      { trainingPlan: plan._id, status: 'scheduled', scheduledAt: { $gte: new Date() } },
+      { trainingPlan: plan._id, status: { $in: ['scheduled', 'ready', 'blocked'] } },
       { status: 'cancelled' }
     );
   }

@@ -10,20 +10,34 @@ import {
   PHASE_LABELS,
   SESSION_KINDS,
   WEEK_DAYS,
+  AFTERNOON_KINDS,
   phaseOptions,
   intensityOptions,
   surfaceOptions,
+  layPhases,
+  planWarnings,
 } from './trainingVocab';
 
 const { Text } = Typography;
-const SESSION_TIMES = ['05:30', '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00', '15:30', '16:00', '16:30'];
+const MORNING_TIMES = ['05:30', '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00'];
+const AFTERNOON_TIMES = ['14:30', '15:00', '15:30', '16:00', '16:30', '17:00'];
+const SLOTS = [
+  { slot: 'morning', label: 'Sáng' },
+  { slot: 'afternoon', label: 'Chiều' },
+];
 const REST = 'rest';
 const nextMonday = () => {
   const d = dayjs().startOf('day');
   return d.add(((8 - d.day()) % 7) || 7, 'day');
 };
+const slotOf = (d) => d.slot || 'morning';
+const timeHasPassedToday = (date, hhmm) => {
+  if (!date || !hhmm || !dayjs(date).isSame(dayjs(), 'day')) return false;
+  const [h, m] = hhmm.split(':').map(Number);
+  return !dayjs().isBefore(dayjs().hour(h).minute(m).second(0).millisecond(0));
+};
 
-/** Kilometres a phase's normal week adds up to, from its template days. */
+/** Kilometres a phase's normal week adds up to, from its template days (morning and afternoon). */
 function weekKm(week = []) {
   const metres = week.reduce((n, d) => {
     const k = SESSION_KINDS[d.kind]?.prescription || {};
@@ -35,8 +49,8 @@ function weekKm(week = []) {
 /**
  * Lập kế hoạch huấn luyện in three steps, the way a trainer thinks about it:
  * 1. which horse, for which race, from when;
- * 2. the phases leading there (proposed by the server, counted back from race day);
- * 3. what a normal week looks like in each phase.
+ * 2. the phases leading there (proposed by the server, counted back from race day by its distance);
+ * 3. what a normal week looks like in each phase, morning and afternoon.
  */
 export default function PlanWizard({ open, onClose, horses = [], races = [], plans = [], lockedHorseIds = new Set() }) {
   const [step, setStep] = useState(0);
@@ -47,6 +61,9 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const queryClient = useQueryClient();
   const horse = Form.useWatch('horse', form);
+  const watchedStart = Form.useWatch('startDate', form);
+  const watchedTime = Form.useWatch('sessionTime', form);
+  const watchedAfternoonTime = Form.useWatch('afternoonTime', form);
 
   const activeByHorse = useMemo(() => new Map(plans.filter((p) => p.status === 'active').map((p) => [String(p.horse?._id), p])), [plans]);
   const horseRaces = races.filter(
@@ -82,13 +99,13 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
       const res = await trainingPlanApi.suggest({
         horse: values.horse,
         targetRace: values.targetRace || undefined,
-        startDate: values.startDate.startOf('day').toISOString(),
+        distance: values.distanceTarget,
+        // Day only, as YYYY-MM-DD: the server reads it in the club's time zone.
+        startDate: values.startDate.format('YYYY-MM-DD'),
       });
       setBasics(values);
       setRace(res.data.race);
-      setPhases(
-        res.data.phases.map((p) => ({ ...p, distanceTarget: p.distanceTarget || values.distanceTarget, surface: values.surface }))
-      );
+      setPhases(res.data.phases.map((p) => ({ ...p, surface: values.surface })));
       setStep(1);
     } catch (err) {
       message.error(err.message || 'Không lấy được gợi ý giai đoạn.');
@@ -98,33 +115,34 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
   };
 
   const updatePhase = (i, patch) => setPhases((list) => list.map((p, j) => (j === i ? { ...p, ...patch } : p)));
-  const setDay = (i, day, kind) =>
+  const setDay = (i, day, slot, kind) =>
     setPhases((list) =>
       list.map((p, j) => {
         if (j !== i) return p;
-        const week = p.week.filter((d) => d.day !== day);
-        return { ...p, week: kind === REST ? week : [...week, { day, kind }] };
+        const week = p.week.filter((d) => !(d.day === day && slotOf(d) === slot));
+        return { ...p, week: kind === REST ? week : [...week, { day, slot, kind }] };
       })
     );
 
-  const buildUpWeeks = phases.filter((p) => p.key !== 'recovery').reduce((n, p) => n + (p.weeks || 0), 0);
-  const buildUpEnd = basics ? basics.startDate.startOf('day').add(buildUpWeeks * 7 - 1, 'day') : null;
-  const raceMisaligned = race && buildUpEnd && !dayjs(race.raceDate).isSame(buildUpEnd, 'week');
+  const startDay = basics ? basics.startDate.startOf('day').toDate() : null;
+  const laid = startDay ? layPhases(startDay, phases) : [];
+  const warnings = basics ? planWarnings(phases, { startDate: startDay, raceDate: race?.raceDate, distance: race?.distance || basics.distanceTarget }) : [];
+  const hasError = warnings.some((w) => w.level === 'error');
 
   const submit = () =>
     createMutation.mutate({
       horse: basics.horse,
       goal: basics.goal,
       targetRace: basics.targetRace || null,
-      startDate: basics.startDate.startOf('day').toISOString(),
+      startDate: basics.startDate.format('YYYY-MM-DD'),
       sessionTime: basics.sessionTime,
+      afternoonTime: basics.afternoonTime,
       distanceTarget: basics.distanceTarget,
       surface: basics.surface,
       status: 'active',
       phases: phases.map((p) => ({
         key: p.key,
         weeks: p.weeks,
-        distanceTarget: p.distanceTarget,
         weeklyVolumeKm: p.weeklyVolumeKm,
         intensity: p.intensity,
         surface: p.surface,
@@ -148,12 +166,14 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
             </Button>
           )}
           {step === 1 && (
-            <Button type="primary" disabled={!phases.length} onClick={() => setStep(2)}>
-              Tiếp: lịch tuần mẫu
-            </Button>
+            <Tooltip title={hasError ? 'Sửa các lỗi màu đỏ trước khi tiếp tục' : null}>
+              <Button type="primary" disabled={!phases.length || hasError} onClick={() => setStep(2)}>
+                Tiếp: lịch tuần mẫu
+              </Button>
+            </Tooltip>
           )}
           {step === 2 && (
-            <Button type="primary" loading={createMutation.isPending} onClick={submit}>
+            <Button type="primary" disabled={hasError} loading={createMutation.isPending} onClick={submit}>
               Áp dụng kế hoạch
             </Button>
           )}
@@ -171,7 +191,7 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ startDate: nextMonday(), sessionTime: '07:30', surface: 'turf' }}
+          initialValues={{ startDate: nextMonday(), sessionTime: '07:30', afternoonTime: '16:00', surface: 'turf' }}
           onValuesChange={(changed) => {
             if (changed.horse) form.setFieldValue('targetRace', undefined);
             if (changed.targetRace) {
@@ -214,20 +234,43 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
           <Form.Item name="goal" label="Mục tiêu" rules={[{ required: true, message: 'Nêu mục tiêu của kế hoạch' }]}>
             <Input placeholder="VD: Đạt 1200m dưới 72 giây, sẵn sàng cho Cúp Mùa Thu." />
           </Form.Item>
-          <div className="grid grid-cols-2 gap-x-4 md:grid-cols-4">
-            <Form.Item name="startDate" label="Bắt đầu từ" rules={[{ required: true }]}>
-              <DatePicker className="w-full" format="DD/MM/YYYY" />
+          <div className="grid grid-cols-2 gap-x-4 md:grid-cols-5">
+            <Form.Item name="startDate" label="Bắt đầu từ" rules={[{ required: true, message: 'Chọn ngày bắt đầu' }]}>
+              <DatePicker className="w-full" format="DD/MM/YYYY" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
             </Form.Item>
-            <Form.Item name="sessionTime" label="Giờ tập" extra="Sau bữa sáng 06:00 ít nhất 1,5 tiếng.">
-              <Select options={SESSION_TIMES.map((t) => ({ value: t, label: t }))} />
+            <Form.Item name="sessionTime" label="Giờ tập buổi sáng" rules={[{ required: true }]} extra="Bữa sáng dự kiến 06:00; tập nặng nên từ 07:30. Hệ thống kiểm tra bữa ăn thực tế.">
+              <Select options={MORNING_TIMES.map((t) => ({ value: t, label: t }))} />
             </Form.Item>
-            <Form.Item name="distanceTarget" label="Cự ly mục tiêu (m)" rules={[{ required: true, message: 'Nhập cự ly' }]}>
+            <Form.Item name="afternoonTime" label="Giờ tập buổi chiều" rules={[{ required: true }]} extra="Chỉ tập nhẹ, nếu lịch có buổi chiều.">
+              <Select options={AFTERNOON_TIMES.map((t) => ({ value: t, label: t }))} />
+            </Form.Item>
+            <Form.Item
+              name="distanceTarget"
+              label="Cự ly thi đấu hướng tới (m)"
+              rules={[{ required: true, message: 'Nhập cự ly thi đấu' }]}
+              extra="Cự ly của giải. Cự ly từng buổi do loại buổi tập quyết định."
+            >
               <InputNumber min={100} max={6000} step={100} className="w-full" placeholder="1200" />
             </Form.Item>
             <Form.Item name="surface" label="Mặt sân" rules={[{ required: true }]}>
               <Select options={surfaceOptions} />
             </Form.Item>
           </div>
+          {timeHasPassedToday(watchedStart, watchedTime) && (
+            <Alert
+              type="warning"
+              showIcon
+              title={`Hôm nay đã quá ${watchedTime}. Khi sinh lịch, hệ thống bỏ qua buổi sáng đã qua và xếp các buổi tiếp theo theo lịch tuần mẫu.`}
+            />
+          )}
+          {timeHasPassedToday(watchedStart, watchedAfternoonTime) && (
+            <Alert
+              className="!mt-2"
+              type="warning"
+              showIcon
+              title={`Hôm nay đã quá ${watchedAfternoonTime}. Buổi chiều đã qua cũng được bỏ qua khi sinh lịch.`}
+            />
+          )}
         </Form>
       </div>
 
@@ -235,18 +278,17 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
         <div>
           <Text type="secondary" className="!text-sm block mb-3">
             {race
-              ? `Lộ trình được chia ngược từ ngày đua ${dayjs(race.raceDate).format('DD/MM/YYYY')}: nền tảng 35%, sức mạnh 25%, tốc độ 25%, giảm tải 15%, rồi 2 tuần hồi phục.`
+              ? `Lộ trình chia ngược từ ngày đua ${dayjs(race.raceDate).format('DD/MM/YYYY')} theo cự ly ${race.distance || basics.distanceTarget}m (cự ly càng dài, nền tảng càng dài), tuần đua thuộc giai đoạn Giảm tải, rồi 2 tuần hồi phục.`
               : 'Chưa gắn giải nên gợi ý 4 tuần nền tảng, 3 tuần sức mạnh, 3 tuần tốc độ.'}{' '}
             Sửa số tuần hoặc thông số nếu cần.
           </Text>
-          <PlanTimeline phases={phases} startDate={basics?.startDate} raceDate={race?.raceDate} />
-          {raceMisaligned && (
-            <Alert
-              className="!mt-3"
-              type="warning"
-              showIcon
-              title={`Các giai đoạn trước giải kết thúc ngày ${buildUpEnd.format('DD/MM')}, không trùng tuần đua (${dayjs(race.raceDate).format('DD/MM')}). Chỉnh số tuần cho khớp.`}
-            />
+          <PlanTimeline phases={phases} startDate={startDay} raceDate={race?.raceDate} />
+          {warnings.length > 0 && (
+            <div className="mt-3 flex flex-col gap-2">
+              {warnings.map((w) => (
+                <Alert key={w.text} type={w.level === 'error' ? 'error' : 'warning'} showIcon title={w.text} />
+              ))}
+            </div>
           )}
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-sm">
@@ -254,7 +296,7 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
                 <tr className="text-left text-gray-500">
                   <th className="py-1 pr-2 font-medium">Giai đoạn</th>
                   <th className="py-1 pr-2 font-medium">Số tuần</th>
-                  <th className="py-1 pr-2 font-medium">Cự ly mục tiêu (m)</th>
+                  <th className="py-1 pr-2 font-medium">Thời gian</th>
                   <th className="py-1 pr-2 font-medium">Khối lượng (km/tuần)</th>
                   <th className="py-1 pr-2 font-medium">Cường độ</th>
                   <th className="py-1 pr-2 font-medium">Mặt sân</th>
@@ -270,8 +312,8 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
                     <td className="py-1.5 pr-2">
                       <InputNumber size="small" min={1} max={12} value={p.weeks} onChange={(weeks) => updatePhase(i, { weeks: weeks || 1 })} />
                     </td>
-                    <td className="py-1.5 pr-2">
-                      <InputNumber size="small" min={100} max={6000} step={100} value={p.distanceTarget} onChange={(v) => updatePhase(i, { distanceTarget: v })} />
+                    <td className="py-1.5 pr-2 whitespace-nowrap tabular-nums text-gray-600">
+                      {laid[i] ? `${dayjs(laid[i].start).format('DD/MM')} – ${dayjs(laid[i].end).format('DD/MM')}` : ''}
                     </td>
                     <td className="py-1.5 pr-2">
                       <InputNumber size="small" min={1} max={100} value={p.weeklyVolumeKm} onChange={(v) => updatePhase(i, { weeklyVolumeKm: v })} />
@@ -303,7 +345,7 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
             className="!mt-2"
             icon={<PlusOutlined />}
             onClick={() =>
-              setPhases((list) => [...list, { key: 'recovery', weeks: 2, intensity: 'light', weeklyVolumeKm: 8, distanceTarget: basics?.distanceTarget, surface: basics?.surface, week: [{ day: 1, kind: 'walk' }, { day: 3, kind: 'walk' }, { day: 5, kind: 'canter' }] }])
+              setPhases((list) => [...list, { key: 'recovery', weeks: 2, intensity: 'light', weeklyVolumeKm: 8, surface: basics?.surface, week: [{ day: 1, kind: 'walk' }, { day: 3, kind: 'walk' }, { day: 5, kind: 'canter' }] }])
             }
           >
             Thêm giai đoạn
@@ -314,15 +356,16 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
       {step === 2 && (
         <div>
           <Text type="secondary" className="!text-sm block mb-3">
-            Mỗi giai đoạn có một tuần mẫu. Khi bấm &quot;Sinh lịch tuần&quot;, hệ thống xếp buổi tập theo mẫu này lúc{' '}
-            {basics?.sessionTime}
-            {race ? ', và tự đặt một buổi chạy thử đủ cự ly 8 ngày trước giải' : ''}. Ô trống là ngày nghỉ.
+            Mỗi giai đoạn có một tuần mẫu: buổi sáng lúc {basics?.sessionTime} là buổi tập chính; buổi chiều lúc {basics?.afternoonTime} chỉ
+            đi bộ hoặc phi chậm, để trống là nghỉ.
+            {race ? ' Hệ thống tự đặt một buổi chạy thử đủ cự ly giải vào buổi sáng 8 ngày trước ngày đua.' : ''}
           </Text>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-gray-500">
                   <th className="py-1 pr-2 font-medium">Giai đoạn</th>
+                  <th className="py-1 pr-2 font-medium" />
                   {WEEK_DAYS.map((w) => (
                     <th key={w.day} className="py-1 pr-1 font-medium">
                       {w.short}
@@ -332,41 +375,49 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
                 </tr>
               </thead>
               <tbody>
-                {phases.map((p, i) => (
-                  <tr key={i} className="border-t border-black/5">
-                    <td className="py-1.5 pr-2 whitespace-nowrap font-medium">
-                      {PHASE_LABELS[p.key]} <Text type="secondary">· {p.weeks}t</Text>
-                    </td>
-                    {WEEK_DAYS.map((w) => {
-                      const d = p.week.find((x) => x.day === w.day);
-                      return (
-                        <td key={w.day} className="py-1.5 pr-1">
-                          <Select
-                            size="small"
-                            className="w-[104px]"
-                            value={d?.kind || REST}
-                            onChange={(kind) => setDay(i, w.day, kind)}
-                            options={[
-                              { value: REST, label: <Text type="secondary">Nghỉ</Text> },
-                              ...Object.entries(SESSION_KINDS).map(([value, k]) => ({
-                                value,
-                                label: (
-                                  <Tooltip title={k.hint} placement="left">
-                                    <span>
-                                      {k.short}
-                                      {d?.kind === value && d.distanceM ? ` ${d.distanceM}m` : ''}
-                                    </span>
-                                  </Tooltip>
-                                ),
-                              })),
-                            ]}
-                          />
-                        </td>
-                      );
-                    })}
-                    <td className="py-1.5 tabular-nums">{weekKm(p.week)}</td>
-                  </tr>
-                ))}
+                {phases.map((p, i) =>
+                  SLOTS.map(({ slot, label }, si) => (
+                    <tr key={`${i}-${slot}`} className={si === 0 ? 'border-t border-black/5' : ''}>
+                      <td className="py-1 pr-2 whitespace-nowrap font-medium">
+                        {si === 0 && (
+                          <>
+                            {PHASE_LABELS[p.key]} <Text type="secondary">· {p.weeks}t</Text>
+                          </>
+                        )}
+                      </td>
+                      <td className="py-1 pr-2 text-xs text-gray-500">{label}</td>
+                      {WEEK_DAYS.map((w) => {
+                        const d = p.week.find((x) => x.day === w.day && slotOf(x) === slot);
+                        const kinds = slot === 'afternoon' ? AFTERNOON_KINDS : Object.keys(SESSION_KINDS);
+                        return (
+                          <td key={w.day} className="py-1 pr-1">
+                            <Select
+                              size="small"
+                              className="w-[104px]"
+                              value={d?.kind || REST}
+                              onChange={(kind) => setDay(i, w.day, slot, kind)}
+                              options={[
+                                { value: REST, label: <Text type="secondary">Nghỉ</Text> },
+                                ...kinds.map((value) => ({
+                                  value,
+                                  label: (
+                                    <Tooltip title={SESSION_KINDS[value].hint} placement="left">
+                                      <span>
+                                        {SESSION_KINDS[value].short}
+                                        {d?.kind === value && d.distanceM ? ` ${d.distanceM}m` : ''}
+                                      </span>
+                                    </Tooltip>
+                                  ),
+                                })),
+                              ]}
+                            />
+                          </td>
+                        );
+                      })}
+                      <td className="py-1 tabular-nums">{si === 0 ? weekKm(p.week) : ''}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

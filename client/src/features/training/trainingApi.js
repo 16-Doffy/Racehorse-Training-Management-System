@@ -23,4 +23,6 @@ export const trainingSessionApi = {
   preCheck: (id, payload) => axiosClient.post(`/training/sessions/${id}/pre-check`, payload),
   // Start: only from ready; the server stamps the start time. Payload: { overrideReason? }.
   start: (id, payload) => axiosClient.post(`/training/sessions/${id}/start`, payload),
+  // Keeps the missed booking as history and creates a new scheduled session.
+  reschedule: (id, payload) => axiosClient.post(`/training/sessions/${id}/reschedule`, payload),
 };
