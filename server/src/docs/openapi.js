@@ -973,12 +973,15 @@ module.exports = {
     '/training/sessions/{id}/start': {
       post: {
         tags: ['Training (Head Trainer)'],
-        summary: 'Start a session now — rechecks readiness against the current moment',
+        summary: 'Start a session now: only from ready, server stamps actualStartAt',
         description:
-          'Moves a scheduled session to in_progress. The readiness gates are re-run for *now*, not the booked time: ' +
-          'a horse locked since booking is refused (409), and one fed twenty minutes ago returns 409 with ' +
-          '`{ readiness, requiresOverride: true }` until `overrideReason` is sent. Completed and cancelled sessions ' +
-          'cannot be restarted.',
+          'Moves a `ready` session to `in_progress`, sets `actualStartAt` to the server time and is what turns the sensor ' +
+          'feed on. Refused with 409: `NOT_READY` (scheduled/blocked: do the pre-check first), `PRECHECK_EXPIRED` (pre-check ' +
+          'older than 2 hours), `ANOTHER_SESSION_RUNNING` (the horse already has a running session), `READINESS_BLOCKED` ' +
+          '(the horse is locked or injured now; the session becomes `blocked`), `INVALID_TRANSITION` (any other status, or ' +
+          'started by someone else a moment earlier). A caution gate (e.g. fed twenty minutes ago) returns 409 with ' +
+          '`{ readiness, requiresOverride: true }` until `overrideReason` is sent. In_progress can no longer be set through ' +
+          'PUT or the evaluation endpoint.',
         parameters: [idParam('id')],
         requestBody: { required: false, content: { 'application/json': { schema: { type: 'object', properties: { overrideReason: { type: 'string' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 403: responses[403], 404: responses[404], 409: responses[409] },

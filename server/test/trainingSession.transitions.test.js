@@ -34,18 +34,20 @@ test('every status has a label and the tables are frozen', () => {
   });
 });
 
-test('allowed transitions: pre-check edges are in, aborted/evaluated/missed still have no way in', () => {
-  assert.deepEqual(SESSION_TRANSITIONS[S.SCHEDULED], [S.READY, S.BLOCKED, S.IN_PROGRESS, S.COMPLETED, S.CANCELLED]);
-  assert.deepEqual(SESSION_TRANSITIONS[S.READY], [S.IN_PROGRESS, S.CANCELLED]);
+test('a session is started only from ready; aborted/evaluated/missed still have no way in', () => {
+  assert.deepEqual(SESSION_TRANSITIONS[S.SCHEDULED], [S.READY, S.BLOCKED, S.COMPLETED, S.CANCELLED]);
+  assert.deepEqual(SESSION_TRANSITIONS[S.READY], [S.IN_PROGRESS, S.BLOCKED, S.CANCELLED]);
+  assert.equal(canTransition(S.SCHEDULED, S.IN_PROGRESS), false);
+  assert.equal(canTransition(S.BLOCKED, S.IN_PROGRESS), false);
   assert.deepEqual(SESSION_TRANSITIONS[S.BLOCKED], [S.READY, S.CANCELLED]);
   for (const target of [S.EVALUATED, S.ABORTED, S.MISSED]) {
     for (const from of Object.values(S)) assert.equal(canTransition(from, target), false, `${from} -> ${target}`);
   }
 });
 
-test('a request body can only ask for in_progress, completed or cancelled', () => {
+test('a request body can only ask for completed or cancelled', () => {
   const { SESSION_BODY_STATUSES } = require('../src/constants/training');
-  assert.deepEqual([...SESSION_BODY_STATUSES].sort(), [S.CANCELLED, S.COMPLETED, S.IN_PROGRESS].sort());
+  assert.deepEqual([...SESSION_BODY_STATUSES].sort(), [S.CANCELLED, S.COMPLETED].sort());
 });
 
 test('the pre-check window runs from 60 minutes before to 30 minutes after the session', () => {

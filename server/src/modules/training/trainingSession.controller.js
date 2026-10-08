@@ -13,6 +13,7 @@ const {
   SESSION_STATUS_LABELS,
   SESSION_ERROR,
   SESSION_BODY_STATUSES,
+  PRECHECK_VALID_HOURS,
   preCheckWindow,
   canTransition,
   SESSION_KINDS,
@@ -140,22 +141,6 @@ async function applyStatusChange(session, next, { user, overrideReason }) {
   }
 
   const effects = {};
-  if (next === 'in_progress') {
-    // Starting is a second decision point: a horse fine on Monday can be locked by Wednesday, or
-    // have been fed twenty minutes ago. Checked against *now*, not the booked time.
-    const context = { scheduledAt: new Date(), intensity: session.intensity, sessionType: session.sessionType, objective: session.objective };
-    const { readiness, error } = await checkReadiness(session.horse, context, overrideReason);
-    if (error) return { error };
-
-    const snapshot = toSnapshot(readiness, { overrideReason, userId: user._id });
-    // Keep a booking-time override on record if starting raised nothing new.
-    if (!snapshot.overrideReason && session.readiness?.overrideReason) {
-      snapshot.overrideReason = session.readiness.overrideReason;
-      snapshot.overriddenBy = session.readiness.overriddenBy;
-    }
-    session.readiness = snapshot;
-    if (cautionGates(readiness).length > 0) effects.override = { readiness, reason: overrideReason, moment: 'start' };
-  }
 
   // The real clock of the session, next to the booked time: when it actually started and ended.
   if (next === 'in_progress') {
@@ -175,7 +160,6 @@ async function applyStatusChange(session, next, { user, overrideReason }) {
 async function finishStatusChange(session, effects, user) {
   if (effects.completed) session.outcome = computeOutcome(session);
   await session.save();
-  if (effects.override) await reportOverride({ session, user, ...effects.override });
   return effects.completed ? onCompleted(session, user) : 0;
 }
 
@@ -302,22 +286,100 @@ const updateSession = asyncHandler(async (req, res) => {
   return ok(res, session, 'Training session updated.');
 });
 
-// "Start now": the explicit version of moving a session to in_progress, rechecking readiness
-// against the current moment (a horse fed twenty minutes ago is flagged here, not at booking).
+/**
+ * Start: the only way a session reaches in_progress, and the moment the sensor feed may begin. It
+ * needs a READY session (so the pre-check was done), a pre-check no older than PRECHECK_VALID_HOURS,
+ * and no other session of the same horse running. Readiness is re-run for *now*: a horse locked since
+ * the pre-check is refused and the session blocked. The start time is the server's, never the client's.
+ */
 const startSession = asyncHandler(async (req, res) => {
   const session = await loadSession(req, res);
   if (!session) return undefined;
 
-  const { effects, error } = await applyStatusChange(session, 'in_progress', {
-    user: req.user,
-    overrideReason: req.body?.overrideReason,
-  });
-  if (error) return fail(res, error.message, error.status, error.data);
+  if (session.status !== SESSION_STATUS.READY) {
+    const needsPreCheck = [SESSION_STATUS.SCHEDULED, SESSION_STATUS.BLOCKED].includes(session.status);
+    return fail(
+      res,
+      needsPreCheck
+        ? 'Hãy kiểm tra sẵn sàng (pre-check) trước khi bắt đầu buổi tập.'
+        : `Không thể bắt đầu khi buổi tập đang "${SESSION_STATUS_LABELS[session.status] || session.status}".`,
+      409,
+      { code: needsPreCheck ? SESSION_ERROR.NOT_READY : SESSION_ERROR.INVALID_TRANSITION, from: session.status, to: SESSION_STATUS.IN_PROGRESS }
+    );
+  }
 
-  await finishStatusChange(session, effects, req.user);
+  const checkedAt = session.readiness?.checkedAt ? new Date(session.readiness.checkedAt) : null;
+  if (!checkedAt || Date.now() - checkedAt.getTime() > PRECHECK_VALID_HOURS * 60 * 60 * 1000) {
+    return fail(res, `Lần kiểm tra sẵn sàng đã quá ${PRECHECK_VALID_HOURS} giờ — hãy kiểm tra lại trước khi bắt đầu.`, 409, {
+      code: SESSION_ERROR.PRECHECK_EXPIRED,
+      checkedAt,
+    });
+  }
+
+  if (await TrainingSession.exists({ horse: session.horse, status: SESSION_STATUS.IN_PROGRESS, _id: { $ne: session._id } })) {
+    return fail(res, 'Ngựa này đang có một buổi tập khác diễn ra — hãy kết thúc buổi đó trước.', 409, {
+      code: SESSION_ERROR.ANOTHER_SESSION_RUNNING,
+    });
+  }
+
+  const overrideReason = typeof req.body?.overrideReason === 'string' ? req.body.overrideReason.trim() : '';
+  const { readiness, error } = await checkReadiness(
+    session.horse,
+    { scheduledAt: new Date(), intensity: session.intensity, sessionType: session.sessionType, objective: session.objective },
+    overrideReason || undefined
+  );
+  if (error) {
+    const medicalBlock = error.status === 409 && error.data?.readiness && !error.data.requiresOverride;
+    if (!medicalBlock) return fail(res, error.message, error.status, error.data);
+    return markBlocked(res, session, error, req.user, 'trainingSession.start');
+  }
+
+  // The new snapshot replaces the old one, so what the pre-check recorded is carried over.
+  const before = session.readiness || {};
+  const snapshot = toSnapshot(readiness, { overrideReason: overrideReason || undefined, userId: req.user._id });
+  if (!snapshot.overrideReason && before.overrideReason) {
+    snapshot.overrideReason = before.overrideReason;
+    snapshot.overriddenBy = before.overriddenBy;
+  }
+  Object.assign(snapshot, { confirmedBy: before.confirmedBy, bodyTempC: before.bodyTempC, trackCondition: before.trackCondition, weather: before.weather });
+  for (const key of Object.keys(snapshot)) if (snapshot[key] === undefined) delete snapshot[key];
+
+  // Claiming by status makes a double click (or two trainers) start the session once, not twice.
+  const started = await TrainingSession.findOneAndUpdate(
+    { _id: session._id, status: SESSION_STATUS.READY },
+    { $set: { status: SESSION_STATUS.IN_PROGRESS, actualStartAt: new Date(), blockedReason: null, readiness: snapshot } },
+    { new: true }
+  );
+  if (!started) {
+    return fail(res, 'Buổi tập đã được bắt đầu hoặc không còn ở trạng thái sẵn sàng.', 409, {
+      code: SESSION_ERROR.INVALID_TRANSITION,
+      from: session.status,
+      to: SESSION_STATUS.IN_PROGRESS,
+    });
+  }
+
+  if (cautionGates(readiness).length > 0) {
+    await reportOverride({ session: started, readiness, reason: overrideReason, user: req.user, moment: 'start' });
+  }
   await logAction({ actorId: req.user._id, action: 'trainingSession.start', targetModel: 'TrainingSession', targetId: session._id });
-  return ok(res, session, 'Training session started.');
+  return ok(res, started, 'Training session started.');
 });
+
+/** A medical block found at a decision point: the session is held back, the reason kept, the 409 sent. */
+async function markBlocked(res, session, error, user, action) {
+  session.status = SESSION_STATUS.BLOCKED;
+  session.blockedReason = error.message;
+  session.readiness = toSnapshot(error.data.readiness, { userId: user._id });
+  await session.save();
+  await logAction({
+    actorId: user._id,
+    action,
+    targetModel: 'TrainingSession',
+    targetId: session._id,
+    metadata: { result: 'blocked', reason: error.message },
+  });
+  return fail(res, error.message, 409, { code: SESSION_ERROR.READINESS_BLOCKED, readiness: error.data.readiness });
+}
 
 /**
  * Pre-check: the trainer looks at the horse close to the session and the system re-runs the readiness
@@ -330,7 +392,7 @@ const preCheckSession = asyncHandler(async (req, res) => {
   const session = await loadSession(req, res);
   if (!session) return undefined;
 
-  if (!canTransition(session.status, SESSION_STATUS.READY)) {
+  if (session.status !== SESSION_STATUS.READY && !canTransition(session.status, SESSION_STATUS.READY)) {
     return fail(res, `Không thể kiểm tra sẵn sàng khi buổi tập đang "${SESSION_STATUS_LABELS[session.status]}".`, 409, {
       code: SESSION_ERROR.INVALID_TRANSITION,
       from: session.status,
@@ -371,18 +433,7 @@ const preCheckSession = asyncHandler(async (req, res) => {
     const medicalBlock = error.status === 409 && error.data?.readiness && !error.data.requiresOverride;
     if (!medicalBlock) return fail(res, error.message, error.status, error.data);
 
-    session.status = SESSION_STATUS.BLOCKED;
-    session.blockedReason = error.message;
-    session.readiness = toSnapshot(error.data.readiness, { userId: req.user._id });
-    await session.save();
-    await logAction({
-      actorId: req.user._id,
-      action: 'trainingSession.pre_check',
-      targetModel: 'TrainingSession',
-      targetId: session._id,
-      metadata: { result: 'blocked', reason: error.message },
-    });
-    return fail(res, error.message, 409, { code: SESSION_ERROR.READINESS_BLOCKED, readiness: error.data.readiness });
+    return markBlocked(res, session, error, req.user, 'trainingSession.pre_check');
   }
 
   const snapshot = toSnapshot(readiness, { overrideReason: overrideReason || undefined, userId: req.user._id });

@@ -1,5 +1,5 @@
 // Run with: npm test
-// Exercises the pre-check handler end to end with the database and the services around it replaced,
+// Exercises the pre-check and start handlers end to end with the database and the services around it replaced,
 // so it needs no MongoDB. What it proves: the status rules, the window, the confirmation and the
 // readiness handling. It does not prove the real readiness gates (those read the database).
 const test = require('node:test');
@@ -26,6 +26,9 @@ const controller = require('../src/modules/training/trainingSession.controller')
 const MIN = 60 * 1000;
 const gate = (key, status, detail = '') => ({ key, label: key, status, detail });
 
+let otherRunning = false;
+const fakeSessions = { last: null };
+
 function fakeSession(overrides = {}) {
   const session = {
     _id: 's1',
@@ -42,6 +45,15 @@ function fakeSession(overrides = {}) {
     ...overrides,
   };
   TrainingSession.findById = async () => session;
+  // What start uses: "does the horse already have a running session" and the claim by status.
+  TrainingSession.exists = async () => otherRunning;
+  TrainingSession.findOneAndUpdate = async (filter, update) => {
+    if (session.status !== filter.status) return null;
+    Object.assign(session, update.$set);
+    session.claimedAt = update.$set.actualStartAt;
+    return session;
+  };
+  fakeSessions.last = session;
   return session;
 }
 
@@ -65,6 +77,7 @@ function call(handler, body, session) {
 }
 
 test.beforeEach(() => {
+  otherRunning = false;
   calls.audit.length = 0;
   calls.pushed.length = 0;
   gates = [gate('medical', 'ok'), gate('nutrition', 'ok')];
@@ -93,7 +106,7 @@ test('refuses outside the window around the session time', async () => {
 });
 
 test('only a scheduled or blocked session can be pre-checked', async () => {
-  for (const status of ['ready', 'in_progress', 'completed', 'cancelled']) {
+  for (const status of ['in_progress', 'completed', 'cancelled']) {
     const session = fakeSession({ status });
     const res = await call(controller.preCheckSession, { confirmed: true });
     assert.equal(res.code, 409, status);
@@ -114,6 +127,14 @@ test('passes: the session becomes ready and the confirmation is recorded', async
   assert.equal(session.readiness.trackCondition, 'khô');
   assert.equal(calls.audit.at(-1).action, 'trainingSession.pre_check');
   assert.equal(calls.audit.at(-1).metadata.result, 'ready');
+});
+
+test('a ready session can be pre-checked again to refresh a stale pre-check', async () => {
+  const session = fakeSession({ status: 'ready', readiness: { checkedAt: new Date(Date.now() - 5 * 60 * MIN) } });
+  const res = await call(controller.preCheckSession, { confirmed: true });
+  assert.equal(res.code, 200);
+  assert.equal(session.status, 'ready');
+  assert.ok(Date.now() - new Date(session.readiness.checkedAt).getTime() < 5000);
 });
 
 test('rejects an impossible body temperature', async () => {
@@ -162,12 +183,115 @@ test('an amber gate needs a reason and changes nothing until it is given', async
   assert.equal(calls.audit.some((a) => a.action === 'trainingSession.readiness_override'), true);
 });
 
-test('a bare status in PUT can never put a session into ready or blocked', async () => {
-  for (const status of ['ready', 'blocked', 'evaluated', 'aborted', 'missed']) {
+test('a bare status in PUT can never put a session into ready, blocked or in_progress', async () => {
+  for (const status of ['ready', 'blocked', 'in_progress', 'evaluated', 'aborted', 'missed']) {
     const session = fakeSession();
     const res = await call(controller.updateSession, { status });
     assert.equal(res.code, 409, status);
     assert.equal(res.payload.data.code, 'INVALID_TRANSITION', status);
     assert.equal(session.status, 'scheduled', status);
   }
+});
+
+// ------------------------------------------------------------------ start
+
+const readySession = (overrides = {}) =>
+  fakeSession({ status: 'ready', readiness: { checkedAt: new Date(Date.now() - 10 * MIN), confirmedBy: 'u1', bodyTempC: 37.5, weather: 'nắng' }, ...overrides });
+
+test('start refuses a session that has not been pre-checked', async () => {
+  for (const status of ['scheduled', 'blocked']) {
+    const session = fakeSession({ status });
+    const res = await call(controller.startSession, {});
+    assert.equal(res.code, 409, status);
+    assert.equal(res.payload.data.code, 'NOT_READY', status);
+    assert.equal(session.status, status);
+    assert.equal(session.actualStartAt, undefined);
+  }
+});
+
+test('start refuses finished sessions with INVALID_TRANSITION', async () => {
+  for (const status of ['in_progress', 'completed', 'cancelled']) {
+    const session = fakeSession({ status });
+    const res = await call(controller.startSession, {});
+    assert.equal(res.code, 409, status);
+    assert.equal(res.payload.data.code, 'INVALID_TRANSITION', status);
+  }
+});
+
+test('start refuses a pre-check older than two hours', async () => {
+  const session = readySession({ readiness: { checkedAt: new Date(Date.now() - 3 * 60 * MIN) } });
+  const res = await call(controller.startSession, {});
+  assert.equal(res.code, 409);
+  assert.equal(res.payload.data.code, 'PRECHECK_EXPIRED');
+  assert.equal(session.status, 'ready');
+  assert.equal(session.actualStartAt, undefined);
+});
+
+test('start refuses when the horse already has a running session', async () => {
+  otherRunning = true;
+  const session = readySession();
+  const res = await call(controller.startSession, {});
+  assert.equal(res.code, 409);
+  assert.equal(res.payload.data.code, 'ANOTHER_SESSION_RUNNING');
+  assert.equal(session.status, 'ready');
+});
+
+test('start: the session runs and the server stamps the start time', async () => {
+  const session = readySession();
+  const before = Date.now();
+  const res = await call(controller.startSession, {});
+  assert.equal(res.code, 200);
+  assert.equal(session.status, 'in_progress');
+  assert.ok(session.actualStartAt instanceof Date);
+  assert.ok(session.actualStartAt.getTime() >= before && session.actualStartAt.getTime() <= Date.now());
+  assert.equal(session.actualEndAt, undefined, 'an end time must not exist before the session ends');
+  // what the pre-check recorded survives the new readiness snapshot
+  assert.equal(session.readiness.confirmedBy, 'u1');
+  assert.equal(session.readiness.bodyTempC, 37.5);
+  assert.equal(session.readiness.weather, 'nắng');
+  assert.equal(calls.audit.at(-1).action, 'trainingSession.start');
+});
+
+test('start ignores a start time sent by the client', async () => {
+  const session = readySession();
+  const res = await call(controller.startSession, { actualStartAt: '2020-01-01T00:00:00Z' });
+  assert.equal(res.code, 200);
+  assert.ok(session.actualStartAt.getFullYear() >= 2026);
+});
+
+test('a horse locked since the pre-check: start is refused and the session is blocked', async () => {
+  gates = [gate('medical', 'blocked', 'Bác sĩ đang khóa huấn luyện: viêm gân.'), gate('nutrition', 'ok')];
+  const session = readySession();
+  const res = await call(controller.startSession, {});
+  assert.equal(res.code, 409);
+  assert.equal(res.payload.data.code, 'READINESS_BLOCKED');
+  assert.equal(session.status, 'blocked');
+  assert.equal(session.actualStartAt, undefined);
+  assert.equal(calls.audit.at(-1).action, 'trainingSession.start');
+});
+
+test('start with an amber gate needs a reason, then runs and tells the Manager', async () => {
+  gates = [gate('medical', 'ok'), gate('nutrition', 'caution', 'Ăn cách giờ tập 20 phút.')];
+  const session = readySession();
+
+  const refused = await call(controller.startSession, {});
+  assert.equal(refused.code, 409);
+  assert.equal(refused.payload.data.requiresOverride, true);
+  assert.equal(session.status, 'ready');
+
+  const allowed = await call(controller.startSession, { overrideReason: 'Đã đợi thêm, ngựa ổn' });
+  assert.equal(allowed.code, 200);
+  assert.equal(session.status, 'in_progress');
+  assert.equal(session.readiness.overrideReason, 'Đã đợi thêm, ngựa ổn');
+  assert.equal(calls.pushed.length, 1);
+  assert.match(calls.pushed[0].message, /bắt đầu/);
+});
+
+test('a second start of the same session is refused (double click)', async () => {
+  const session = readySession();
+  const first = await call(controller.startSession, {});
+  assert.equal(first.code, 200);
+  const second = await call(controller.startSession, {});
+  assert.equal(second.code, 409);
+  assert.equal(session.status, 'in_progress');
 });
