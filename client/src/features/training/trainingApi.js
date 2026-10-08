@@ -4,7 +4,13 @@ import { createCrudApi } from '../../lib/createCrudApi';
 const plansBase = createCrudApi('/training/plans');
 const sessionsBase = createCrudApi('/training/sessions');
 
-export const trainingPlanApi = plansBase;
+export const trainingPlanApi = {
+  ...plansBase,
+  /** Phases to propose for a new cycle: { horse, targetRace?, startDate? }. */
+  suggest: (params) => axiosClient.get('/training/plans/suggest', { params }),
+  /** Book a week of the plan as sessions: { weekStart? } (next week by default). */
+  generateWeek: (id, payload) => axiosClient.post(`/training/plans/${id}/generate-week`, payload || {}),
+};
 
 export const trainingSessionApi = {
   ...sessionsBase,
