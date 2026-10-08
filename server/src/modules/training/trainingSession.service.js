@@ -42,7 +42,9 @@ function computeOutcome(session) {
     checks.push({ ok: m.avgHeartRate <= p.targetHeartRateMax, text: `nhịp tim ${m.avgHeartRate}/${p.targetHeartRateMax} bpm` });
   }
   if (p.distanceM != null && m.distance != null) {
-    checks.push({ ok: m.distance >= p.distanceM, text: `cự ly ${m.distance}/${p.distanceM} m` });
+    // The work is every rep: 3 × 1200 m is 3600 m, which is what the sensor counts.
+    const total = p.distanceM * (p.reps || 1);
+    checks.push({ ok: m.distance >= total, text: `cự ly ${m.distance}/${total} m` });
   }
 
   if (checks.length === 0) return { met: null, summary: '' };

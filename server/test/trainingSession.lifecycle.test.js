@@ -20,6 +20,13 @@ horseScope.canAccessHorse = async () => true;
 audit.logAction = async (entry) => calls.audit.push(entry);
 notifications.pushNotification = async (n) => calls.pushed.push(n);
 notifications.notifyCaretaker = async () => {};
+notifications.notifyHorseStaff = async (n) => calls.pushed.push(n);
+// The fever path looks the horse up and files an exam request.
+const Horse = require('../src/models/Horse');
+const ExamRequest = require('../src/models/ExamRequest');
+Horse.findById = () => ({ select: async () => ({ _id: 'h1', name: 'Thunder' }) });
+ExamRequest.exists = async () => false;
+ExamRequest.create = async (doc) => ({ _id: 'e1', ...doc });
 
 const controller = require('../src/modules/training/trainingSession.controller');
 
@@ -297,4 +304,60 @@ test('a second start of the same session is refused (double click)', async () =>
   const second = await call(controller.startSession, {});
   assert.equal(second.code, 409);
   assert.equal(session.status, 'in_progress');
+});
+
+test('a reason given less than two hours ago for the same warning stands: start does not ask again', async () => {
+  gates = [gate('medical', 'ok'), gate('nutrition', 'caution', 'Không có bữa ăn nào trong 24 giờ.')];
+  const session = readySession({
+    readiness: { checkedAt: new Date(Date.now() - 10 * MIN), overrideReason: 'Đã hỏi Groom', overriddenBy: 'u1', gates: [gate('nutrition', 'caution', 'Không có bữa ăn nào trong 24 giờ.')] },
+  });
+  const res = await call(controller.startSession, {});
+  assert.equal(res.code, 200);
+  assert.equal(session.status, 'in_progress');
+  assert.equal(session.readiness.overrideReason, 'Đã hỏi Groom');
+  assert.equal(calls.pushed.length, 0, 'the Manager was told at the pre-check');
+});
+
+test('a new or different warning needs a new reason, and an old reason expires', async () => {
+  gates = [gate('medical', 'ok'), gate('vet_clearance', 'caution', 'Chưa khám trong 14 ngày.')];
+  let session = readySession({
+    readiness: { checkedAt: new Date(Date.now() - 10 * MIN), overrideReason: 'Đã hỏi Groom', gates: [gate('nutrition', 'caution')] },
+  });
+  let res = await call(controller.startSession, {});
+  assert.equal(res.code, 409);
+  assert.equal(res.payload.data.requiresOverride, true);
+  assert.equal(session.status, 'ready');
+
+  gates = [gate('medical', 'ok'), gate('nutrition', 'caution', 'Ăn cách giờ tập 75 phút.')];
+  session = readySession({
+    readiness: { checkedAt: new Date(Date.now() - 10 * MIN), overrideReason: 'Chưa ăn gì', gates: [gate('nutrition', 'caution', 'Không có bữa ăn nào trong 24 giờ.')] },
+  });
+  res = await call(controller.startSession, {});
+  assert.equal(res.code, 409, 'same gate, different warning');
+  assert.equal(res.payload.data.requiresOverride, true);
+
+  session = fakeSession({
+    readiness: { checkedAt: new Date(Date.now() - 3 * 60 * MIN), overrideReason: 'Đặt lịch từ sáng', gates: [gate('nutrition', 'caution', 'Ăn cách giờ tập 75 phút.')] },
+  });
+  res = await call(controller.preCheckSession, { confirmed: true });
+  assert.equal(res.code, 409, 'booked three hours ago: the reason no longer stands');
+  assert.equal(res.payload.data.requiresOverride, true);
+});
+
+test('a fever at the pre-check blocks the session and asks the vet to look at the horse', async () => {
+  const session = fakeSession();
+  const res = await call(controller.preCheckSession, { confirmed: true, bodyTempC: 39.2 });
+  assert.equal(res.code, 409);
+  assert.equal(res.payload.data.code, 'READINESS_BLOCKED');
+  assert.equal(session.status, 'blocked');
+  assert.match(session.blockedReason, /39.2 °C.*sốt/);
+  assert.equal(session.readiness.bodyTempC, 39.2);
+  assert.ok(session.readiness.gates.some((g) => g.key === 'temperature' && g.status === 'blocked'));
+  assert.equal(calls.pushed.length, 1, 'the vet is asked for an exam');
+  assert.match(calls.pushed[0].message, /sốt 39.2 °C/);
+
+  const normal = fakeSession();
+  const ok = await call(controller.preCheckSession, { confirmed: true, bodyTempC: 38.3 });
+  assert.equal(ok.code, 200);
+  assert.equal(normal.status, 'ready');
 });

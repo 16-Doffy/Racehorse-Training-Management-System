@@ -22,7 +22,8 @@ function buildRows(session) {
   const rows = [
     { key: 'speed', label: 'Tốc độ', actual: m.maxSpeed, target: p.targetSpeedKmh, unit: 'km/h', digits: 1, atLeast: true },
     { key: 'heart', label: 'Nhịp tim', actual: m.avgHeartRate, target: p.targetHeartRateMax, unit: 'bpm', digits: 0, atLeast: false },
-    { key: 'distance', label: 'Cự ly', actual: m.distance, target: p.distanceM, unit: 'm', digits: 0, atLeast: true },
+    // Every rep counts: the target of 3 × 1200 m is 3600 m.
+    { key: 'distance', label: 'Cự ly', actual: m.distance, target: p.distanceM != null ? p.distanceM * (p.reps || 1) : undefined, unit: 'm', digits: 0, atLeast: true },
   ];
   return rows
     .filter((r) => r.actual != null || r.target != null)

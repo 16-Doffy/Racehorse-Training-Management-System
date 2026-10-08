@@ -197,6 +197,7 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
             if (changed.targetRace) {
               const r = races.find((x) => x._id === changed.targetRace);
               if (r?.distance) form.setFieldValue('distanceTarget', r.distance);
+              if (r?.surface) form.setFieldValue('surface', r.surface);
             }
           }}
         >

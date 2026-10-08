@@ -144,7 +144,8 @@ export const WEEK_DAYS = [
 export const sessionTimeLabel = (d) => {
   const x = new Date(d);
   const wd = WEEK_DAYS.find((w) => w.day === x.getDay())?.short;
-  const date = x.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+  // Spelled out: the browser's vi-VN format writes 09-10 on some systems, 09/10 on others.
+  const date = `${String(x.getDate()).padStart(2, '0')}/${String(x.getMonth() + 1).padStart(2, '0')}`;
   const time = x.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
   return `${wd} ${date} · ${time}`;
 };

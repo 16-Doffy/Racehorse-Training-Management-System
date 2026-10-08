@@ -56,6 +56,11 @@ const SESSION_BODY_STATUSES = Object.freeze([SESSION_STATUS.COMPLETED, SESSION_S
 // session started much later has to be looked at again. CONFIGURABLE, simplified for the capstone.
 const PRECHECK_VALID_HOURS = 2;
 
+// A resting horse runs 37.2–38.3 °C. From this temperature up it has a fever: it does not train, and
+// the vet is asked to look at it.
+const PRECHECK_FEVER_C = 38.6;
+const NORMAL_TEMP_RANGE = '37,2–38,3 °C';
+
 // The pre-check is done close to the session, not days ahead: the horse's condition has to be
 // judged for now. CONFIGURABLE, simplified for the capstone: move to SystemSetting (T8-01).
 const PRECHECK_WINDOW = Object.freeze({ opensBeforeMin: 60, closesAfterMin: 30 });
@@ -424,6 +429,8 @@ module.exports = {
   SESSION_BODY_STATUSES,
   PRECHECK_WINDOW,
   PRECHECK_VALID_HOURS,
+  PRECHECK_FEVER_C,
+  NORMAL_TEMP_RANGE,
   preCheckWindow,
   ABORT_CATEGORIES,
   SESSION_ERROR,

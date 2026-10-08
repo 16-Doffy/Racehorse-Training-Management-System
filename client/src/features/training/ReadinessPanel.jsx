@@ -17,6 +17,7 @@ const GATE_OWNERS = {
   vet_clearance: 'Bác sĩ thú y',
   nutrition: 'Nhân viên chăm sóc',
   care_assignment: 'Quản lý CLB',
+  temperature: 'HLV đo khi kiểm tra',
 };
 
 const STATUS_META = {

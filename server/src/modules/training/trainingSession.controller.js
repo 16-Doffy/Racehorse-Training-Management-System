@@ -1,12 +1,14 @@
 const TrainingSession = require('../../models/TrainingSession');
 const TrainingPlan = require('../../models/TrainingPlan');
 const Horse = require('../../models/Horse');
+const ExamRequest = require('../../models/ExamRequest');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
 const { pushNotification } = require('../alerts/notification.service');
+const { openExamRequest } = require('../health/examRequest.service');
 const { computeReadiness, cautionGates, toSnapshot, getMedicalBlock } = require('./readiness.service');
 const {
   SESSION_STATUS,
@@ -14,6 +16,8 @@ const {
   SESSION_ERROR,
   SESSION_BODY_STATUSES,
   PRECHECK_VALID_HOURS,
+  PRECHECK_FEVER_C,
+  NORMAL_TEMP_RANGE,
   preCheckWindow,
   canTransition,
   SESSION_KINDS,
@@ -87,7 +91,7 @@ async function reportOverride({ session, readiness, reason, user, moment }) {
  * Returns { readiness } when the decision may go ahead, or { error } describing the 409 to send:
  * a vet's block is final, an amber gate needs the trainer to say why.
  */
-async function checkReadiness(horseId, context, overrideReason) {
+async function checkReadiness(horseId, context, overrideReason, standing) {
   const readiness = await computeReadiness(horseId, context);
   if (!readiness) return { error: { status: 404, message: 'Horse not found.' } };
 
@@ -95,7 +99,8 @@ async function checkReadiness(horseId, context, overrideReason) {
   if (blocked) return { error: { status: 409, message: blocked.detail, data: { readiness } } };
 
   const cautions = cautionGates(readiness);
-  if (cautions.length > 0 && !overrideReason) {
+  const carried = overrideReason ? undefined : standingOverride(standing, readiness);
+  if (cautions.length > 0 && !overrideReason && !carried) {
     return {
       error: {
         status: 409,
@@ -104,7 +109,23 @@ async function checkReadiness(horseId, context, overrideReason) {
       },
     };
   }
-  return { readiness };
+  return { readiness, carried };
+}
+
+/**
+ * The reason a trainer gave less than PRECHECK_VALID_HOURS ago for these very warnings, which still
+ * stands: booked 20 minutes ago past a meal warning, the pre-check (and then the start) does not ask
+ * again for the same thing. A new or different warning does need a new reason.
+ */
+function standingOverride(snapshot, readiness) {
+  if (!snapshot?.overrideReason || !snapshot.checkedAt) return undefined;
+  if (Date.now() - new Date(snapshot.checkedAt).getTime() > PRECHECK_VALID_HOURS * 60 * 60 * 1000) return undefined;
+  // The same warning, word for word: "no meal in 24 hours" accepted at booking does not cover "ate
+  // 75 minutes ago" found at the pre-check.
+  const said = (g) => `${g.key}|${g.detail || ''}`;
+  const accepted = (snapshot.gates || []).filter((g) => g.status === 'caution').map(said);
+  const now = cautionGates(readiness).map(said);
+  return now.length > 0 && now.every((warning) => accepted.includes(warning)) ? snapshot.overrideReason : undefined;
 }
 
 /**
@@ -351,10 +372,11 @@ const startSession = asyncHandler(async (req, res) => {
   }
 
   const overrideReason = typeof req.body?.overrideReason === 'string' ? req.body.overrideReason.trim() : '';
-  const { readiness, error } = await checkReadiness(
+  const { readiness, error, carried } = await checkReadiness(
     session.horse,
     { scheduledAt: new Date(), intensity: session.intensity, sessionType: session.sessionType, objective: session.objective },
-    overrideReason || undefined
+    overrideReason || undefined,
+    session.readiness
   );
   if (error) {
     const medicalBlock = error.status === 409 && error.data?.readiness && !error.data.requiresOverride;
@@ -387,7 +409,8 @@ const startSession = asyncHandler(async (req, res) => {
     });
   }
 
-  if (cautionGates(readiness).length > 0) {
+  // A reason carried over from the pre-check was already reported to the Manager then.
+  if (cautionGates(readiness).length > 0 && !carried) {
     await reportOverride({ session: started, readiness, reason: overrideReason, user: req.user, moment: 'start' });
   }
   await logAction({ actorId: req.user._id, action: 'trainingSession.start', targetModel: 'TrainingSession', targetId: session._id });
@@ -395,10 +418,10 @@ const startSession = asyncHandler(async (req, res) => {
 });
 
 /** A medical block found at a decision point: the session is held back, the reason kept, the 409 sent. */
-async function markBlocked(res, session, error, user, action) {
+async function markBlocked(res, session, error, user, action, observed = {}) {
   const blocked = await TrainingSession.findOneAndUpdate(
     { _id: session._id, status: session.status, scheduledAt: session.scheduledAt },
-    { $set: { status: SESSION_STATUS.BLOCKED, blockedReason: error.message, readiness: toSnapshot(error.data.readiness, { userId: user._id }) } },
+    { $set: { status: SESSION_STATUS.BLOCKED, blockedReason: error.message, readiness: { ...toSnapshot(error.data.readiness, { userId: user._id }), ...observed } } },
     { new: true }
   );
   if (!blocked) return fail(res, 'Buổi tập đã thay đổi — tải lại trước khi kiểm tra.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });
@@ -454,13 +477,15 @@ const preCheckSession = asyncHandler(async (req, res) => {
   }
 
   const overrideReason = typeof body.overrideReason === 'string' ? body.overrideReason.trim() : '';
+  if (bodyTempC !== undefined && bodyTempC >= PRECHECK_FEVER_C) return blockForFever(res, session, bodyTempC, req.user);
   // Judged at the booked time, not at the click: checked at 06:30 for 07:30, a 06:00 breakfast has
   // had its 90 minutes by the time the horse works. Checked late, "now" is the earliest it can run.
   const judgedAt = new Date(Math.max(Date.now(), new Date(session.scheduledAt).getTime()));
-  const { readiness, error } = await checkReadiness(
+  const { readiness, error, carried } = await checkReadiness(
     session.horse,
     { scheduledAt: judgedAt, intensity: session.intensity, sessionType: session.sessionType, objective: session.objective },
-    overrideReason || undefined
+    overrideReason || undefined,
+    session.readiness
   );
 
   if (error) {
@@ -489,7 +514,8 @@ const preCheckSession = asyncHandler(async (req, res) => {
   if (!ready) return fail(res, 'Buổi tập đã thay đổi — tải lại trước khi kiểm tra.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });
 
   const overridden = cautionGates(readiness).length > 0;
-  if (overridden) await reportOverride({ session: ready, readiness, reason: overrideReason, user: req.user, moment: 'precheck' });
+  // A reason carried over from the booking was already reported to the Manager then.
+  if (overridden && !carried) await reportOverride({ session: ready, readiness, reason: overrideReason, user: req.user, moment: 'precheck' });
   await logAction({
     actorId: req.user._id,
     action: 'trainingSession.pre_check',
@@ -499,6 +525,37 @@ const preCheckSession = asyncHandler(async (req, res) => {
   });
   return ok(res, ready, 'Pre-check passed: the session is ready.');
 });
+
+/**
+ * A fever found at the pre-check: whatever the other gates say, the horse does not train. The session
+ * is held back with the temperature on record, and the vet gets a high-priority exam request unless
+ * one is already waiting.
+ */
+async function blockForFever(res, session, bodyTempC, user) {
+  const detail = `Thân nhiệt ${bodyTempC} °C — ngựa đang sốt (bình thường ${NORMAL_TEMP_RANGE}). Không tập; đã báo bác sĩ khám.`;
+  const gates = await computeReadiness(session.horse, {
+    scheduledAt: new Date(),
+    intensity: session.intensity,
+    sessionType: session.sessionType,
+    objective: session.objective,
+  });
+  const readiness = { ...gates, overall: 'blocked', gates: [...gates.gates, { key: 'temperature', label: 'Thân nhiệt', status: 'blocked', detail }] };
+  const horse = await Horse.findById(session.horse).select('name');
+  if (horse && !(await ExamRequest.exists({ horse: session.horse, status: 'pending' }))) {
+    await openExamRequest({
+      horse,
+      requestedBy: user,
+      reason: `Sốt ${bodyTempC} °C khi kiểm tra trước buổi tập.`,
+      priority: 'high',
+      trainingSession: session._id,
+      message: `🌡️ [ƯU TIÊN CAO] ${horse.name} sốt ${bodyTempC} °C khi kiểm tra trước buổi tập — buổi tập đã bị chặn, cần bác sĩ khám.`,
+    });
+  }
+  return markBlocked(res, session, { message: detail, data: { readiness } }, user, 'trainingSession.pre_check', {
+    bodyTempC,
+    confirmedBy: user._id,
+  });
+}
 
 // Trainer's post-session evaluation: performance rating, professional comment, measured metrics.
 const recordEvaluation = asyncHandler(async (req, res) => {

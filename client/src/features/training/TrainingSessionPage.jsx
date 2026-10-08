@@ -40,6 +40,7 @@ import { useLockedHorseIds, useHorseClearances } from './useLockedHorses';
 import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } from '../../constants/health';
 import ReadinessPanel from './ReadinessPanel';
 import PreCheckModal from './PreCheckModal';
+import LiveSessionMonitor from './LiveSessionMonitor';
 import { SESSION_STATUS_LABELS as STATUS_LABELS, SESSION_STATUS_COLORS as STATUS_COLORS } from './sessionStatus';
 import SessionOutcome from './SessionOutcome';
 import confirmReadinessOverride, { needsOverride } from './confirmReadinessOverride';
@@ -203,8 +204,10 @@ export default function TrainingSessionPage() {
   const startMutation = useMutation({
     mutationFn: ({ id, overrideReason }) => trainingSessionApi.start(id, overrideReason ? { overrideReason } : {}),
     onSuccess: () => {
-      message.success('Buổi tập đã bắt đầu.');
+      message.success('Buổi tập đã bắt đầu — số liệu cảm biến hiện ở đầu trang.');
       invalidate();
+      // The live board sits above the calendar and the list: bring it into view.
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     },
     onError: (err, variables) => {
       // A refusal usually means the session is no longer in the state the table shows (held back by
@@ -528,6 +531,8 @@ export default function TrainingSessionPage() {
           Đang lọc theo ngựa: {filteredHorse.name}
         </Tag>
       )}
+
+      <LiveSessionMonitor sessions={sessionsData?.data || []} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Segmented
