@@ -166,3 +166,16 @@ export const PLAN_STATUS_COLORS = { draft: 'default', active: 'blue', completed:
 export const planStatusOptions = Object.entries(PLAN_STATUS_LABELS).map(([value, label]) => ({ value, label }));
 
 export const phaseOptions = Object.entries(PHASE_LABELS).map(([value, label]) => ({ value, label }));
+
+const hhmm = (d) => new Date(d).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+/**
+ * When the session really ran, next to its booked time: "07:42–07:50 (8 phút)", "Bắt đầu 07:42 —
+ * đang chạy", or null when it never ran (booked, cancelled, or closed by hand without starting).
+ */
+export function actualTimeLabel(s) {
+  if (!s?.actualStartAt) return null;
+  if (!s.actualEndAt) return `Bắt đầu ${hhmm(s.actualStartAt)} — đang chạy`;
+  const minutes = Math.max(1, Math.round((s.actualDurationSec || 0) / 60));
+  return `${hhmm(s.actualStartAt)}–${hhmm(s.actualEndAt)} (${minutes} phút)`;
+}

@@ -48,6 +48,7 @@ import {
   METRIC_LIMITS,
   sessionTimeLabel,
   mondayOf,
+  actualTimeLabel,
 } from './trainingVocab';
 
 const { Title, Text } = Typography;
@@ -298,7 +299,31 @@ export default function TrainingSessionPage() {
       title: 'Thời gian',
       dataIndex: 'scheduledAt',
       key: 'scheduledAt',
-      render: (d) => <span className="whitespace-nowrap tabular-nums">{sessionTimeLabel(d)}</span>,
+      // The booked time and, once it has run, the real one: they are different facts.
+      render: (d, r) => (
+        <div className="whitespace-nowrap tabular-nums text-sm">
+          <div>
+            <Text type="secondary" className="!text-xs">
+              Dự kiến{' '}
+            </Text>
+            {sessionTimeLabel(d)}
+          </div>
+          {actualTimeLabel(r) ? (
+            <div>
+              <Text type="secondary" className="!text-xs">
+                Thực tế{' '}
+              </Text>
+              {actualTimeLabel(r)}
+            </div>
+          ) : (
+            ['completed', 'evaluated'].includes(r.status) && (
+              <Text type="secondary" className="!text-xs">
+                Không ghi giờ thực tế (nhập tay)
+              </Text>
+            )
+          )}
+        </div>
+      ),
     },
     {
       title: 'Trạng thái',
@@ -603,7 +628,12 @@ export default function TrainingSessionPage() {
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8}>
-                  <Form.Item name="scheduledAt" label="Thời gian" rules={[{ required: true }]}>
+                  <Form.Item
+                    name="scheduledAt"
+                    label="Giờ bắt đầu dự kiến"
+                    rules={[{ required: true, message: 'Chọn ngày giờ dự kiến bắt đầu' }]}
+                    extra="Giờ thực tế được ghi khi bấm Bắt đầu."
+                  >
                     <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" />
                   </Form.Item>
                 </Col>
@@ -648,7 +678,11 @@ export default function TrainingSessionPage() {
                   </Form.Item>
                 </Col>
                 <Col xs={12} md={8}>
-                  <Form.Item name={['prescription', 'durationMinutes']} label="Thời lượng (phút)">
+                  <Form.Item
+                    name={['prescription', 'durationMinutes']}
+                    label="Thời lượng dự kiến (phút)"
+                    extra="Cho bài tính theo thời gian (đi bộ). Bài phi kết thúc khi đủ cự ly."
+                  >
                     <InputNumber min={PRESCRIPTION_LIMITS.durationMinutes[0]} max={PRESCRIPTION_LIMITS.durationMinutes[1]} className="w-full" placeholder="45" />
                   </Form.Item>
                 </Col>
@@ -669,8 +703,8 @@ export default function TrainingSessionPage() {
                   onRequestExam={() => setExamOpen(true)}
                 />
                 <Text type="secondary" className="!text-xs block mt-2">
-                  Mỗi dòng do một người khác nắm giữ. Chỉ khóa y tế của bác sĩ mới chặn hẳn buổi
-                  tập; các cảnh báo còn lại bạn vẫn có thể bỏ qua nhưng phải ghi lý do.
+                  Mỗi dòng do một người khác nắm giữ. Khóa y tế của bác sĩ, hoặc ngựa vừa ăn xong chưa
+                  đủ 60 phút, sẽ chặn hẳn buổi tập; các cảnh báo còn lại bạn vẫn có thể bỏ qua nhưng phải ghi lý do.
                 </Text>
               </div>
             </Col>
@@ -698,6 +732,10 @@ export default function TrainingSessionPage() {
             description={
               <div className="text-xs">
                 {describePrescription(activePrescription) || 'Buổi tập này không đặt mục tiêu cụ thể.'}
+                <div className="mt-1">
+                  Dự kiến {sessionTimeLabel(activeSession.scheduledAt)}
+                  {actualTimeLabel(activeSession) ? ` · Thực tế ${actualTimeLabel(activeSession)}` : ' · Chưa chạy (chưa bấm Bắt đầu)'}
+                </div>
                 {activeSession.coachNote && <div className="mt-1">Dặn dò: {activeSession.coachNote}</div>}
               </div>
             }

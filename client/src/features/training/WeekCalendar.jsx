@@ -2,7 +2,7 @@ import { Button, Popover, Tag, Typography, Tooltip, Empty } from 'antd';
 import { LeftOutlined, RightOutlined, PlayCircleOutlined, EditOutlined, ScheduleOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, mondayOf } from './trainingVocab';
+import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, mondayOf, actualTimeLabel } from './trainingVocab';
 
 const { Text } = Typography;
 
@@ -35,9 +35,10 @@ function SessionChip({ session, onStart, onEvaluate, starting }) {
           {kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}
         </Tag>
         <Text type="secondary" className="!text-xs">
-          {dayjs(session.scheduledAt).format('dddd DD/MM · HH:mm')}
+          Dự kiến {dayjs(session.scheduledAt).format('DD/MM · HH:mm')}
         </Text>
       </div>
+      {actualTimeLabel(session) && <div className="text-xs">Thực tế {actualTimeLabel(session)}</div>}
       {workout(session.prescription) && <div>{workout(session.prescription)}</div>}
       {session.coachNote && <Text type="secondary" className="!text-xs">{session.coachNote}</Text>}
       <div className="flex items-center gap-1.5 text-xs">
