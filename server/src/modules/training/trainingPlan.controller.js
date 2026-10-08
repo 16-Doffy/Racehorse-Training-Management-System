@@ -17,6 +17,7 @@ const {
   PRESCRIPTION_RANGES,
   rangeProblem,
   kindSpeedProblem,
+  SESSION_DONE_STATUSES,
 } = require('../../constants/training');
 
 const { phasesOf, currentPhaseIndex } = TrainingPlan;
@@ -140,10 +141,10 @@ function withProgress(plan, stats, upcoming) {
     ended: now > phases[phases.length - 1].endDate,
     phaseSessions: {
       planned: inPhase.length,
-      completed: inPhase.filter((s) => s.status === 'completed').length,
+      completed: inPhase.filter((s) => SESSION_DONE_STATUSES.includes(s.status)).length,
       met: inPhase.filter((s) => s.met === true).length,
     },
-    totalCompleted: (stats || []).filter((s) => s.status === 'completed').length,
+    totalCompleted: (stats || []).filter((s) => SESSION_DONE_STATUSES.includes(s.status)).length,
     raceInDays: raceDate ? Math.ceil((startOfDay(raceDate) - startOfDay(now)) / DAY_MS) : null,
     upcoming: upcoming || [],
   };
