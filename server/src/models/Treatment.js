@@ -15,7 +15,8 @@ const medicationSchema = new mongoose.Schema(
     startDate: { type: Date },
     endDate: { type: Date },
     instructions: { type: String },
-    isDeducted: { type: Boolean, default: false },
+    prescribedAt: { type: Date, default: Date.now },
+    status: { type: String, enum: ['ongoing', 'completed', 'cancelled'], default: 'ongoing' },
   },
   { _id: false }
 );

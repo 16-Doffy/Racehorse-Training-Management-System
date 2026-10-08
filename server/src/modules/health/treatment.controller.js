@@ -31,7 +31,7 @@ const listTreatments = asyncHandler(async (req, res) => {
   const treatments = await Treatment.find(filter)
     .populate('horse', 'name healthStatus')
     .populate('prescribedBy', 'name')
-    .sort({ createdAt: -1 });
+    .sort({ updatedAt: -1, createdAt: -1 });
   return ok(res, treatments, 'Treatments fetched.');
 });
 
@@ -200,7 +200,8 @@ async function normalizeMedications(list) {
       startDate,
       endDate,
       instructions: String(m.instructions || '').trim() || undefined,
-      isDeducted: Boolean(m.isDeducted),
+      prescribedAt: m.prescribedAt ? new Date(m.prescribedAt) : new Date(),
+      status: m.status || 'ongoing',
     });
   }
   return { medications: out };
@@ -354,33 +355,13 @@ const createTreatment = asyncHandler(async (req, res) => {
   if (String(record.horse) !== String(body.horse)) return fail(res, 'Hồ sơ khám không thuộc ngựa này.', 400);
 
   const treatment = await Treatment.create({ ...body, prescribedBy: req.user._id });
-
-  // Auto-deduct inventory for prescribed medicines
-  let anyDeducted = false;
-  for (const m of treatment.medications || []) {
-    if (m.inventoryItem && m.amount > 0 && !m.isDeducted) {
-      await InventoryItem.updateOne(
-        { _id: m.inventoryItem },
-        { $inc: { quantity: -m.amount } }
-      );
-      m.isDeducted = true;
-      anyDeducted = true;
-      await logAction({
-        actorId: req.user._id,
-        action: 'inventory.consume_prescription',
-        targetModel: 'InventoryItem',
-        targetId: m.inventoryItem,
-        metadata: { amount: m.amount, horseId: treatment.horse, treatmentId: treatment._id },
-      });
-    }
-  }
-  if (anyDeducted) {
-    await treatment.save();
-  }
+  // Stock is not touched here: each dose becomes a groom task carrying its supplies, and the stock
+  // goes down when that dose is recorded as given (blocked while the stock is short).
 
   await logAction({ actorId: req.user._id, action: 'treatment.create', targetModel: 'Treatment', targetId: treatment._id });
   await onTrainingLevelChanged(treatment, { previousLevel: 'high', actor: req.user });
   await sendCareOrders(treatment, req.user, { isNew: true });
+  await syncHorseHealthStatus(treatment.horse);
 
   return created(res, treatment, 'Treatment created.');
 });
@@ -405,24 +386,6 @@ const updateTreatment = asyncHandler(async (req, res) => {
   if (levelError) return fail(res, levelError, 400);
   Object.assign(treatment, changes);
 
-  // Auto-deduct inventory for newly added prescribed medicines
-  for (const m of treatment.medications || []) {
-    if (m.inventoryItem && m.amount > 0 && !m.isDeducted) {
-      await InventoryItem.updateOne(
-        { _id: m.inventoryItem },
-        { $inc: { quantity: -m.amount } }
-      );
-      m.isDeducted = true;
-      await logAction({
-        actorId: req.user._id,
-        action: 'inventory.consume_prescription',
-        targetModel: 'InventoryItem',
-        targetId: m.inventoryItem,
-        metadata: { amount: m.amount, horseId: treatment.horse, treatmentId: treatment._id },
-      });
-    }
-  }
-
   await treatment.save();
 
   await logAction({ actorId: req.user._id, action: 'treatment.update', targetModel: 'Treatment', targetId: treatment._id });
@@ -430,6 +393,7 @@ const updateTreatment = asyncHandler(async (req, res) => {
   await onTrainingLevelChanged(treatment, { previousLevel, actor: req.user });
   // Also removes the care tasks still pending when the treatment has just been completed.
   await sendCareOrders(treatment, req.user);
+  await syncHorseHealthStatus(treatment.horse);
   return ok(res, treatment, 'Treatment updated.');
 });
 
@@ -451,6 +415,7 @@ const setTrainingLock = asyncHandler(async (req, res) => {
   await treatment.save();
 
   await onTrainingLevelChanged(treatment, { previousLevel, actor: req.user });
+  await syncHorseHealthStatus(treatment.horse);
   return ok(res, treatment, treatment.isTrainingLocked ? 'Training lock issued.' : 'Training level updated.');
 });
 

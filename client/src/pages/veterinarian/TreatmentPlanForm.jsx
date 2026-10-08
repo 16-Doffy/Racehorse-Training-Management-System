@@ -41,7 +41,8 @@ export default function TreatmentPlanForm() {
         dosage: '',
         frequency: '',
         timeSlots: { morning: true, noon: false, afternoon: true, evening: false },
-        specificTimes: '08:00, 16:00',
+        slotTimes: { morning: '08:00', noon: '12:00', afternoon: '16:00', evening: '20:00' },
+        specificTimes: '',
         instructions: '',
       },
     ],
@@ -62,7 +63,9 @@ export default function TreatmentPlanForm() {
         setHorses(horsesRes.data || []);
         setHealthRecords(recordsRes.data || []);
         const allInv = invRes.data || [];
-        setInventoryItems(allInv.filter((item) => item.category === 'medicine'));
+        setInventoryItems(
+          allInv.filter((item) => item.category === 'medicine' && item.isActive !== false)
+        );
 
         if (isEditMode) {
           const trRes = await veterinarianApi.getTreatmentById(id);
@@ -93,6 +96,12 @@ export default function TreatmentPlanForm() {
                       afternoon: (m.timeSlots || []).includes('afternoon'),
                       evening: (m.timeSlots || []).includes('evening'),
                     },
+                    slotTimes: {
+                      morning: '08:00',
+                      noon: '12:00',
+                      afternoon: '16:00',
+                      evening: '20:00',
+                    },
                     specificTimes: m.specificTimes || '',
                     instructions: m.instructions || '',
                   };
@@ -106,7 +115,8 @@ export default function TreatmentPlanForm() {
                     dosage: '',
                     frequency: '',
                     timeSlots: { morning: true, noon: false, afternoon: true, evening: false },
-                    specificTimes: '08:00, 16:00',
+                    slotTimes: { morning: '08:00', noon: '12:00', afternoon: '16:00', evening: '20:00' },
+                    specificTimes: '',
                     instructions: '',
                   },
                 ],
@@ -135,7 +145,8 @@ export default function TreatmentPlanForm() {
           dosage: '',
           frequency: '',
           timeSlots: { morning: true, noon: false, afternoon: true, evening: false },
-          specificTimes: '08:00, 16:00',
+          slotTimes: { morning: '08:00', noon: '12:00', afternoon: '16:00', evening: '20:00' },
+          specificTimes: '',
           instructions: '',
         },
       ],
@@ -157,12 +168,31 @@ export default function TreatmentPlanForm() {
     });
   };
 
+  const handleSlotTimeChange = (index, slot, value) => {
+    setFormData((prev) => {
+      const updated = [...prev.medications];
+      const currentSlotTimes = {
+        morning: '08:00',
+        noon: '12:00',
+        afternoon: '16:00',
+        evening: '20:00',
+        ...(updated[index].slotTimes || {}),
+      };
+      currentSlotTimes[slot] = value;
+      updated[index] = { ...updated[index], slotTimes: currentSlotTimes };
+      return { ...prev, medications: updated };
+    });
+  };
+
   const handleTimeSlotToggle = (index, slot) => {
     setFormData((prev) => {
       const updated = [...prev.medications];
       const currentSlots = { ...(updated[index].timeSlots || {}) };
       currentSlots[slot] = !currentSlots[slot];
-      updated[index] = { ...updated[index], timeSlots: currentSlots };
+      updated[index] = {
+        ...updated[index],
+        timeSlots: currentSlots,
+      };
       return { ...prev, medications: updated };
     });
   };
@@ -228,22 +258,33 @@ export default function TreatmentPlanForm() {
         if (m.timeSlots?.afternoon) slots.push('afternoon');
         if (m.timeSlots?.evening) slots.push('evening');
 
+        const timesList = [];
+        if (m.timeSlots?.morning) timesList.push(m.slotTimes?.morning || '08:00');
+        if (m.timeSlots?.noon) timesList.push(m.slotTimes?.noon || '12:00');
+        if (m.timeSlots?.afternoon) timesList.push(m.slotTimes?.afternoon || '16:00');
+        if (m.timeSlots?.evening) timesList.push(m.slotTimes?.evening || '20:00');
+
         const slotLabels = [];
-        if (m.timeSlots?.morning) slotLabels.push('Sáng');
-        if (m.timeSlots?.noon) slotLabels.push('Trưa');
-        if (m.timeSlots?.afternoon) slotLabels.push('Chiều');
-        if (m.timeSlots?.evening) slotLabels.push('Tối');
+        if (m.timeSlots?.morning) slotLabels.push(`Sáng (${m.slotTimes?.morning || '08:00'})`);
+        if (m.timeSlots?.noon) slotLabels.push(`Trưa (${m.slotTimes?.noon || '12:00'})`);
+        if (m.timeSlots?.afternoon) slotLabels.push(`Chiều (${m.slotTimes?.afternoon || '16:00'})`);
+        if (m.timeSlots?.evening) slotLabels.push(`Tối (${m.slotTimes?.evening || '20:00'})`);
+
+        const effectiveSpecificTimes = timesList.length > 0
+          ? timesList.join(', ')
+          : (m.specificTimes?.trim() || '');
 
         const freqParts = [];
         if (slotLabels.length) freqParts.push(`Buổi: ${slotLabels.join(', ')}`);
-        if (m.specificTimes?.trim()) freqParts.push(`Giờ: ${m.specificTimes.trim()}`);
+        if (effectiveSpecificTimes) freqParts.push(`Giờ: ${effectiveSpecificTimes}`);
         if (!freqParts.length && m.frequency) freqParts.push(m.frequency);
 
         const medItem = {
           name: m.name.trim(),
           dosage: m.dosage.trim(),
           timeSlots: slots,
-          specificTimes: m.specificTimes?.trim() || '',
+          specificTimes: effectiveSpecificTimes,
+          times: timesList.length > 0 ? timesList : undefined,
           frequency: freqParts.join(' - ') || 'Theo chỉ dẫn',
           instructions: m.instructions?.trim() || '',
         };
@@ -253,8 +294,8 @@ export default function TreatmentPlanForm() {
           medItem.amount = Number(m.amount);
         }
 
-        if (m.specificTimes) {
-          const parsedTimes = m.specificTimes
+        if (!medItem.times && effectiveSpecificTimes) {
+          const parsedTimes = effectiveSpecificTimes
             .split(/[,;\s]+/)
             .map((t) => t.trim())
             .filter((t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t));
@@ -529,7 +570,7 @@ export default function TreatmentPlanForm() {
                         <option value="">-- Nhập thủ công (không liên kết kho) --</option>
                         {inventoryItems.map((item) => (
                           <option key={item._id} value={item._id}>
-                            {item.name} — Tồn kho: {item.quantity} {item.unit} {item.stableBlock ? `(${item.stableBlock})` : ''}
+                            {item.name} — còn {item.quantity} {item.unit}
                           </option>
                         ))}
                       </Form.Select>
@@ -575,6 +616,28 @@ export default function TreatmentPlanForm() {
                             />
                             <span className="input-group-text">{med.unit || 'đv'}</span>
                           </div>
+                          {med.inventoryItem && med.amount > 0 && (() => {
+                            const amt = Number(med.amount);
+                            const slotsCount = Object.values(med.timeSlots || {}).filter(Boolean).length || 1;
+                            let days = 1;
+                            const startDate = formData.startDate;
+                            const endDate = formData.endDate;
+                            if (startDate && endDate) {
+                              const s = new Date(startDate);
+                              const e = new Date(endDate);
+                              s.setHours(0, 0, 0, 0);
+                              e.setHours(0, 0, 0, 0);
+                              const diff = Math.round((e - s) / (24 * 60 * 60 * 1000)) + 1;
+                              if (diff > 0) days = diff;
+                            }
+                            const totalDeduct = days * slotsCount * amt;
+                            return (
+                              <div className="small text-primary fw-medium mt-1" style={{ fontSize: '11px' }}>
+                                <i className="bi bi-box-arrow-right me-1"></i>
+                                Dự kiến dùng: <strong>{totalDeduct} {med.unit}</strong> ({days} ngày × {slotsCount} lần × {med.amount} {med.unit} — Groom trừ kho khi cấp phát)
+                              </div>
+                            );
+                          })()}
                         </Col>
                       )}
 
@@ -595,8 +658,8 @@ export default function TreatmentPlanForm() {
 
                     {/* Morning / Noon / Afternoon / Evening slots */}
                     <Form.Group className="mb-2">
-                      <Form.Label className="small fw-semibold mb-1 d-block">Lịch uống thuốc trong ngày (Sáng / Chiều):</Form.Label>
-                      <div className="d-flex flex-wrap gap-2">
+                      <Form.Label className="small fw-semibold mb-1 d-block">Lịch uống thuốc trong ngày (chọn buổi và chỉnh giờ):</Form.Label>
+                      <div className="d-flex flex-wrap gap-2 mb-2">
                         <Button
                           size="sm"
                           type="button"
@@ -605,7 +668,7 @@ export default function TreatmentPlanForm() {
                           onClick={() => handleTimeSlotToggle(index, 'morning')}
                           disabled={submitting}
                         >
-                          🌅 Sáng (08:00)
+                          🌅 Sáng ({med.slotTimes?.morning || '08:00'})
                         </Button>
                         <Button
                           size="sm"
@@ -615,7 +678,7 @@ export default function TreatmentPlanForm() {
                           onClick={() => handleTimeSlotToggle(index, 'noon')}
                           disabled={submitting}
                         >
-                          ☀️ Trưa (12:00)
+                          ☀️ Trưa ({med.slotTimes?.noon || '12:00'})
                         </Button>
                         <Button
                           size="sm"
@@ -625,7 +688,7 @@ export default function TreatmentPlanForm() {
                           onClick={() => handleTimeSlotToggle(index, 'afternoon')}
                           disabled={submitting}
                         >
-                          🌇 Chiều (16:00)
+                          🌇 Chiều ({med.slotTimes?.afternoon || '16:00'})
                         </Button>
                         <Button
                           size="sm"
@@ -635,33 +698,84 @@ export default function TreatmentPlanForm() {
                           onClick={() => handleTimeSlotToggle(index, 'evening')}
                           disabled={submitting}
                         >
-                          🌙 Tối (20:00)
+                          🌙 Tối ({med.slotTimes?.evening || '20:00'})
                         </Button>
                       </div>
+
+                      {/* Custom Time Selection for active slots */}
+                      {Object.values(med.timeSlots || {}).some(Boolean) && (
+                        <div className="p-2 border rounded bg-white mt-2">
+                          <div className="small fw-semibold text-secondary mb-1">
+                            <i className="bi bi-clock me-1 text-primary"></i> Tùy chỉnh giờ cụ thể cho các buổi đã chọn:
+                          </div>
+                          <div className="d-flex flex-wrap gap-3 align-items-center">
+                            {med.timeSlots?.morning && (
+                              <div className="d-flex align-items-center gap-1">
+                                <span className="small text-muted">Sáng:</span>
+                                <Form.Control
+                                  type="time"
+                                  size="sm"
+                                  style={{ width: '110px' }}
+                                  value={med.slotTimes?.morning || '08:00'}
+                                  onChange={(e) => handleSlotTimeChange(index, 'morning', e.target.value)}
+                                  disabled={submitting}
+                                />
+                              </div>
+                            )}
+                            {med.timeSlots?.noon && (
+                              <div className="d-flex align-items-center gap-1">
+                                <span className="small text-muted">Trưa:</span>
+                                <Form.Control
+                                  type="time"
+                                  size="sm"
+                                  style={{ width: '110px' }}
+                                  value={med.slotTimes?.noon || '12:00'}
+                                  onChange={(e) => handleSlotTimeChange(index, 'noon', e.target.value)}
+                                  disabled={submitting}
+                                />
+                              </div>
+                            )}
+                            {med.timeSlots?.afternoon && (
+                              <div className="d-flex align-items-center gap-1">
+                                <span className="small text-muted">Chiều:</span>
+                                <Form.Control
+                                  type="time"
+                                  size="sm"
+                                  style={{ width: '110px' }}
+                                  value={med.slotTimes?.afternoon || '16:00'}
+                                  onChange={(e) => handleSlotTimeChange(index, 'afternoon', e.target.value)}
+                                  disabled={submitting}
+                                />
+                              </div>
+                            )}
+                            {med.timeSlots?.evening && (
+                              <div className="d-flex align-items-center gap-1">
+                                <span className="small text-muted">Tối:</span>
+                                <Form.Control
+                                  type="time"
+                                  size="sm"
+                                  style={{ width: '110px' }}
+                                  value={med.slotTimes?.evening || '20:00'}
+                                  onChange={(e) => handleSlotTimeChange(index, 'evening', e.target.value)}
+                                  disabled={submitting}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </Form.Group>
 
-                    <Row className="g-2 mb-2">
-                      <Col xs={12} md={6}>
-                        <Form.Label className="small fw-semibold mb-1">Khung giờ cụ thể</Form.Label>
-                        <Form.Control
-                          size="sm"
-                          placeholder="Ví dụ: 08:00, 16:00"
-                          value={med.specificTimes}
-                          onChange={(e) => handleMedChange(index, 'specificTimes', e.target.value)}
-                          disabled={submitting}
-                        />
-                      </Col>
-                      <Col xs={12} md={6}>
-                        <Form.Label className="small fw-semibold mb-1">Hướng dẫn dùng riêng loại thuốc này</Form.Label>
-                        <Form.Control
-                          size="sm"
-                          placeholder="Ví dụ: Trộn vào khẩu phần ăn..."
-                          value={med.instructions}
-                          onChange={(e) => handleMedChange(index, 'instructions', e.target.value)}
-                          disabled={submitting}
-                        />
-                      </Col>
-                    </Row>
+                    <Form.Group className="mb-2">
+                      <Form.Label className="small fw-semibold mb-1">Hướng dẫn dùng riêng loại thuốc này</Form.Label>
+                      <Form.Control
+                        size="sm"
+                        placeholder="Ví dụ: Trộn vào khẩu phần ăn, uống sau khi tập..."
+                        value={med.instructions}
+                        onChange={(e) => handleMedChange(index, 'instructions', e.target.value)}
+                        disabled={submitting}
+                      />
+                    </Form.Group>
                   </Card.Body>
                 </Card>
               ))}

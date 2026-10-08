@@ -39,7 +39,7 @@ export function useVeterinarianData() {
         veterinarianApi.getNotifications(),
         veterinarianApi.getExamRequests(),
         veterinarianApi.getClearances(),
-        veterinarianApi.getIncidents(),
+        veterinarianApi.getIncidents({ status: 'unresolved' }),
       ]);
 
       let fetchedHorses = [];

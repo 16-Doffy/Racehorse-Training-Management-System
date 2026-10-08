@@ -89,8 +89,16 @@ export default function HorseHealthDetail() {
 
   const latestRecord = records[0];
   const activeTreatment = treatments.find((t) => t.isTrainingLocked || t.status === 'ongoing');
-  const isTrainingLocked = activeTreatment?.isTrainingLocked || false;
+  const trainingLevel = activeTreatment?.trainingLevel || (activeTreatment?.isTrainingLocked ? 'none' : 'high');
+  const isTrainingLocked = trainingLevel === 'none' || activeTreatment?.isTrainingLocked || false;
   const activeInjuries = injuries.filter((i) => i.recoveryStatus !== 'recovered');
+
+  const TRAINING_LEVEL_LABELS = {
+    none: { label: 'Khóa tập hoàn toàn', variant: 'danger', icon: 'bi-slash-circle-fill' },
+    light: { label: 'Tập nhẹ (Đi dạo)', variant: 'warning', icon: 'bi-person-walking' },
+    moderate: { label: 'Tập vừa (Nước kiệu)', variant: 'info', icon: 'bi-speedometer2' },
+    high: { label: 'Bình thường (Đầy đủ)', variant: 'success', icon: 'bi-check-circle-fill' },
+  };
 
   const defaultPhoto = 'https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=800&q=80';
 
@@ -189,8 +197,8 @@ export default function HorseHealthDetail() {
             size="sm"
             onClick={() => setShowLockModal(true)}
           >
-            <i className={`bi ${isTrainingLocked ? 'bi-lock-fill' : 'bi-speedometer2'} me-1`}></i>
-            {isTrainingLocked ? 'Mở Khóa / Đổi Mức Tập' : 'Chỉ Định Mức Huấn Luyện'}
+            <i className={`bi ${TRAINING_LEVEL_LABELS[trainingLevel]?.icon || 'bi-speedometer2'} me-1`}></i>
+            Chỉ Định Mức Tập ({TRAINING_LEVEL_LABELS[trainingLevel]?.label || 'Bình thường'})
           </Button>
         </div>
       </div>
@@ -223,21 +231,13 @@ export default function HorseHealthDetail() {
                 <div className="d-flex flex-wrap gap-2 align-items-center">
                   <HealthStatusBadge status={horse.healthStatus} className="fs-6 px-3 py-2" />
 
-                  {horse.healthStatus !== 'eligible' && (
-                    <Button
-                      variant="success"
-                      size="sm"
-                      className="px-3 py-2 fw-semibold d-flex align-items-center shadow-sm"
-                      onClick={() => setShowRecoveryModal(true)}
-                      title="Xác nhận chiến mã đã bình phục và cấp lại trạng thái Đủ điều kiện"
+                  {activeTreatment && (
+                    <Badge
+                      bg={TRAINING_LEVEL_LABELS[trainingLevel]?.variant || 'secondary'}
+                      className="fs-6 px-3 py-2 d-flex align-items-center shadow-sm"
                     >
-                      <i className="bi bi-check-circle-fill me-1"></i> Xác Nhận Bình Phục (Đủ Điều Kiện)
-                    </Button>
-                  )}
-
-                  {isTrainingLocked && (
-                    <Badge bg="danger" className="fs-6 px-3 py-2 d-flex align-items-center">
-                      <i className="bi bi-lock-fill me-1"></i> 🔴 KHÓA HUẤN LUYỆN
+                      <i className={`bi ${TRAINING_LEVEL_LABELS[trainingLevel]?.icon || 'bi-speedometer'} me-1`}></i>
+                      Mức tập: {TRAINING_LEVEL_LABELS[trainingLevel]?.label || trainingLevel}
                     </Badge>
                   )}
                 </div>
@@ -521,8 +521,13 @@ export default function HorseHealthDetail() {
                               {tr.medications?.length > 0 ? (
                                 <ul className="list-unstyled mb-0 small">
                                   {tr.medications.map((m, idx) => (
-                                    <li key={idx}>
+                                    <li key={idx} className="mb-1">
                                       💊 <strong>{m.name}</strong>: {m.dosage} ({m.frequency || 'theo chỉ dẫn'})
+                                      {m.startDate && m.endDate && (
+                                        <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                          📅 Từ {formatDate(m.startDate)} đến {formatDate(m.endDate)}
+                                        </div>
+                                      )}
                                     </li>
                                   ))}
                                 </ul>
@@ -594,70 +599,6 @@ export default function HorseHealthDetail() {
         }}
       />
 
-      {/* Recovery Clearance Modal */}
-      <Modal show={showRecoveryModal} onHide={() => !recovering && setShowRecoveryModal(false)} centered>
-        <Form onSubmit={handleConfirmRecovery}>
-          <Modal.Header closeButton={!recovering} className="bg-success text-white">
-            <Modal.Title className="fs-5 fw-bold">
-              <i className="bi bi-check-circle-fill me-2"></i> Xác Nhận Bình Phục & Cấp "Đủ Điều Kiện"
-            </Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            <div className="mb-3">
-              <p className="mb-1">
-                Chiến mã: <strong className="text-primary">{horse.name}</strong> (#{horse._id})
-              </p>
-              <p className="small text-muted mb-0">
-                Xác nhận ngựa đã hết bệnh, hồi phục hoàn toàn để chuyển trạng thái sức khỏe sang{' '}
-                <span className="badge bg-success">ĐỦ ĐIỀU KIỆN</span> và sẵn sàng cho việc tập luyện, thi đấu.
-              </p>
-            </div>
-
-            <Form.Group className="mb-3">
-              <Form.Label className="fw-semibold small">Ghi chú kết luận tái khám *</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={recoveryNote}
-                onChange={(e) => setRecoveryNote(e.target.value)}
-                placeholder="Nhập ghi chú chẩn đoán tái khám..."
-                required
-                disabled={recovering}
-              />
-            </Form.Group>
-
-            {activeTreatment && (
-              <Form.Group className="p-2 border rounded bg-light mb-2">
-                <Form.Check
-                  type="checkbox"
-                  id="complete-treatment-check"
-                  label="Đồng thời kết thúc và đánh dấu hoàn thành đợt điều trị hiện tại"
-                  checked={completeOngoingTreatment}
-                  onChange={(e) => setCompleteOngoingTreatment(e.target.checked)}
-                  disabled={recovering}
-                  className="small fw-semibold"
-                />
-              </Form.Group>
-            )}
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowRecoveryModal(false)} disabled={recovering}>
-              Hủy
-            </Button>
-            <Button variant="success" type="submit" disabled={recovering}>
-              {recovering ? (
-                <>
-                  <Spinner size="sm" animation="border" className="me-1" /> Đang cập nhật...
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-check-lg me-1"></i> Xác Nhận Đủ Điều Kiện
-                </>
-              )}
-            </Button>
-          </Modal.Footer>
-        </Form>
-      </Modal>
     </Container>
   );
 }

@@ -31,6 +31,7 @@ async function syncHorseHealthStatus(horseId) {
   if (horse.healthStatus === 'quarantined') return;
 
   const activeMarkers = await InjuryMarker.find({ horse: horseId, recoveryStatus: { $ne: 'recovered' } });
+  const ongoingTreatments = await Treatment.find({ horse: horseId, status: 'ongoing' });
 
   let target = 'eligible';
 
@@ -43,13 +44,16 @@ async function syncHorseHealthStatus(horseId) {
     if (clinical && clinical !== 'quarantined' && STATUS_RANK[clinical] > STATUS_RANK[target]) {
       target = clinical;
     }
+  } else if (ongoingTreatments.length > 0) {
+    const hasLocked = ongoingTreatments.some((t) => t.isTrainingLocked || t.trainingLevel === 'none');
+    target = hasLocked ? 'injured' : 'monitoring';
+  } else {
+    // When no active markers and no ongoing treatments exist, horse is fully recovered
+    target = 'eligible';
   }
 
-  // Marker changes can raise the alarm freely, but may not lower it while a lock is in force:
-  // deleting a mis-placed scratch must not clear a horse the vet grounded for a fever. This used to
-  // lift every lock on the horse with an updateMany — unrelated locks included, with no audit entry
-  // and no word to the trainer — which also meant lifting one of two locks silently lifted both.
-  const lockedTreatment = await Treatment.findOne({ horse: horseId, isTrainingLocked: true, status: 'ongoing' });
+  // Marker changes can raise the alarm freely, but may not lower it while a lock is in force
+  const lockedTreatment = ongoingTreatments.find((t) => t.isTrainingLocked);
   if (lockedTreatment && STATUS_RANK[target] < STATUS_RANK[horse.healthStatus]) return;
 
   if (target !== horse.healthStatus) {

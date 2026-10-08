@@ -91,6 +91,28 @@ export default function MedicalExaminationForm() {
         setError('Mỗi phiếu khám tối đa 10 tệp đính kèm.');
         return;
       }
+
+      for (const file of filesArray) {
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        const isImage = file.type.startsWith('image/');
+
+        if (!isImage && !isPdf) {
+          setError(`Tệp "${file.name}" không được hỗ trợ. Chỉ chấp nhận ảnh hoặc tài liệu PDF.`);
+          return;
+        }
+
+        if (isImage && file.size > 5 * 1024 * 1024) {
+          setError(`Ảnh "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} MB) vượt quá giới hạn 5 MB.`);
+          return;
+        }
+
+        if (isPdf && file.size > 10 * 1024 * 1024) {
+          setError(`Tệp PDF "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} MB) vượt quá giới hạn 10 MB.`);
+          return;
+        }
+      }
+
+      setError(null);
       setSelectedFiles((prev) => [...prev, ...filesArray]);
     }
   };
@@ -416,7 +438,7 @@ export default function MedicalExaminationForm() {
                   <i className="bi bi-paperclip me-1 text-primary"></i>
                   Tài Liệu Y Tế & Hình Ảnh Đính Kèm (Ảnh X-Quang, Kết Quả Xét Nghiệm, Đơn Thuốc Scan)
                 </Form.Label>
-                <span className="small text-muted">Tối đa 10 tệp (ảnh hoặc PDF)</span>
+                <span className="small text-muted">Tối đa 10 tệp (Ảnh tối đa 5MB, PDF tối đa 10MB)</span>
               </div>
 
               {/* Existing Attachments (if editing) */}
@@ -479,7 +501,7 @@ export default function MedicalExaminationForm() {
                   disabled={submitting}
                 />
                 <Form.Text className="text-muted">
-                  Hỗ trợ định dạng hình ảnh (.jpg, .png) và tài liệu (.pdf). Tải lên đồng thời tối đa 5 tệp/lần.
+                  Hỗ trợ hình ảnh (.jpg, .png - tối đa 5MB) và tài liệu PDF (tối đa 10MB). Tối đa 10 tệp/phiếu khám.
                 </Form.Text>
               </Form.Group>
 
