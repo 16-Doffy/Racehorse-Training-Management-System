@@ -50,6 +50,14 @@ const createRecord = asyncHandler(async (req, res) => {
   if (await isLatestRecord(record)) {
     await Horse.findByIdAndUpdate(record.horse, { healthStatus: record.resultStatus });
   }
+
+  // If the horse does not have an assigned vet yet, this examining vet takes responsibility
+  const horseDoc = await Horse.findById(record.horse);
+  if (horseDoc && !horseDoc.assignedVet) {
+    horseDoc.assignedVet = req.user._id;
+    await horseDoc.save();
+  }
+
   await logAction({ actorId: req.user._id, action: 'healthRecord.create', targetModel: 'HealthRecord', targetId: record._id });
   await closeRequestsWithRecord(record, req.user);
   // The same exam answers whatever the groom reported about this horse.

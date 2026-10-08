@@ -23,14 +23,17 @@ const FORBIDDEN_HORSE_MESSAGE = 'Forbidden: this horse is not assigned to you.';
 async function getScopedHorseIds(user) {
   if (user.role === ROLES.VETERINARIAN) {
     const ExamRequest = require('../models/ExamRequest');
-    const [assignedHorses, pendingRequests, unassignedHorses] = await Promise.all([
+    const HealthRecord = require('../models/HealthRecord');
+    const [assignedHorses, pendingRequests, examinedHorses, unassignedHorses] = await Promise.all([
       Horse.find({ assignedVet: user._id }).select('_id'),
       ExamRequest.find({ status: 'pending' }).select('horse'),
+      HealthRecord.find({ examinedBy: user._id }).select('horse'),
       Horse.find({ $or: [{ assignedVet: null }, { assignedVet: { $exists: false } }] }).select('_id'),
     ]);
     const idSet = new Set([
       ...assignedHorses.map((h) => String(h._id)),
       ...pendingRequests.filter((r) => r.horse).map((r) => String(r.horse)),
+      ...examinedHorses.filter((r) => r.horse).map((r) => String(r.horse)),
       ...unassignedHorses.map((h) => String(h._id)),
     ]);
     return Array.from(idSet);
@@ -72,11 +75,15 @@ async function canAccessHorse(user, horseId) {
     // 1. Assigned directly to this vet
     const isAssigned = await Horse.exists({ _id: horseId, assignedVet: user._id });
     if (isAssigned) return true;
-    // 2. Has an open exam request that any clinical staff should be able to fulfill
+    // 2. Has been examined by this vet
+    const HealthRecord = require('../models/HealthRecord');
+    const hasExamined = await HealthRecord.exists({ horse: horseId, examinedBy: user._id });
+    if (hasExamined) return true;
+    // 3. Has an open exam request
     const ExamRequest = require('../models/ExamRequest');
     const hasPendingExam = await ExamRequest.exists({ horse: horseId, status: 'pending' });
     if (hasPendingExam) return true;
-    // 3. Or horse has no vet assigned yet
+    // 4. Or horse has no vet assigned yet
     const isUnassigned = await Horse.exists({
       _id: horseId,
       $or: [{ assignedVet: null }, { assignedVet: { $exists: false } }],
