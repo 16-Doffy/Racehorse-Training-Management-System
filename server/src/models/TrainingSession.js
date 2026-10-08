@@ -10,6 +10,12 @@ const trainingSessionSchema = new mongoose.Schema(
     // Distinguishes a normal training rep from an official timed trial run (used to pick which
     // horse gets entered for an upcoming race) — same lifecycle/metrics, different intent.
     sessionType: { type: String, enum: ['training', 'trial_run'], default: 'training' },
+    // The kind of work (constants/training.js SESSION_KINDS): walk, canter, hill, breeze, trial.
+    // It sets objective / intensity / sessionType and the default workout; older sessions have none.
+    kind: { type: String, enum: ['walk', 'canter', 'hill', 'breeze', 'trial'] },
+    // Set when a week is generated from the plan, so generating again doesn't book the day twice.
+    generated: { type: Boolean, default: false },
+    startedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // who pressed "Bắt đầu"
     // What the session is FOR. sessionType only says "normal rep vs. timed trial"; this says what
     // the horse is meant to gain from the work, which is what decides distance, pace and recovery.
     objective: {

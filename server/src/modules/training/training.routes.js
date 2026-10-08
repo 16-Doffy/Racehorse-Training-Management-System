@@ -9,9 +9,13 @@ router.use(protect);
 
 // Training plans: authored by the Head Trainer, viewable by everyone (owner, vet, groom need visibility).
 router.get('/plans', planCtrl.listPlans);
+// Before '/plans/:id', otherwise "suggest" is read as an id.
+router.get('/plans/suggest', planCtrl.suggestPlan);
 router.get('/plans/:id', planCtrl.getPlan);
 router.post('/plans', authorize(ROLES.HEAD_TRAINER), planCtrl.createPlan);
 router.put('/plans/:id', authorize(ROLES.HEAD_TRAINER), planCtrl.updatePlan);
+// Books the plan's normal week as sessions: { weekStart? } (next week by default).
+router.post('/plans/:id/generate-week', authorize(ROLES.HEAD_TRAINER), planCtrl.generateWeek);
 router.delete('/plans/:id', authorize(ROLES.HEAD_TRAINER), planCtrl.deletePlan);
 
 // Training sessions.

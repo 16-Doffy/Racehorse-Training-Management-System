@@ -129,6 +129,10 @@ module.exports = {
       },
       TrainingPlan: {
         type: 'object',
+        description:
+          'A training cycle for one horse (one active plan per horse), usually aimed at a race: phases laid end to end from startDate. ' +
+          'phase / distanceTarget / weeklyVolumeKm / intensity / surface describe the phase the horse is in now (kept in sync by the server). ' +
+          'Plans from before phases existed read as one phase. List and get responses add progress.',
         properties: {
           _id: { type: 'string' },
           horse: { type: 'string' },
@@ -143,7 +147,45 @@ module.exports = {
           startDate: { type: 'string', format: 'date-time' },
           endDate: { type: 'string', format: 'date-time' },
           notes: { type: 'string' },
-          status: { type: 'string', enum: ['draft', 'active', 'completed', 'cancelled'] },
+          status: { type: 'string', enum: ['draft', 'active', 'completed', 'cancelled'], description: 'Only one active plan per horse (409 otherwise). Completing or cancelling cancels its future scheduled sessions.' },
+          sessionTime: { type: 'string', example: '07:30', description: 'Time sessions are booked at when a week is generated' },
+          phases: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['key', 'weeks'],
+              properties: {
+                key: { type: 'string', enum: ['base_building', 'strength', 'speed', 'peak', 'recovery'] },
+                weeks: { type: 'integer', minimum: 1, maximum: 12 },
+                startDate: { type: 'string', format: 'date-time', readOnly: true },
+                endDate: { type: 'string', format: 'date-time', readOnly: true },
+                distanceTarget: { type: 'number', minimum: 100, maximum: 6000 },
+                weeklyVolumeKm: { type: 'number' },
+                intensity: { type: 'string', enum: ['light', 'moderate', 'high'] },
+                surface: { type: 'string', enum: ['turf', 'dirt', 'synthetic', 'sand'] },
+                week: {
+                  type: 'array',
+                  description: 'The phase\'s normal week; days not listed are rest days',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      day: { type: 'integer', minimum: 0, maximum: 6, description: '0 = Sunday … 6 = Saturday' },
+                      kind: { type: 'string', enum: ['walk', 'canter', 'hill', 'breeze', 'trial'] },
+                      distanceM: { type: 'number' },
+                      reps: { type: 'number' },
+                      targetSpeedKmh: { type: 'number' },
+                      targetHeartRateMax: { type: 'number' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          progress: {
+            type: 'object',
+            readOnly: true,
+            description: 'week (0 = not started) of totalWeeks, phaseIndex, phaseWeek, phaseSessions {planned, completed, met}, totalCompleted, raceInDays, upcoming (next 3 scheduled sessions)',
+          },
         },
       },
       ExamRequest: {
@@ -199,6 +241,14 @@ module.exports = {
           horse: { type: 'string' },
           assignedTo: { type: 'string' },
           sessionType: { type: 'string', enum: ['training', 'trial_run'], description: '"lượt chạy thử" vs a normal training rep' },
+          kind: {
+            type: 'string',
+            enum: ['walk', 'canter', 'hill', 'breeze', 'trial'],
+            description:
+              'Kind of work: walk (đi bộ & kiệu), canter (phi chậm), hill (tập dốc), breeze (phi nhanh), trial (chạy thử). On create it fills objective, intensity, ' +
+              'sessionType and any prescription field left out with the kind\'s default workout.',
+          },
+          generated: { type: 'boolean', readOnly: true, description: 'Booked by "generate week" from the plan' },
           objective: {
             type: 'string',
             enum: ['endurance', 'speed', 'interval', 'recovery', 'technique', 'race_simulation'],
@@ -799,6 +849,32 @@ module.exports = {
     '/training/plans': {
       get: { tags: ['Training (Head Trainer)'], summary: 'List training plans', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/TrainingPlan' } }) } },
       post: { tags: ['Training (Head Trainer)'], summary: 'Create training plan', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/TrainingPlan' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/TrainingPlan' }), 403: responses[403] } },
+    },
+    '/training/plans/suggest': {
+      get: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'Phases to propose for a new cycle, counted back from the race',
+        description: 'Weeks to race day shared out base 35% / strength 25% / speed 25% / peak 15% (race week included), then 2 weeks recovery; 4/3/3 without a race. Each phase comes with its normal week.',
+        parameters: [
+          { name: 'horse', in: 'query', required: true, schema: { type: 'string' } },
+          { name: 'targetRace', in: 'query', schema: { type: 'string' } },
+          { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date' } },
+        ],
+        responses: { 200: responses[200]({ type: 'object', properties: { startDate: { type: 'string' }, phases: { type: 'array', items: { type: 'object' } }, race: { type: 'object', nullable: true }, activePlan: { type: 'object', nullable: true } } }), 400: responses[400], 403: responses[403] },
+      },
+    },
+    '/training/plans/{id}/generate-week': {
+      post: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'Book a week of the plan as scheduled sessions',
+        description:
+          'Each day takes the template of its phase at the plan\'s sessionTime; 8 days before the plan\'s race becomes a trial over the race distance. ' +
+          'Skips days already booked, past, outside the plan or on race day. A locked/injured horse gets nothing (409); a recovering horse gets lighter work. ' +
+          'Advisory readiness gates are checked when the session is started, not here. The groom gets one summary notification.',
+        parameters: [idParam('id')],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { weekStart: { type: 'string', format: 'date', description: 'Any day of the week; default next week' } } } } } },
+        responses: { 201: responses[201]({ type: 'object', properties: { weekStart: { type: 'string' }, created: { type: 'array', items: { $ref: '#/components/schemas/TrainingSession' } }, skipped: { type: 'array', items: { type: 'object' } } } }), 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
     },
     '/training/plans/{id}': {
       get: { tags: ['Training (Head Trainer)'], summary: 'Get training plan', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingPlan' }), 404: responses[404] } },

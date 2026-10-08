@@ -1,32 +1,49 @@
 const TrainingSession = require('../../models/TrainingSession');
 const TrainingPlan = require('../../models/TrainingPlan');
 const Horse = require('../../models/Horse');
-const DailyTask = require('../../models/DailyTask');
-const StableAssignment = require('../../models/StableAssignment');
-const ExamRequest = require('../../models/ExamRequest');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
-const { pushNotification, notifyCaretaker } = require('../alerts/notification.service');
-const { openExamRequest } = require('../health/examRequest.service');
-const { computeReadiness, cautionGates, toSnapshot, MIN_DIGEST_MINUTES } = require('./readiness.service');
+const { pushNotification } = require('../alerts/notification.service');
+const { computeReadiness, cautionGates, toSnapshot } = require('./readiness.service');
 const {
-  OBJECTIVE_LABELS,
   SESSION_STATUS,
   SESSION_STATUS_LABELS,
   SESSION_ERROR,
   SESSION_BODY_STATUSES,
   preCheckWindow,
   canTransition,
+  SESSION_KINDS,
+  PRESCRIPTION_RANGES,
+  METRIC_RANGES,
+  rangeProblem,
+  kindSpeedProblem,
 } = require('../../constants/training');
+const { computeOutcome, announceSessionToGroom, raiseExamIfOverexerted, onCompleted, buildFromKind } = require('./trainingSession.service');
 const { ROLES } = require('../../constants/roles');
 
 // What the trainer describes when booking a session. Status, metrics, rating, outcome and the
 // readiness snapshot are all server-owned or set through their own endpoints — accepting them
 // here let a client create a session that was already "completed" with a made-up result.
-const PLAN_FIELDS = ['sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'scheduledAt', 'assignedTo'];
+const PLAN_FIELDS = ['kind', 'sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'scheduledAt', 'assignedTo'];
+
+/**
+ * Fills a booking from its kind of work: what the trainer left out (objective, intensity, type, the
+ * workout's numbers) comes from the kind's defaults. Returns an error message or null.
+ */
+function applyKind(body) {
+  if (body.kind === undefined || body.kind === null || body.kind === '') {
+    delete body.kind;
+    return null;
+  }
+  if (!SESSION_KINDS[body.kind]) return 'Loại buổi tập không hợp lệ.';
+  const base = buildFromKind(body.kind);
+  for (const f of ['objective', 'intensity', 'sessionType']) if (!body[f]) body[f] = base[f];
+  body.prescription = { ...base.prescription, ...(body.prescription || {}) };
+  return null;
+}
 
 /** Loads a session the caller may act on, or sends the appropriate error and returns null. */
 async function loadSession(req, res) {
@@ -90,161 +107,6 @@ async function checkReadiness(horseId, context, overrideReason) {
 }
 
 /**
- * Did the session do what it set out to do? Compares what was actually measured against what was
- * prescribed. Returns `met: null` when the session had no targets — an honest "no verdict" rather
- * than a misleading pass.
- */
-function computeOutcome(session) {
-  const p = session.prescription || {};
-  const m = session.metrics || {};
-  const checks = [];
-
-  if (p.targetSpeedKmh != null && m.maxSpeed != null) {
-    checks.push({ ok: m.maxSpeed >= p.targetSpeedKmh, text: `tốc độ ${m.maxSpeed}/${p.targetSpeedKmh} km/h` });
-  }
-  if (p.targetHeartRateMax != null && m.avgHeartRate != null) {
-    checks.push({ ok: m.avgHeartRate <= p.targetHeartRateMax, text: `nhịp tim ${m.avgHeartRate}/${p.targetHeartRateMax} bpm` });
-  }
-  if (p.distanceM != null && m.distance != null) {
-    checks.push({ ok: m.distance >= p.distanceM, text: `cự ly ${m.distance}/${p.distanceM} m` });
-  }
-
-  if (checks.length === 0) return { met: null, summary: '' };
-
-  const met = checks.every((c) => c.ok);
-  return { met, summary: `${met ? 'Đạt mục tiêu' : 'Chưa đạt mục tiêu'} — ${checks.map((c) => c.text).join(', ')}.` };
-}
-
-// Average heart rate this far past the session's own ceiling is no longer "worked hard" but
-// "something may be wrong" — worth a vet's look even if the trainer doesn't ask for one.
-const OVEREXERTION_RATIO = 1.1;
-// A session only concerns the groom's day once it is this close.
-const ANNOUNCE_WITHIN_HOURS = 24;
-
-const clock = (date) => new Date(date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-
-/**
- * Tells the horse's groom a session is coming and when the horse has to have finished eating.
- * The trainer's readiness board warns about a meal too close to the work, but the person who can
- * actually move the meal is the groom, who until now was never told a session existed.
- */
-async function announceSessionToGroom(session, horseName) {
-  if (session.status !== 'scheduled') return;
-  const at = new Date(session.scheduledAt);
-  const hoursAway = (at.getTime() - Date.now()) / (60 * 60 * 1000);
-  if (hoursAway < 0 || hoursAway > ANNOUNCE_WITHIN_HOURS) return;
-
-  const feedBy = new Date(at.getTime() - MIN_DIGEST_MINUTES * 60 * 1000);
-  await notifyCaretaker({
-    horse: session.horse,
-    trainingSession: session._id,
-    type: 'session_scheduled',
-    severity: 'info',
-    message: `🏇 ${horseName} có buổi tập "${OBJECTIVE_LABELS[session.objective] || 'huấn luyện'}" lúc ${clock(at)} ngày ${at.toLocaleDateString(
-      'vi-VN'
-    )} — cho ăn xong trước ${clock(feedBy)}.${session.coachNote ? ` HLV dặn: ${session.coachNote}` : ''}`,
-  });
-}
-
-/**
- * Raises an exam request when the numbers of a finished session say the horse was pushed well past
- * the heart-rate ceiling the trainer set for it. At most one per session, and none while the horse
- * already has a request waiting.
- */
-async function raiseExamIfOverexerted(session, user, horse) {
-  const limit = session.prescription?.targetHeartRateMax;
-  const measured = session.metrics?.avgHeartRate;
-  if (!limit || !measured || measured < limit * OVEREXERTION_RATIO) return false;
-  if (await ExamRequest.exists({ $or: [{ trainingSession: session._id }, { horse: session.horse, status: 'pending' }] })) return false;
-
-  const what = OBJECTIVE_LABELS[session.objective] || 'huấn luyện';
-  const reason = `Nhịp tim trung bình ${Math.round(measured)} bpm, vượt giới hạn ${limit} bpm của buổi "${what}".`;
-  await openExamRequest({
-    horse,
-    requestedBy: user,
-    reason,
-    priority: 'high',
-    trainingSession: session._id,
-    message: `🩺 [ƯU TIÊN CAO] Hệ thống đề nghị khám ${horse.name} sau buổi tập: ${reason}`,
-  });
-  return true;
-}
-
-/**
- * A hard session leaves a horse that needs cooling down and its legs iced, and the person who does
- * that is the groom, not the trainer. Rather than relying on the trainer to remember to assign it,
- * finishing the session creates the work. Idempotent per session.
- */
-async function createPostSessionCare(session) {
-  const isHard = session.intensity === 'high' || session.objective === 'race_simulation';
-  if (!isHard) return 0;
-
-  const assignment = await StableAssignment.findOne({ horse: session.horse });
-  if (!assignment?.assignedCaretaker) return 0;
-
-  const what = `${(OBJECTIVE_LABELS[session.objective] || 'buổi tập').toLowerCase()}${
-    session.prescription?.distanceM ? ` ${session.prescription.distanceM}m` : ''
-  }`;
-  const wanted = [
-    { taskType: 'icing', note: `Sau buổi ${what} — ngâm chân hạ nhiệt gân.` },
-    { taskType: 'bathing', note: `Sau buổi ${what} — tắm và lau khô.` },
-  ];
-
-  let createdCount = 0;
-  for (const item of wanted) {
-    // eslint-disable-next-line no-await-in-loop
-    const exists = await DailyTask.exists({ horse: session.horse, taskType: item.taskType, trainingSession: session._id });
-    if (exists) continue;
-
-    // eslint-disable-next-line no-await-in-loop
-    await DailyTask.create({
-      horse: session.horse,
-      assignedTo: assignment.assignedCaretaker,
-      taskType: item.taskType,
-      source: 'system',
-      trainingSession: session._id,
-      note: item.note,
-      scheduledDate: new Date(),
-      status: 'pending',
-    });
-    createdCount += 1;
-  }
-  if (createdCount > 0) {
-    await notifyCaretaker({
-      horse: session.horse,
-      trainingSession: session._id,
-      type: 'task_assigned',
-      severity: 'info',
-      message: `🧊 Ngựa vừa xong buổi ${what} — có ${createdCount} việc chăm sóc sau tập (ngâm chân, tắm) trong danh sách của bạn.`,
-    });
-  }
-  return createdCount;
-}
-
-/** Everything that follows a session reaching "completed" for the first time. */
-async function onCompleted(session, user) {
-  const careTasksCreated = await createPostSessionCare(session);
-
-  // The owner pays for this horse and never sees the training screens — closing the loop back to
-  // them is the difference between "my horse trains somewhere" and knowing how it went.
-  const horse = await Horse.findById(session.horse).select('name owner');
-  if (horse) await raiseExamIfOverexerted(session, user, horse);
-  if (horse?.owner) {
-    await pushNotification({
-      recipientUser: horse.owner,
-      horse: horse._id,
-      trainingSession: session._id,
-      type: 'session_completed',
-      severity: 'info',
-      message: `🏇 ${horse.name} đã hoàn thành buổi tập "${OBJECTIVE_LABELS[session.objective] || 'huấn luyện'}".${
-        session.outcome?.met === null || session.outcome?.met === undefined ? '' : ` ${session.outcome.summary}`
-      }`,
-    });
-  }
-  return careTasksCreated;
-}
-
-/**
  * The one place a session's status changes. Every route that can move a session (update, start,
  * evaluation) goes through here, so no route can skip the lock and readiness checks — the
  * evaluation endpoint used to set in_progress without either.
@@ -295,6 +157,7 @@ async function applyStatusChange(session, next, { user, overrideReason }) {
     if (cautionGates(readiness).length > 0) effects.override = { readiness, reason: overrideReason, moment: 'start' };
   }
 
+  if (next === 'in_progress') session.startedBy = user._id;
   session.status = next;
   if (next === 'completed') effects.completed = true;
   return { effects };
@@ -365,6 +228,8 @@ const createSession = asyncHandler(async (req, res) => {
   }
 
   const body = pick(req.body, PLAN_FIELDS);
+  const problem = applyKind(body) || rangeProblem(body.prescription, PRESCRIPTION_RANGES) || kindSpeedProblem(body.kind, body.prescription?.targetSpeedKmh);
+  if (problem) return fail(res, problem, 400);
   const { readiness, error } = await checkReadiness(
     horse,
     { scheduledAt: body.scheduledAt, intensity: body.intensity, sessionType: body.sessionType, objective: body.objective },
@@ -405,6 +270,11 @@ const updateSession = asyncHandler(async (req, res) => {
       code: SESSION_ERROR.NOT_EDITABLE,
     });
   }
+  const problem =
+    applyKind(changes) ||
+    rangeProblem(changes.prescription, PRESCRIPTION_RANGES) ||
+    kindSpeedProblem(changes.kind || session.kind, changes.prescription?.targetSpeedKmh);
+  if (problem) return fail(res, problem, 400);
   const previousTime = new Date(session.scheduledAt).getTime();
   Object.assign(session, changes);
 
@@ -540,6 +410,8 @@ const recordEvaluation = asyncHandler(async (req, res) => {
   const { trainerComment, performanceRating, metrics, status, overrideReason, videoUrl } = req.body;
   const session = await loadSession(req, res);
   if (!session) return undefined;
+  const metricProblem = rangeProblem(metrics, METRIC_RANGES);
+  if (metricProblem) return fail(res, metricProblem, 400);
 
   const { effects, error } = await applyStatusChange(session, status, { user: req.user, overrideReason });
   if (error) return fail(res, error.message, error.status, error.data);
