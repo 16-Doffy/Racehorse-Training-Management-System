@@ -9,6 +9,7 @@ const StableAssignment = require('../src/models/StableAssignment');
 const DailyTask = require('../src/models/DailyTask');
 const ExamRequest = require('../src/models/ExamRequest');
 const Treatment = require('../src/models/Treatment');
+const HealthRecord = require('../src/models/HealthRecord');
 const audit = require('../src/modules/audit/audit.service');
 const notifications = require('../src/modules/alerts/notification.service');
 const clearance = require('../src/modules/health/trainingClearance');
@@ -32,7 +33,9 @@ let races;
 const valueAt = (row, key) => key.split('.').reduce((value, part) => value?.[part], row);
 function matches(row, filter) {
   return Object.entries(filter).every(([key, expected]) => {
+    if (key === '$or') return expected.some((branch) => matches(row, branch));
     const value = valueAt(row, key);
+    if (expected === null) return value == null;
     if (!expected || typeof expected !== 'object' || expected instanceof Date) return String(value) === String(expected);
     if ('$exists' in expected) return (value !== undefined) === expected.$exists;
     if ('$in' in expected) return expected.$in.map(String).includes(String(value));
@@ -91,6 +94,9 @@ test.beforeEach(() => {
   for (const [model, rows] of [[DailyTask, tasks], [ExamRequest, exams], [Treatment, treatments], [TrainingSession, sessions], [TrainingPlan, plans], [RaceEntry, races]]) {
     model.updateMany = async (filter, update) => updateRows(rows, filter, update);
   }
+  // The vet scope also reaches horses through open exam requests and its own health records.
+  ExamRequest.find = (filter) => ({ select: async () => exams.filter((row) => matches(row, filter)) });
+  HealthRecord.find = () => ({ select: async () => [] });
   DailyTask.deleteMany = async () => { throw new Error('Archive must preserve task history'); };
   StableAssignment.deleteMany = async () => ({ deletedCount: 1 });
 });

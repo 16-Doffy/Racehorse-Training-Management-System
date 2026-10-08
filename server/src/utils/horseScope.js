@@ -42,7 +42,9 @@ async function getScopedHorseIds(user) {
       ...examinedHorses.filter((r) => r.horse).map((r) => String(r.horse)),
       ...unassignedHorses.map((h) => String(h._id)),
     ]);
-    return Array.from(idSet);
+    // Requests and records outlive the horse, so a retired horse would come back in through them.
+    const active = await Horse.find({ _id: { $in: Array.from(idSet) }, isArchived: { $ne: true } }).select('_id');
+    return active.map((h) => h._id);
   }
 
   const field = SCOPE_FIELD_BY_ROLE[user.role];
@@ -78,6 +80,8 @@ async function canAccessHorse(user, horseId) {
   if (!horseId) return false;
   if (user.role === ROLES.MANAGER) return true;
   if (user.role === ROLES.VETERINARIAN) {
+    // A retired horse is out of scope however the vet was linked to it.
+    if (!(await Horse.exists({ _id: horseId, isArchived: { $ne: true } }))) return false;
     // 1. Assigned directly to this vet
     const isAssigned = await Horse.exists({ _id: horseId, assignedVet: user._id });
     if (isAssigned) return true;

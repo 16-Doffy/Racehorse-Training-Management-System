@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Tooltip, Typography } from 'antd';
+import dayjs from 'dayjs';
 import { PHASE_LABELS, PHASE_SHORT, PHASE_COLORS, PHASE_DESCRIPTIONS } from './trainingVocab';
 
 const { Text } = Typography;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const ddmm = (d) => new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+// Same DD/MM as the wizard's phase table, whatever the browser's locale formatting does.
+const ddmm = (d) => dayjs(d).format('DD/MM');
 
 /**
  * A plan's phases as one bar, each segment as wide as its weeks, with a marker for today and a flag
