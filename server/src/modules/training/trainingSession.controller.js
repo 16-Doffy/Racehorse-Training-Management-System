@@ -157,7 +157,15 @@ async function applyStatusChange(session, next, { user, overrideReason }) {
     if (cautionGates(readiness).length > 0) effects.override = { readiness, reason: overrideReason, moment: 'start' };
   }
 
-  if (next === 'in_progress') session.startedBy = user._id;
+  // The real clock of the session, next to the booked time: when it actually started and ended.
+  if (next === 'in_progress') {
+    session.startedBy = user._id;
+    session.actualStartAt = new Date();
+  }
+  if (next === 'completed' && session.actualStartAt && !session.actualEndAt) {
+    session.actualEndAt = new Date();
+    session.actualDurationSec = Math.round((session.actualEndAt - session.actualStartAt) / 1000);
+  }
   session.status = next;
   if (next === 'completed') effects.completed = true;
   return { effects };

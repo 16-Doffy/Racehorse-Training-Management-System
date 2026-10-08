@@ -17,11 +17,12 @@ const { clearanceMap, levelOf } = require('../health/trainingClearance');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
 
-const TASK_FIELDS = ['horse', 'assignedTo', 'taskType', 'mealSlot', 'scheduledDate', 'note'];
+const TASK_FIELDS = ['horse', 'assignedTo', 'taskType', 'mealSlot', 'scheduledDate', 'dueTime', 'note'];
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // What a trainer or manager may hand out by hand. Medication and monitoring are the vet's care
 // orders: they come from a treatment, not from this form.
-const MANUAL_TASK_TYPES = ['feeding', 'cleaning', 'bathing', 'icing'];
+const MANUAL_TASK_TYPES = ['feeding', 'cleaning', 'bathing', 'icing', 'other'];
 const TASK_LABELS = {
   feeding: 'cho ăn',
   cleaning: 'vệ sinh chuồng',
@@ -29,7 +30,29 @@ const TASK_LABELS = {
   icing: 'ngâm chân nước đá',
   medication: 'cho dùng thuốc',
   monitoring: 'theo dõi theo y lệnh',
+  other: 'việc khác',
 };
+
+/**
+ * When a hand-given job is due. A meal has its slot's time; every other job needs a time of day
+ * ("HH:mm"), stored on the task and in scheduledDate, so the groom knows when and the board can
+ * tell on time from overdue. Mutates `body`; returns an error message or null.
+ */
+function applyDueTime(body, { required }) {
+  if (body.taskType === 'feeding') {
+    delete body.dueTime;
+    return null;
+  }
+  if (body.dueTime === undefined || body.dueTime === null || body.dueTime === '') {
+    return required ? 'Chọn giờ thực hiện công việc.' : null;
+  }
+  if (!TIME_PATTERN.test(body.dueTime)) return 'Giờ thực hiện không đúng dạng HH:mm.';
+  const at = new Date(body.scheduledDate || Date.now());
+  const [h, m] = body.dueTime.split(':').map(Number);
+  at.setHours(h, m, 0, 0);
+  body.scheduledDate = at;
+  return null;
+}
 const VET_ORDER_MESSAGE = 'Đây là y lệnh của bác sĩ — chỉ bác sĩ thay đổi được qua phác đồ điều trị.';
 
 /**
@@ -38,12 +61,13 @@ const VET_ORDER_MESSAGE = 'Đây là y lệnh của bác sĩ — chỉ bác sĩ 
  * open (see utils/taskTiming.js): at 23:00 there is no breakfast left to schedule for today.
  * Returns an error message, or null when the date is fine.
  */
-function scheduleProblem({ taskType, mealSlot, scheduledDate }) {
+function scheduleProblem({ taskType, mealSlot, scheduledDate, dueTime }) {
   if (!scheduledDate) return null;
   const when = new Date(scheduledDate);
   if (Number.isNaN(when.getTime())) return 'Ngày thực hiện không hợp lệ.';
   if (when < dayBounds(new Date()).start) return 'Không giao việc cho ngày đã qua.';
-  const timing = taskTiming({ status: 'pending', taskType, mealSlot, scheduledDate: when });
+  if (dueTime && when < new Date()) return `Giờ thực hiện ${dueTime} hôm nay đã qua — chọn giờ muộn hơn.`;
+  const timing = taskTiming({ status: 'pending', taskType, mealSlot, scheduledDate: when, dueTime });
   if (timing.state === 'missed') {
     const by = timing.closesAt ? ` (hạn ${timing.closesAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})` : '';
     return `Khung giờ của việc này hôm nay đã qua${by} — không tạo hay dời vào đó được nữa.`;
@@ -134,14 +158,21 @@ const createTask = asyncHandler(async (req, res) => {
     return fail(res, 'Loại công việc không hợp lệ. Việc dùng thuốc/theo dõi do bác sĩ chỉ định qua phác đồ điều trị.', 400);
   }
 
-  const problem = scheduleProblem({ ...body, scheduledDate: body.scheduledDate || new Date() });
+  if (body.taskType === 'other' && !String(body.note || '').trim()) {
+    return fail(res, 'Việc "Khác" cần ghi rõ nội dung công việc.', 400);
+  }
+  body.scheduledDate = body.scheduledDate || new Date();
+  const timeProblem = applyDueTime(body, { required: true });
+  if (timeProblem) return fail(res, timeProblem, 400);
+  const problem = scheduleProblem(body);
   if (problem) return fail(res, problem, 400);
 
   const task = await DailyTask.create({ ...body, source: 'trainer' });
   await tellGroom(
     task,
     req.user,
-    ({ who, horse, what }) => `📋 ${who} giao việc mới: ${what} cho ${horse}${task.note ? ` — ${task.note}` : '.'}`
+    ({ who, horse, what }) =>
+      `📋 ${who} giao việc mới: ${what} cho ${horse}${task.dueTime ? ` lúc ${task.dueTime}` : ''}${task.note ? ` — ${task.note}` : '.'}`
   );
   return created(res, task, 'Daily task created.');
 });
@@ -159,11 +190,25 @@ const updateTask = asyncHandler(async (req, res) => {
   if (!timing.canChange) return fail(res, `Không sửa được nữa: ${timing.reason}`, 409);
 
   const changes = pick(req.body, TASK_FIELDS);
-  if (changes.scheduledDate || changes.taskType || changes.mealSlot) {
+  const taskType = changes.taskType || task.taskType;
+  if (taskType === 'other' && changes.note !== undefined && !String(changes.note || '').trim()) {
+    return fail(res, 'Việc "Khác" cần ghi rõ nội dung công việc.', 400);
+  }
+  if (changes.scheduledDate || changes.taskType || changes.mealSlot || changes.dueTime) {
+    // A new date keeps the task's time of day unless a new time is given.
+    const timed = { taskType, scheduledDate: changes.scheduledDate || task.scheduledDate, dueTime: changes.dueTime ?? task.dueTime };
+    const timeProblem = applyDueTime(timed, { required: false });
+    if (timeProblem) return fail(res, timeProblem, 400);
+    if (timed.dueTime && taskType !== 'feeding') {
+      changes.scheduledDate = timed.scheduledDate;
+      changes.dueTime = timed.dueTime;
+    }
+    if (taskType === 'feeding') changes.dueTime = null;
     const problem = scheduleProblem({
-      taskType: changes.taskType || task.taskType,
+      taskType,
       mealSlot: changes.mealSlot !== undefined ? changes.mealSlot : task.mealSlot,
       scheduledDate: changes.scheduledDate || task.scheduledDate,
+      dueTime: changes.dueTime === null ? undefined : changes.dueTime ?? task.dueTime,
     });
     if (problem) return fail(res, problem, 400);
   }

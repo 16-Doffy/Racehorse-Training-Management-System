@@ -99,6 +99,14 @@ async function raiseExamIfOverexerted(session, user, horse) {
   return true;
 }
 
+// A time this many minutes from now, and its "HH:mm".
+const dueAt = (minutes) => {
+  const at = new Date(Date.now() + minutes * 60000);
+  at.setSeconds(0, 0);
+  return at;
+};
+const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
 /**
  * A hard session leaves a horse that needs cooling down and its legs iced, and the person who does
  * that is the groom, not the trainer. Rather than relying on the trainer to remember to assign it,
@@ -115,8 +123,9 @@ async function createPostSessionCare(session) {
     session.prescription?.distanceM ? ` ${session.prescription.distanceM}m` : ''
   }`;
   const wanted = [
-    { taskType: 'icing', note: `Sau buổi ${what} — ngâm chân hạ nhiệt gân.` },
-    { taskType: 'bathing', note: `Sau buổi ${what} — tắm và lau khô.` },
+    // Icing straight after the work while the legs are warm, the bath once the horse has cooled down.
+    { taskType: 'icing', afterMinutes: 15, note: `Sau buổi ${what} — ngâm chân hạ nhiệt gân.` },
+    { taskType: 'bathing', afterMinutes: 45, note: `Sau buổi ${what} — tắm và lau khô.` },
   ];
 
   let createdCount = 0;
@@ -133,7 +142,8 @@ async function createPostSessionCare(session) {
       source: 'system',
       trainingSession: session._id,
       note: item.note,
-      scheduledDate: new Date(),
+      scheduledDate: dueAt(item.afterMinutes),
+      dueTime: hhmm(dueAt(item.afterMinutes)),
       status: 'pending',
     });
     createdCount += 1;
@@ -144,7 +154,7 @@ async function createPostSessionCare(session) {
       trainingSession: session._id,
       type: 'task_assigned',
       severity: 'info',
-      message: `🧊 Ngựa vừa xong buổi ${what} — có ${createdCount} việc chăm sóc sau tập (ngâm chân, tắm) trong danh sách của bạn.`,
+      message: `🧊 Ngựa vừa xong buổi ${what} — việc chăm sóc sau tập: ngâm chân lúc ${hhmm(dueAt(15))}, tắm lúc ${hhmm(dueAt(45))}.`,
     });
   }
   return createdCount;
@@ -191,11 +201,17 @@ function buildFromKind(kind, overrides = {}) {
 /**
  * Closes a running session once its sensor feed has covered the workout: same path as a trainer
  * marking it completed (outcome, care after hard work, exam if overexerted, owner told), done in
- * the name of whoever started it.
+ * the name of whoever started it. `workedSeconds` is the work covered on the simulator's clock.
  */
-async function autoComplete(session) {
+async function autoComplete(session, { workedSeconds } = {}) {
   if (session.status !== 'in_progress') return false;
   session.status = 'completed';
+  // The simulator runs the work on a compressed clock, so the session ends after the work it
+  // covered, not after the few real seconds the demo took.
+  const started = session.actualStartAt || new Date();
+  session.actualStartAt = started;
+  session.actualDurationSec = workedSeconds ?? Math.round((Date.now() - started.getTime()) / 1000);
+  session.actualEndAt = new Date(started.getTime() + session.actualDurationSec * 1000);
   session.outcome = computeOutcome(session);
   await session.save();
   // Whoever pressed Bắt đầu, else the horse's trainer: the exam request and audit need a person.

@@ -94,7 +94,7 @@ function startSensorSimulator() {
         if (done) {
           formOfSession.delete(key);
           // eslint-disable-next-line no-await-in-loop
-          await autoComplete(session);
+          await autoComplete(session, { workedSeconds: m.sampleCount * SIM_SECONDS_PER_TICK });
           io.to([`horse:${horseId}`, trainer ? `user:${trainer}` : 'role:head_trainer']).emit('session:completed', { sessionId: session._id, horseId });
         }
       }

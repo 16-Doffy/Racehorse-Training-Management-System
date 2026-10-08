@@ -25,7 +25,8 @@ const dailyTaskSchema = new mongoose.Schema(
     taskType: {
       type: String,
       // medication / monitoring are the vet's care orders (see health/treatmentCare.service.js).
-      enum: ['feeding', 'cleaning', 'bathing', 'icing', 'medication', 'monitoring'],
+      // 'other' is any job the list doesn't name; its note says what it is.
+      enum: ['feeding', 'cleaning', 'bathing', 'icing', 'medication', 'monitoring', 'other'],
       required: true,
     },
     // Who the work comes from: assigned by hand (trainer/manager), ordered by the vet through a

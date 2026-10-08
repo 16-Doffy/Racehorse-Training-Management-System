@@ -213,7 +213,8 @@ module.exports = {
         description:
           'Whether a horse is fit to do a given piece of work. Four gates, each owned by a different role: ' +
           'medical (vet), vet_clearance (vet), nutrition (groom), care_assignment (manager). ' +
-          'Only `medical` can return "blocked"; the rest are advisory and a trainer may proceed past them ' +
+          '`medical` returns "blocked" on a vet order; `nutrition` returns "blocked" when the meal before the session was given under 60 min earlier ' +
+          '(caution under 90 min; only the meal right before the session is judged). Other cautions are advisory and a trainer may proceed past them ' +
           'by supplying `overrideReason`, which is audit-logged and reported to the manager.',
         properties: {
           overall: { type: 'string', enum: ['ready', 'caution', 'blocked'] },
@@ -388,7 +389,7 @@ module.exports = {
           assignedTo: { type: 'string' },
           taskType: {
             type: 'string',
-            enum: ['feeding', 'cleaning', 'bathing', 'icing', 'medication', 'monitoring'],
+            enum: ['feeding', 'cleaning', 'bathing', 'icing', 'medication', 'monitoring', 'other'],
             description: 'medication / monitoring are created from a vet treatment only; they cannot be assigned by hand',
           },
           source: {
@@ -411,7 +412,7 @@ module.exports = {
           note: { type: 'string', description: "The trainer's instruction attached to the task" },
           scheduledDate: { type: 'string', format: 'date-time' },
           status: { type: 'string', enum: ['pending', 'completed', 'skipped'] },
-          dueTime: { type: 'string', nullable: true, description: 'Time of a vet\'s dose (HH:mm); recordable 1h before to 4h after' },
+          dueTime: { type: 'string', nullable: true, description: 'Time of day (HH:mm) of a vet\'s dose or a hand-given job; recordable from 1h before. A dose closes 4h after; a job past that shows as late but can still be recorded' },
           supplies: {
             type: 'array',
             description: 'What completing the task takes out of stock (ration items, a dose). Completing without enough stock → 409 with data.missing.',
@@ -1174,7 +1175,7 @@ module.exports = {
         tags: ['Stable (Groom)'],
         summary: 'Edit an assigned task — reassign to another Groom, move the date, or correct the type (Head Trainer / Manager). Refused with 409 once the task is completed.',
         parameters: [idParam('id')],
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { horse: { type: 'string' }, assignedTo: { type: 'string' }, taskType: { type: 'string', enum: ['feeding', 'cleaning', 'bathing', 'icing'] }, scheduledDate: { type: 'string', format: 'date-time' } } } } } },
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { horse: { type: 'string' }, assignedTo: { type: 'string' }, taskType: { type: 'string', enum: ['feeding', 'cleaning', 'bathing', 'icing', 'other'] }, scheduledDate: { type: 'string', format: 'date-time', description: 'Day of the job' }, dueTime: { type: 'string', example: '09:30', description: 'Required for every type but feeding (whose time is its mealSlot)' }, mealSlot: { type: 'string', enum: ['morning', 'noon', 'evening'] }, note: { type: 'string', description: 'Required for "other": what the job is' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404], 409: responses[409] },
       },
       delete: {
