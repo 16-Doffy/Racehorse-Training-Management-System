@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+const { SESSION_STATUS, ABORT_CATEGORIES } = require('../constants/training');
+
 const trainingSessionSchema = new mongoose.Schema(
   {
     trainingPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingPlan', required: true },
@@ -31,9 +33,20 @@ const trainingSessionSchema = new mongoose.Schema(
     scheduledAt: { type: Date, required: true },
     status: {
       type: String,
-      enum: ['scheduled', 'in_progress', 'completed', 'cancelled'],
-      default: 'scheduled',
+      enum: Object.values(SESSION_STATUS),
+      default: SESSION_STATUS.SCHEDULED,
     },
+    // What actually happened, as opposed to the booking above (scheduledAt, prescription). Written
+    // only by the server when the session is started, ended or stopped; never accepted from a client,
+    // and never used to overwrite a planned value.
+    actualStartAt: { type: Date, default: null },
+    actualEndAt: { type: Date, default: null },
+    actualDurationSec: { type: Number, default: null },
+    abortReason: { type: String },
+    abortCategory: { type: String, enum: ABORT_CATEGORIES },
+    blockedReason: { type: String },
+    cancelReason: { type: String },
+    evaluatedAt: { type: Date, default: null },
     metrics: {
       avgHeartRate: { type: Number },
       maxHeartRate: { type: Number },

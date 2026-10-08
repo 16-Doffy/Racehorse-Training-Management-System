@@ -6,6 +6,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const RaceEntry = require('../../models/RaceEntry');
+const { SESSION_LOCK_CANCELS } = require('../../constants/training');
 const DailyTask = require('../../models/DailyTask');
 const User = require('../../models/User');
 const { dayBounds } = require('../../utils/taskTiming');
@@ -61,7 +62,7 @@ const getTreatment = asyncHandler(async (req, res) => {
 async function cancelPendingSessionsForLock(horseId, actorId, level = 'none') {
   // Under a lock every booked session goes; while recovering, only those above the allowed level.
   const above = Object.keys(INTENSITY_RANK).filter((i) => INTENSITY_RANK[i] > LEVEL_RANK[level]);
-  const filter = { horse: horseId, status: { $in: ['scheduled', 'in_progress'] } };
+  const filter = { horse: horseId, status: { $in: SESSION_LOCK_CANCELS } };
   if (level !== 'none') filter.intensity = { $in: above };
   const result = await TrainingSession.updateMany(filter, { status: 'cancelled' });
   if (result.modifiedCount > 0) {

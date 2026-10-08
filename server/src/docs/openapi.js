@@ -227,7 +227,21 @@ module.exports = {
             },
           },
           scheduledAt: { type: 'string', format: 'date-time' },
-          status: { type: 'string', enum: ['scheduled', 'in_progress', 'completed', 'cancelled'] },
+          status: {
+            type: 'string',
+            enum: ['scheduled', 'ready', 'blocked', 'in_progress', 'completed', 'evaluated', 'aborted', 'cancelled', 'missed'],
+            description:
+              'Only scheduled, in_progress, completed and cancelled can be reached today. ready, blocked, aborted, evaluated ' +
+              'and missed are in the schema but get their endpoints in later steps (pre-check, end/abort, evaluation, missed job).',
+          },
+          actualStartAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true, description: 'Server time when the session was started; never sent by a client' },
+          actualEndAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true, description: 'Server time when the session ended or was stopped' },
+          actualDurationSec: { type: 'integer', nullable: true, readOnly: true },
+          abortReason: { type: 'string', readOnly: true },
+          abortCategory: { type: 'string', enum: ['health', 'weather', 'equipment', 'other'], readOnly: true },
+          blockedReason: { type: 'string', readOnly: true },
+          cancelReason: { type: 'string', readOnly: true },
+          evaluatedAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true },
           metrics: {
             type: 'object',
             properties: {
