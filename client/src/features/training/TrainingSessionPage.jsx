@@ -19,7 +19,8 @@ import {
   Space,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { PlusOutlined, EditOutlined, CloseCircleOutlined, AimOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, CloseCircleOutlined, AimOutlined, PlayCircleOutlined, CalendarOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { trainingSessionApi, trainingPlanApi } from './trainingApi';
@@ -30,6 +31,7 @@ import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } fro
 import ReadinessPanel from './ReadinessPanel';
 import SessionOutcome from './SessionOutcome';
 import confirmReadinessOverride, { needsOverride } from './confirmReadinessOverride';
+import WeekCalendar from './WeekCalendar';
 import {
   OBJECTIVE_LABELS,
   OBJECTIVE_DESCRIPTIONS,
@@ -39,6 +41,13 @@ import {
   PHASE_LABELS,
   objectiveOptions,
   intensityOptions,
+  SESSION_KINDS,
+  kindOptions,
+  KIND_SPEED_RANGES,
+  PRESCRIPTION_LIMITS,
+  METRIC_LIMITS,
+  sessionTimeLabel,
+  mondayOf,
 } from './trainingVocab';
 
 const { Title, Text } = Typography;
@@ -74,9 +83,13 @@ export default function TrainingSessionPage() {
   const [evalOpen, setEvalOpen] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
   const [typeFilter, setTypeFilter] = useState('all');
+  // The week view is how a trainer reads training: what each horse does each day.
+  const [view, setView] = useState('week');
+  const [weekStart, setWeekStart] = useState(() => mondayOf(dayjs()));
   const [createForm] = Form.useForm();
   const [evalForm] = Form.useForm();
   const evalStatus = Form.useWatch('status', evalForm);
+  const draftKind = Form.useWatch('kind', createForm);
   const [examForm] = Form.useForm();
   const [examOpen, setExamOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -100,6 +113,8 @@ export default function TrainingSessionPage() {
         ...(planFilter ? { trainingPlan: planFilter } : {}),
         ...(horseFilter ? { horse: horseFilter } : {}),
       }),
+    // A running session fills in from the sensor feed and closes itself: keep the board current.
+    refetchInterval: (query) => (query.state.data?.data?.some((x) => x.status === 'in_progress') ? 5000 : false),
   });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
@@ -192,6 +207,34 @@ export default function TrainingSessionPage() {
     onError: (err) => message.error(err.message || 'Ghi nhận thất bại.'),
   });
 
+  const openEvaluation = (record) => {
+    setActiveSession(record);
+    evalForm.setFieldsValue({
+      trainerComment: record.trainerComment,
+      videoUrl: record.videoUrl,
+      performanceRating: record.performanceRating,
+      status: record.status,
+      metrics: {
+        avgHeartRate: record.metrics?.avgHeartRate,
+        maxSpeed: record.metrics?.maxSpeed,
+        distance: record.metrics?.distance,
+      },
+    });
+    setEvalOpen(true);
+  };
+
+  const generateMutation = useMutation({
+    mutationFn: ({ plan, start }) => trainingPlanApi.generateWeek(plan._id, { weekStart: start.toISOString() }),
+    onSuccess: (res, { plan }) => {
+      const { created = [], skipped = [] } = res.data || {};
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+      const extra = skipped.length ? ` Không xếp: ${skipped.map((x) => x.reason).join(' ')}` : '';
+      message.success(`Đã xếp ${created.length} buổi tập cho ${plan.horse?.name}.${extra}`, skipped.length ? 6 : 3);
+    },
+    onError: (err) => message.error(err.message || 'Không sinh được lịch tuần.'),
+  });
+
   const examMutation = useMutation({
     mutationFn: (payload) => healthRecordApi.requestExam(payload),
     onSuccess: () => {
@@ -229,6 +272,11 @@ export default function TrainingSessionPage() {
       key: 'objective',
       render: (_, r) => (
         <div className="min-w-[220px] max-w-[300px] whitespace-normal">
+          {r.kind && (
+            <Tag color={SESSION_KINDS[r.kind]?.color} className="!mr-1">
+              {SESSION_KINDS[r.kind]?.label}
+            </Tag>
+          )}
           <Tooltip title={OBJECTIVE_DESCRIPTIONS[r.objective]}>
             <Tag color={OBJECTIVE_COLORS[r.objective] || 'default'} className="!mr-1">
               {OBJECTIVE_LABELS[r.objective] || '—'}
@@ -250,7 +298,7 @@ export default function TrainingSessionPage() {
       title: 'Thời gian',
       dataIndex: 'scheduledAt',
       key: 'scheduledAt',
-      render: (d) => new Date(d).toLocaleString('vi-VN'),
+      render: (d) => <span className="whitespace-nowrap tabular-nums">{sessionTimeLabel(d)}</span>,
     },
     {
       title: 'Trạng thái',
@@ -295,21 +343,7 @@ export default function TrainingSessionPage() {
           <Button
             size="small"
             icon={<EditOutlined />}
-            onClick={() => {
-              setActiveSession(record);
-              evalForm.setFieldsValue({
-                trainerComment: record.trainerComment,
-                videoUrl: record.videoUrl,
-                performanceRating: record.performanceRating,
-                status: record.status,
-                metrics: {
-                  avgHeartRate: record.metrics?.avgHeartRate,
-                  maxSpeed: record.metrics?.maxSpeed,
-                  distance: record.metrics?.distance,
-                },
-              });
-              setEvalOpen(true);
-            }}
+            onClick={() => openEvaluation(record)}
           >
             Đánh giá
           </Button>
@@ -360,18 +394,42 @@ export default function TrainingSessionPage() {
         </Tag>
       )}
 
-      <Segmented
-        className="mb-4"
-        value={typeFilter}
-        onChange={setTypeFilter}
-        options={[
-          { value: 'all', label: 'Tất cả' },
-          { value: 'training', label: SESSION_TYPE_LABELS.training },
-          { value: 'trial_run', label: SESSION_TYPE_LABELS.trial_run },
-        ]}
-      />
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Segmented
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'week', label: 'Lịch tuần', icon: <CalendarOutlined /> },
+            { value: 'list', label: 'Danh sách', icon: <UnorderedListOutlined /> },
+          ]}
+        />
+        <Segmented
+          value={typeFilter}
+          onChange={setTypeFilter}
+          options={[
+            { value: 'all', label: 'Tất cả' },
+            { value: 'training', label: SESSION_TYPE_LABELS.training },
+            { value: 'trial_run', label: SESSION_TYPE_LABELS.trial_run },
+          ]}
+        />
+      </div>
+
+      {view === 'week' && (
+        <WeekCalendar
+          weekStart={weekStart}
+          onWeekChange={(w) => setWeekStart(w || mondayOf(dayjs()))}
+          sessions={sessionsData?.data || []}
+          plans={(plansData?.data || []).filter((p) => (!planFilter || p._id === planFilter) && (!horseFilter || String(p.horse?._id) === horseFilter))}
+          onGenerate={(plan, start) => generateMutation.mutate({ plan, start })}
+          generatingPlanId={generateMutation.isPending ? generateMutation.variables?.plan._id : null}
+          onStart={(session) => startMutation.mutate({ id: session._id })}
+          startingId={startMutation.isPending ? startMutation.variables?.id : null}
+          onEvaluate={openEvaluation}
+        />
+      )}
 
       <Table
+        className={view === 'week' ? 'hidden' : ''}
         rowKey="_id"
         columns={columns}
         dataSource={sessionsData?.data}
@@ -426,11 +484,22 @@ export default function TrainingSessionPage() {
           layout="vertical"
           onFinish={(values) => submitCreate(values)}
           onValuesChange={(changed, all) => {
+            // Picking a kind of work fills in what it normally means; every field stays editable.
+            if (changed.kind && SESSION_KINDS[changed.kind]) {
+              const k = SESSION_KINDS[changed.kind];
+              createForm.setFieldsValue({ objective: k.objective, intensity: k.intensity, sessionType: k.sessionType, prescription: { ...k.prescription } });
+              all = { ...all, objective: k.objective, intensity: k.intensity, sessionType: k.sessionType };
+            }
+            // A horse follows one plan at a time: file the session under it.
+            if (changed.horse) {
+              const plan = (plansData?.data || []).find((p) => String(p.horse?._id) === String(changed.horse) && p.status === 'active');
+              createForm.setFieldValue('trainingPlan', plan?._id);
+            }
             // A recovering horse can't be booked above the vet's level: pull the intensity down to
             // the highest one allowed as soon as the horse is picked.
             let intensity = all.intensity;
-            if (changed.horse) {
-              const c = clearances.get(String(changed.horse));
+            if (changed.horse || changed.kind) {
+              const c = clearances.get(String(all.horse));
               if (c?.restricted && !intensityAllowed(c, intensity)) {
                 const allowed = Object.keys(INTENSITY_RANK).filter((i) => INTENSITY_RANK[i] <= LEVEL_RANK[c.level]);
                 if (allowed.length) {
@@ -455,22 +524,39 @@ export default function TrainingSessionPage() {
             <Col xs={24} lg={15}>
               <Row gutter={16}>
                 <Col xs={24} md={12}>
-                  <Form.Item name="trainingPlan" label="Thuộc kế hoạch" rules={[{ required: true }]}>
-                    <Select
-                      placeholder="Chọn kế hoạch huấn luyện"
-                      options={(plansData?.data || []).map((p) => ({
-                        value: p._id,
-                        label: `${p.horse?.name} — ${PHASE_LABELS[p.phase] || p.phase}`,
-                      }))}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
                   <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>
                     <Select placeholder="Chọn ngựa" options={horseOptions} />
                   </Form.Item>
                 </Col>
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="trainingPlan"
+                    label="Thuộc kế hoạch"
+                    rules={[{ required: true, message: 'Ngựa này chưa có kế hoạch đang chạy — hãy lập kế hoạch trước' }]}
+                  >
+                    <Select
+                      placeholder="Tự chọn theo ngựa"
+                      options={(plansData?.data || [])
+                        .filter((p) => ['active', 'draft'].includes(p.status) && (!draft.horse || String(p.horse?._id) === String(draft.horse)))
+                        .map((p) => ({
+                          value: p._id,
+                          label: `${p.horse?.name} — ${p.goal || PHASE_LABELS[p.phase] || p.phase}`,
+                        }))}
+                    />
+                  </Form.Item>
+                </Col>
               </Row>
+
+              <Form.Item
+                name="kind"
+                label="Loại buổi tập"
+                extra={SESSION_KINDS[draftKind]?.hint || 'Chọn loại buổi để điền sẵn bài tập theo thông số thường dùng.'}
+              >
+                <Select
+                  placeholder="Phi chậm, phi nhanh, tập dốc…"
+                  options={kindOptions.map((o) => ({ value: o.value, label: o.label }))}
+                />
+              </Form.Item>
 
               <Form.Item
                 name="objective"
@@ -512,7 +598,7 @@ export default function TrainingSessionPage() {
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8}>
-                  <Form.Item name="sessionType" label="Loại buổi tập" initialValue="training">
+                  <Form.Item name="sessionType" label="Hình thức" initialValue="training">
                     <Select options={Object.entries(SESSION_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
                   </Form.Item>
                 </Col>
@@ -534,32 +620,36 @@ export default function TrainingSessionPage() {
               <Row gutter={16}>
                 <Col xs={12} md={8}>
                   <Form.Item name={['prescription', 'distanceM']} label="Cự ly (m)">
-                    <InputNumber min={100} step={100} className="w-full" placeholder="1200" />
+                    <InputNumber min={PRESCRIPTION_LIMITS.distanceM[0]} max={PRESCRIPTION_LIMITS.distanceM[1]} step={100} className="w-full" placeholder="1200" />
                   </Form.Item>
                 </Col>
                 <Col xs={12} md={8}>
                   <Form.Item name={['prescription', 'reps']} label="Số hiệp">
-                    <InputNumber min={1} className="w-full" placeholder="3" />
+                    <InputNumber min={PRESCRIPTION_LIMITS.reps[0]} max={PRESCRIPTION_LIMITS.reps[1]} className="w-full" placeholder="3" />
                   </Form.Item>
                 </Col>
                 <Col xs={12} md={8}>
                   <Form.Item name={['prescription', 'restMinutes']} label="Nghỉ giữa hiệp (phút)">
-                    <InputNumber min={0} className="w-full" placeholder="8" />
+                    <InputNumber min={PRESCRIPTION_LIMITS.restMinutes[0]} max={PRESCRIPTION_LIMITS.restMinutes[1]} className="w-full" placeholder="8" />
                   </Form.Item>
                 </Col>
                 <Col xs={12} md={8}>
-                  <Form.Item name={['prescription', 'targetSpeedKmh']} label="Tốc độ mục tiêu (km/h)">
-                    <InputNumber min={10} max={90} className="w-full" placeholder="62" />
+                  <Form.Item
+                    name={['prescription', 'targetSpeedKmh']}
+                    label="Tốc độ mục tiêu (km/h)"
+                    extra={KIND_SPEED_RANGES[draftKind] ? `${SESSION_KINDS[draftKind].label}: ${KIND_SPEED_RANGES[draftKind][0]}–${KIND_SPEED_RANGES[draftKind][1]} km/h` : null}
+                  >
+                    <InputNumber min={PRESCRIPTION_LIMITS.targetSpeedKmh[0]} max={PRESCRIPTION_LIMITS.targetSpeedKmh[1]} className="w-full" placeholder="35" />
                   </Form.Item>
                 </Col>
                 <Col xs={12} md={8}>
                   <Form.Item name={['prescription', 'targetHeartRateMax']} label="Nhịp tim tối đa (bpm)">
-                    <InputNumber min={60} max={240} className="w-full" placeholder="180" />
+                    <InputNumber min={PRESCRIPTION_LIMITS.targetHeartRateMax[0]} max={PRESCRIPTION_LIMITS.targetHeartRateMax[1]} className="w-full" placeholder="170" />
                   </Form.Item>
                 </Col>
                 <Col xs={12} md={8}>
                   <Form.Item name={['prescription', 'durationMinutes']} label="Thời lượng (phút)">
-                    <InputNumber min={5} className="w-full" placeholder="45" />
+                    <InputNumber min={PRESCRIPTION_LIMITS.durationMinutes[0]} max={PRESCRIPTION_LIMITS.durationMinutes[1]} className="w-full" placeholder="45" />
                   </Form.Item>
                 </Col>
               </Row>
@@ -639,7 +729,7 @@ export default function TrainingSessionPage() {
                 label="Nhịp tim TB (bpm)"
                 extra={activePrescription?.targetHeartRateMax ? `Mục tiêu ≤ ${activePrescription.targetHeartRateMax}` : null}
               >
-                <InputNumber min={30} max={280} className="w-full" />
+                <InputNumber min={METRIC_LIMITS.avgHeartRate[0]} max={METRIC_LIMITS.avgHeartRate[1]} className="w-full" />
               </Form.Item>
             </Col>
             <Col xs={8}>
@@ -648,7 +738,7 @@ export default function TrainingSessionPage() {
                 label="Tốc độ tối đa (km/h)"
                 extra={activePrescription?.targetSpeedKmh ? `Mục tiêu ≥ ${activePrescription.targetSpeedKmh}` : null}
               >
-                <InputNumber min={0} max={100} className="w-full" />
+                <InputNumber min={METRIC_LIMITS.maxSpeed[0]} max={METRIC_LIMITS.maxSpeed[1]} className="w-full" />
               </Form.Item>
             </Col>
             <Col xs={8}>
@@ -657,7 +747,7 @@ export default function TrainingSessionPage() {
                 label="Cự ly chạy (m)"
                 extra={activePrescription?.distanceM ? `Mục tiêu ≥ ${activePrescription.distanceM}` : null}
               >
-                <InputNumber min={0} step={100} className="w-full" />
+                <InputNumber min={METRIC_LIMITS.distance[0]} max={METRIC_LIMITS.distance[1]} step={100} className="w-full" />
               </Form.Item>
             </Col>
           </Row>
