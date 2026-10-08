@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from './Text';
 import Icon from './Icon';
 import { Badge, Button, Card, DataRow, HorseAvatar, Row, Sheet } from './ui';
 import { TIMING_STATE, findStock, formatDate, formatDateTime } from '../utils/groom';

@@ -1,22 +1,13 @@
 import { useState } from 'react';
-import {
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from './Text';
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { taskApi } from '../api/endpoints';
+import { useOutbox } from '../offline/OutboxContext';
+import { hapticSuccess, hapticWarning } from '../utils/haptics';
 import Icon from './Icon';
-import { Badge, Button, ChipGroup, Row } from './ui';
+import DragSheet from './DragSheet';
+import { Badge, Button, ChipGroup, IconButton, Row } from './ui';
 import { INCIDENT_PRESETS, SEVERITY, TASK_CONFIG, formatDate } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
@@ -29,6 +20,7 @@ const SEVERITY_OPTIONS = Object.entries(SEVERITY).map(([value, cfg]) => ({ value
  */
 export default function IncidentModal({ task, visible, onClose }) {
   const queryClient = useQueryClient();
+  const { submit: send } = useOutbox();
   const [presets, setPresets] = useState([]);
   const [detail, setDetail] = useState('');
   const [severity, setSeverity] = useState('medium');
@@ -47,14 +39,25 @@ export default function IncidentModal({ task, visible, onClose }) {
   };
 
   const mutation = useMutation({
-    mutationFn: (formData) => taskApi.reportIncident(task._id, formData),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['incidents'] });
-      Alert.alert('Đã gửi báo cáo', 'Bác sĩ thú y đã nhận được thông báo.');
+    // The photos stay on the phone until the report goes out, so a report filed in a dead spot
+    // of the yard is kept and sent when there is signal.
+    mutationFn: (report) =>
+      send('incident', { taskId: task._id, ...report }, { taskId: task._id, label: 'Báo cáo sự cố', horseName: task.horse?.name }),
+    onSuccess: (res) => {
+      hapticSuccess();
+      if (!res.queued) {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['incidents'] });
+        Alert.alert('Đã gửi báo cáo', 'Bác sĩ thú y đã nhận được thông báo.');
+      } else {
+        Alert.alert('Đã lưu báo cáo', 'Chưa có mạng. Báo cáo được giữ trong máy và tự gửi khi có mạng trở lại.');
+      }
       close();
     },
-    onError: (err) => Alert.alert('Gửi thất bại', err?.message || 'Thử lại sau.'),
+    onError: (err) => {
+      hapticWarning();
+      Alert.alert('Gửi thất bại', err?.message || 'Thử lại sau.');
+    },
   });
 
   const togglePreset = (preset) =>
@@ -82,17 +85,11 @@ export default function IncidentModal({ task, visible, onClose }) {
       Alert.alert('Thiếu thông tin', 'Chọn ít nhất một dấu hiệu hoặc nhập mô tả.');
       return;
     }
-    const formData = new FormData();
-    formData.append('description', description);
-    formData.append('severity', severity);
-    photos.forEach((photo, index) => {
-      formData.append('images', {
-        uri: photo.uri,
-        name: photo.fileName || `incident-${index}.jpg`,
-        type: photo.mimeType || 'image/jpeg',
-      });
+    mutation.mutate({
+      description,
+      severity,
+      photos: photos.map((photo) => ({ uri: photo.uri, fileName: photo.fileName, mimeType: photo.mimeType })),
     });
-    mutation.mutate(formData);
   };
 
   const taskCfg = TASK_CONFIG[task?.taskType] || { label: task?.taskType, icon: 'note' };
@@ -100,12 +97,10 @@ export default function IncidentModal({ task, visible, onClose }) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <DragSheet onClose={close} style={styles.sheet} handle="overlay">
           <Row style={styles.sheetHeader}>
             <Row style={{ gap: 8 }}><Icon name="warning" size={18} color="#dc2626" /><Text style={font.h2}>Báo cáo sự cố</Text></Row>
-            <Pressable onPress={close} hitSlop={10}>
-              <Text style={styles.close}>✕</Text>
-            </Pressable>
+            <IconButton icon="close" label="Đóng" onPress={close} />
           </Row>
 
           <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }} keyboardShouldPersistTaps="handled">
@@ -152,7 +147,7 @@ export default function IncidentModal({ task, visible, onClose }) {
                   <Pressable key={photo.uri} onPress={() => setPhotos((prev) => prev.filter((_, i) => i !== index))}>
                     <Image source={{ uri: photo.uri }} style={styles.thumb} />
                     <View style={styles.removeBadge}>
-                      <Text style={styles.removeText}>✕</Text>
+                      <Icon name="close" size={14} color={colors.white} />
                     </View>
                   </Pressable>
                 ))}
@@ -168,7 +163,7 @@ export default function IncidentModal({ task, visible, onClose }) {
             <Button title="Huỷ" variant="subtle" style={{ flex: 1 }} onPress={close} />
             <Button title="Gửi báo cáo" variant="danger" style={{ flex: 2 }} loading={mutation.isPending} onPress={submit} />
           </Row>
-        </View>
+        </DragSheet>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -189,7 +184,7 @@ const styles = StyleSheet.create({
   close: { fontSize: 18, color: colors.textMuted, paddingHorizontal: spacing.sm },
   taskBox: { backgroundColor: colors.white, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: colors.borderSoft },
   taskHorse: { ...font.h3 },
-  label: { ...font.tiny, marginBottom: spacing.sm },
+  label: { ...font.h3, fontSize: 14, marginBottom: spacing.sm },
   wrapBadge: { alignSelf: 'stretch' },
   textarea: {
     borderWidth: 1,

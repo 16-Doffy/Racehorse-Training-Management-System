@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from './Text';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { taskApi } from '../api/endpoints';
+import { useOutbox } from '../offline/OutboxContext';
+import { hapticSuccess, hapticWarning } from '../utils/haptics';
 import Icon from './Icon';
+import DragSheet from './DragSheet';
 import { Button, ChipGroup, Row } from './ui';
 import { TASK_CONFIG } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
@@ -21,6 +24,7 @@ const PRESETS = [
 export default function NotDoneModal({ task, visible, onClose }) {
   const [reason, setReason] = useState('');
   const queryClient = useQueryClient();
+  const { submit: send } = useOutbox();
 
   const close = () => {
     setReason('');
@@ -28,12 +32,21 @@ export default function NotDoneModal({ task, visible, onClose }) {
   };
 
   const mutation = useMutation({
-    mutationFn: (text) => taskApi.reportNotDone(task._id, text),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    mutationFn: (text) =>
+      send(
+        'notDone',
+        { taskId: task._id, reason: text },
+        { taskId: task._id, label: TASK_CONFIG[task.taskType]?.label || 'Việc chuồng', horseName: task.horse?.name }
+      ),
+    onSuccess: (res) => {
+      hapticSuccess();
+      if (!res.queued) queryClient.invalidateQueries({ queryKey: ['tasks'] });
       close();
     },
-    onError: (err) => Alert.alert('Không gửi được', err?.message || 'Thử lại sau.'),
+    onError: (err) => {
+      hapticWarning();
+      Alert.alert('Không gửi được', err?.message || 'Thử lại sau.');
+    },
   });
 
   const submit = () => {
@@ -50,7 +63,7 @@ export default function NotDoneModal({ task, visible, onClose }) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <DragSheet onClose={close} style={styles.sheet} handle="overlay">
           <Row style={styles.header}>
             <Text style={font.h2}>Không thực hiện được</Text>
             <Pressable onPress={close} hitSlop={10}>
@@ -93,7 +106,7 @@ export default function NotDoneModal({ task, visible, onClose }) {
               <Button title="Gửi báo cáo" variant="danger" style={{ flex: 2 }} loading={mutation.isPending} onPress={submit} />
             </Row>
           </View>
-        </View>
+        </DragSheet>
       </KeyboardAvoidingView>
     </Modal>
   );

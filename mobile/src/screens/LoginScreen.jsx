@@ -1,14 +1,8 @@
 import { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Icon from '../components/Icon';
 import { Button } from '../components/ui';
 import { useAuth } from '../auth/AuthContext';
 import { colors, font, radius, spacing } from '../theme';
@@ -19,6 +13,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const submit = async () => {
     setError('');
@@ -61,16 +56,26 @@ export default function LoginScreen() {
             />
 
             <Text style={[styles.label, { marginTop: spacing.lg }]}>Mật khẩu</Text>
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              placeholder="••••••"
-              placeholderTextColor={colors.textFaint}
-              secureTextEntry
-              onSubmitEditing={submit}
-              returnKeyType="go"
-            />
+            <View style={[styles.input, styles.passwordRow]}>
+              <TextInput
+                style={styles.passwordInput}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="••••••"
+                placeholderTextColor={colors.textFaint}
+                secureTextEntry={!showPassword}
+                onSubmitEditing={submit}
+                returnKeyType="go"
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                onPress={() => setShowPassword((v) => !v)}
+                hitSlop={10}
+              >
+                <Icon name={showPassword ? 'eyeOff' : 'eye'} size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -100,9 +105,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   brandTitle: { color: colors.white, fontSize: 26, fontWeight: '700', marginTop: spacing.lg },
-  brandSub: { color: 'rgba(255,255,255,0.6)', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', marginTop: 4 },
+  brandSub: { color: 'rgba(255,255,255,0.75)', fontSize: 15, marginTop: 4 },
   form: { backgroundColor: colors.white, borderRadius: radius.lg, padding: spacing.xl },
-  label: { ...font.tiny, color: colors.textMuted, marginBottom: spacing.sm },
+  label: { ...font.h3, fontSize: 14, marginBottom: spacing.sm },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -113,6 +118,8 @@ const styles = StyleSheet.create({
     color: colors.text,
     backgroundColor: colors.white,
   },
-  error: { color: colors.red, marginTop: spacing.lg, fontSize: 13 },
+  passwordRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  passwordInput: { flex: 1, fontSize: 16, color: colors.text, minHeight: 48, paddingVertical: 0 },
+  error: { color: colors.red, marginTop: spacing.lg, fontSize: 14 },
   hint: { ...font.small, textAlign: 'center', marginTop: spacing.lg },
 });

@@ -1,4 +1,5 @@
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from './Text';
 import Icon from './Icon';
 import { Badge, Button, Card, DataRow, HorseAvatar, Row, Sheet } from './ui';
 import { API_ORIGIN } from '../api/client';

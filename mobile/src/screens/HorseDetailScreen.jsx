@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../components/Text';
 import Icon from '../components/Icon';
 import { Badge, Card, EmptyState, HorseAvatar, Loading, Row, SectionTitle } from '../components/ui';
 import {
@@ -16,6 +17,7 @@ import {
   HEALTH_STATUS,
   MEAL_CONFIG,
   MEAL_ORDER,
+  SESSION_STATUS,
   TASK_STATUS,
   describeDaysLeft,
   describeTask,
@@ -26,6 +28,7 @@ import {
   getFeedTypeLabel,
   getUpcomingCare,
   isSameDay,
+  mealSlotOf,
   mealTimeOf,
   refId,
 } from '../utils/groom';
@@ -70,7 +73,7 @@ export default function HorseDetailScreen({ route }) {
   const routine = [
     ...schedules.map((s) => {
       const meal = MEAL_CONFIG[s.mealTime] || {};
-      const task = todayTasks.find((t) => t.taskType === 'feeding' && t.mealSlot === s.mealTime);
+      const task = todayTasks.find((t) => t.taskType === 'feeding' && mealSlotOf(t) === s.mealTime);
       const status = task ? TASK_STATUS[task.status] : null;
       return {
         key: `meal-${s._id}`,
@@ -91,11 +94,7 @@ export default function HorseDetailScreen({ route }) {
       bg: colors.blueSoft,
       label: s.sessionType === 'trial_run' ? 'Chạy thử' : 'Buổi tập',
       detail: s.objective || '',
-      badge: {
-        label: s.status === 'in_progress' ? 'Đang diễn ra' : s.status === 'completed' ? 'Xong' : 'Đã lên lịch',
-        color: colors.textMuted,
-        bg: colors.graySoft,
-      },
+      badge: SESSION_STATUS[s.status] || SESSION_STATUS.scheduled,
     })),
     ...todayTasks
       .filter((t) => t.taskType !== 'feeding')
@@ -115,7 +114,13 @@ export default function HorseDetailScreen({ route }) {
       }),
   ].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
 
-  if (isLoading) return <Loading />;
+  if (isLoading) {
+    return (
+      <View style={{ padding: spacing.lg }}>
+        <Loading />
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -179,6 +184,33 @@ export default function HorseDetailScreen({ route }) {
       ) : null}
 
       <Card>
+        <SectionTitle right={<Badge label={formatDate(new Date())} />}>Hôm nay</SectionTitle>
+        {routine.length === 0 ? (
+          <Text style={font.small}>Chưa có bữa ăn, buổi tập hay công việc nào cho hôm nay.</Text>
+        ) : (
+          routine.map((entry) => (
+            <Row key={entry.key} style={styles.routineRow}>
+              <Text style={styles.routineTime}>{entry.time || '--:--'}</Text>
+              <View style={[styles.routineIcon, { backgroundColor: entry.bg }]}>
+                <Icon name={entry.icon} size={15} color={entry.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={font.body} numberOfLines={1}>
+                  {entry.label}
+                </Text>
+                {entry.detail ? (
+                  <Text style={font.small} numberOfLines={1}>
+                    {entry.detail}
+                  </Text>
+                ) : null}
+              </View>
+              {entry.badge ? <Badge label={entry.badge.label} color={entry.badge.color} bg={entry.badge.bg} /> : null}
+            </Row>
+          ))
+        )}
+      </Card>
+
+      <Card>
         <SectionTitle>Khẩu phần trong ngày</SectionTitle>
         {schedules.length === 0 ? (
           <EmptyState icon="rations" text="Chưa có khẩu phần nào được thiết lập" hint="HLV Trưởng là người lập và duyệt khẩu phần." />
@@ -232,33 +264,6 @@ export default function HorseDetailScreen({ route }) {
 
       {/* The horse's day, in order: meals, training and care, each with where it stands. */}
       <Card>
-        <SectionTitle right={<Badge label={formatDate(new Date())} />}>Lịch trình sinh hoạt hôm nay</SectionTitle>
-        {routine.length === 0 ? (
-          <Text style={font.small}>Chưa có bữa ăn, buổi tập hay công việc nào cho hôm nay.</Text>
-        ) : (
-          routine.map((entry) => (
-            <Row key={entry.key} style={styles.routineRow}>
-              <Text style={styles.routineTime}>{entry.time || '--:--'}</Text>
-              <View style={[styles.routineIcon, { backgroundColor: entry.bg }]}>
-                <Icon name={entry.icon} size={15} color={entry.color} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={font.body} numberOfLines={1}>
-                  {entry.label}
-                </Text>
-                {entry.detail ? (
-                  <Text style={font.small} numberOfLines={1}>
-                    {entry.detail}
-                  </Text>
-                ) : null}
-              </View>
-              {entry.badge ? <Badge label={entry.badge.label} color={entry.badge.color} bg={entry.badge.bg} /> : null}
-            </Row>
-          ))
-        )}
-      </Card>
-
-      <Card>
         <SectionTitle>Lịch chăm sóc định kỳ</SectionTitle>
         {care.length === 0 ? (
           <Text style={font.small}>Không có lịch tiêm phòng, tẩy giun hay kiểm tra móng trong 30 ngày tới.</Text>
@@ -266,9 +271,10 @@ export default function HorseDetailScreen({ route }) {
           care.map((c) => (
             <Row key={c.key} style={styles.listRow}>
               <Icon name={c.icon} size={16} color={colors.forestLight} />
-              <Text style={{ flex: 1, ...font.body }}>
-                {c.label} · {formatDate(c.date)}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={font.body}>{c.label}</Text>
+                <Text style={font.small}>{formatDate(c.date)}</Text>
+              </View>
               <Badge
                 label={describeDaysLeft(c.daysLeft)}
                 color={c.daysLeft < 0 ? colors.red : colors.textMuted}

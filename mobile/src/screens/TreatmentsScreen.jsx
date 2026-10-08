@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon';
@@ -7,8 +8,9 @@ import AppHeader from '../components/AppHeader';
 import NotDoneModal from '../components/NotDoneModal';
 import DoseDetailSheet from '../components/DoseDetailSheet';
 import StockCard from '../components/StockCard';
-import { Badge, Button, Card, ChipRow, EmptyState, HorseAvatar, Loading, Row, SectionTitle } from '../components/ui';
-import { taskApi } from '../api/endpoints';
+import { Badge, Button, Card, ChipRow, EmptyState, HorseAvatar, Loading, PendingBadge, Row, SectionTitle } from '../components/ui';
+import { useOutbox } from '../offline/OutboxContext';
+import { hapticSuccess, hapticWarning } from '../utils/haptics';
 import { useInventory, useRefreshAll, useStableOverview, useTasks, useTreatments } from '../hooks/useGroomData';
 import { TIMING_STATE, findStock, formatDate, formatTime, isSameDay, refId } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
@@ -35,10 +37,22 @@ export default function TreatmentsScreen({ navigation }) {
   const refreshAll = useRefreshAll();
   const queryClient = useQueryClient();
 
+  const { submit: send } = useOutbox();
   const complete = useMutation({
-    mutationFn: (id) => taskApi.complete(id, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
-    onError: (err) => Alert.alert('Chưa ghi nhận được', err?.message || 'Thử lại sau.'),
+    mutationFn: (task) =>
+      send(
+        'complete',
+        { taskId: task._id, payload: { performedAt: new Date().toISOString() } },
+        { taskId: task._id, label: 'Cho dùng thuốc', horseName: task.horse?.name }
+      ),
+    onSuccess: (res) => {
+      hapticSuccess();
+      if (!res.queued) queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+    onError: (err) => {
+      hapticWarning();
+      Alert.alert('Chưa ghi nhận được', err?.message || 'Thử lại sau.');
+    },
   });
 
   // Today's care tasks, indexed by the treatment and note they were created from.
@@ -81,15 +95,6 @@ export default function TreatmentsScreen({ navigation }) {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
       >
-        {/* The whole medicine store, not just what today's prescriptions call for. */}
-        <StockCard
-          title="Thuốc còn trong kho"
-          category="medicine"
-          items={inventory}
-          onOpenSupplies={() => navigation.navigate('Vật tư')}
-          emptyText="Kho chưa có mặt hàng thuốc nào. Quản lý CLB là người tạo danh mục."
-        />
-
         {isLoading ? (
           <Loading />
         ) : visible.length === 0 ? (
@@ -142,7 +147,7 @@ export default function TreatmentsScreen({ navigation }) {
                             inventory,
                           })
                         }
-                        onComplete={() => complete.mutate(task._id)}
+                        onComplete={() => complete.mutate(task)}
                         completing={complete.isPending && complete.variables === task?._id}
                       />
                     );
@@ -167,7 +172,7 @@ export default function TreatmentsScreen({ navigation }) {
                       }
                       onComplete={() => {
                         const task = taskFor(treatment._id, treatment.careInstructions, 'monitoring');
-                        if (task) complete.mutate(task._id);
+                        if (task) complete.mutate(task);
                       }}
                     />
                   </>
@@ -178,6 +183,15 @@ export default function TreatmentsScreen({ navigation }) {
             );
           })
         )}
+
+        {/* The whole medicine store, after the doses: the day's work comes first. */}
+        <StockCard
+          title="Thuốc còn trong kho"
+          category="medicine"
+          items={inventory}
+          onOpenSupplies={() => navigation.navigate('Vật tư')}
+          emptyText="Kho chưa có mặt hàng thuốc nào. Quản lý CLB là người tạo danh mục."
+        />
       </ScrollView>
 
       <DoseDetailSheet
@@ -191,7 +205,7 @@ export default function TreatmentsScreen({ navigation }) {
         onComplete={() => {
           const task = openDose?.task;
           setOpenDose(null);
-          if (task) complete.mutate(task._id);
+          if (task) complete.mutate(task);
         }}
         onNotDone={() => {
           const task = openDose?.task;
@@ -225,17 +239,17 @@ function DoseRow({ title, dosage, frequency, task, onOpen, onComplete, completin
           <Icon name={done ? 'check' : icon} size={16} color={done ? colors.green : colors.red} />
         </View>
         <View style={{ flex: 1, gap: 3 }}>
-          <Text style={[font.h3, done && styles.doneText]} numberOfLines={2}>
+          <Text style={[font.h3, done && styles.doneText]} numberOfLines={3}>
             {title}
           </Text>
-          <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
-            {dosage ? <Text style={font.small}>Liều {dosage}</Text> : null}
-            {frequency ? <Text style={font.small}>· {frequency}</Text> : null}
-          </Row>
+          {dosage || frequency ? (
+            <Text style={font.small}>{[dosage ? `Liều ${dosage}` : null, frequency].filter(Boolean).join(' · ')}</Text>
+          ) : null}
           <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
             {done && task?.completedAt ? (
               <Text style={[font.small, { color: colors.green }]}>Đã cho dùng {formatTime(task.completedAt)}</Text>
             ) : null}
+            {task?.pendingSync ? <PendingBadge /> : null}
             {skipped ? <Text style={[font.small, { color: colors.orange }]}>Không thực hiện</Text> : null}
             {!done && !skipped && timingCfg && task ? (
               <Badge label={timingCfg.label} color={timingCfg.color} bg={timingCfg.bg} />

@@ -3,15 +3,21 @@
   "version": "1.0.0",
   "main": "index.js",
   "dependencies": {
+    "@expo-google-fonts/be-vietnam-pro": "^0.4.1",
     "@expo/metro-runtime": "~57.0.16",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "12.0.1",
     "@react-navigation/bottom-tabs": "^7.19.2",
     "@react-navigation/native": "^7.4.1",
     "@react-navigation/native-stack": "^7.19.2",
+    "@tanstack/query-async-storage-persister": "^5.104.1",
     "@tanstack/react-query": "^5.104.0",
+    "@tanstack/react-query-persist-client": "^5.104.1",
     "axios": "^1.20.0",
     "expo": "~57.0.25",
+    "expo-font": "~57.0.4",
+    "expo-haptics": "~57.0.3",
     "expo-image-picker": "~57.0.20",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
@@ -25,7 +31,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web --port 5173"
+    "web": "expo start --web --port 5173",
+    "test": "node --no-warnings --test src/offline/outbox.test.mjs"
   },
   "private": true
 }

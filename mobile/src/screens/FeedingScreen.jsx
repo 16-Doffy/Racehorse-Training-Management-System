@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
@@ -17,6 +18,7 @@ import {
   FilterSheet,
   HorseAvatar,
   Loading,
+  PendingBadge,
   Row,
   SectionTitle,
 } from '../components/ui';
@@ -33,6 +35,7 @@ import {
   getFeedTypeLabel,
   isSameDay,
   matchesSearch,
+  mealSlotOf,
   mealTimeOf,
   nextMealSlot,
   parseStableBlock,
@@ -86,7 +89,7 @@ export default function FeedingScreen({ navigation }) {
     [tasks]
   );
   const taskFor = (horseId, slot) =>
-    feedingTasks.find((t) => refId(t.horse) === horseId && (t.mealSlot === slot || (!t.mealSlot && slot === 'morning')));
+    feedingTasks.find((t) => refId(t.horse) === horseId && mealSlotOf(t) === slot);
   const pendingMeals = feedingTasks.filter((t) => t.status === 'pending').length;
 
   const rationsByHorse = useMemo(() => {
@@ -193,15 +196,6 @@ export default function FeedingScreen({ navigation }) {
           </Banner>
         ) : null}
 
-        {/* The store as it stands: every feed the club holds, not only what today's rations use. */}
-        <StockCard
-          title="Thức ăn còn trong kho"
-          category="feed"
-          items={inventory}
-          onOpenSupplies={() => navigation.navigate('Vật tư')}
-          emptyText="Kho chưa có mặt hàng thức ăn nào. Quản lý CLB là người tạo danh mục."
-        />
-
         <Text style={styles.summaryLine}>
           {scopedHorses.filter((h) => rationsByHorse.has(h._id)).length}/{scopedHorses.length} ngựa có khẩu phần ·{' '}
           {approved} đã duyệt · {scopedSchedules.length - approved} chờ duyệt
@@ -231,6 +225,15 @@ export default function FeedingScreen({ navigation }) {
             />
           ))
         )}
+
+        {/* The store as it stands, after the meals: a shortage is already called out by the banner above. */}
+        <StockCard
+          title="Thức ăn còn trong kho"
+          category="feed"
+          items={inventory}
+          onOpenSupplies={() => navigation.navigate('Vật tư')}
+          emptyText="Kho chưa có mặt hàng thức ăn nào. Quản lý CLB là người tạo danh mục."
+        />
       </ScrollView>
 
       <MealDetailSheet
@@ -321,6 +324,7 @@ function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nex
                 <Text style={font.h3}>{meal.label}</Text>
               </Row>
               <Row style={{ gap: 6 }}>
+                {task?.pendingSync ? <PendingBadge /> : null}
                 {fed ? (
                   <Badge label={`Đã cho ăn ${formatTime(task.completedAt)}`} color={colors.green} bg={colors.greenSoft} />
                 ) : task && timingCfg && task.status === 'pending' ? (

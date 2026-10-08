@@ -9,13 +9,13 @@ export const taskApi = {
   list: (params) => api.get('/stable/tasks', { params }),
   getOne: (id) => api.get(`/stable/tasks/${id}`),
   /** payload: { observation: { appetite, manure, waterIntake }, notes } — all optional. */
-  complete: (id, payload) => api.patch(`/stable/tasks/${id}/complete`, payload),
+  complete: (id, payload, config) => api.patch(`/stable/tasks/${id}/complete`, payload, config),
   /** "I've seen this and taken it on" — lets the trainer/vet tell picked-up from untouched. */
-  acknowledge: (id) => api.patch(`/stable/tasks/${id}/acknowledge`),
+  acknowledge: (id, config) => api.patch(`/stable/tasks/${id}/acknowledge`, undefined, config),
   /** Could not do it (horse spat the medicine out, ...); the reason goes to the trainer/vet. */
-  reportNotDone: (id, reason) => api.patch(`/stable/tasks/${id}/not-done`, { reason }),
-  reportIncident: (id, formData) =>
-    api.post(`/stable/tasks/${id}/incident`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  reportNotDone: (id, reason, config) => api.patch(`/stable/tasks/${id}/not-done`, { reason }, config),
+  reportIncident: (id, formData, config) =>
+    api.post(`/stable/tasks/${id}/incident`, formData, { ...config, headers: { 'Content-Type': 'multipart/form-data' } }),
 };
 
 export const stableApi = {

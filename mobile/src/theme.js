@@ -8,8 +8,9 @@ export const colors = {
   cream: '#fdfbf7',
   white: '#ffffff',
   text: '#111827',
-  textMuted: '#6b7280',
-  textFaint: '#9ca3af',
+  // Both pass 4.5:1 on white and on cream (WCAG AA for body text); the old faint grey was 2.5:1.
+  textMuted: '#4b5563',
+  textFaint: '#6b7280',
   border: '#e5e7eb',
   borderSoft: '#f1f0ec',
   green: '#16a34a',
@@ -48,13 +49,25 @@ export const shadow = {
   },
 };
 
+// Be Vietnam Pro: drawn for Vietnamese, so stacked diacritics (ế, ộ, ữ) keep their shape at small
+// sizes. Loaded in App.js; the names are the ones @expo-google-fonts registers.
+export const fontFamily = {
+  regular: 'BeVietnamPro_400Regular',
+  medium: 'BeVietnamPro_500Medium',
+  semibold: 'BeVietnamPro_600SemiBold',
+  bold: 'BeVietnamPro_700Bold',
+  extrabold: 'BeVietnamPro_800ExtraBold',
+};
+
+// Type scale. Body is 15, the smallest text anywhere is 12, and nothing is set in capitals:
+// capitals with Vietnamese marks are the hardest thing to read at a glance.
 export const font = {
-  display: { fontSize: 26, fontWeight: '800', color: colors.forest, letterSpacing: -0.5 },
-  h1: { fontSize: 22, fontWeight: '800', color: colors.forest, letterSpacing: -0.3 },
-  h2: { fontSize: 17, fontWeight: '700', color: colors.forest },
-  h3: { fontSize: 15, fontWeight: '700', color: colors.text },
-  body: { fontSize: 14, color: colors.text, lineHeight: 20 },
-  small: { fontSize: 12, color: colors.textMuted, lineHeight: 17 },
-  tiny: { fontSize: 10, color: colors.textFaint, textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: '700' },
-  number: { fontSize: 24, fontWeight: '800', color: colors.forest },
+  display: { fontSize: 28, lineHeight: 36, fontWeight: '700', color: colors.forest, letterSpacing: -0.4 },
+  h1: { fontSize: 24, lineHeight: 30, fontWeight: '700', color: colors.forest, letterSpacing: -0.3 },
+  h2: { fontSize: 18, lineHeight: 24, fontWeight: '700', color: colors.forest },
+  h3: { fontSize: 16, lineHeight: 22, fontWeight: '600', color: colors.text },
+  body: { fontSize: 15, lineHeight: 22, color: colors.text },
+  small: { fontSize: 13, lineHeight: 18, color: colors.textMuted },
+  tiny: { fontSize: 12, lineHeight: 16, color: colors.textMuted, fontWeight: '600' },
+  number: { fontSize: 28, lineHeight: 34, fontWeight: '700', color: colors.forest },
 };

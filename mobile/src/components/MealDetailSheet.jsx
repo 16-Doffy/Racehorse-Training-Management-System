@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from './Text';
 import Icon from './Icon';
 import { Badge, Button, Card, DataRow, HorseAvatar, Row, Sheet } from './ui';
 import {
@@ -86,7 +87,7 @@ export default function MealDetailSheet({ meal, visible, onClose, onComplete, on
           {task?.completedAt ? <DataRow label="Đã cho ăn lúc" value={formatDateTime(task.completedAt)} /> : null}
           {task?.skipReason ? <DataRow label="Không cho ăn" value={task.skipReason} valueStyle={{ color: colors.orange }} /> : null}
           {timing.reason && task?.status === 'pending' ? (
-            <DataRow label="Ghi nhận" value={timing.reason} valueStyle={{ color: colors.orange, flex: 1, textAlign: 'right' }} />
+            <DataRow label="Ghi nhận" value={timing.reason} valueStyle={{ color: colors.orange, flex: 1, textAlign: 'right', fontWeight: '500', fontSize: 14 }} />
           ) : null}
         </Card>
 

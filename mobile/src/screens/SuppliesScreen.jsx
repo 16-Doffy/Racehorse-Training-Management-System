@@ -1,21 +1,11 @@
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
+import DragSheet from '../components/DragSheet';
 import {
   Badge,
   Banner,
@@ -244,12 +234,15 @@ function ItemRow({ item, request, onRestock }) {
         </View>
         <View style={{ flex: 1 }}>
           <Row style={{ gap: 6 }}>
-            <Text style={font.h3} numberOfLines={1}>
+            <Text style={font.h3} numberOfLines={2}>
               {item.name}
             </Text>
             {item.isProposed ? <Badge label="Chờ duyệt" color={colors.orange} bg={colors.orangeSoft} /> : null}
           </Row>
-          <Text style={font.small}>{item.stableBlock || 'Kho chung'}</Text>
+          <Text style={font.small}>
+            {item.stableBlock || 'Kho chung'}
+            {level.key !== 'ok' ? <Text style={{ color: level.color, fontWeight: '700' }}> · {level.label}</Text> : null}
+          </Text>
           {status ? (
             <Row style={{ gap: 6, marginTop: 2 }}>
               <Badge label={status.label} color={status.color} bg={status.bg} />
@@ -263,17 +256,17 @@ function ItemRow({ item, request, onRestock }) {
           <Text style={[font.h3, { color: level.color }]}>
             {item.quantity} <Text style={font.small}>{item.unit}</Text>
           </Text>
-          <Badge label={level.label} color={level.color} bg={level.bg} />
+          {/* One small action per row: eighteen full-width buttons in a column read as a wall. */}
+          <Pressable
+            onPress={onRestock}
+            hitSlop={8}
+            style={({ pressed }) => [styles.restockPill, level.key !== 'ok' && styles.restockPillUrgent, pressed && { opacity: 0.7 }]}
+          >
+            <Icon name="plus" size={13} color={level.key !== 'ok' ? colors.white : colors.forestLight} />
+            <Text style={[styles.restockText, level.key !== 'ok' && { color: colors.white }]}>Đề xuất</Text>
+          </Pressable>
         </View>
       </Row>
-      <Button
-        title="Đề xuất bổ sung"
-        icon="plus"
-        variant={level.key === 'ok' ? 'ghost' : 'primary'}
-        size="sm"
-        style={{ marginTop: spacing.sm }}
-        onPress={onRestock}
-      />
     </View>
   );
 }
@@ -311,7 +304,7 @@ function RestockModal({ item, visible, onClose, latestRequest }) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <DragSheet onClose={close} style={styles.sheet} handle="overlay">
           <Row style={styles.sheetHeader}>
             <Text style={font.h2}>Đề xuất bổ sung</Text>
             <Pressable onPress={close} hitSlop={10}>
@@ -373,7 +366,7 @@ function RestockModal({ item, visible, onClose, latestRequest }) {
               <Button title="Gửi đề xuất" style={{ flex: 2 }} loading={mutation.isPending} onPress={submit} />
             </Row>
           </View>
-        </View>
+        </DragSheet>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -428,7 +421,7 @@ function ProposeItemModal({ visible, onClose, blocks }) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <DragSheet onClose={close} style={styles.sheet} handle="overlay">
           <Row style={styles.sheetHeader}>
             <Text style={font.h2}>Đề xuất vật tư mới</Text>
             <Pressable onPress={close} hitSlop={10}>
@@ -502,13 +495,26 @@ function ProposeItemModal({ visible, onClose, blocks }) {
               <Button title="Gửi đề xuất" style={{ flex: 2 }} loading={mutation.isPending} onPress={submit} />
             </Row>
           </ScrollView>
-        </View>
+        </DragSheet>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  restockPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  restockPillUrgent: { backgroundColor: colors.forest, borderColor: colors.forest },
+  restockText: { fontSize: 12, fontWeight: '700', color: colors.forestLight },
   safe: { flex: 1, backgroundColor: colors.cream },
   toolbar: {
     paddingHorizontal: spacing.lg,

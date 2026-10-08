@@ -1,5 +1,8 @@
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from './Text';
 import Icon from './Icon';
+import DragSheet from './DragSheet';
+import { ListSkeleton } from './Skeletons';
 import { colors, font, radius, shadow, spacing } from '../theme';
 
 export function Card({ children, style, onPress }) {
@@ -135,13 +138,20 @@ export function EmptyState({ icon = 'empty', text, hint, action }) {
   );
 }
 
-export function Loading({ text = 'Đang tải...' }) {
+/** Without a message: grey placeholder cards where the list will be. With one: a spinner and the message. */
+export function Loading({ text }) {
+  if (!text) return <ListSkeleton />;
   return (
     <View style={styles.empty}>
       <ActivityIndicator color={colors.forest} />
       <Text style={[font.small, { marginTop: spacing.sm }]}>{text}</Text>
     </View>
   );
+}
+
+/** A task the groom did without a connection: shown as done, still on its way to the server. */
+export function PendingBadge() {
+  return <Badge label="Chờ gửi" color={colors.orange} bg={colors.orangeSoft} />;
 }
 
 export function Banner({ tone = 'warning', children, style }) {
@@ -272,15 +282,14 @@ export function Sheet({ visible, title, onClose, children, footer }) {
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.sheetBackdrop}>
         <Pressable style={{ flex: 1 }} accessibilityLabel="Đóng" onPress={onClose} />
-        <View style={styles.sheet}>
-          <View style={styles.sheetHandle} />
+        <DragSheet onClose={onClose} style={styles.sheet}>
           <Row style={styles.sheetHeader}>
             <Text style={font.h2}>{title}</Text>
             <IconButton icon="close" label="Đóng" onPress={onClose} />
           </Row>
           {children}
           {footer}
-        </View>
+        </DragSheet>
       </View>
     </Modal>
   );
@@ -321,7 +330,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   badgeDot: { width: 6, height: 6, borderRadius: 3 },
-  badgeText: { fontSize: 11, fontWeight: '700' },
+  badgeText: { fontSize: 12, fontWeight: '600' },
   button: {
     minHeight: 48,
     paddingHorizontal: spacing.lg,
@@ -331,8 +340,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   buttonSm: { minHeight: 40, paddingHorizontal: spacing.md },
-  buttonText: { fontSize: 15, fontWeight: '700' },
-  buttonTextSm: { fontSize: 13 },
+  buttonText: { fontSize: 16, fontWeight: '600' },
+  buttonTextSm: { fontSize: 14 },
   iconButton: { width: 40, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
   iconButtonLight: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border },
   iconButtonDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
@@ -348,12 +357,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconBadgeText: { color: colors.white, fontSize: 10, fontWeight: '800' },
+  iconBadgeText: { color: colors.white, fontSize: 11, fontWeight: '700' },
   avatar: { alignItems: 'center', justifyContent: 'center' },
   stat: { flex: 1, minWidth: 0, padding: spacing.md, paddingTop: spacing.lg, gap: 4, overflow: 'hidden' },
   statStripe: { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
   statValueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
-  statSuffix: { fontSize: 12, color: colors.textFaint, paddingBottom: 4 },
+  statSuffix: { fontSize: 13, color: colors.textMuted, paddingBottom: 4 },
   empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xl },
   banner: { borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
   chipGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
@@ -367,8 +376,8 @@ const styles = StyleSheet.create({
   },
   chipSm: { paddingHorizontal: spacing.md, paddingVertical: 7 },
   chipActive: { backgroundColor: colors.forest, borderColor: colors.forest },
-  chipText: { fontSize: 13, color: colors.text, fontWeight: '600' },
-  chipTextSm: { fontSize: 12 },
+  chipText: { fontSize: 14, color: colors.text, fontWeight: '500' },
+  chipTextSm: { fontSize: 13 },
   chipTextActive: { color: colors.white },
   search: {
     flexDirection: 'row',
@@ -381,7 +390,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     minHeight: 44,
   },
-  searchInput: { flex: 1, fontSize: 15, color: colors.text, paddingVertical: 0 },
+  searchInput: { flex: 1, fontSize: 16, color: colors.text, paddingVertical: 0 },
   progressTrack: { overflow: 'hidden', width: '100%' },
   sheetBackdrop: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
   sheet: {
@@ -391,15 +400,7 @@ const styles = StyleSheet.create({
     maxHeight: '85%',
     paddingBottom: spacing.lg,
   },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.border,
-    alignSelf: 'center',
-    marginTop: spacing.md,
-  },
-  sheetHeader: { justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  sheetHeader: { justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   dataRow: { justifyContent: 'space-between', paddingVertical: 6, gap: spacing.md },
 });

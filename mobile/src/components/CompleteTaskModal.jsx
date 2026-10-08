@@ -1,19 +1,11 @@
 import { useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from './Text';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { taskApi } from '../api/endpoints';
+import { useOutbox } from '../offline/OutboxContext';
+import { hapticSuccess, hapticWarning } from '../utils/haptics';
 import Icon from './Icon';
+import DragSheet from './DragSheet';
 import { Button, ChipGroup, Row } from './ui';
 import { APPETITE_OPTIONS, MANURE_OPTIONS, TASK_CONFIG, WATER_OPTIONS, describeTask } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
@@ -25,6 +17,7 @@ import { colors, font, radius, spacing } from '../theme';
  */
 export default function CompleteTaskModal({ task, schedules = [], visible, onClose }) {
   const queryClient = useQueryClient();
+  const { submit: send } = useOutbox();
   const [appetite, setAppetite] = useState('Bình thường');
   const [manure, setManure] = useState('Bình thường');
   const [water, setWater] = useState('Bình thường');
@@ -45,12 +38,23 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
   };
 
   const mutation = useMutation({
-    mutationFn: (payload) => taskApi.complete(task._id, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    // Without a connection the write is kept and sent later (offline/outbox.js); `performedAt` is
+    // when the groom actually did it, for the server to use once it accepts it.
+    mutationFn: (payload) =>
+      send(
+        'complete',
+        { taskId: task._id, payload: { ...payload, performedAt: new Date().toISOString() } },
+        { taskId: task._id, label: describeTask(task, schedules).label, horseName: task.horse?.name }
+      ),
+    onSuccess: (res) => {
+      hapticSuccess();
+      if (!res.queued) queryClient.invalidateQueries({ queryKey: ['tasks'] });
       close();
     },
-    onError: (err) => Alert.alert('Không hoàn thành được', err?.message || 'Thử lại sau.'),
+    onError: (err) => {
+      hapticWarning();
+      Alert.alert('Không hoàn thành được', err?.message || 'Thử lại sau.');
+    },
   });
 
   const submit = () => {
@@ -66,7 +70,7 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <DragSheet onClose={close} style={styles.sheet} handle="overlay">
           <Row style={styles.sheetHeader}>
             <Text style={font.h2}>Xác nhận hoàn thành</Text>
             <Pressable onPress={close} hitSlop={10}>
@@ -129,7 +133,7 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
             <Button title="Huỷ" variant="subtle" style={{ flex: 1 }} onPress={close} />
             <Button title="Hoàn thành" style={{ flex: 2 }} loading={mutation.isPending} onPress={submit} />
           </Row>
-        </View>
+        </DragSheet>
       </KeyboardAvoidingView>
     </Modal>
   );

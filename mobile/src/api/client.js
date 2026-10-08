@@ -35,12 +35,20 @@ api.interceptors.response.use(
       await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
       onUnauthorized?.();
     }
-    return Promise.reject(
-      error.response?.data || {
+    // `isNetworkError`: the request got no answer (no signal, dropped link, timeout) as opposed to
+    // an answer saying no. The outbox keeps a write for the first and tells the groom about the second.
+    const answered = !!error.response;
+    const body = answered && error.response.data && typeof error.response.data === 'object' ? error.response.data : null;
+    return Promise.reject({
+      ...(body || {
         success: false,
-        message: error.message === 'Network Error' ? 'Không kết nối được máy chủ. Kiểm tra mạng.' : error.message,
-      }
-    );
+        message: answered
+          ? error.message
+          : 'Không kết nối được máy chủ. Kiểm tra mạng.',
+      }),
+      status: error.response?.status,
+      isNetworkError: !answered,
+    });
   }
 );
 

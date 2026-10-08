@@ -9,9 +9,27 @@ export const TASK_CONFIG = {
   // Ordered by the vet through a treatment, not assigned by hand.
   medication: { label: 'Cho dùng thuốc', icon: 'medication', color: '#dc2626', bg: '#fee2e2' },
   monitoring: { label: 'Theo dõi theo y lệnh', icon: 'monitoring', color: '#7c3aed', bg: '#ede9fe' },
+  // Any job the list doesn't name; its note says what it is.
+  other: { label: 'Việc khác', icon: 'note', color: '#475569', bg: '#f1f5f9' },
 };
 
-export const TASK_TYPE_ORDER = ['feeding', 'medication', 'monitoring', 'cleaning', 'bathing', 'icing'];
+export const TASK_TYPE_ORDER = ['feeding', 'medication', 'monitoring', 'cleaning', 'bathing', 'icing', 'other'];
+
+/** Stable work that lives on the "Việc" tab (meals and doses have tabs of their own). */
+export const CHORE_TYPES = ['cleaning', 'bathing', 'icing', 'other'];
+
+/** A training session's status as the server states it (lowercase snake_case); only the wording is ours. */
+export const SESSION_STATUS = {
+  scheduled: { label: 'Đã lên lịch', color: '#6b7280', bg: '#f3f4f6' },
+  ready: { label: 'Sẵn sàng', color: '#0891b2', bg: '#cffafe' },
+  blocked: { label: 'Bị chặn', color: '#ea580c', bg: '#ffedd5' },
+  in_progress: { label: 'Đang diễn ra', color: '#2563eb', bg: '#dbeafe' },
+  completed: { label: 'Đã hoàn thành', color: '#16a34a', bg: '#dcfce7' },
+  evaluated: { label: 'Đã đánh giá', color: '#16a34a', bg: '#dcfce7' },
+  aborted: { label: 'Đã dừng giữa chừng', color: '#dc2626', bg: '#fee2e2' },
+  cancelled: { label: 'Đã hủy', color: '#dc2626', bg: '#fee2e2' },
+  missed: { label: 'Đã lỡ giờ', color: '#6b7280', bg: '#f3f4f6' },
+};
 
 export const TASK_STATUS = {
   pending: { label: 'Chưa xong', color: '#6b7280', bg: '#f3f4f6' },
@@ -198,6 +216,11 @@ export function getUpcomingCare(horse, withinDays = 14) {
 }
 
 /** Clock time of a meal: the ration's own time when known, else the slot's default. */
+/** Which meal a feeding task covers. Older feeding tasks carry no slot and were the morning meal. */
+export function mealSlotOf(task) {
+  return task.mealSlot || 'morning';
+}
+
 export function mealTimeOf(mealSlot, schedules = []) {
   const withTime = schedules.find((s) => s.mealTime === mealSlot && s.timeOfDay);
   return withTime?.timeOfDay || MEAL_CONFIG[mealSlot]?.defaultTime || null;
@@ -206,17 +229,27 @@ export function mealTimeOf(mealSlot, schedules = []) {
 /** Title for one task row: feeding tasks say which meal, everything else keeps its own label. */
 export function describeTask(task, schedulesForHorse = []) {
   const base = TASK_CONFIG[task.taskType] || { label: task.taskType, icon: 'note' };
-  if (task.taskType !== 'feeding' || !task.mealSlot) {
-    return { ...base, time: task.scheduledDate ? formatTime(task.scheduledDate) : null, meal: null };
+  if (task.taskType !== 'feeding') {
+    // A "Khác" job is named by its note.
+    const label = task.taskType === 'other' && task.note ? task.note : base.label;
+    return { ...base, label, time: task.dueTime || timeOfDay(task.scheduledDate), meal: null };
   }
-  const meal = MEAL_CONFIG[task.mealSlot];
+  const slot = mealSlotOf(task);
+  const meal = MEAL_CONFIG[slot];
   return {
     ...base,
     icon: meal?.icon || base.icon,
-    label: `${base.label} — ${meal?.label || task.mealSlot}`,
+    label: `${base.label} — ${meal?.label || slot}`,
     meal: meal?.label,
-    time: mealTimeOf(task.mealSlot, schedulesForHorse) || formatTime(task.scheduledDate),
+    time: mealTimeOf(slot, schedulesForHorse) || formatTime(task.scheduledDate),
   };
+}
+
+/** "07:30" from a date, or null for midnight — older jobs were stored as a bare day ("cả ngày"). */
+function timeOfDay(date) {
+  if (!date) return null;
+  const d = new Date(date);
+  return d.getHours() === 0 && d.getMinutes() === 0 ? null : formatTime(d);
 }
 
 /** The meal slot that is current or next, using each ration's own clock time. */

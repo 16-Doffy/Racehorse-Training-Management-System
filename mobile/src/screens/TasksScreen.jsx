@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon';
@@ -19,15 +20,17 @@ import {
   FilterSheet,
   HorseAvatar,
   Loading,
+  PendingBadge,
   ProgressBar,
   Row,
 } from '../components/ui';
 import { useFeedings, useRefreshAll, useStableOverview, useTasks } from '../hooks/useGroomData';
 import { API_ORIGIN } from '../api/client';
-import { taskApi } from '../api/endpoints';
+import { useOutbox } from '../offline/OutboxContext';
 import {
   HEALTH_STATUS,
   SEVERITY,
+  CHORE_TYPES,
   TASK_CONFIG,
   TASK_SOURCE,
   TASK_STATUS,
@@ -46,7 +49,6 @@ import { colors, font, radius, spacing } from '../theme';
 
 // Meals live on "Cho ăn" and doses on "Thuốc", where the ration and the prescription are. This
 // tab is the stable work itself, which is what a groom means by "việc chuồng".
-const CHORE_TYPES = ['cleaning', 'bathing', 'icing'];
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'Tất cả' },
@@ -73,9 +75,12 @@ export default function TasksScreen() {
   const refreshAll = useRefreshAll();
   const queryClient = useQueryClient();
 
+  const { submit: send } = useOutbox();
   const acknowledge = useMutation({
-    mutationFn: (id) => taskApi.acknowledge(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+    mutationFn: (task) => send('acknowledge', { taskId: task._id }, { taskId: task._id, label: 'Nhận việc', horseName: task.horse?.name }),
+    onSuccess: (res) => {
+      if (!res.queued) queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
   });
 
   const chores = useMemo(() => tasks.filter((t) => CHORE_TYPES.includes(t.taskType)), [tasks]);
@@ -253,7 +258,7 @@ export default function TasksScreen() {
         visible={!!detail}
         onClose={() => setDetail(null)}
         acknowledging={acknowledge.isPending && acknowledge.variables === detail?._id}
-        onAcknowledge={() => acknowledge.mutate(detail._id)}
+        onAcknowledge={() => acknowledge.mutate(detail)}
         onComplete={() => {
           const task = detail;
           setDetail(null);
@@ -327,7 +332,7 @@ function TaskRow({ task, schedules, onOpen, onComplete }) {
         </View>
 
         <View style={{ flex: 1, gap: 3 }}>
-          <Text style={[font.h3, isDone && styles.doneText]} numberOfLines={1}>
+          <Text style={[font.h3, isDone && styles.doneText]} numberOfLines={2}>
             {info.label}
           </Text>
           <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
@@ -338,6 +343,7 @@ function TaskRow({ task, schedules, onOpen, onComplete }) {
               </Row>
             ) : null}
             {isDone && task.completedAt ? <Text style={font.small}>Xong {formatTime(task.completedAt)}</Text> : null}
+            {task.pendingSync ? <PendingBadge /> : null}
             {isPending && timingCfg ? <Badge label={timingCfg.label} color={timingCfg.color} bg={timingCfg.bg} /> : null}
             {!isDone && !isPending ? <Badge label={status.label} color={status.color} bg={status.bg} /> : null}
             {isVetOrder ? <Badge label="Y lệnh" color={colors.red} bg={colors.redSoft} /> : null}

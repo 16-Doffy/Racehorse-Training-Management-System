@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
-import { Badge, Button, Card, ChipRow, EmptyState, HorseAvatar, Loading, Row } from '../components/ui';
+import DragSheet from '../components/DragSheet';
+import { Badge, Button, Card, ChipRow, EmptyState, HorseAvatar, IconButton, Loading, Row } from '../components/ui';
 import IncidentModal from '../components/IncidentModal';
 import { useIncidents, useRefreshAll, useStableOverview, useTasks } from '../hooks/useGroomData';
 import { API_ORIGIN } from '../api/client';
@@ -11,6 +13,7 @@ import {
   INCIDENT_STATUS,
   SEVERITY,
   TASK_CONFIG,
+  describeTask,
   formatDate,
   formatDateTime,
   isToday,
@@ -52,8 +55,7 @@ export default function IncidentsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={font.h1}>Báo cáo Sự cố</Text>
-        <Text style={font.small}>Ngựa bỏ ăn, đau bụng/sốt, móng bị xước... kèm ảnh thực tế. Bác sĩ thú y nhận thông báo ngay.</Text>
+        <Text style={font.small}>Ngựa bỏ ăn, đau bụng/sốt, móng bị xước… Chụp ảnh thực tế; bác sĩ thú y nhận thông báo ngay.</Text>
         <Button title="Báo cáo sự cố mới" icon="warning" variant="danger" onPress={() => setPicking(true)} />
       </View>
 
@@ -147,56 +149,66 @@ export default function IncidentsScreen() {
 }
 
 /**
- * The API stores an incident on a daily task, so a new report starts by choosing which of the
- * groom's tasks it belongs to — today's first.
+ * The API stores an incident on a daily task, so a new report starts by choosing which task it
+ * belongs to. Tasks are grouped under their horse, today's first, instead of one long list of
+ * near-identical rows.
  */
 function TaskPicker({ visible, tasks, onClose, onPick }) {
-  const candidates = useMemo(
-    () =>
-      [...tasks]
-        .sort((a, b) => {
-          const aToday = isToday(a.scheduledDate) ? 0 : 1;
-          const bToday = isToday(b.scheduledDate) ? 0 : 1;
-          return aToday - bToday || new Date(b.scheduledDate) - new Date(a.scheduledDate);
-        })
-        .slice(0, 20),
-    [tasks]
-  );
+  const groups = useMemo(() => {
+    const sorted = [...tasks]
+      .sort((x, y) => (isToday(x.scheduledDate) ? 0 : 1) - (isToday(y.scheduledDate) ? 0 : 1) || new Date(y.scheduledDate) - new Date(x.scheduledDate))
+      .slice(0, 30);
+    const byHorse = new Map();
+    sorted.forEach((task) => {
+      const id = refId(task.horse);
+      if (!byHorse.has(id)) byHorse.set(id, { horse: task.horse, tasks: [] });
+      byHorse.get(id).tasks.push(task);
+    });
+    return [...byHorse.values()];
+  }, [tasks]);
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <DragSheet onClose={onClose} style={styles.sheet}>
           <Row style={styles.sheetHeader}>
-            <Text style={font.h2}>Chọn công việc liên quan</Text>
-            <Pressable onPress={onClose} hitSlop={10}>
-              <Text style={styles.close}>✕</Text>
-            </Pressable>
+            <View style={{ flex: 1 }}>
+              <Text style={font.h2}>Sự cố của ngựa nào?</Text>
+              <Text style={font.small}>Chọn công việc liên quan đến sự cố.</Text>
+            </View>
+            <IconButton icon="close" label="Đóng" onPress={onClose} />
           </Row>
-          <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm }}>
-            {candidates.length === 0 ? (
+          <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
+            {groups.length === 0 ? (
               <EmptyState icon="empty" text="Bạn chưa có công việc nào" hint="Sự cố cần gắn với một công việc được giao." />
             ) : (
-              candidates.map((task) => {
-                const cfg = TASK_CONFIG[task.taskType] || { label: task.taskType, icon: 'note' };
-                return (
-                  <Card key={task._id} style={styles.pickRow} onPress={() => onPick(task)}>
-                    <Row style={{ gap: spacing.md }}>
-                      <Icon name={cfg.icon} size={18} color={cfg.color} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={font.h3}>{task.horse?.name}</Text>
-                        <Text style={font.small}>
-                          {cfg.label} • {isToday(task.scheduledDate) ? 'Hôm nay' : formatDate(task.scheduledDate)}
-                        </Text>
-                      </View>
-                      {task.incidentReport ? <Badge label="Đã có báo cáo" color={colors.red} bg={colors.redSoft} /> : null}
-                    </Row>
-                  </Card>
-                );
-              })
+              groups.map((group) => (
+                <Card key={refId(group.horse)} style={styles.pickGroup}>
+                  <Row style={{ gap: spacing.md, paddingBottom: spacing.xs }}>
+                    <HorseAvatar name={group.horse?.name} size={36} />
+                    <Text style={font.h3}>{group.horse?.name}</Text>
+                  </Row>
+                  {group.tasks.map((task) => {
+                    const info = describeTask(task);
+                    return (
+                      <Pressable key={task._id} style={({ pressed }) => [styles.pickTask, pressed && { opacity: 0.7 }]} onPress={() => onPick(task)}>
+                        <Icon name={info.icon} size={18} color={info.color} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={font.body} numberOfLines={2}>
+                            {info.label}
+                          </Text>
+                          <Text style={font.small}>{isToday(task.scheduledDate) ? 'Hôm nay' : formatDate(task.scheduledDate)}</Text>
+                        </View>
+                        {task.incidentReport ? <Badge label="Đã có báo cáo" color={colors.red} bg={colors.redSoft} /> : null}
+                        <Icon name="chevronRight" size={16} color={colors.textFaint} />
+                      </Pressable>
+                    );
+                  })}
+                </Card>
+              ))
             )}
           </ScrollView>
-        </View>
+        </DragSheet>
       </View>
     </Modal>
   );
@@ -219,6 +231,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.borderSoft,
   },
-  close: { fontSize: 18, color: colors.textMuted, paddingHorizontal: spacing.sm },
-  pickRow: { padding: spacing.md },
+  pickGroup: { padding: spacing.md, gap: spacing.xs },
+  pickTask: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSoft,
+  },
 });

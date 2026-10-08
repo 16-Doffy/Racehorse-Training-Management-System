@@ -39,7 +39,8 @@
           "photosPermission": "Cho phép chọn ảnh sự cố từ thư viện.",
           "cameraPermission": "Cho phép chụp ảnh hiện trường khi báo cáo sự cố."
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }

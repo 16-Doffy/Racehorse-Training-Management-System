@@ -11,6 +11,8 @@ import {
   trainingApi,
 } from '../api/endpoints';
 import { useAuth } from '../auth/AuthContext';
+import { useOutbox } from '../offline/OutboxContext';
+import { applyOutbox } from '../offline/overlay';
 import { isSameDay, parseStableBlock, refId } from '../utils/groom';
 
 const list = (query) => query.data?.data || [];
@@ -18,7 +20,11 @@ const list = (query) => query.data?.data || [];
 /** The groom's own worklist — the API already filters it to the signed-in user. */
 export function useTasks() {
   const query = useQuery({ queryKey: ['tasks'], queryFn: () => taskApi.list() });
-  return { ...query, tasks: list(query) };
+  const { items } = useOutbox();
+  const data = query.data?.data;
+  // What was done offline already shows as done, marked "chờ gửi", until the server has it.
+  const tasks = useMemo(() => applyOutbox(data || [], items), [data, items]);
+  return { ...query, tasks };
 }
 
 /**
