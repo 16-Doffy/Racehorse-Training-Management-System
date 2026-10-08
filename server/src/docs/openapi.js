@@ -948,15 +948,15 @@ module.exports = {
           'Sending only { scheduledAt } with no status moves a scheduled/ready/blocked session to a valid future time, resets it to scheduled, ' +
           'and clears readiness/blockedReason so a fresh pre-check is required. A concurrent start or booking change returns 409. ' +
           'Other booking edits (kind, sessionType, objective, intensity, prescription, coachNote, assignedTo) require scheduled status. ' +
-          'Bare body status may request only completed/cancelled through the lifecycle rules; ready, blocked, in_progress and missed are server-owned.',
+          'Bare body status may request only completed (from in_progress: a booking cannot be marked done without running) or cancelled (optional cancelReason); ready, blocked, in_progress and missed are server-owned.',
         parameters: [idParam('id')],
         requestBody: { content: { 'application/json': { schema: { allOf: [
           { $ref: '#/components/schemas/TrainingSession' },
-          { type: 'object', properties: { status: { type: 'string', enum: ['completed', 'cancelled'] }, overrideReason: { type: 'string' } } },
+          { type: 'object', properties: { status: { type: 'string', enum: ['completed', 'cancelled'] }, overrideReason: { type: 'string' }, cancelReason: { type: 'string' } } },
         ] }, examples: { moveTime: { summary: 'Move an unstarted booking and invalidate its pre-check', value: { scheduledAt: '2030-01-07T08:00:00+07:00' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
       },
-      delete: { tags: ['Training (Head Trainer)'], summary: 'Delete training session', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
+      delete: { tags: ['Training (Head Trainer)'], summary: 'Delete training session', description: 'Only a scheduled (never pre-checked) or cancelled session that was not rebooked; anything pre-checked, run or missed is training history (409).', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404], 409: responses[409] } },
     },
     '/training/sessions/{id}/pre-check': {
       post: {
@@ -1029,7 +1029,7 @@ module.exports = {
           'If the average heart rate is 10% or more over the prescribed limit, a high-priority exam request is raised ' +
           "for the horse's vet (once per session, and not while the horse already has one pending).",
         parameters: [idParam('id')],
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { trainerComment: { type: 'string' }, performanceRating: { type: 'integer' }, metrics: { type: 'object' }, status: { type: 'string' }, videoUrl: { type: 'string', description: 'http(s) link; empty string clears it' } } } } } },
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { trainerComment: { type: 'string' }, performanceRating: { type: 'integer' }, metrics: { type: 'object' }, status: { type: 'string', enum: ['completed', 'cancelled'] }, cancelReason: { type: 'string' }, videoUrl: { type: 'string', description: 'http(s) link; empty string clears it' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 404: responses[404] },
       },
     },

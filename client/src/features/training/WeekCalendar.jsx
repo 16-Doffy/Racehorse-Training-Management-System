@@ -1,5 +1,5 @@
 import { Button, Popover, Tag, Typography, Tooltip, Empty } from 'antd';
-import { LeftOutlined, RightOutlined, PlayCircleOutlined, EditOutlined, ScheduleOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { LeftOutlined, RightOutlined, PlayCircleOutlined, EditOutlined, ScheduleOutlined, SafetyCertificateOutlined, StopOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, mondayOf, actualTimeLabel } from './trainingVocab';
@@ -34,7 +34,10 @@ function workout(p) {
 
 const slotLabel = (scheduledAt) => (dayjs(scheduledAt).hour() < 12 ? 'Sáng' : 'Chiều');
 
-function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, starting, scheduling }) {
+// A session is evaluated once it has run; before that it can only be moved or called off.
+const RAN = ['in_progress', 'completed', 'evaluated'];
+
+function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onCancel, starting, scheduling }) {
   const kind = SESSION_KINDS[session.kind];
   const status = statusMeta(session.status);
   const met = session.outcome?.met;
@@ -65,6 +68,9 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, sta
           {rescheduled && ' Buổi cũ được giữ lại trong lịch sử; buổi mới đã có trong lịch.'}
         </Text>
       )}
+      {session.status === 'cancelled' && session.cancelReason && (
+        <Text type="secondary" className="!text-xs">Lý do hủy: {session.cancelReason}</Text>
+      )}
       {session.status === 'blocked' && session.blockedReason && (
         <Text type="warning" className="!text-xs">{session.blockedReason}</Text>
       )}
@@ -90,9 +96,14 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, sta
             {canReschedule ? 'Xếp lại lịch' : 'Đổi giờ'}
           </Button>
         )}
-        {!['missed', 'cancelled'].includes(session.status) && (
+        {RAN.includes(session.status) && (
           <Button size="small" icon={<EditOutlined />} onClick={() => onEvaluate(session)}>
             Đánh giá
+          </Button>
+        )}
+        {onCancel && canChangeTime && (
+          <Button size="small" danger icon={<StopOutlined />} onClick={() => onCancel(session)}>
+            Hủy buổi
           </Button>
         )}
       </div>
@@ -134,7 +145,7 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, sta
  * A week of training: one row per horse, one column per day (Monday first). A row whose horse
  * follows an active plan can book its week from the plan's template.
  */
-export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], plans = [], onGenerate, generatingPlanId, onStart, onPreCheck, startingId, onEvaluate, onSchedule, schedulingId }) {
+export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], plans = [], onGenerate, generatingPlanId, onStart, onPreCheck, startingId, onEvaluate, onSchedule, onCancel, schedulingId }) {
   const days = WEEK_DAYS.map((w, i) => ({ ...w, date: weekStart.add(i, 'day') }));
   const weekEnd = weekStart.add(7, 'day');
   const inWeek = sessions
@@ -229,6 +240,7 @@ export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], p
                               onPreCheck={onPreCheck}
                               onEvaluate={onEvaluate}
                               onSchedule={onSchedule}
+                              onCancel={onCancel}
                               starting={startingId === s._id}
                               scheduling={schedulingId === s._id}
                             />

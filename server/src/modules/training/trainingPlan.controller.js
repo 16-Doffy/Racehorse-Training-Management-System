@@ -190,7 +190,7 @@ async function sessionsByPlan(planIds) {
     const key = String(s.trainingPlan);
     if (!stats.has(key)) stats.set(key, []);
     stats.get(key).push({ at: s.scheduledAt, status: s.status, met: s.outcome?.met });
-    if (s.status === 'scheduled' && new Date(s.scheduledAt).getTime() >= now) {
+    if (['scheduled', 'ready', 'blocked'].includes(s.status) && new Date(s.scheduledAt).getTime() >= now) {
       if (!upcoming.has(key)) upcoming.set(key, []);
       const list = upcoming.get(key);
       if (list.length < UPCOMING_SHOWN) list.push(s);

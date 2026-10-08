@@ -33,16 +33,10 @@ const SESSION_STATUS = Object.freeze({
 
 // Edges are added together with the endpoint that uses them. ABORTED and EVALUATED have no way in
 // yet (end/abort and evaluation come later). MISSED is reached only by the missed-session job
-// (markMissedSessions), never by a request. SCHEDULED -> COMPLETED is a legacy edge that the end
-// endpoint replaces. A session is started only from READY.
+// (markMissedSessions), never by a request. A session is started only from READY and is completed
+// only after it ran: a booking cannot be marked done without the pre-check and the start.
 const SESSION_TRANSITIONS = Object.freeze({
-  [SESSION_STATUS.SCHEDULED]: [
-    SESSION_STATUS.READY,
-    SESSION_STATUS.BLOCKED,
-    SESSION_STATUS.COMPLETED,
-    SESSION_STATUS.CANCELLED,
-    SESSION_STATUS.MISSED,
-  ],
+  [SESSION_STATUS.SCHEDULED]: [SESSION_STATUS.READY, SESSION_STATUS.BLOCKED, SESSION_STATUS.CANCELLED, SESSION_STATUS.MISSED],
   [SESSION_STATUS.READY]: [SESSION_STATUS.IN_PROGRESS, SESSION_STATUS.BLOCKED, SESSION_STATUS.CANCELLED, SESSION_STATUS.MISSED],
   [SESSION_STATUS.BLOCKED]: [SESSION_STATUS.READY, SESSION_STATUS.CANCELLED, SESSION_STATUS.MISSED],
   [SESSION_STATUS.IN_PROGRESS]: [SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED],

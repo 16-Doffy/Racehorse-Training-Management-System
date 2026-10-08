@@ -114,7 +114,7 @@ async function checkReadiness(horseId, context, overrideReason) {
  *
  * Mutates `session` (unsaved) and returns { error } or { effects } for the caller to finish.
  */
-async function applyStatusChange(session, next, { user, overrideReason }) {
+async function applyStatusChange(session, next, { user, overrideReason, cancelReason }) {
   const current = session.status;
   if (!next || next === current) return { effects: {} };
 
@@ -151,6 +151,7 @@ async function applyStatusChange(session, next, { user, overrideReason }) {
     session.actualEndAt = new Date();
     session.actualDurationSec = Math.round((session.actualEndAt - session.actualStartAt) / 1000);
   }
+  if (next === 'cancelled' && typeof cancelReason === 'string' && cancelReason.trim()) session.cancelReason = cancelReason.trim();
   session.status = next;
   if (next === 'completed') effects.completed = true;
   return { effects };
@@ -299,6 +300,7 @@ const updateSession = asyncHandler(async (req, res) => {
   const { effects, error } = await applyStatusChange(session, req.body.status, {
     user: req.user,
     overrideReason: req.body.overrideReason,
+    cancelReason: req.body.cancelReason,
   });
   if (error) return fail(res, error.message, error.status, error.data);
 
@@ -452,9 +454,12 @@ const preCheckSession = asyncHandler(async (req, res) => {
   }
 
   const overrideReason = typeof body.overrideReason === 'string' ? body.overrideReason.trim() : '';
+  // Judged at the booked time, not at the click: checked at 06:30 for 07:30, a 06:00 breakfast has
+  // had its 90 minutes by the time the horse works. Checked late, "now" is the earliest it can run.
+  const judgedAt = new Date(Math.max(Date.now(), new Date(session.scheduledAt).getTime()));
   const { readiness, error } = await checkReadiness(
     session.horse,
-    { scheduledAt: new Date(), intensity: session.intensity, sessionType: session.sessionType, objective: session.objective },
+    { scheduledAt: judgedAt, intensity: session.intensity, sessionType: session.sessionType, objective: session.objective },
     overrideReason || undefined
   );
 
@@ -497,13 +502,13 @@ const preCheckSession = asyncHandler(async (req, res) => {
 
 // Trainer's post-session evaluation: performance rating, professional comment, measured metrics.
 const recordEvaluation = asyncHandler(async (req, res) => {
-  const { trainerComment, performanceRating, metrics, status, overrideReason, videoUrl } = req.body;
+  const { trainerComment, performanceRating, metrics, status, overrideReason, cancelReason, videoUrl } = req.body;
   const session = await loadSession(req, res);
   if (!session) return undefined;
   const metricProblem = rangeProblem(metrics, METRIC_RANGES);
   if (metricProblem) return fail(res, metricProblem, 400);
 
-  const { effects, error } = await applyStatusChange(session, status, { user: req.user, overrideReason });
+  const { effects, error } = await applyStatusChange(session, status, { user: req.user, overrideReason, cancelReason });
   if (error) return fail(res, error.message, error.status, error.data);
 
   // A score describes a finished session; rating one that hasn't happened yet means nothing.
@@ -547,8 +552,8 @@ const recordEvaluation = asyncHandler(async (req, res) => {
 const deleteSession = asyncHandler(async (req, res) => {
   const session = await loadSession(req, res);
   if (!session) return undefined;
-  if (['completed', 'in_progress'].includes(session.status)) {
-    return fail(res, 'Không xoá được buổi tập đang diễn ra hoặc đã hoàn thành — đó là hồ sơ huấn luyện.', 409, {
+  if (![SESSION_STATUS.SCHEDULED, SESSION_STATUS.CANCELLED].includes(session.status) || session.rescheduledTo) {
+    return fail(res, 'Chỉ xoá được buổi tập còn "Đã lên lịch" hoặc đã hủy — buổi đã kiểm tra, đã chạy hay lỡ giờ là hồ sơ huấn luyện (hãy hủy thay vì xoá).', 409, {
       code: SESSION_ERROR.NOT_DELETABLE,
     });
   }

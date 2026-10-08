@@ -34,8 +34,14 @@ test('every status has a label and the tables are frozen', () => {
   });
 });
 
+test('a session is started only from ready and completed only after it ran', () => {
+  assert.equal(canTransition(S.SCHEDULED, S.COMPLETED), false);
+  assert.equal(canTransition(S.READY, S.COMPLETED), false);
+  assert.equal(canTransition(S.IN_PROGRESS, S.COMPLETED), true);
+});
+
 test('a session is started only from ready; aborted/evaluated still have no way in', () => {
-  assert.deepEqual(SESSION_TRANSITIONS[S.SCHEDULED], [S.READY, S.BLOCKED, S.COMPLETED, S.CANCELLED, S.MISSED]);
+  assert.deepEqual(SESSION_TRANSITIONS[S.SCHEDULED], [S.READY, S.BLOCKED, S.CANCELLED, S.MISSED]);
   assert.deepEqual(SESSION_TRANSITIONS[S.READY], [S.IN_PROGRESS, S.BLOCKED, S.CANCELLED, S.MISSED]);
   assert.equal(canTransition(S.SCHEDULED, S.IN_PROGRESS), false);
   assert.equal(canTransition(S.BLOCKED, S.IN_PROGRESS), false);

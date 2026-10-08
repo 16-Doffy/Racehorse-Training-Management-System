@@ -28,6 +28,7 @@ import {
   CalendarOutlined,
   UnorderedListOutlined,
   SafetyCertificateOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -64,14 +65,12 @@ import {
 
 const { Title, Text } = Typography;
 
-// What the evaluation form may still set with a bare status; the server accepts only completed and
-// cancelled that way. Ready and blocked come from the pre-check, in_progress from "Bắt đầu".
+// What the evaluation form may still set with a bare status. Only a session that ran is evaluated:
+// a booking is completed by running it (pre-check, start), never by ticking it off.
 const NEXT_STATUSES = {
-  scheduled: ['completed', 'cancelled'],
-  ready: ['cancelled'],
-  blocked: ['cancelled'],
   in_progress: ['completed', 'cancelled'],
 };
+const RAN = ['in_progress', 'completed', 'evaluated'];
 const statusOptionsFor = (current) =>
   [current, ...(NEXT_STATUSES[current] || [])].map((value) => ({ value, label: STATUS_LABELS[value] }));
 const SESSION_TYPE_LABELS = { training: 'Buổi tập thường', trial_run: 'Lượt chạy thử' };
@@ -111,6 +110,8 @@ export default function TrainingSessionPage() {
   const [preCheckSession, setPreCheckSession] = useState(null);
   const [scheduleSession, setScheduleSession] = useState(null);
   const [scheduleForm] = Form.useForm();
+  const [cancelSession, setCancelSession] = useState(null);
+  const [cancelForm] = Form.useForm();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const planFilter = searchParams.get('plan');
@@ -248,6 +249,21 @@ export default function TrainingSessionPage() {
     });
     setEvalOpen(true);
   };
+
+  const cancelMutation = useMutation({
+    mutationFn: ({ id, cancelReason }) => trainingSessionApi.update(id, { status: 'cancelled', cancelReason }),
+    onSuccess: () => {
+      message.success('Đã hủy buổi tập. Buổi được giữ trong lịch sử.');
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+      setCancelSession(null);
+      cancelForm.resetFields();
+    },
+    onError: (err) => {
+      if (err?.status === 409) invalidate();
+      message.error(err.message || 'Không hủy được buổi tập.');
+    },
+  });
 
   const openSchedule = (record) => {
     setScheduleSession(record);
@@ -435,9 +451,14 @@ export default function TrainingSessionPage() {
               {record.status === 'missed' ? 'Xếp lại lịch' : 'Đổi giờ'}
             </Button>
           )}
-          {!['missed', 'cancelled'].includes(record.status) && (
+          {RAN.includes(record.status) && (
             <Button size="small" icon={<EditOutlined />} onClick={() => openEvaluation(record)}>
               Đánh giá
+            </Button>
+          )}
+          {['scheduled', 'ready', 'blocked'].includes(record.status) && (
+            <Button size="small" danger icon={<StopOutlined />} onClick={() => setCancelSession(record)}>
+              Hủy buổi
             </Button>
           )}
         </Space>
@@ -541,6 +562,7 @@ export default function TrainingSessionPage() {
           startingId={startMutation.isPending ? startMutation.variables?.id : null}
           onEvaluate={openEvaluation}
           onSchedule={openSchedule}
+          onCancel={setCancelSession}
           schedulingId={scheduleMutation.isPending ? scheduleMutation.variables?.session._id : null}
         />
       )}
@@ -949,6 +971,31 @@ export default function TrainingSessionPage() {
         >
           <Form.Item name="scheduledAt" label="Giờ bắt đầu dự kiến mới" rules={[{ required: true, message: 'Chọn ngày giờ mới' }, futureTimeRule]}>
             <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Hủy buổi tập"
+        open={Boolean(cancelSession)}
+        onCancel={() => setCancelSession(null)}
+        onOk={() => cancelForm.submit()}
+        okText="Hủy buổi tập"
+        okButtonProps={{ danger: true }}
+        cancelText="Đóng"
+        confirmLoading={cancelMutation.isPending}
+        destroyOnHidden
+      >
+        <Text className="block mb-3">
+          {cancelSession?.horse?.name} · {cancelSession ? sessionTimeLabel(cancelSession.scheduledAt) : ''}
+        </Text>
+        <Form
+          form={cancelForm}
+          layout="vertical"
+          onFinish={(values) => cancelMutation.mutate({ id: cancelSession._id, cancelReason: values.cancelReason })}
+        >
+          <Form.Item name="cancelReason" label="Lý do hủy" rules={[{ required: true, whitespace: true, message: 'Ghi lý do để giữ trong lịch sử' }]}>
+            <Input.TextArea rows={2} placeholder="VD: Trời mưa lớn, sân trơn." />
           </Form.Item>
         </Form>
       </Modal>

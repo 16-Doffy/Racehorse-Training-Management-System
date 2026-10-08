@@ -63,7 +63,7 @@ function sessionEvents(sessions) {
         s.trainerComment && `Nhận xét: ${s.trainerComment}`,
       ]),
       severity: s.status === 'cancelled' || s.outcome?.met === false || s.readiness?.overrideReason ? 'warning' : 'info',
-      upcoming: s.status === 'scheduled' && new Date(s.scheduledAt) > new Date(),
+      upcoming: ['scheduled', 'ready', 'blocked'].includes(s.status) && new Date(s.scheduledAt) > new Date(),
       refId: s._id,
     };
   });
