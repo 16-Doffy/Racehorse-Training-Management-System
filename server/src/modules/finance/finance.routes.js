@@ -9,6 +9,32 @@ const FinancialRecord = require('../../models/FinancialRecord');
 const Horse = require('../../models/Horse');
 const HealthRecord = require('../../models/HealthRecord');
 const Treatment = require('../../models/Treatment');
+const RaceEntry = require('../../models/RaceEntry');
+
+/** Records from before `source` existed: a prize that a race result wrote is race_prize, the rest manual. */
+async function withSource(records) {
+  const legacy = records.filter((r) => !r.source || (r.source === 'manual' && r.category === 'prize'));
+  if (!legacy.length) return records;
+  const linked = new Set((await RaceEntry.find({ financeRecord: { $in: legacy.map((r) => r._id) } }).select('financeRecord')).map((e) => String(e.financeRecord)));
+  return records.map((r) => {
+    const obj = r.toObject ? r.toObject() : r;
+    if (linked.has(String(obj._id))) obj.source = 'race_prize';
+    else if (!obj.source) obj.source = 'manual';
+    return obj;
+  });
+}
+
+// A record a race result wrote is corrected through that result (PATCH /races/:id/results), so the
+// prize can't be doubled or drift from the race; manual records are the Manager's to edit. Once the
+// race entry itself is gone nothing would correct it any more, so the Manager can then tidy it up.
+const refuseSystemRecord = asyncHandler(async (req, res, next) => {
+  const record = await FinancialRecord.findById(req.params.id).select('_id');
+  if (!record) return fail(res, 'Financial record not found.', 404);
+  if (await RaceEntry.exists({ financeRecord: record._id })) {
+    return fail(res, 'Khoản này do hệ thống ghi từ kết quả giải — sửa ở "Cập nhật kết quả" của giải đó.', 409);
+  }
+  return next();
+});
 
 // Scaffold module: Manager records cost/revenue entries; Owner views a read-only summary for
 // their own horses. Aggregated reporting (charts, periodic statements) comes in a later phase.
@@ -17,7 +43,8 @@ const ctrl = crudFactory(FinancialRecord, {
   defaultSort: { date: -1 },
   label: 'Financial record',
   // Recorded by whoever is logged in, not whoever the request body names.
-  stamp: (req, { isCreate }) => (isCreate ? { recordedBy: req.user._id } : {}),
+  stamp: (req, { isCreate }) => (isCreate ? { recordedBy: req.user._id, source: 'manual' } : {}),
+  fields: ['horse', 'type', 'category', 'amount', 'date', 'note'],
 });
 
 const listMine = asyncHandler(async (req, res) => {
@@ -25,7 +52,7 @@ const listMine = asyncHandler(async (req, res) => {
   const records = await FinancialRecord.find({ horse: { $in: myHorses.map((h) => h._id) } })
     .populate('horse', 'name')
     .sort({ date: -1 });
-  return ok(res, records, 'Your financial records fetched.');
+  return ok(res, await withSource(records), 'Your financial records fetched.');
 });
 
 const { emptyTotals, parsePeriodQuery, slotOf, emptyPeriods, foldRecords } = require('./financeSeries');
@@ -73,10 +100,18 @@ const summarizeMine = asyncHandler(async (req, res) => {
 router.use(protect);
 router.get('/mine/summary', authorize(ROLES.OWNER), summarizeMine);
 router.get('/mine', authorize(ROLES.OWNER), listMine);
-router.get('/', authorize(ROLES.MANAGER), ctrl.list);
+router.get(
+  '/',
+  authorize(ROLES.MANAGER),
+  asyncHandler(async (req, res) => {
+    const filter = req.query.horse ? { horse: req.query.horse } : {};
+    const records = await FinancialRecord.find(filter).populate([{ path: 'horse', select: 'name owner' }, { path: 'recordedBy', select: 'name' }]).sort({ date: -1 });
+    return ok(res, await withSource(records), 'Financial records fetched.');
+  })
+);
 router.get('/:id', authorize(ROLES.MANAGER), ctrl.getOne);
 router.post('/', authorize(ROLES.MANAGER), ctrl.createOne);
-router.put('/:id', authorize(ROLES.MANAGER), ctrl.updateOne);
-router.delete('/:id', authorize(ROLES.MANAGER), ctrl.removeOne);
+router.put('/:id', authorize(ROLES.MANAGER), refuseSystemRecord, ctrl.updateOne);
+router.delete('/:id', authorize(ROLES.MANAGER), refuseSystemRecord, ctrl.removeOne);
 
 module.exports = router;

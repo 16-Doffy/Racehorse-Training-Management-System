@@ -598,6 +598,12 @@ module.exports = {
           amount: { type: 'number' },
           date: { type: 'string', format: 'date-time' },
           note: { type: 'string' },
+          source: {
+            type: 'string',
+            enum: ['manual', 'race_prize', 'system'],
+            readOnly: true,
+            description: 'manual = typed in by the Manager; race_prize = written by PATCH /races/{id}/results (corrected there, PUT/DELETE here → 409). Records from before this field are reported as race_prize when a race entry points at them.',
+          },
         },
       },
       Notification: {
@@ -1514,6 +1520,18 @@ module.exports = {
         responses: { 200: responses[200]({ type: 'array', items: { type: 'object' } }) },
       },
     },
+    '/horses/owner-summary': {
+      get: {
+        tags: ['Horses'],
+        summary: "Owner: each of their horses at a glance (archived horses left out)",
+        description:
+          'Per horse: horse { _id, name, healthStatus }; health { status, restricted, clearance (the allowed level, as a label), reason, lastExam }; ' +
+          'next { kind, at, status } — the next open session; last { kind, at, status (completed/evaluated/aborted), met, summary, rating, comment, videoUrl }; ' +
+          'upcomingRace { name, date, status (registered/confirmed), decided, reviewNeeded }; lastRace { name, date, result, position, prizeMoney }; ' +
+          'money { year, cost, revenue, prize (revenue in the prize category) } for the current year.',
+        responses: { 200: responses[200]({ type: 'array', items: { type: 'object' } }), 403: responses[403] },
+      },
+    },
     '/horses/{id}/checklist': {
       get: { tags: ['Horses'], summary: 'The same checklist for one horse', parameters: [idParam('id')], responses: { 200: responses[200]({ type: 'object' }), 403: responses[403], 404: responses[404] } },
     },
@@ -1570,13 +1588,13 @@ module.exports = {
       get: { tags: ['Finance (scaffold)'], summary: "Owner's own cost/revenue records", responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FinancialRecord' } }), 403: responses[403] } },
     },
     '/finance': {
-      get: { tags: ['Finance (scaffold)'], summary: 'List all financial records (Manager)', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FinancialRecord' } }), 403: responses[403] } },
-      post: { tags: ['Finance (scaffold)'], summary: 'Record a cost/revenue entry (Manager)', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FinancialRecord' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FinancialRecord' }), 403: responses[403] } },
+      get: { tags: ['Finance (scaffold)'], summary: 'List all financial records (Manager)', parameters: [{ name: 'horse', in: 'query', schema: { type: 'string' } }], description: 'Each record carries source (manual / race_prize) and recordedBy { name }.', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FinancialRecord' } }), 403: responses[403] } },
+      post: { tags: ['Finance (scaffold)'], summary: 'Record a cost/revenue entry (Manager)', description: 'Accepts horse, type, category, amount, date, note; source is always manual (prize money comes from race results).', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FinancialRecord' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FinancialRecord' }), 403: responses[403] } },
     },
     '/finance/{id}': {
       get: { tags: ['Finance (scaffold)'], summary: 'Get financial record (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/FinancialRecord' }), 404: responses[404] } },
-      put: { tags: ['Finance (scaffold)'], summary: 'Update financial record (Manager)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FinancialRecord' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/FinancialRecord' }), 404: responses[404] } },
-      delete: { tags: ['Finance (scaffold)'], summary: 'Delete financial record (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
+      put: { tags: ['Finance (scaffold)'], summary: 'Update financial record (Manager) — manual records only', description: 'A record written by a race result (source race_prize) → 409: correct it through PATCH /races/{id}/results.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FinancialRecord' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/FinancialRecord' }), 404: responses[404], 409: responses[409] } },
+      delete: { tags: ['Finance (scaffold)'], summary: 'Delete financial record (Manager) — manual records only', description: 'A race_prize record → 409.', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404], 409: responses[409] } },
     },
     '/notifications': {
       get: { tags: ['Notifications'], summary: 'List my notifications (addressed to me or to my role)', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/Notification' } }) } },

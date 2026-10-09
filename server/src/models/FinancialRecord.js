@@ -10,6 +10,9 @@ const financialRecordSchema = new mongoose.Schema(
     date: { type: Date, default: Date.now },
     note: { type: String },
     recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    // Typed in by the Manager, or written by the system (a race result's prize money). A system record is
+    // corrected where it comes from (the race result), never edited by hand, so it can't be doubled.
+    source: { type: String, enum: ['manual', 'race_prize', 'system'], default: 'manual' },
   },
   { timestamps: true }
 );

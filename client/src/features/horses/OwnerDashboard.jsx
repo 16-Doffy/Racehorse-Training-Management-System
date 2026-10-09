@@ -17,6 +17,7 @@ import dayjs from 'dayjs';
 import { horsesApi } from '../../features/horses/horsesApi';
 import { trainingSessionApi } from '../../features/training/trainingApi';
 import { financeApi } from '../../features/finance/financeApi';
+import OwnerHorseSummary from './OwnerHorseSummary';
 
 const { Text } = Typography;
 
@@ -209,6 +210,9 @@ export default function OwnerDashboard() {
           Theo dõi chất lượng huấn luyện, cơ hội thi đấu và tỷ lệ thành công qua các chu kỳ.
         </p>
       </div>
+
+      {/* Each horse at a glance: health, next session, last result, races, money */}
+      <OwnerHorseSummary />
 
       {/* 4 Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

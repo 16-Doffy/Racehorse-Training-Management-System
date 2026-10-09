@@ -19,6 +19,7 @@ const { pushNotification } = require('../alerts/notification.service');
 const { clearanceMap } = require('../health/trainingClearance');
 const { closeLeftoversFor } = require('./archive.service');
 const { checklistFor } = require('./checklist.service');
+const { ownerSummary } = require('./ownerSummary.service');
 
 /** Adds the vet's current training level (lock / recovery / clear) to each horse. */
 async function withClearance(horses) {
@@ -78,6 +79,12 @@ const listChecklists = asyncHandler(async (req, res) => {
   filter.isArchived = { $ne: true };
   const horses = await Horse.find(filter).populate('owner assignedTrainer assignedVet', 'name').select('name owner assignedTrainer assignedVet healthStatus').sort({ name: 1 });
   return ok(res, await checklistFor(horses), 'Checklists computed.');
+});
+
+// The owner's horses at a glance (ownerSummary.service.js). Archived horses are left out.
+const listOwnerSummary = asyncHandler(async (req, res) => {
+  const horses = await Horse.find({ owner: req.user._id, isArchived: { $ne: true } }).select('name healthStatus').sort({ name: 1 });
+  return ok(res, await ownerSummary(horses), 'Owner summary computed.');
 });
 
 const getChecklist = asyncHandler(async (req, res) => {
@@ -303,4 +310,4 @@ const unarchiveHorse = asyncHandler(async (req, res) => {
   return ok(res, horse, `${horse.name} đã được quản lý trở lại — hãy xếp chuồng và người chăm sóc.`);
 });
 
-module.exports = { listHorses, listChecklists, getChecklist, getHorse, createHorse, updateHorse, deleteHorse, updateCareSchedule, archiveHorse, unarchiveHorse };
+module.exports = { listHorses, listChecklists, getChecklist, listOwnerSummary, getHorse, createHorse, updateHorse, deleteHorse, updateCareSchedule, archiveHorse, unarchiveHorse };

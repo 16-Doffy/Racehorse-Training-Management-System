@@ -1,6 +1,8 @@
 # DANH SÁCH YÊU CẦU API BỔ SUNG (PHASE 2)
 Dự án: Racehorse Training Management System
 
+> **Lưu ý:** Đây là danh sách đề xuất ban đầu. Hệ thống không còn bám theo danh sách này: một số mục đã được làm theo cách khác, ví dụ đăng ký và kết quả giải nằm ở `/races`, quyết định dự giải ở `POST /races/{id}/decision`, nhận hàng ở `POST /inventory/{id}/receive`. Ô đánh dấu bên dưới cũng không được cập nhật. Muốn biết API hiện có, xem Swagger (`/api-docs`, nguồn: `server/src/docs/openapi.js`).
+
 Dưới đây là danh sách tổng hợp toàn bộ các API cần phát triển thêm cho Phase 2 để hoàn thiện 100% các luồng nghiệp vụ thực tế.
 
 ## 1. Nhóm Xác thực & Hồ sơ người dùng (Auth & Profile)

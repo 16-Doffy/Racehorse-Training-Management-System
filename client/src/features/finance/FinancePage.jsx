@@ -22,6 +22,13 @@ const columns = (isOwner) => [
     render: (t) => <Tag color={t === 'revenue' ? 'green' : 'red'}>{t === 'revenue' ? 'Doanh thu' : 'Chi phí'}</Tag>,
   },
   { title: 'Hạng mục', dataIndex: 'category', key: 'category', render: categoryLabel },
+  {
+    title: 'Nguồn',
+    dataIndex: 'source',
+    key: 'source',
+    // Written by the system from a race result (corrected there) vs typed in by the Manager.
+    render: (s) => (s === 'race_prize' ? <Tag color="gold">Tự động · kết quả giải</Tag> : s === 'system' ? <Tag>Tự động</Tag> : <Tag color="default">Nhập tay</Tag>),
+  },
   { title: 'Số tiền', dataIndex: 'amount', key: 'amount', render: (v) => v.toLocaleString('vi-VN') + ' đ' },
   { title: 'Ngày', dataIndex: 'date', key: 'date', render: (d) => dayjs(d).format('DD/MM/YYYY') },
   ...(isOwner ? [] : [{ title: 'Ghi chú', dataIndex: 'note', key: 'note' }]),

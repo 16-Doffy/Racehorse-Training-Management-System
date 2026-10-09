@@ -48,6 +48,7 @@ async function syncPrizeRecord(entry, user) {
     horse: entry.horse,
     type: 'revenue',
     category: 'prize',
+    source: 'race_prize',
     amount: entry.prizeMoney,
     date: entry.raceDate,
     note: `Tiền thưởng ${entry.raceName}${entry.position ? ` — hạng ${entry.position}` : ''}`,
