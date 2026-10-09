@@ -5,18 +5,17 @@ import dayjs from 'dayjs';
 import { message } from '../../lib/antdStatic';
 import { trainingSessionApi } from './trainingApi';
 import ReadinessPanel from './ReadinessPanel';
+import { useClubPolicy } from './useClubPolicy';
 import confirmReadinessOverride, { needsOverride } from './confirmReadinessOverride';
 
 const { Text } = Typography;
 
 const clock = (d) => dayjs(d).format('HH:mm DD/MM');
-// Mirrors PRECHECK_FEVER_C on the server.
-const FEVER_C = 38.6;
 
 /**
  * The pre-check: shortly before the session the trainer looks at the horse, the system re-runs the
  * readiness gates for the booked time (or now, once it has passed), and the session becomes READY —
- * the only state it can be started from. A fever (FEVER_C or more) holds the session back.
+ * the only state it can be started from. A fever (the club's feverC or more) holds the session back.
  *
  * The server decides everything that matters (the time window, the medical block, the amber gates);
  * this screen shows the answer and asks for what only the trainer can give: that they saw the horse,
@@ -25,6 +24,8 @@ const FEVER_C = 38.6;
 export default function PreCheckModal({ session, open, onClose, onDone, onRequestExam }) {
   const [form] = Form.useForm();
   const lastValues = useRef({});
+  const policy = useClubPolicy();
+  const FEVER_C = policy.feverC;
   // Judged like the server does: at the booked time, or now once that has passed. Checked at 06:30
   // for 07:30, a 06:00 breakfast has had its 90 minutes by the time the horse works.
   // eslint-disable-next-line react-hooks/exhaustive-deps

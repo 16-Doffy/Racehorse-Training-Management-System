@@ -4,6 +4,7 @@ const DailyTask = require('../../models/DailyTask');
 const StableAssignment = require('../../models/StableAssignment');
 const { findOpenIncident } = require('../stable/incident.service');
 const { getTrainingClearance, allows } = require('../health/trainingClearance');
+const clubPolicy = require('../../config/clubPolicy');
 
 const INTENSITY_WORDS = { light: 'nhẹ', moderate: 'vừa', high: 'cao' };
 
@@ -28,12 +29,14 @@ const INTENSITY_WORDS = { light: 'nhẹ', moderate: 'vừa', high: 'cao' };
 
 // A horse needs time between a full feed and hard work — galloping on a full stomach risks colic.
 // Under an hour after a meal it is not allowed at all; up to an hour and a half it is a warning.
-const MIN_DIGEST_MINUTES = 90;
-const HARD_DIGEST_MINUTES = 60;
+// Club policy (config/clubPolicy.js), not a veterinary constant.
+const MIN_DIGEST_MINUTES = clubPolicy.digestMinutes;
+const HARD_DIGEST_MINUTES = clubPolicy.digestHardMinutes;
+const FORAGE_DIGEST_MINUTES = clubPolicy.forageDigestMinutes;
 // And it cannot have been fasting all day either; an empty horse has no fuel for the work.
-const MAX_FAST_HOURS = 6;
+const MAX_FAST_HOURS = clubPolicy.maxFastHours;
 // How long a clean bill of health stays good for before a hard session needs a fresh one.
-const CLEARANCE_DAYS = 14;
+const CLEARANCE_DAYS = clubPolicy.clearanceDays;
 
 const STATUS_RANK = { ok: 0, caution: 1, blocked: 2 };
 
@@ -176,7 +179,18 @@ function describeGap(minutes) {
  * count as eaten at their planned time: that is how a lunch at 11:30 ahead of a 12:30 gallop gets
  * flagged when the session is booked, not when it's already too late to move lunch.
  */
-async function nutritionGate(horse, when) {
+// What a meal was, from the ration it took out of stock: forage (hay) sits lighter than grain or pellets.
+// Supplements (vitamins, minerals, salt, electrolytes, oil) don't change that. No ration recorded: a main meal.
+const FORAGE = /(cỏ|hay|rơm|alfalfa|timothy|chaff|straw)/i;
+const SUPPLEMENT = /(vitamin|khoáng|mineral|muối|salt|điện giải|electrolyte|dầu|oil)/i;
+function mealKind(task) {
+  const items = (task?.supplies || []).filter((i) => i?.name);
+  if (!items.length) return 'main';
+  const solid = items.filter((i) => !SUPPLEMENT.test(i.name));
+  return solid.length && solid.every((i) => FORAGE.test(i.name)) ? 'forage' : 'main';
+}
+
+async function nutritionGate(horse, when, { intensity } = {}) {
   const gate = { key: 'nutrition', label: 'Dinh dưỡng', status: 'ok', detail: '' };
   const now = new Date();
 
@@ -237,16 +251,23 @@ async function nutritionGate(horse, when) {
   // The meal before the session has been given: judge the real gap.
   if (lastEaten && (lastEaten === lastMeal || lastEaten.completedAt >= lastMeal.scheduledDate)) {
     const gapMinutes = Math.round((when.getTime() - lastEaten.completedAt.getTime()) / 60000);
-    const which = `${mealLabel(lastEaten)} cho ăn lúc ${formatTime(lastEaten.completedAt)}`;
-    if (gapMinutes < HARD_DIGEST_MINUTES) {
+    const kind = mealKind(lastEaten);
+    const which = `${mealLabel(lastEaten)}${kind === 'forage' ? ' (chỉ cỏ khô)' : ''} cho ăn lúc ${formatTime(lastEaten.completedAt)}`;
+    const light = intensity === 'light';
+    // A forage-only meal, or light work: a warning at most. Grain or pellets before harder work: the
+    // club's hard limit applies.
+    const caution = kind === 'forage' ? FORAGE_DIGEST_MINUTES : MIN_DIGEST_MINUTES;
+    if (gapMinutes < HARD_DIGEST_MINUTES && kind === 'main' && !light) {
       const from = new Date(lastEaten.completedAt.getTime() + MIN_DIGEST_MINUTES * 60000);
       gate.status = 'blocked';
-      gate.detail = `${which}, mới ${gapMinutes} phút trước giờ tập — không được tập khi vừa ăn xong (nguy cơ đau bụng, xoắn ruột). Cần ít nhất ${MIN_DIGEST_MINUTES} phút sau bữa chính: tập được từ ${formatTime(from)}.`;
+      gate.detail = `${which}, mới ${gapMinutes} phút trước giờ tập — theo quy định CLB không tập sau bữa có thức ăn tinh dưới ${HARD_DIGEST_MINUTES} phút (nguy cơ đau bụng, xoắn ruột). Nên đủ ${MIN_DIGEST_MINUTES} phút: tập được từ ${formatTime(from)}.`;
       return gate;
     }
-    if (gapMinutes < MIN_DIGEST_MINUTES) {
+    if (gapMinutes < (light ? HARD_DIGEST_MINUTES : caution)) {
       gate.status = 'caution';
-      gate.detail = `${which}, chỉ cách giờ tập ${gapMinutes} phút — nên chờ đủ ${MIN_DIGEST_MINUTES} phút sau bữa chính trước khi tập nặng.`;
+      gate.detail = light
+        ? `${which}, mới ${gapMinutes} phút trước giờ tập — buổi nhẹ (đi bộ) vẫn tập được, nhưng theo quy định CLB nên chờ ${HARD_DIGEST_MINUTES} phút.`
+        : `${which}, chỉ cách giờ tập ${gapMinutes} phút — theo quy định CLB nên chờ ${caution} phút sau ${kind === 'forage' ? 'bữa cỏ' : 'bữa chính'} trước khi tập nặng.`;
       return gate;
     }
     if (gapMinutes > MAX_FAST_HOURS * 60) {
@@ -265,9 +286,10 @@ async function nutritionGate(horse, when) {
   // The meal before the session is still to come (a session later today): judge the planned gap.
   if (lastMeal.status === 'pending' && lastMeal.scheduledDate > now) {
     const gapMinutes = Math.round((when.getTime() - lastMeal.scheduledDate.getTime()) / 60000);
-    if (gapMinutes < MIN_DIGEST_MINUTES) {
+    const planned = mealKind(lastMeal) === 'forage' ? FORAGE_DIGEST_MINUTES : MIN_DIGEST_MINUTES;
+    if (gapMinutes < (intensity === 'light' ? HARD_DIGEST_MINUTES : planned)) {
       gate.status = 'caution';
-      gate.detail = `Theo lịch, ${mealLabel(lastMeal).toLowerCase()} lúc ${formatTime(lastMeal.scheduledDate)}, chỉ cách giờ tập ${gapMinutes} phút — hãy dời giờ tập hoặc báo nhân viên cho ăn sớm hơn (cần ít nhất ${MIN_DIGEST_MINUTES} phút).`;
+      gate.detail = `Theo lịch, ${mealLabel(lastMeal).toLowerCase()} lúc ${formatTime(lastMeal.scheduledDate)}, chỉ cách giờ tập ${gapMinutes} phút — hãy dời giờ tập hoặc báo nhân viên cho ăn sớm hơn (theo quy định CLB: ${planned} phút).`;
       return gate;
     }
     gate.detail = `Theo lịch, ${mealLabel(lastMeal).toLowerCase()} lúc ${formatTime(lastMeal.scheduledDate)}, cách giờ tập ${describeGap(gapMinutes)} — đủ thời gian tiêu hóa.`;
@@ -323,7 +345,7 @@ async function computeReadiness(horseId, { scheduledAt, intensity, sessionType, 
   const gates = await Promise.all([
     medicalGate(horse, options),
     vetClearanceGate(horse, options),
-    nutritionGate(horse, when),
+    nutritionGate(horse, when, options),
     careAssignmentGate(horse),
   ]);
 
@@ -389,6 +411,7 @@ module.exports = {
   needsVetClearance,
   MIN_DIGEST_MINUTES,
   HARD_DIGEST_MINUTES,
+  mealKind,
   MAX_FAST_HOURS,
   CLEARANCE_DAYS,
 };

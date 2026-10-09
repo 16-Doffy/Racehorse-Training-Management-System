@@ -1,3 +1,5 @@
+const clubPolicy = require('../config/clubPolicy');
+
 // Vietnamese labels for the training vocabulary, kept server-side because the server writes them
 // into notification text and auto-generated task notes that the client renders verbatim.
 const OBJECTIVE_LABELS = {
@@ -52,17 +54,17 @@ const SESSION_TRANSITIONS = Object.freeze({
 const SESSION_BODY_STATUSES = Object.freeze([SESSION_STATUS.CANCELLED]);
 
 // A passed pre-check stops counting after this long: the horse's condition is judged for now, and a
-// session started much later has to be looked at again. CONFIGURABLE, simplified for the capstone.
-const PRECHECK_VALID_HOURS = 2;
+// session started much later has to be looked at again. Club policy (config/clubPolicy.js).
+const PRECHECK_VALID_HOURS = clubPolicy.precheckValidHours;
 
 // A resting horse runs 37.2–38.3 °C. From this temperature up it has a fever: it does not train, and
-// the vet is asked to look at it.
-const PRECHECK_FEVER_C = 38.6;
+// the vet is asked to look at it. Club policy.
+const PRECHECK_FEVER_C = clubPolicy.feverC;
 const NORMAL_TEMP_RANGE = '37,2–38,3 °C';
 
 // The pre-check is done close to the session, not days ahead: the horse's condition has to be
-// judged for now. CONFIGURABLE, simplified for the capstone: move to SystemSetting (T8-01).
-const PRECHECK_WINDOW = Object.freeze({ opensBeforeMin: 60, closesAfterMin: 30 });
+// judged for now. Club policy.
+const PRECHECK_WINDOW = Object.freeze({ opensBeforeMin: clubPolicy.precheckOpensBeforeMin, closesAfterMin: clubPolicy.precheckClosesAfterMin });
 
 /** When a session's pre-check may be filed, and whether `now` falls inside that window. */
 function preCheckWindow(scheduledAt, now = new Date()) {
@@ -258,8 +260,19 @@ const SHARE_BY_DISTANCE = [
   { upTo: Infinity, label: 'đường dài', share: { base_building: 0.45, strength: 0.25, speed: 0.15, peak: 0.15 } },
 ];
 const shareFor = (distance) => SHARE_BY_DISTANCE.find((b) => (distance || 1600) <= b.upTo);
-// Only light work in the afternoon: the main workout is in the morning.
+// Only light work in the afternoon: the main workout is in the morning (club policy, can be switched off).
 const AFTERNOON_KINDS = ['walk', 'canter'];
+
+/**
+ * The afternoon rule for a session at `scheduledAt` (noon or later) of this kind, as an error message,
+ * or null. Checked wherever a session gets a time: the plan's week template, a manual booking, moving
+ * one, booking a missed one again.
+ */
+function slotKindProblem(kind, scheduledAt) {
+  if (!clubPolicy.afternoonLightOnly || !kind || !scheduledAt) return null;
+  if (new Date(scheduledAt).getHours() < 12 || AFTERNOON_KINDS.includes(kind)) return null;
+  return `Theo quy định CLB, buổi chiều chỉ tập nhẹ (đi bộ hoặc phi chậm) — "${SESSION_KINDS[kind]?.label || kind}" xếp vào buổi sáng.`;
+}
 const RECOVERY_WEEKS_AFTER_RACE = 2;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -466,6 +479,7 @@ module.exports = {
   planWarnings,
   shareFor,
   AFTERNOON_KINDS,
+  slotKindProblem,
   slotTimeProblem,
   PRESCRIPTION_RANGES,
   METRIC_RANGES,

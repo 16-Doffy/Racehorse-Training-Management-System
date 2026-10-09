@@ -9,6 +9,7 @@ const { pushNotification, notifyCaretaker } = require('../alerts/notification.se
 const { openExamRequest } = require('../health/examRequest.service');
 const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const { MIN_DIGEST_MINUTES } = require('./readiness.service');
+const clubPolicy = require('../../config/clubPolicy');
 const {
   OBJECTIVE_LABELS,
   SESSION_KINDS,
@@ -137,8 +138,8 @@ async function createPostSessionCare(session) {
   }`;
   const wanted = [
     // Icing straight after the work while the legs are warm, the bath once the horse has cooled down.
-    { taskType: 'icing', afterMinutes: 15, note: `Sau buổi ${what} — ngâm chân hạ nhiệt gân.` },
-    { taskType: 'bathing', afterMinutes: 45, note: `Sau buổi ${what} — tắm và lau khô.` },
+    { taskType: 'icing', afterMinutes: clubPolicy.icingAfterMin, note: `Sau buổi ${what} — ngâm chân hạ nhiệt gân.` },
+    { taskType: 'bathing', afterMinutes: clubPolicy.bathingAfterMin, note: `Sau buổi ${what} — tắm và lau khô.` },
   ];
 
   let createdCount = 0;
@@ -167,7 +168,7 @@ async function createPostSessionCare(session) {
       trainingSession: session._id,
       type: 'task_assigned',
       severity: 'info',
-      message: `🧊 Ngựa vừa xong buổi ${what} — việc chăm sóc sau tập: ngâm chân lúc ${hhmm(dueAt(15))}, tắm lúc ${hhmm(dueAt(45))}.`,
+      message: `🧊 Ngựa vừa xong buổi ${what} — việc chăm sóc sau tập: ngâm chân lúc ${hhmm(dueAt(clubPolicy.icingAfterMin))}, tắm lúc ${hhmm(dueAt(clubPolicy.bathingAfterMin))}.`,
     });
   }
   return createdCount;

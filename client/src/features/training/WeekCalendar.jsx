@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, mondayOf, actualTimeLabel, ABORT_CATEGORY_LABELS, DONE_STATUSES } from './trainingVocab';
 import { SESSION_STATUS_LABELS } from './sessionStatus';
+import { useClubPolicy, precheckRuleText } from './useClubPolicy';
 
 const { Text } = Typography;
 
@@ -35,6 +36,7 @@ function workout(p) {
 const slotLabel = (scheduledAt) => (dayjs(scheduledAt).hour() < 12 ? 'Sáng' : 'Chiều');
 
 function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onCancel, onEnd, onAbort, starting, scheduling }) {
+  const policy = useClubPolicy();
   const kind = SESSION_KINDS[session.kind];
   const status = statusMeta(session.status);
   const met = session.outcome?.met;
@@ -81,7 +83,7 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onC
       )}
       {canChangeTime && (
         <Text type="secondary" className="!text-xs">
-          Kiểm tra sẵn sàng từ 60 phút trước đến 30 phút sau giờ tập. Kết quả kiểm tra có hiệu lực 2 giờ.
+          {precheckRuleText(policy)}
         </Text>
       )}
       {session.outcome?.summary && <div className="text-xs">{session.outcome.summary}</div>}

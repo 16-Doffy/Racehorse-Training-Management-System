@@ -3,6 +3,7 @@ const TrainingSession = require('../../models/TrainingSession');
 const RaceEntry = require('../../models/RaceEntry');
 const Horse = require('../../models/Horse');
 const asyncHandler = require('../../utils/asyncHandler');
+const clubPolicy = require('../../config/clubPolicy');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
@@ -75,8 +76,8 @@ function normalizePhases(list) {
       if (seen.has(`${day}|${slot}`)) return { error: `${label}: mỗi buổi (sáng/chiều) trong ngày chỉ xếp một bài tập.` };
       seen.add(`${day}|${slot}`);
       if (!SESSION_KINDS[d.kind]) return { error: `${label}: loại buổi tập không hợp lệ.` };
-      if (slot === 'afternoon' && !AFTERNOON_KINDS.includes(d.kind)) {
-        return { error: `${label}: buổi chiều chỉ tập nhẹ (đi bộ hoặc phi chậm) — bài nặng để buổi sáng.` };
+      if (slot === 'afternoon' && clubPolicy.afternoonLightOnly && !AFTERNOON_KINDS.includes(d.kind)) {
+        return { error: `${label}: theo quy định CLB, buổi chiều chỉ tập nhẹ (đi bộ hoặc phi chậm) — bài nặng để buổi sáng.` };
       }
       const overrides = pick(d, ['distanceM', 'reps', 'targetSpeedKmh', 'targetHeartRateMax']);
       const problem = rangeProblem(overrides, PRESCRIPTION_RANGES) || kindSpeedProblem(d.kind, overrides.targetSpeedKmh);

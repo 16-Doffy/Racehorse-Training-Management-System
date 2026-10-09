@@ -1491,6 +1491,14 @@ module.exports = {
         responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
+    '/settings/policy': {
+      get: {
+        tags: ['Settings'],
+        summary: 'The club training and care policy (any signed-in role)',
+        description: 'Club policy, not veterinary law; each value can be set per deployment by environment variable (config/clubPolicy.js): digestHardMinutes/digestMinutes (meal with grain or pellets: blocked / warning), forageDigestMinutes (hay-only meal: warning only), maxFastHours, precheckOpensBeforeMin/precheckClosesAfterMin/precheckValidHours, feverC, clearanceDays, morningTime/afternoonTime (plan defaults), afternoonLightOnly (AFTERNOON_LIGHT_ONLY; checked on plan templates, manual bookings, time changes and rebooking), icingAfterMin/bathingAfterMin. Light work (walk) is never blocked by a meal, only warned about.',
+        responses: { 200: responses[200]({ type: 'object' }) },
+      },
+    },
     '/races/{id}/decision': {
       post: {
         tags: ['Races (scaffold)'],

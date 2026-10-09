@@ -28,6 +28,7 @@ const {
   ABORT_CATEGORY_LABELS,
   rangeProblem,
   kindSpeedProblem,
+  slotKindProblem,
 } = require('../../constants/training');
 const { announceSessionToGroom, buildFromKind, closeRun } = require('./trainingSession.service');
 const { flagConfirmedEntries } = require('../race/raceDecision.service');
@@ -249,7 +250,11 @@ const createSession = asyncHandler(async (req, res) => {
   if (!(new Date(body.scheduledAt) > new Date())) {
     return fail(res, 'Chọn giờ tập ở tương lai.', 400);
   }
-  const problem = applyKind(body) || rangeProblem(body.prescription, PRESCRIPTION_RANGES) || kindSpeedProblem(body.kind, body.prescription?.targetSpeedKmh);
+  const problem =
+    applyKind(body) ||
+    rangeProblem(body.prescription, PRESCRIPTION_RANGES) ||
+    kindSpeedProblem(body.kind, body.prescription?.targetSpeedKmh) ||
+    slotKindProblem(body.kind, body.scheduledAt);
   if (problem) return fail(res, problem, 400);
   const trial = await trialEntryFor({ horse, ...body, plan });
   if (trial.error) return fail(res, trial.error, 400);
@@ -298,6 +303,8 @@ const updateSession = asyncHandler(async (req, res) => {
     }
     const scheduledAt = new Date(changes.scheduledAt);
     if (!(scheduledAt > new Date())) return fail(res, 'Giờ tập mới phải ở tương lai.', 400);
+    const slotProblem = slotKindProblem(session.kind, scheduledAt);
+    if (slotProblem) return fail(res, slotProblem, 400);
     if (session.raceEntry) {
       const trial = await trialEntryFor({ horse: session.horse, kind: session.kind, sessionType: session.sessionType, scheduledAt, raceEntry: session.raceEntry });
       if (trial.error) return fail(res, trial.error, 400);
@@ -321,7 +328,9 @@ const updateSession = asyncHandler(async (req, res) => {
   const problem =
     applyKind(changes) ||
     rangeProblem(changes.prescription, PRESCRIPTION_RANGES) ||
-    kindSpeedProblem(changes.kind || session.kind, changes.prescription?.targetSpeedKmh);
+    kindSpeedProblem(changes.kind || session.kind, changes.prescription?.targetSpeedKmh) ||
+    // Only a booking that changes its time or its work is checked against the afternoon rule again.
+    (changes.kind !== undefined || changes.scheduledAt !== undefined ? slotKindProblem(changes.kind || session.kind, changes.scheduledAt || session.scheduledAt) : null);
   if (problem) return fail(res, problem, 400);
   if (changes.scheduledAt !== undefined && !(new Date(changes.scheduledAt) > new Date())) {
     return fail(res, 'Giờ tập mới phải ở tương lai.', 400);
@@ -729,6 +738,8 @@ const rescheduleSession = asyncHandler(async (req, res) => {
   if (session.rescheduledTo) return fail(res, 'Buổi này đã được xếp lại rồi.', 409);
   const scheduledAt = new Date(req.body?.scheduledAt);
   if (Number.isNaN(scheduledAt.getTime()) || scheduledAt <= new Date()) return fail(res, 'Chọn giờ tập mới ở tương lai.', 400);
+  const slotProblem = slotKindProblem(session.kind, scheduledAt);
+  if (slotProblem) return fail(res, slotProblem, 400);
 
   const plan = await TrainingPlan.findById(session.trainingPlan).select('status');
   if (!plan || ['completed', 'cancelled'].includes(plan.status)) {

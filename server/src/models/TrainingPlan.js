@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const clubPolicy = require('../config/clubPolicy');
 
 const PHASES = ['base_building', 'strength', 'speed', 'peak', 'recovery'];
 const INTENSITIES = ['light', 'moderate', 'high'];
@@ -63,8 +64,8 @@ const trainingPlanSchema = new mongoose.Schema(
     endDate: { type: Date },
     phases: [phaseSchema],
     // Time sessions are booked at when a week is generated: early morning, 1.5 h after breakfast.
-    sessionTime: { type: String, default: '07:30', match: /^([01]\d|2[0-3]):[0-5]\d$/ },
-    afternoonTime: { type: String, default: '16:00', match: /^([01]\d|2[0-3]):[0-5]\d$/ },
+    sessionTime: { type: String, default: () => clubPolicy.morningTime, match: /^([01]\d|2[0-3]):[0-5]\d$/ },
+    afternoonTime: { type: String, default: () => clubPolicy.afternoonTime, match: /^([01]\d|2[0-3]):[0-5]\d$/ },
     notes: { type: String },
     status: { type: String, enum: ['draft', 'active', 'completed', 'cancelled'], default: 'draft' },
   },

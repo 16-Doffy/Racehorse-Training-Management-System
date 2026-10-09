@@ -44,6 +44,7 @@ import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } fro
 import ReadinessPanel from './ReadinessPanel';
 import PreCheckModal from './PreCheckModal';
 import LiveSessionMonitor from './LiveSessionMonitor';
+import { useClubPolicy, precheckRuleText, afternoonProblem } from './useClubPolicy';
 import { SESSION_STATUS_LABELS as STATUS_LABELS, SESSION_STATUS_COLORS as STATUS_COLORS } from './sessionStatus';
 import SessionOutcome from './SessionOutcome';
 import confirmReadinessOverride, { needsOverride } from './confirmReadinessOverride';
@@ -151,6 +152,9 @@ export default function TrainingSessionPage() {
     .filter((r) => String(r.horse?._id || r.horse) === String(draft.horse) && ['registered', 'confirmed'].includes(r.status) && dayjs(r.raceDate).isAfter(dayjs()))
     .map((r) => ({ value: r._id, label: `${r.raceName} — ${dayjs(r.raceDate).format('DD/MM/YYYY')}${r.distance ? ` · ${r.distance}m` : ''}` }));
   const firstWeek = searchParams.get('first') === '1';
+  const policy = useClubPolicy();
+  const draftAt = Form.useWatch('scheduledAt', createForm);
+  const draftSlotProblem = afternoonProblem(policy, draftKind, draftAt);
 
   const filteredPlan = planFilter ? (plansData?.data || []).find((p) => p._id === planFilter) : null;
   const filteredHorse = horseFilter ? (horsesData?.data || []).find((h) => h._id === horseFilter) : null;
@@ -549,7 +553,7 @@ export default function TrainingSessionPage() {
         type="info"
         showIcon
         title="Xếp lịch → Kiểm tra sẵn sàng → Bắt đầu → Kết thúc → Đánh giá"
-        description="Xếp lịch chưa chạy cảm biến. Kiểm tra từ 60 phút trước đến 30 phút sau giờ dự kiến; kết quả kiểm tra có hiệu lực 2 giờ. Không kiểm tra hoặc bắt đầu kịp thì buổi chuyển sang Lỡ giờ và có thể xếp lại. Lịch tuần hỗ trợ buổi sáng và buổi chiều nhẹ."
+        description={`Xếp lịch chưa chạy cảm biến. ${precheckRuleText(policy)} Không kiểm tra hoặc bắt đầu kịp thì buổi chuyển sang Lỡ giờ và có thể xếp lại. Buổi đang chạy thì Kết thúc hoặc Dừng giữa chừng (giữ số liệu).${policy.afternoonLightOnly ? ' Buổi chiều chỉ tập nhẹ.' : ''}`}
       />
 
       {filteredPlan && (
@@ -783,6 +787,8 @@ export default function TrainingSessionPage() {
                 </Form.Item>
               )}
 
+              {draftSlotProblem && <Alert className="!mb-3" type="error" showIcon title={draftSlotProblem} />}
+
               <Form.Item
                 name="objective"
                 label="Mục đích buổi tập"
@@ -903,8 +909,8 @@ export default function TrainingSessionPage() {
                   onRequestExam={() => setExamOpen(true)}
                 />
                 <Text type="secondary" className="!text-xs block mt-2">
-                  Mỗi dòng do một người khác nắm giữ. Khóa y tế của bác sĩ, hoặc ngựa vừa ăn xong chưa
-                  đủ 60 phút, sẽ chặn hẳn buổi tập; các cảnh báo còn lại bạn vẫn có thể bỏ qua nhưng phải ghi lý do.
+                  Mỗi dòng do một người khác nắm giữ. Khóa y tế của bác sĩ, sốt, hoặc ngựa vừa ăn bữa có thức ăn tinh chưa
+                  đủ {policy.digestHardMinutes} phút (theo quy định CLB) sẽ chặn hẳn buổi tập; các cảnh báo còn lại bạn vẫn có thể bỏ qua nhưng phải ghi lý do.
                 </Text>
               </div>
             </Col>

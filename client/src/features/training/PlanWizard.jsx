@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import { message } from '../../lib/antdStatic';
 import { trainingPlanApi } from './trainingApi';
 import PlanTimeline from './PlanTimeline';
+import { useClubPolicy } from './useClubPolicy';
 import {
   PHASE_LABELS,
   SESSION_KINDS,
@@ -60,6 +61,7 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
   const [race, setRace] = useState(null);
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const queryClient = useQueryClient();
+  const policy = useClubPolicy();
   const horse = Form.useWatch('horse', form);
   const watchedStart = Form.useWatch('startDate', form);
   const watchedTime = Form.useWatch('sessionTime', form);
@@ -206,7 +208,7 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ startDate: nextMonday(), sessionTime: '07:30', afternoonTime: '16:00', surface: 'turf' }}
+          initialValues={{ startDate: nextMonday(), sessionTime: policy.morningTime, afternoonTime: policy.afternoonTime, surface: 'turf' }}
           onValuesChange={(changed) => {
             if (changed.horse) form.setFieldValue('targetRace', undefined);
             if (changed.targetRace) {
@@ -404,7 +406,7 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
                       <td className="py-1 pr-2 text-xs text-gray-500">{label}</td>
                       {WEEK_DAYS.map((w) => {
                         const d = p.week.find((x) => x.day === w.day && slotOf(x) === slot);
-                        const kinds = slot === 'afternoon' ? AFTERNOON_KINDS : Object.keys(SESSION_KINDS);
+                        const kinds = slot === 'afternoon' && policy.afternoonLightOnly ? AFTERNOON_KINDS : Object.keys(SESSION_KINDS);
                         return (
                           <td key={w.day} className="py-1 pr-1">
                             <Select
