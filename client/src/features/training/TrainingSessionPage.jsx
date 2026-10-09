@@ -301,7 +301,9 @@ export default function TrainingSessionPage() {
         key,
         title: `${done.horse?.name || 'Ngựa'} đã xong buổi tập`,
         description: done.outcome?.summary || 'Buổi tập đã hoàn thành.',
-        duration: 0,
+        // Bottom right, and it goes by itself: the page's own actions are top right.
+        placement: 'bottomRight',
+        duration: 15,
         actions: (
           <Button
             type="primary"
@@ -756,6 +758,13 @@ export default function TrainingSessionPage() {
               createForm.setFieldValue('trainingPlan', plan?._id);
               // A trial defaults to the race the plan prepares for.
               createForm.setFieldValue('raceEntry', plan?.targetRace?._id || plan?.targetRace || undefined);
+            }
+            // A trial is run over its race's distance.
+            const isTrialNow = (changed.kind || all.kind) === 'trial' || all.sessionType === 'trial_run';
+            if (isTrialNow && (changed.raceEntry || changed.kind || changed.horse)) {
+              const raceId = changed.raceEntry || createForm.getFieldValue('raceEntry');
+              const r = (racesData?.data || []).find((x) => String(x._id) === String(raceId));
+              if (r?.distance) createForm.setFieldValue(['prescription', 'distanceM'], r.distance);
             }
             // A recovering horse can't be booked above the vet's level: pull the intensity down to
             // the highest one allowed as soon as the horse is picked.
