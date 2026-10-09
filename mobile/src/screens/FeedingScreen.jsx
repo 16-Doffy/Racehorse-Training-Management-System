@@ -326,7 +326,12 @@ function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nex
               <Row style={{ gap: 6 }}>
                 {task?.pendingSync ? <PendingBadge /> : null}
                 {fed ? (
-                  <Badge label={`Đã cho ăn ${formatTime(task.completedAt)}`} color={colors.green} bg={colors.greenSoft} />
+                  // Not confirmed by the server yet: shown as the groom's record, not as done.
+                  task.pendingSync ? (
+                    <Badge label={`Cho ăn ${formatTime(task.completedAt)} · chưa gửi`} color={colors.orange} bg={colors.orangeSoft} />
+                  ) : (
+                    <Badge label={`Đã cho ăn ${formatTime(task.completedAt)}`} color={colors.green} bg={colors.greenSoft} />
+                  )
                 ) : task && timingCfg && task.status === 'pending' ? (
                   <Badge label={timingCfg.label} color={timingCfg.color} bg={timingCfg.bg} />
                 ) : null}

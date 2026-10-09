@@ -23,15 +23,15 @@ const taskIs = (status) => async ({ taskId }) => (await taskApi.getOne(taskId)).
  */
 export const handlers = {
   complete: {
-    send: ({ taskId, payload }, config) => taskApi.complete(taskId, payload, config),
+    send: ({ taskId, payload, performedAt, clientOpId }, config) => taskApi.complete(taskId, { ...payload, performedAt, clientOpId }, config),
     alreadyDone: taskIs('completed'),
   },
   notDone: {
-    send: ({ taskId, reason }, config) => taskApi.reportNotDone(taskId, reason, config),
+    send: ({ taskId, reason, performedAt, clientOpId }, config) => taskApi.reportNotDone(taskId, reason, config, { performedAt, clientOpId }),
     alreadyDone: taskIs('skipped'),
   },
   acknowledge: {
-    send: ({ taskId }, config) => taskApi.acknowledge(taskId, config),
+    send: ({ taskId, performedAt, clientOpId }, config) => taskApi.acknowledge(taskId, config, { performedAt, clientOpId }),
     alreadyDone: async ({ taskId }) => !!(await taskApi.getOne(taskId)).data?.acknowledgedAt,
   },
   incident: {

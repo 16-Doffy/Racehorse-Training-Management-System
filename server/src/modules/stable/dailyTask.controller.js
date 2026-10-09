@@ -306,9 +306,37 @@ function warningSigns(o) {
 // It matters because the groom is the only person who sees the horse eat, drink and pass
 // droppings. That is what the training readiness check reads to decide whether the horse is fit
 // to be worked (see modules/training/readiness.service.js).
+// A record sent this long after the work was done counts as synced late (shown as such, never hidden).
+const SYNC_LATE_MINUTES = 10;
+// How far ahead of the server the groom's clock may be, and how old an action may still be sent.
+const CLOCK_SKEW_MINUTES = 2;
+const MAX_OFFLINE_HOURS = 24;
+
+/**
+ * When the work was done and which app action this is, from the request: `performedAt` (the phone's
+ * time of the tap, sent by the offline outbox) and `clientOpId`. Without them: now, no id. Returns
+ * { performedAt, opId, late } or { error, status }.
+ */
+function readAction(body = {}) {
+  const now = Date.now();
+  const opId = typeof body.clientOpId === 'string' && body.clientOpId.trim() ? body.clientOpId.trim().slice(0, 64) : null;
+  if (body.performedAt === undefined || body.performedAt === null || body.performedAt === '') return { performedAt: new Date(now), opId, late: false };
+  const at = new Date(body.performedAt);
+  if (Number.isNaN(at.getTime())) return { error: 'Giờ thực hiện không hợp lệ.', status: 400 };
+  if (at.getTime() > now + CLOCK_SKEW_MINUTES * 60000) return { error: 'Giờ thực hiện ở tương lai — kiểm tra lại đồng hồ điện thoại.', status: 400 };
+  if (at.getTime() < now - MAX_OFFLINE_HOURS * 3600000) {
+    return { error: `Thao tác được làm cách đây hơn ${MAX_OFFLINE_HOURS} giờ — không ghi nhận tự động; hãy báo HLV/Quản lý để ghi tay.`, status: 409 };
+  }
+  return { performedAt: at, opId, late: now - at.getTime() > SYNC_LATE_MINUTES * 60000 };
+}
+
 const completeTask = asyncHandler(async (req, res) => {
-  const task = await loadTask(req, res);
+  let task = await loadTask(req, res);
   if (!task) return undefined;
+  const action = readAction(req.body);
+  if (action.error) return fail(res, action.error, action.status);
+  // The same action sent again (its answer was lost on a bad connection): answer it, change nothing.
+  if (action.opId && task.opIds?.includes(action.opId)) return ok(res, task, 'Already recorded.');
 
   // A meal the trainer called off (e.g. fasting before a race) must not be recorded as eaten.
   if (task.status === 'skipped') {
@@ -321,25 +349,51 @@ const completeTask = asyncHandler(async (req, res) => {
   if (task.status !== 'completed') {
     // Only within the task's window on the real clock: breakfast ticked at 23:00 would record a
     // meal eaten at 23:00, and yesterday's dose can't be given today (utils/taskTiming.js).
-    const timing = taskTiming(task);
-    if (!timing.canComplete) return fail(res, timing.reason, 409, { timing });
+    // Judged at the time the work was done, not when the phone got signal: a meal fed at 06:10 and
+    // sent at 08:30 is a meal at 06:10; one fed outside its window is refused with the reason.
+    const timing = taskTiming(task, action.performedAt);
+    if (!timing.canComplete) return fail(res, timing.reason, 409, { timing, performedAt: action.performedAt });
+    // One completion gets through — a second phone, or a resend while the first is still in flight —
+    // so the stock is taken once. Claimed before the stock moves; released again if the stock is short.
+    const claimed = await DailyTask.findOneAndUpdate(
+      { _id: task._id, status: 'pending' },
+      {
+        $set: {
+          status: 'completed',
+          completedAt: action.performedAt,
+          receivedAt: new Date(),
+          recordedLate: action.late,
+          ...(task.acknowledgedAt ? {} : { acknowledgedAt: action.performedAt }),
+        },
+        ...(action.opId ? { $push: { opIds: { $each: [action.opId], $slice: -20 } } } : {}),
+      },
+      { new: true }
+    );
+    if (!claimed) {
+      const now = await DailyTask.findById(task._id).select('status completedAt opIds');
+      if (action.opId && now?.opIds?.includes(action.opId)) return ok(res, await DailyTask.findById(task._id), 'Already recorded.');
+      return fail(res, 'Công việc này vừa được ghi nhận từ nơi khác.', 409, { status: now?.status, completedAt: now?.completedAt || null });
+    }
     // A meal or a dose takes its supplies out of stock; without them it can't be recorded as given.
     // The groom asks the Manager for more instead (restock request, which can name this task).
-    const stock = await consumeSupplies(task.supplies, { actor: req.user, task });
+    const stock = await consumeSupplies(task.supplies, { actor: req.user, task: claimed });
     if (!stock.ok) {
+      await DailyTask.updateOne(
+        { _id: task._id, status: 'completed' },
+        { $set: { status: 'pending', recordedLate: false }, $unset: { completedAt: 1, receivedAt: 1 }, ...(action.opId ? { $pull: { opIds: action.opId } } : {}) }
+      );
       const list = stock.missing.map((m) => `${m.name} (cần ${m.needed} ${m.unit}, còn ${m.available} ${m.unit})`).join('; ');
       return fail(res, `Thiếu vật tư: ${list} — hãy gửi đề xuất bổ sung cho Quản lý.`, 409, { missing: stock.missing });
     }
-    task.status = 'completed';
-    task.completedAt = new Date();
-    if (!task.acknowledgedAt) task.acknowledgedAt = task.completedAt;
+    task = claimed;
   }
 
   const observation = readObservation(req.body);
   if (observation) {
     const previous = task.observation?.toObject ? task.observation.toObject() : task.observation || {};
-    task.observation = { ...previous, ...Object.fromEntries(Object.entries(observation).filter(([, v]) => v !== undefined)), recordedAt: new Date() };
+    task.observation = { ...previous, ...Object.fromEntries(Object.entries(observation).filter(([, v]) => v !== undefined)), recordedAt: action.performedAt };
   }
+  if (action.opId && !task.opIds?.includes(action.opId)) task.opIds = [...(task.opIds || []), action.opId].slice(-20);
   await task.save();
 
   // Refusing feed or abnormal droppings are among the earliest signs something is wrong, and
@@ -479,10 +533,14 @@ const myCarePlan = asyncHandler(async (req, res) => {
 const acknowledgeTask = asyncHandler(async (req, res) => {
   const task = await loadTask(req, res);
   if (!task) return undefined;
+  const action = readAction(req.body);
+  if (action.error) return fail(res, action.error, action.status);
+  if (action.opId && task.opIds?.includes(action.opId)) return ok(res, task, 'Already recorded.');
   if (task.status !== 'pending') return fail(res, 'Công việc này đã được ghi nhận xong.', 409);
-  if (taskTiming(task).state === 'missed') return fail(res, taskTiming(task).reason, 409);
+  if (taskTiming(task, action.performedAt).state === 'missed') return fail(res, taskTiming(task, action.performedAt).reason, 409);
   if (!task.acknowledgedAt) {
-    task.acknowledgedAt = new Date();
+    task.acknowledgedAt = action.performedAt;
+    if (action.opId) task.opIds = [...(task.opIds || []), action.opId].slice(-20);
     await task.save();
   }
   return ok(res, task, 'Task acknowledged.');
@@ -499,10 +557,16 @@ const reportNotDone = asyncHandler(async (req, res) => {
   if (!task) return undefined;
   const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
   if (!reason) return fail(res, 'Hãy ghi rõ vì sao không thực hiện được.', 400);
-  if (task.status !== 'pending') return fail(res, 'Công việc này đã được ghi nhận rồi.', 409);
+  const action = readAction(req.body);
+  if (action.error) return fail(res, action.error, action.status);
+  if (action.opId && task.opIds?.includes(action.opId)) return ok(res, task, 'Already recorded.');
+  if (task.status !== 'pending') {
+    return fail(res, 'Công việc này đã được ghi nhận rồi.', 409, { status: task.status, completedAt: task.completedAt || null });
+  }
 
-  Object.assign(task, { status: 'skipped', skipReason: reason, skippedBy: req.user._id });
-  if (!task.acknowledgedAt) task.acknowledgedAt = new Date();
+  Object.assign(task, { status: 'skipped', skipReason: reason, skippedBy: req.user._id, receivedAt: new Date(), recordedLate: action.late });
+  if (!task.acknowledgedAt) task.acknowledgedAt = action.performedAt;
+  if (action.opId) task.opIds = [...(task.opIds || []), action.opId].slice(-20);
   await task.save();
 
   const horse = await Horse.findById(task.horse).select('name');

@@ -1271,6 +1271,7 @@ module.exports = {
       patch: {
         tags: ['Stable (Groom)'],
         summary: 'Take a task on (Groom) — idempotent',
+        description: 'Body (optional): { performedAt?, clientOpId? } — acknowledgedAt is performedAt; a resend with the same clientOpId answers 200.',
         description: "Sets acknowledgedAt, so the trainer, manager and vet see the order was picked up before it is done. 409 if it is already done or its window is missed.",
         parameters: [idParam('id')],
         responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404], 409: responses[409] },
@@ -1280,6 +1281,7 @@ module.exports = {
       patch: {
         tags: ['Stable (Groom)'],
         summary: 'Report that a task could not be done, with the reason (Groom)',
+        description: 'Body: { reason, performedAt?, clientOpId? } — same offline rules as complete; a resend with the same clientOpId answers 200 and does not notify again.',
         description:
           'Status becomes skipped with skipReason / skippedBy. For a vet care order (source vet) the vet and trainer are notified; ' +
           'otherwise the trainer.',
@@ -1296,7 +1298,11 @@ module.exports = {
           'The body is entirely optional — sending none behaves exactly as before. When supplied, the observation is ' +
           "what the training readiness nutrition gate reads to decide whether the horse is fit to work, since the groom " +
           'is the only person who sees it eat. `appetite: "refused"` additionally notifies the horse\'s assigned vet, ' +
-          'because a horse going off its feed is an early sign of illness.',
+          'because a horse going off its feed is an early sign of illness. ' +
+          'Offline sync: performedAt (when the groom did it) is checked — not more than 2 min ahead of the server, not older than 24 h (409, record it by hand) — ' +
+          'and the task window is judged at that time, not at the time of sync (a meal done outside its window → 409 with the reason; nothing is back-filled). ' +
+          'completedAt = performedAt; receivedAt = server time; recordedLate when sent more than 10 min after. clientOpId makes a resend idempotent (200, nothing applied again). ' +
+          'The completion is claimed atomically before the stock moves: a second phone or a concurrent resend with another id gets 409 and the stock is taken once.',
         parameters: [idParam('id')],
         requestBody: {
           required: false,
@@ -1305,6 +1311,9 @@ module.exports = {
               schema: {
                 type: 'object',
                 properties: {
+                  performedAt: { type: 'string', format: 'date-time', description: 'When it was done (offline outbox); default now' },
+                  clientOpId: { type: 'string', description: 'The app action id; a resend with the same id is answered without repeating' },
+
                   appetite: { type: 'string', description: 'full | partial | refused, or the groom screen labels (Bình thường, Tốt, Kém, Bỏ ăn)' },
                   amountEatenPercent: { type: 'number', minimum: 0, maximum: 100 },
                   manure: { type: 'string', description: 'normal | dry | loose | none, or the Vietnamese labels' },

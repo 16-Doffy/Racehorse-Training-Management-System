@@ -11,9 +11,10 @@ export const taskApi = {
   /** payload: { observation: { appetite, manure, waterIntake }, notes } — all optional. */
   complete: (id, payload, config) => api.patch(`/stable/tasks/${id}/complete`, payload, config),
   /** "I've seen this and taken it on" — lets the trainer/vet tell picked-up from untouched. */
-  acknowledge: (id, config) => api.patch(`/stable/tasks/${id}/acknowledge`, undefined, config),
+  // `action` = { performedAt, clientOpId } from the outbox: when it was done, and its id for resends.
+  acknowledge: (id, config, action) => api.patch(`/stable/tasks/${id}/acknowledge`, action, config),
   /** Could not do it (horse spat the medicine out, ...); the reason goes to the trainer/vet. */
-  reportNotDone: (id, reason, config) => api.patch(`/stable/tasks/${id}/not-done`, { reason }, config),
+  reportNotDone: (id, reason, config, action) => api.patch(`/stable/tasks/${id}/not-done`, { reason, ...action }, config),
   reportIncident: (id, formData, config) =>
     api.post(`/stable/tasks/${id}/incident`, formData, { ...config, headers: { 'Content-Type': 'multipart/form-data' } }),
 };

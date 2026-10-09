@@ -216,3 +216,21 @@ test('overlay: does not touch a task the server already has as completed, and re
   const out = applyOutbox(tasks, [{ type: 'complete', taskId: 'c', createdAt: 1 }]);
   assert.equal(out[2].pendingSync, undefined);
 });
+
+test('a queued write keeps the time of the tap and the action id, unchanged on every resend', async () => {
+  const { box, sent, setBehaviour } = setup();
+  setBehaviour(async () => {
+    throw offline();
+  });
+  const res = await box.submit('complete', { taskId: 't1', payload: {} }, meta());
+  assert.equal(res.queued, true);
+  const first = sent[0].args;
+  assert.ok(first.performedAt && first.clientOpId, 'the time of the tap and an id the server can recognise a resend by');
+  await box.flush('u1');
+  setBehaviour(async () => ({ ok: true }));
+  await box.flush('u1');
+  const last = sent[sent.length - 1].args;
+  assert.equal(last.performedAt, first.performedAt, 'sent later, still the time it was done');
+  assert.equal(last.clientOpId, first.clientOpId);
+  assert.equal(box.getState().items.length, 0);
+});

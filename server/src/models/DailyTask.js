@@ -56,7 +56,13 @@ const dailyTaskSchema = new mongoose.Schema(
     ],
     scheduledDate: { type: Date, required: true, default: Date.now },
     status: { type: String, enum: ['pending', 'completed', 'skipped'], default: 'pending' },
-    completedAt: { type: Date },
+    completedAt: { type: Date }, // when the work was done (the groom's clock, checked), not when the server heard
+    // When the server received the record, apart from when it was done: a phone without signal sends later.
+    receivedAt: { type: Date, default: null },
+    // Sent more than SYNC_LATE_MINUTES after it was done (from the offline outbox).
+    recordedLate: { type: Boolean, default: false },
+    // The app's ids for the actions already applied, so a resend of the same action is answered, not repeated.
+    opIds: { type: [String], default: [] },
     // The groom has seen the task and taken it on — for a vet's order, the trainer and manager can
     // tell "nobody has picked this up" apart from "picked up, not done yet".
     acknowledgedAt: { type: Date, default: null },

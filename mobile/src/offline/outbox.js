@@ -62,9 +62,12 @@ export function createOutbox({ storage, handlers, now = () => Date.now(), makeId
    * Send now, or queue if there is no connection. Returns `{ queued: true }` when it was queued;
    * an error from the server (not the network) is thrown so the screen can show it.
    */
-  async function submit(type, args, meta) {
+  async function submit(type, rawArgs, meta) {
     const handler = handlers[type];
     if (!handler) throw new Error(`Unknown outbox type: ${type}`);
+    // When the groom did it and which action it is, fixed now: a write sent later (no signal) still
+    // records the time of the tap, and a resend of the same action is recognised by the server.
+    const args = { ...rawArgs, performedAt: rawArgs.performedAt || new Date(now()).toISOString(), clientOpId: rawArgs.clientOpId || makeId() };
 
     // Older writes for this user go first: "done" must not overtake "I've seen it".
     if (state.items.some((i) => i.userId === meta.userId)) {

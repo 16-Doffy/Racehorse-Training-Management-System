@@ -36,7 +36,11 @@ function dayBounds(date) {
 }
 
 const clock = (date) => new Date(date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-const day = (date) => new Date(date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+// Spelled out: the vi-VN date format writes 09-10 on some systems.
+const day = (date) => {
+  const d = new Date(date);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
 
 /** The window of one meal scheduled at `at`: [opensAt, closesAt], never running past its own day. */
 function mealWindow(at) {
