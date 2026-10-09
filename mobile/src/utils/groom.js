@@ -108,7 +108,8 @@ export const INVENTORY_CATEGORY = {
 
 export const RESTOCK_STATUS = {
   pending: { label: 'Chờ duyệt', color: '#ca8a04', bg: '#fef9c3' },
-  approved: { label: 'Đã duyệt', color: '#16a34a', bg: '#dcfce7' },
+  approved: { label: 'Đã duyệt, chờ hàng về', color: '#0891b2', bg: '#cffafe' },
+  received: { label: 'Đã nhận hàng', color: '#16a34a', bg: '#dcfce7' },
   rejected: { label: 'Từ chối', color: '#dc2626', bg: '#fee2e2' },
 };
 

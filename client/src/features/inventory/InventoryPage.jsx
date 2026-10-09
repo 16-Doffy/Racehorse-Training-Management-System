@@ -215,18 +215,21 @@ function ItemModal({ item, category, open, onClose, units }) {
   );
 }
 
-/** Records a delivery: by the item's unit, or by packs when it has a pack size. */
-function ReceiveModal({ item, onClose }) {
+/**
+ * Records a delivery: by the item's unit, or by packs when it has a pack size. Opened from an approved
+ * request, it receives that request (once) with the quantity asked for filled in.
+ */
+function ReceiveModal({ item, request = null, onClose }) {
   const queryClient = useQueryClient();
   const hasPack = Boolean(item?.packUnit && item?.packSize);
-  const [mode, setMode] = useState('packs');
-  const [amount, setAmount] = useState(null);
+  const [mode, setMode] = useState(request ? 'units' : 'packs');
+  const [amount, setAmount] = useState(request?.quantity ?? null);
   const [note, setNote] = useState('');
   const byPacks = hasPack && mode === 'packs';
   const added = amount ? (byPacks ? amount * item.packSize : amount) : 0;
 
   const receiveMutation = useMutation({
-    mutationFn: () => inventoryApi.receive(item._id, byPacks ? { packs: amount, note } : { quantity: amount, note }),
+    mutationFn: () => inventoryApi.receive(item._id, { ...(byPacks ? { packs: amount } : { quantity: amount }), note, ...(request ? { requestId: request.requestId } : {}) }),
     onSuccess: (res) => {
       message.success(res.message || 'Đã nhập kho.');
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
@@ -240,7 +243,7 @@ function ReceiveModal({ item, onClose }) {
 
   return (
     <Modal
-      title={item ? `Nhập kho — ${item.name}` : ''}
+      title={item ? `${request ? 'Nhận hàng theo đề xuất' : 'Nhập kho'} — ${item.name}` : ''}
       open={Boolean(item)}
       onCancel={onClose}
       onOk={() => receiveMutation.mutate()}
@@ -297,7 +300,7 @@ export default function InventoryPage() {
   const decideMutation = useMutation({
     mutationFn: ({ itemId, requestId, status, note }) => inventoryApi.decideRestock(itemId, requestId, { status, note }),
     onSuccess: (_res, variables) => {
-      message.success(variables.status === 'approved' ? 'Đã duyệt — số lượng tồn kho đã được cộng thêm.' : 'Đã từ chối yêu cầu.');
+      message.success(variables.status === 'approved' ? 'Đã duyệt — kho chỉ cộng khi bấm "Nhận hàng" lúc hàng về.' : 'Đã từ chối yêu cầu.');
       refresh();
       setRejecting(null);
       setRejectNote('');
@@ -316,10 +319,12 @@ export default function InventoryPage() {
 
   // Pending restock requests live inside each item's subdocument array; flatten them so the
   // Manager sees one actionable queue instead of having to open every item to find them.
+  // Pending ones wait for a decision; approved ones (under the current flow) wait for the delivery.
   const pendingRequests = items.flatMap((item) =>
     (item.restockRequests || [])
-      .filter((r) => r.status === 'pending')
+      .filter((r) => r.status === 'pending' || (r.status === 'approved' && r.awaitingDelivery && !r.receivedAt))
       .map((r) => ({
+        status: r.status,
         key: `${item._id}-${r._id}`,
         item,
         itemId: item._id,
@@ -357,7 +362,15 @@ export default function InventoryPage() {
     {
       title: '',
       key: 'actions',
-      render: (_, r) => (
+      render: (_, r) =>
+        r.status === 'approved' ? (
+          <Space>
+            <Tag color="cyan" className="!m-0">Đã duyệt, chờ hàng về</Tag>
+            <Button type="primary" size="small" onClick={() => setReceiving({ item: r.item, request: r })}>
+              Nhận hàng
+            </Button>
+          </Space>
+        ) : (
         <Space>
           <Button
             type="primary"
@@ -372,7 +385,7 @@ export default function InventoryPage() {
             Từ chối
           </Button>
         </Space>
-      ),
+        ),
     },
   ];
 
@@ -553,7 +566,12 @@ export default function InventoryPage() {
         onClose={() => setEditing(null)}
         units={UNIT_SUGGESTIONS}
       />
-      <ReceiveModal item={receiving} onClose={() => setReceiving(null)} />
+      <ReceiveModal
+        key={receiving?.request?.requestId || receiving?._id || 'none'}
+        item={receiving?.request ? receiving.item : receiving}
+        request={receiving?.request || null}
+        onClose={() => setReceiving(null)}
+      />
       <Modal
         title={rejecting ? `Từ chối đề xuất — ${rejecting.item.name}` : ''}
         open={Boolean(rejecting)}

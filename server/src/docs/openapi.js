@@ -1419,10 +1419,15 @@ module.exports = {
     '/inventory/{id}/receive': {
       post: {
         tags: ['Inventory (scaffold)'],
-        summary: 'Record a delivery by quantity (in the item unit) or by packs (Manager)',
+        summary: 'Record a delivery by quantity (in the item unit) or by packs (Manager) — the only place stock goes up',
+        description:
+          'With requestId: receives that approved request — quantity defaults to what was requested; one atomic claim, so a second or concurrent ' +
+          'receive gets 409 and adds nothing; the request becomes received (receivedAt, receivedQty, receivedBy) and the requester is told. ' +
+          'A pending or rejected request → 409. A request approved before the receive step existed (no awaitingDelivery) already added its ' +
+          'quantity when it was approved → 409, nothing added. Without requestId: a delivery not tied to a request.',
         parameters: [idParam('id')],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { quantity: { type: 'number' }, packs: { type: 'number' }, note: { type: 'string' } } } } } },
-        responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 403: responses[403], 404: responses[404] },
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { requestId: { type: 'string' }, quantity: { type: 'number' }, packs: { type: 'number' }, note: { type: 'string' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
     '/inventory/forecast': {
@@ -1438,8 +1443,8 @@ module.exports = {
         summary: 'Propose a new item that is not in the stock list yet (Groom, Head Trainer, Veterinarian)',
         description:
           'Creates the item as a proposal (isProposed, quantity 0) carrying one restock request; the Manager is notified. ' +
-          'Approving that request (PATCH /inventory/{id}/restock-requests/{reqId}) makes it a regular item with the requested ' +
-          'quantity; rejecting it removes the item. A name already in the list (case-insensitive) → 409 with data.itemId.',
+          'Approving that request (PATCH /inventory/{id}/restock-requests/{reqId}) makes it a regular item (stock 0 until the delivery is ' +
+          'received); rejecting it removes the item. A name already in the list (case-insensitive) → 409 with data.itemId.',
         requestBody: {
           required: true,
           content: {
@@ -1465,13 +1470,13 @@ module.exports = {
     '/inventory/{id}/restock-requests/{reqId}': {
       patch: {
         tags: ['Inventory (scaffold)'],
-        summary: 'Approve or reject a pending restock request (Manager) — approving adds the quantity to stock',
+        summary: 'Approve or reject a pending restock request (Manager) — approving orders it; stock changes when it is received',
         parameters: [idParam('id'), idParam('reqId', 'The restockRequests sub-document id')],
         requestBody: {
           required: true,
           content: { 'application/json': { schema: { type: 'object', required: ['status'], properties: { status: { type: 'string', enum: ['approved', 'rejected'] }, note: { type: 'string', description: 'Shown to the requester' } } } } },
         },
-        description: 'Records who reviewed it. Approving a proposed item turns it into a regular item; rejecting a proposal with nothing else pending deletes it (data: null).',
+        description: 'Records who reviewed it. Approving sets awaitingDelivery and leaves the stock as it is (POST /inventory/{id}/receive { requestId } adds it when the goods arrive). Approving a proposed item turns it into a regular item at 0; rejecting a proposal with nothing else pending deletes it (data: null).',
         responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },

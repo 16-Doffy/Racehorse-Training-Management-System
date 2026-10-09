@@ -148,10 +148,9 @@ const proposeItem = asyncHandler(async (req, res) => {
   return ok(res, item, 'New item proposed.');
 });
 
-// Closes the loop the requestRestock endpoint opens: a Manager can act on one pending request
-// instead of it just sitting in the array forever. Approving actually adds the requested
-// quantity to stock — the point of a restock request is to change the physical count, not just
-// flip a status flag.
+// Closes the loop the requestRestock endpoint opens. Approving orders the goods: stock changes only
+// when the delivery is received (POST /:id/receive { requestId }), so nothing is counted twice and the
+// count matches what is physically on the shelf.
 const reviewRestockRequest = asyncHandler(async (req, res) => {
   const { status } = req.body;
   if (!['approved', 'rejected'].includes(status)) {
@@ -174,9 +173,8 @@ const reviewRestockRequest = asyncHandler(async (req, res) => {
     reviewNote: typeof req.body.note === 'string' ? req.body.note.trim() : undefined,
   });
   if (status === 'approved') {
-    item.quantity += request.quantity;
-    item.lastRestockedAt = new Date();
-    item.isProposed = false; // a proposed item becomes part of the stock list
+    request.awaitingDelivery = true;
+    item.isProposed = false; // a proposed item becomes part of the stock list (at 0 until it arrives)
   }
 
   // A proposal turned down, with nothing else pending on it, is not an item the club stocks.
@@ -192,9 +190,7 @@ const reviewRestockRequest = asyncHandler(async (req, res) => {
     severity: status === 'approved' ? 'info' : 'warning',
     message:
       status === 'approved'
-        ? `✅ Yêu cầu bổ sung ${request.quantity} ${item.unit} "${item.name}" đã được duyệt. Tồn kho hiện tại: ${item.quantity} ${item.unit}.${
-            request.task ? ' Bạn có thể hoàn thành công việc đang chờ (nếu còn trong khung giờ).' : ''
-          }`
+        ? `✅ Yêu cầu bổ sung ${request.quantity} ${item.unit} "${item.name}" đã được duyệt — đang chờ hàng về; bạn sẽ được báo khi kho nhận hàng.`
         : `❌ Yêu cầu ${dropProposal ? 'thêm vật tư mới' : 'bổ sung'} ${request.quantity} ${item.unit} "${item.name}" đã bị từ chối${
             request.reviewNote ? `: ${request.reviewNote}` : '.'
           }`,
@@ -210,20 +206,56 @@ const reviewRestockRequest = asyncHandler(async (req, res) => {
 const receiveStock = asyncHandler(async (req, res) => {
   const item = await InventoryItem.findById(req.params.id);
   if (!item) return fail(res, 'Inventory item not found.', 404);
-  const { quantity, error } = toUnits(item, req.body);
+  const { requestId } = req.body || {};
+  const request = requestId ? item.restockRequests.id(requestId) : null;
+  if (requestId && !request) return fail(res, 'Không tìm thấy đề xuất này.', 404);
+  if (request) {
+    if (request.status === 'received' || request.receivedAt) return fail(res, `Đề xuất này đã nhận hàng lúc ${new Date(request.receivedAt).toLocaleString('vi-VN')} — không cộng lại.`, 409);
+    if (request.status === 'approved' && !request.awaitingDelivery) return fail(res, 'Đề xuất này đã được cộng kho lúc duyệt (trước khi có bước nhận hàng) — không cộng lại.', 409);
+    if (request.status !== 'approved') return fail(res, `Đề xuất đang "${request.status}" — chỉ nhận hàng cho đề xuất đã duyệt.`, 409);
+  }
+  // A delivery for a request defaults to what was asked for.
+  const body = request && req.body.quantity === undefined && req.body.packs === undefined ? { quantity: request.quantity } : req.body;
+  const { quantity, error } = toUnits(item, body);
   if (error) return fail(res, error, 400);
-  item.quantity += quantity;
-  item.lastRestockedAt = new Date();
-  if (item.isProposed) item.isProposed = false;
-  await item.save();
+
+  const now = new Date();
+  const updated = request
+    ? // One atomic claim on the request: two clicks or a retry receive it once.
+      await InventoryItem.findOneAndUpdate(
+        { _id: item._id, restockRequests: { $elemMatch: { _id: request._id, status: 'approved', awaitingDelivery: true, receivedAt: null } } },
+        {
+          $inc: { quantity },
+          $set: {
+            lastRestockedAt: now,
+            isProposed: false,
+            'restockRequests.$.status': 'received',
+            'restockRequests.$.receivedAt': now,
+            'restockRequests.$.receivedQty': quantity,
+            'restockRequests.$.receivedBy': req.user._id,
+          },
+        },
+        { new: true }
+      )
+    : await InventoryItem.findOneAndUpdate({ _id: item._id }, { $inc: { quantity }, $set: { lastRestockedAt: now, isProposed: false } }, { new: true });
+  if (!updated) return fail(res, 'Đề xuất vừa được nhận hàng ở nơi khác — tải lại để xem.', 409);
+
   await logAction({
     actorId: req.user._id,
     action: 'inventory.receive',
     targetModel: 'InventoryItem',
     targetId: item._id,
-    metadata: { quantity, unit: item.unit, note: req.body.note },
+    metadata: { quantity, unit: item.unit, note: req.body.note, request: request?._id || null },
   });
-  return ok(res, item, `Đã nhập thêm ${quantity} ${item.unit}${packNote(item, quantity)}.`);
+  if (request) {
+    await pushNotification({
+      recipientUser: request.requestedBy,
+      type: 'restock_decision',
+      severity: 'info',
+      message: `📦 Đã nhận ${quantity} ${item.unit} "${item.name}" theo đề xuất của bạn. Tồn kho hiện tại: ${updated.quantity} ${item.unit}.${request.task ? ' Bạn có thể hoàn thành công việc đang chờ.' : ''}`,
+    });
+  }
+  return ok(res, updated, `Đã nhập thêm ${quantity} ${item.unit}${packNote(item, quantity)}${request ? ' theo đề xuất' : ''}.`);
 });
 
 router.use(protect);
