@@ -118,6 +118,8 @@ async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify 
         note = ` Đổi từ "${SESSION_KINDS[template.kind].label}" vì bác sĩ chỉ cho ${clearance.label}.`;
       }
       const content = buildFromKind(kind, kind === template.kind ? template : {});
+      // The trial is run for the plan's race: it is that entry's evidence.
+      if (kind === 'trial' && race) content.raceEntry = race._id;
       // eslint-disable-next-line no-await-in-loop
       const session = await TrainingSession.create({
         ...content,

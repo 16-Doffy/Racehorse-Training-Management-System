@@ -8,6 +8,7 @@ const { logAction } = require('../audit/audit.service');
 const RaceEntry = require('../../models/RaceEntry');
 const { SESSION_LOCK_CANCELS } = require('../../constants/training');
 const { closeRun } = require('../training/trainingSession.service');
+const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const DailyTask = require('../../models/DailyTask');
 const User = require('../../models/User');
 const { dayBounds } = require('../../utils/taskTiming');
@@ -285,6 +286,7 @@ async function onTrainingLevelChanged(treatment, { previousLevel, actor }) {
     // A race the horse is entered for is the trainer's decision to withdraw, not something to do
     // silently — but they need to be reminded it exists.
     const raceNote = await upcomingRaceNote(treatment.horse);
+    await flagConfirmedEntries(treatment.horse, clearance.level === 'none' ? `bác sĩ khóa tập${treatment.lockReason ? ` — ${treatment.lockReason}` : ''}` : `bác sĩ chỉ cho ${clearance.label}`);
 
     if (clearance.level === 'none') {
       await notifyHorseStaff({

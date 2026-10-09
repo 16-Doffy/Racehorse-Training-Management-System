@@ -2,6 +2,7 @@ const DailyTask = require('../../models/DailyTask');
 const Horse = require('../../models/Horse');
 const User = require('../../models/User');
 const asyncHandler = require('../../utils/asyncHandler');
+const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { ROLES } = require('../../constants/roles');
 const { notifyHorseStaff, pushNotification } = require('../alerts/notification.service');
@@ -385,6 +386,7 @@ const reportIncident = asyncHandler(async (req, res) => {
   };
   await notifyHorseStaff({ ...alert, staff: 'vet' });
   await notifyHorseStaff({ ...alert, staff: 'trainer' });
+  await flagConfirmedEntries(task.horse, `sự cố được báo: ${description.trim()}`);
 
   return ok(res, task, 'Incident reported.');
 });

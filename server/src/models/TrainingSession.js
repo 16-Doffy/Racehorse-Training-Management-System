@@ -15,6 +15,8 @@ const trainingSessionSchema = new mongoose.Schema(
     kind: { type: String, enum: ['walk', 'canter', 'hill', 'breeze', 'trial'] },
     // Set when a week is generated from the plan, so generating again doesn't book the day twice.
     generated: { type: Boolean, default: false },
+    // A trial run is run for one race entry: the evidence the trainer weighs when deciding the horse goes.
+    raceEntry: { type: mongoose.Schema.Types.ObjectId, ref: 'RaceEntry', default: null },
     startedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // who pressed "Bắt đầu"
     // A missed session booked again: the new booking it was moved to.
     rescheduledTo: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingSession', default: null },

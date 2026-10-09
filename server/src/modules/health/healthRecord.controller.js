@@ -2,6 +2,7 @@ const HealthRecord = require('../../models/HealthRecord');
 const Horse = require('../../models/Horse');
 const ExamRequest = require('../../models/ExamRequest');
 const asyncHandler = require('../../utils/asyncHandler');
+const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { getScopedHorseIds, horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
@@ -46,6 +47,9 @@ const createRecord = asyncHandler(async (req, res) => {
   if (!(await canAccessHorse(req.user, body.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
 
   const record = await HealthRecord.create({ ...body, examinedBy: req.user._id });
+  if (record.resultStatus && record.resultStatus !== 'eligible') {
+    await flagConfirmedEntries(record.horse, `bác sĩ kết luận "${CONCLUSION_LABELS[record.resultStatus] || record.resultStatus}"${record.diagnosis ? ` — ${record.diagnosis}` : ''}`);
+  }
   // A back-dated entry for an old exam must not overwrite the conclusion of a newer one.
   if (await isLatestRecord(record)) {
     await Horse.findByIdAndUpdate(record.horse, { healthStatus: record.resultStatus });

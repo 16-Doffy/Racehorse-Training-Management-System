@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { Modal, Steps, Form, Select, Input, InputNumber, DatePicker, Button, Alert, Typography, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -52,7 +52,7 @@ function weekKm(week = []) {
  * 2. the phases leading there (proposed by the server, counted back from race day by its distance);
  * 3. what a normal week looks like in each phase, morning and afternoon.
  */
-export default function PlanWizard({ open, onClose, horses = [], races = [], plans = [], lockedHorseIds = new Set() }) {
+export default function PlanWizard({ open, onClose, horses = [], races = [], plans = [], lockedHorseIds = new Set(), preset = null, onCreated }) {
   const [step, setStep] = useState(0);
   const [form] = Form.useForm();
   const [basics, setBasics] = useState(null);
@@ -70,6 +70,19 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
     (r) => String(r.horse?._id || r.horse) === String(horse) && ['registered', 'confirmed'].includes(r.status) && dayjs(r.raceDate).isAfter(dayjs())
   );
 
+  // Opened from a race entry ("Lập kế hoạch"): the horse, the race, its distance and surface are filled in.
+  useEffect(() => {
+    if (!open || !preset?.race) return;
+    const r = races.find((x) => String(x._id) === String(preset.race));
+    if (!r) return;
+    form.setFieldsValue({
+      horse: String(r.horse?._id || r.horse),
+      targetRace: r._id,
+      ...(r.distance ? { distanceTarget: r.distance } : {}),
+      ...(r.surface ? { surface: r.surface } : {}),
+    });
+  }, [open, preset, races, form]);
+
   const reset = () => {
     setStep(0);
     setBasics(null);
@@ -84,10 +97,12 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
 
   const createMutation = useMutation({
     mutationFn: (payload) => trainingPlanApi.create(payload),
-    onSuccess: () => {
-      message.success('Đã lập kế hoạch. Bấm "Sinh lịch tuần" để xếp các buổi tập.');
+    onSuccess: (res) => {
+      // A plan books nothing by itself: say so, and take the trainer to booking its first week.
+      message.success('Đã lập kế hoạch — chưa có buổi tập nào. Sinh lịch tuần đầu tiên để xếp buổi.');
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
       close();
+      onCreated?.(res?.data);
     },
     onError: (err) => message.error(err.message || 'Lập kế hoạch thất bại.'),
   });

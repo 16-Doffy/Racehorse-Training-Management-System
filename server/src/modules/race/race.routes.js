@@ -12,6 +12,8 @@ const { ok, fail } = require('../../utils/apiResponse');
 const { canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { pushNotification } = require('../alerts/notification.service');
 const { logAction } = require('../audit/audit.service');
+const TrainingSession = require('../../models/TrainingSession');
+const { trialsForEntry, startOfToday } = require('./raceDecision.service');
 
 /**
  * A finished race with a result becomes part of the horse's record. Horse.achievements is what
@@ -141,11 +143,13 @@ async function refuseGroundedHorse(req, { existing }) {
 // race (and "completed") goes through PATCH /:id/results, which also books the prize money.
 const RACE_DISTANCE = [400, 6000];
 function entryProblem(body, existing) {
-  if (body.status === 'completed' && existing?.status !== 'completed') {
-    return 'Nhập kết quả giải qua "Cập nhật kết quả" (thứ hạng, thời gian, tiền thưởng).';
+  if (existing && body.status !== undefined && body.status !== existing.status) {
+    return body.status === 'completed'
+      ? 'Nhập kết quả giải qua "Cập nhật kết quả" (thứ hạng, thời gian, tiền thưởng).'
+      : 'Tham gia hay rút khỏi giải là quyết định của HLV — dùng "Quyết định dự giải".';
   }
-  if (body.status !== undefined && !['registered', 'confirmed', 'completed', 'withdrawn'].includes(body.status)) {
-    return 'Trạng thái đăng ký không hợp lệ.';
+  if (!existing && body.status !== undefined && body.status !== 'registered') {
+    return 'Giải mới đăng ký ở trạng thái "Đã đăng ký"; xác nhận tham gia sau qua "Quyết định dự giải".';
   }
   if (body.raceDate !== undefined) {
     const date = new Date(body.raceDate);
@@ -169,8 +173,101 @@ function entryProblem(body, existing) {
   return null;
 }
 
+const DECISIONS = ['confirmed', 'withdrawn'];
+const DECISION_WORDS = { confirmed: 'xác nhận tham gia', withdrawn: 'rút khỏi' };
+
+/**
+ * The trainer's decision whether the horse goes. A trial result is evidence, not the decision: a passed
+ * trial does not make the horse fit to race, so the medical state is checked again now. Confirming with
+ * no trial run for this entry, or after a trial that missed its targets, is an exception and needs a
+ * reason; so does withdrawing. Who, when, on which trial and why are kept on the entry; a new decision
+ * clears a pending "review" mark.
+ * POST /races/:id/decision { decision: 'confirmed'|'withdrawn', trialSession?, reason? }
+ */
+const recordDecision = asyncHandler(async (req, res) => {
+  const entry = await RaceEntry.findById(req.params.id);
+  if (!entry) return fail(res, 'Race entry not found.', 404);
+  if (!(await canAccessHorse(req.user, entry.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+  const { decision, trialSession } = req.body || {};
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+  if (!DECISIONS.includes(decision)) return fail(res, 'Chọn quyết định: tham gia hoặc rút.', 400);
+  if (!['registered', 'confirmed', 'withdrawn'].includes(entry.status)) return fail(res, 'Giải này đã có kết quả — không đổi quyết định được.', 409);
+  if (new Date(entry.raceDate) < startOfToday()) return fail(res, 'Giải đã diễn ra — nhập kết quả thay vì quyết định.', 409);
+
+  let trial = null;
+  let exception = false;
+  if (decision === 'confirmed') {
+    const block = await getRaceBlock(entry.horse);
+    if (block) return fail(res, `Không xác nhận được: ${block}`, 409);
+    const trials = await trialsForEntry(entry);
+    if (trialSession) {
+      trial = trials.find((t) => String(t._id) === String(trialSession));
+      if (!trial) return fail(res, 'Buổi chạy thử đã chọn không thuộc giải này, hoặc chưa chạy xong.', 400);
+    } else {
+      trial = trials[0] || null;
+    }
+    exception = !trial;
+    if (exception && !reason) return fail(res, 'Chưa có buổi chạy thử nào cho giải này đã chạy — xác nhận là ngoại lệ, hãy ghi lý do theo quy định CLB.', 400);
+    if (trial && trial.outcome?.met === false && !reason) return fail(res, 'Buổi chạy thử chưa đạt mục tiêu — ghi lý do vẫn cho tham gia.', 400);
+  } else if (!reason) {
+    return fail(res, 'Ghi lý do rút khỏi giải.', 400);
+  }
+
+  const claimed = await RaceEntry.findOneAndUpdate(
+    { _id: entry._id, status: entry.status },
+    {
+      $set: {
+        status: decision,
+        decision: {
+          status: decision,
+          by: req.user._id,
+          at: new Date(),
+          trialSession: trial?._id || null,
+          trialMet: trial ? trial.outcome?.met ?? null : null,
+          exception,
+          reason: reason || undefined,
+        },
+        reviewNeeded: false,
+      },
+      $unset: { reviewReason: 1, reviewFlaggedAt: 1 },
+    },
+    { new: true }
+  );
+  if (!claimed) return fail(res, 'Đăng ký vừa được người khác thay đổi — tải lại rồi thử lại.', 409);
+
+  const horse = await Horse.findById(entry.horse).select('name owner');
+  if (horse?.owner) {
+    await pushNotification({
+      recipientUser: horse.owner,
+      horse: horse._id,
+      type: 'race_decision',
+      severity: 'info',
+      message: `🏁 HLV đã ${DECISION_WORDS[decision]} ${entry.raceName} (${new Date(entry.raceDate).toLocaleDateString('vi-VN')}) cho ${horse.name}${reason ? ` — ${reason}` : trial ? ' dựa trên buổi chạy thử' : ''}.`,
+    });
+  }
+  await logAction({
+    actorId: req.user._id,
+    action: `race.decision_${decision}`,
+    targetModel: 'RaceEntry',
+    targetId: entry._id,
+    metadata: { trialSession: trial?._id || null, trialMet: trial?.outcome?.met ?? null, exception, reason: reason || null, from: entry.status },
+  });
+  return ok(res, claimed, 'Race decision recorded.');
+});
+
+/** The trial runs linked to an entry, newest first — what the decision modal shows as evidence. */
+const listEntryTrials = asyncHandler(async (req, res) => {
+  const entry = await RaceEntry.findById(req.params.id);
+  if (!entry) return fail(res, 'Race entry not found.', 404);
+  if (!(await canAccessHorse(req.user, entry.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+  const linked = await TrainingSession.find({ raceEntry: entry._id })
+    .select('scheduledAt status outcome metrics actualStartAt actualEndAt simulatedWorkSec videoUrl performanceRating prescription')
+    .sort({ scheduledAt: -1 });
+  return ok(res, linked, 'Trials fetched.');
+});
+
 const ctrl = crudFactory(RaceEntry, {
-  populate: [{ path: 'horse', select: 'name' }, { path: 'registeredBy', select: 'name' }],
+  populate: [{ path: 'horse', select: 'name' }, { path: 'registeredBy', select: 'name' }, { path: 'decision.by', select: 'name' }],
   defaultSort: { raceDate: -1 },
   label: 'Race entry',
   // Same per-role visibility as training/health: an Owner sees their own horses' race entries,
@@ -189,6 +286,8 @@ router.get('/:id', ctrl.getOne);
 router.post('/', authorize(ROLES.HEAD_TRAINER), ctrl.createOne);
 router.put('/:id', authorize(ROLES.HEAD_TRAINER), ctrl.updateOne);
 router.patch('/:id/results', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), recordResults);
+router.post('/:id/decision', authorize(ROLES.HEAD_TRAINER), recordDecision);
+router.get('/:id/trials', listEntryTrials);
 router.delete('/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), ctrl.removeOne);
 
 module.exports = router;

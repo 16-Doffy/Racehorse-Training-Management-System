@@ -53,6 +53,9 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onC
       </div>
       {actualTimeLabel(session) && <div className="text-xs">Thực tế {actualTimeLabel(session)}</div>}
       {workout(session.prescription) && <div>{workout(session.prescription)}</div>}
+      {session.raceEntry?.raceName && (
+        <Text className="!text-xs">Chạy thử cho {session.raceEntry.raceName} ({dayjs(session.raceEntry.raceDate).format('DD/MM')})</Text>
+      )}
       {session.coachNote && <Text type="secondary" className="!text-xs">{session.coachNote}</Text>}
       <div className="flex items-center gap-1.5 text-xs">
         <span className={`inline-block h-2 w-2 rounded-full ${status.dot}`} />

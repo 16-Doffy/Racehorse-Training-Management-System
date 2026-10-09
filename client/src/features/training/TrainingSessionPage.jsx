@@ -37,6 +37,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { trainingSessionApi, trainingPlanApi } from './trainingApi';
 import { horsesApi } from '../horses/horsesApi';
+import { raceApi } from '../race/raceApi';
 import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
 import { useLockedHorseIds, useHorseClearances } from './useLockedHorses';
 import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } from '../../constants/health';
@@ -142,6 +143,14 @@ export default function TrainingSessionPage() {
   });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
+  const { data: racesData } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
+  const draftSessionType = Form.useWatch('sessionType', createForm);
+  const draftIsTrial = draftKind === 'trial' || draftSessionType === 'trial_run';
+  // A trial is run for one of the horse's entries still to come.
+  const trialRaceOptions = (racesData?.data || [])
+    .filter((r) => String(r.horse?._id || r.horse) === String(draft.horse) && ['registered', 'confirmed'].includes(r.status) && dayjs(r.raceDate).isAfter(dayjs()))
+    .map((r) => ({ value: r._id, label: `${r.raceName} — ${dayjs(r.raceDate).format('DD/MM/YYYY')}${r.distance ? ` · ${r.distance}m` : ''}` }));
+  const firstWeek = searchParams.get('first') === '1';
 
   const filteredPlan = planFilter ? (plansData?.data || []).find((p) => p._id === planFilter) : null;
   const filteredHorse = horseFilter ? (horsesData?.data || []).find((h) => h._id === horseFilter) : null;
@@ -566,6 +575,29 @@ export default function TrainingSessionPage() {
         </Tag>
       )}
 
+      {firstWeek && filteredPlan && !(sessionsData?.data || []).length && (
+        <Alert
+          className="!mb-4"
+          type="info"
+          showIcon
+          title={`Kế hoạch của ${filteredPlan.horse?.name || 'ngựa'} chưa có buổi tập nào`}
+          description="Lập kế hoạch chỉ đặt ra giai đoạn và lịch tuần mẫu. Sinh lịch cho tuần đầu tiên để có các buổi tập cụ thể; người chăm sóc được báo lịch ngay."
+          action={
+            <Button
+              type="primary"
+              loading={generateMutation.isPending}
+              onClick={() => {
+                const start = dayjs(filteredPlan.phases?.[0]?.startDate || filteredPlan.startDate || undefined);
+                const week = mondayOf(start.isBefore(dayjs()) ? dayjs() : start);
+                setWeekStart(week);
+                generateMutation.mutate({ plan: filteredPlan, start: week.toDate() });
+              }}
+            >
+              Sinh lịch tuần đầu tiên
+            </Button>
+          }
+        />
+      )}
       <LiveSessionMonitor sessions={sessionsData?.data || []} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -674,6 +706,8 @@ export default function TrainingSessionPage() {
             if (changed.horse) {
               const plan = (plansData?.data || []).find((p) => String(p.horse?._id) === String(changed.horse) && p.status === 'active');
               createForm.setFieldValue('trainingPlan', plan?._id);
+              // A trial defaults to the race the plan prepares for.
+              createForm.setFieldValue('raceEntry', plan?.targetRace?._id || plan?.targetRace || undefined);
             }
             // A recovering horse can't be booked above the vet's level: pull the intensity down to
             // the highest one allowed as soon as the horse is picked.
@@ -737,6 +771,17 @@ export default function TrainingSessionPage() {
                   options={kindOptions.map((o) => ({ value: o.value, label: o.label }))}
                 />
               </Form.Item>
+
+              {draftIsTrial && (
+                <Form.Item
+                  name="raceEntry"
+                  label="Chạy thử cho giải"
+                  rules={[{ required: true, message: 'Chọn giải mà buổi chạy thử này chuẩn bị' }]}
+                  extra={trialRaceOptions.length ? 'Kết quả chạy thử hiện trên trang Đăng ký giải, cạnh đúng giải này.' : 'Ngựa chưa có giải sắp tới — đăng ký giải trước khi chạy thử.'}
+                >
+                  <Select placeholder="Chọn giải" options={trialRaceOptions} />
+                </Form.Item>
+              )}
 
               <Form.Item
                 name="objective"

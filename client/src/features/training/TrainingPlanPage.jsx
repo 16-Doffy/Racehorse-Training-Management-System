@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Table, Button, Typography, Tag, Card, Select, Empty, Dropdown, Modal, Progress, Space } from 'antd';
 import { PlusOutlined, CalendarOutlined, ScheduleOutlined, DownOutlined } from '@ant-design/icons';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { message } from '../../lib/antdStatic';
@@ -156,7 +156,10 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, onOpen
 }
 
 export default function TrainingPlanPage() {
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // "Lập kế hoạch" on a race entry lands here with ?race=<id>: open the wizard for that horse and race.
+  const presetRace = searchParams.get('race');
+  const [wizardOpen, setWizardOpen] = useState(Boolean(presetRace));
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -323,7 +326,12 @@ export default function TrainingPlanPage() {
 
       <PlanWizard
         open={wizardOpen}
-        onClose={() => setWizardOpen(false)}
+        onClose={() => {
+          setWizardOpen(false);
+          if (presetRace) setSearchParams({});
+        }}
+        preset={presetRace ? { race: presetRace } : null}
+        onCreated={(plan) => plan?._id && navigate(`/training/sessions?plan=${plan._id}&first=1`)}
         horses={horsesData?.data || []}
         races={racesData?.data || []}
         plans={plans}

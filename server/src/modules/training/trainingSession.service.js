@@ -7,6 +7,7 @@ const ExamRequest = require('../../models/ExamRequest');
 const { logAction } = require('../audit/audit.service');
 const { pushNotification, notifyCaretaker } = require('../alerts/notification.service');
 const { openExamRequest } = require('../health/examRequest.service');
+const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const { MIN_DIGEST_MINUTES } = require('./readiness.service');
 const {
   OBJECTIVE_LABELS,
@@ -314,6 +315,9 @@ async function onAborted(session, actor) {
       severity: 'warning',
       message: `⏹ Buổi ${what} đang chạy của ${horse.name} đã được dừng${ran} — ${why}. Số liệu đến lúc dừng được giữ lại.`,
     });
+  }
+  if (ABORT_NEEDS_EXAM.includes(session.abortCategory)) {
+    await flagConfirmedEntries(horse._id, `dừng buổi tập giữa chừng — ${why}`);
   }
   if (ABORT_NEEDS_EXAM.includes(session.abortCategory) && actor?._id) {
     if (!(await ExamRequest.exists({ horse: horse._id, status: 'pending' }))) {

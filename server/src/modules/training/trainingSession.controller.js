@@ -1,6 +1,7 @@
 const TrainingSession = require('../../models/TrainingSession');
 const TrainingPlan = require('../../models/TrainingPlan');
 const Horse = require('../../models/Horse');
+const RaceEntry = require('../../models/RaceEntry');
 const ExamRequest = require('../../models/ExamRequest');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
@@ -29,12 +30,33 @@ const {
   kindSpeedProblem,
 } = require('../../constants/training');
 const { announceSessionToGroom, buildFromKind, closeRun } = require('./trainingSession.service');
+const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const { ROLES } = require('../../constants/roles');
 
 // What the trainer describes when booking a session. Status, metrics, rating, outcome and the
 // readiness snapshot are all server-owned or set through their own endpoints — accepting them
 // here let a client create a session that was already "completed" with a made-up result.
-const PLAN_FIELDS = ['kind', 'sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'scheduledAt', 'assignedTo'];
+const PLAN_FIELDS = ['kind', 'sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'scheduledAt', 'assignedTo', 'raceEntry'];
+
+const isTrial = (s) => s.kind === 'trial' || s.sessionType === 'trial_run';
+
+/**
+ * A trial run is run for one race entry of the same horse, still on, and before its race day. Returns
+ * { raceEntry } (the entry id, defaulting to the plan's target race) or { error }. Other sessions carry
+ * no entry.
+ */
+async function trialEntryFor({ horse, kind, sessionType, scheduledAt, raceEntry, plan }) {
+  if (!isTrial({ kind, sessionType })) return { raceEntry: null };
+  const id = raceEntry || plan?.targetRace;
+  if (!id) return { error: 'Chạy thử phải gắn với một giải đã đăng ký của ngựa này — chọn giải ở ô "Chạy thử cho giải".' };
+  const entry = await RaceEntry.findById(id).select('horse raceName raceDate status');
+  if (!entry || String(entry.horse) !== String(horse)) return { error: 'Giải đã chọn không phải của ngựa này.' };
+  if (!['registered', 'confirmed'].includes(entry.status)) return { error: `Giải ${entry.raceName} đã ${entry.status === 'withdrawn' ? 'rút' : 'kết thúc'} — không chạy thử cho giải này được.` };
+  const raceDay = new Date(entry.raceDate);
+  raceDay.setHours(0, 0, 0, 0);
+  if (scheduledAt && new Date(scheduledAt) >= raceDay) return { error: `Chạy thử phải trước ngày đua ${raceDay.toLocaleDateString('vi-VN')}.` };
+  return { raceEntry: entry._id };
+}
 
 /**
  * Fills a booking from its kind of work: what the trainer left out (objective, intensity, type, the
@@ -180,6 +202,7 @@ const listSessions = asyncHandler(async (req, res) => {
   const sessions = await TrainingSession.find(filter)
     .populate('horse', 'name healthStatus')
     .populate('assignedTo', 'name')
+    .populate('raceEntry', 'raceName raceDate status')
     .sort({ scheduledAt: -1 });
   return ok(res, sessions, 'Training sessions fetched.');
 });
@@ -228,6 +251,9 @@ const createSession = asyncHandler(async (req, res) => {
   }
   const problem = applyKind(body) || rangeProblem(body.prescription, PRESCRIPTION_RANGES) || kindSpeedProblem(body.kind, body.prescription?.targetSpeedKmh);
   if (problem) return fail(res, problem, 400);
+  const trial = await trialEntryFor({ horse, ...body, plan });
+  if (trial.error) return fail(res, trial.error, 400);
+  body.raceEntry = trial.raceEntry;
   const { readiness, error } = await checkReadiness(
     horse,
     { scheduledAt: body.scheduledAt, intensity: body.intensity, sessionType: body.sessionType, objective: body.objective },
@@ -272,6 +298,10 @@ const updateSession = asyncHandler(async (req, res) => {
     }
     const scheduledAt = new Date(changes.scheduledAt);
     if (!(scheduledAt > new Date())) return fail(res, 'Giờ tập mới phải ở tương lai.', 400);
+    if (session.raceEntry) {
+      const trial = await trialEntryFor({ horse: session.horse, kind: session.kind, sessionType: session.sessionType, scheduledAt, raceEntry: session.raceEntry });
+      if (trial.error) return fail(res, trial.error, 400);
+    }
     const moved = await TrainingSession.findOneAndUpdate(
       { _id: session._id, status: session.status, scheduledAt: session.scheduledAt },
       { $set: { scheduledAt, status: SESSION_STATUS.SCHEDULED }, $unset: { readiness: 1, blockedReason: 1 } },
@@ -295,6 +325,13 @@ const updateSession = asyncHandler(async (req, res) => {
   if (problem) return fail(res, problem, 400);
   if (changes.scheduledAt !== undefined && !(new Date(changes.scheduledAt) > new Date())) {
     return fail(res, 'Giờ tập mới phải ở tương lai.', 400);
+  }
+  if (Object.keys(changes).length > 0) {
+    const merged = { kind: changes.kind ?? session.kind, sessionType: changes.sessionType ?? session.sessionType, scheduledAt: changes.scheduledAt ?? session.scheduledAt };
+    const plan = await TrainingPlan.findById(session.trainingPlan).select('targetRace');
+    const trial = await trialEntryFor({ horse: session.horse, ...merged, raceEntry: changes.raceEntry ?? session.raceEntry, plan });
+    if (trial.error) return fail(res, trial.error, 400);
+    changes.raceEntry = trial.raceEntry;
   }
   const previousTime = new Date(session.scheduledAt).getTime();
   const readStatus = session.status;
@@ -541,6 +578,7 @@ async function blockForFever(res, session, bodyTempC, user) {
       message: `🌡️ [ƯU TIÊN CAO] ${horse.name} sốt ${bodyTempC} °C khi kiểm tra trước buổi tập — buổi tập đã bị chặn, cần bác sĩ khám.`,
     });
   }
+  await flagConfirmedEntries(session.horse, `sốt ${bodyTempC} °C khi kiểm tra trước buổi tập`);
   return markBlocked(res, session, { message: detail, data: { readiness } }, user, 'trainingSession.pre_check', {
     bodyTempC,
     confirmedBy: user._id,
@@ -672,7 +710,7 @@ const deleteSession = asyncHandler(async (req, res) => {
 });
 
 // What a booking is, without its outcome: copied when a missed session is booked again.
-const BOOKING_FIELDS = ['kind', 'sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'assignedTo', 'trainingPlan', 'horse'];
+const BOOKING_FIELDS = ['kind', 'sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'assignedTo', 'trainingPlan', 'horse', 'raceEntry'];
 
 /**
  * POST /training/sessions/:id/reschedule { scheduledAt } — books a missed session again at a new
@@ -698,6 +736,10 @@ const rescheduleSession = asyncHandler(async (req, res) => {
   }
   const blocked = await getMedicalBlock(session.horse);
   if (blocked) return fail(res, `Không xếp lại được: ${blocked}`, 409);
+  if (session.raceEntry) {
+    const trial = await trialEntryFor({ horse: session.horse, kind: session.kind, sessionType: session.sessionType, scheduledAt, raceEntry: session.raceEntry });
+    if (trial.error) return fail(res, trial.error, 400);
+  }
 
   const booking = pick(session.toObject(), BOOKING_FIELDS);
   const next = new TrainingSession({ ...booking, scheduledAt, status: SESSION_STATUS.SCHEDULED, generated: false });

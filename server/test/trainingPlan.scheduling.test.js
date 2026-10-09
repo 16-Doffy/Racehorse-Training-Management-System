@@ -134,11 +134,12 @@ test('the vet restriction reduces work and a medical block books nothing', async
 test('race day is skipped and the trial replaces both normal workouts eight days earlier', async () => {
   const start = mondayOf(Date.now() + 14 * DAY_MS);
   const plan = planFor(start);
-  plan.targetRace = { raceName: 'Cup', raceDate: new Date(start.getTime() + 8 * DAY_MS), distance: 2000, status: 'confirmed' };
+  plan.targetRace = { _id: 'r1', raceName: 'Cup', raceDate: new Date(start.getTime() + 8 * DAY_MS), distance: 2000, status: 'confirmed' };
   const trial = await generatePlanWeek({ plan, weekStart: start, actor: { _id: 'u1' }, notify: false });
   assert.equal(trial.created.length, 1);
   assert.equal(trial.created[0].kind, 'trial');
   assert.equal(trial.created[0].prescription.distanceM, 2000);
+  assert.equal(String(trial.created[0].raceEntry), 'r1', 'the trial is linked to the plan race');
   const raceWeek = await generatePlanWeek({ plan, weekStart: new Date(start.getTime() + 7 * DAY_MS), actor: { _id: 'u1' }, notify: false });
   assert.ok(raceWeek.skipped.some((s) => /ngày đua Cup/.test(s.reason)));
 });

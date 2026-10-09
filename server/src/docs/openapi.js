@@ -292,6 +292,7 @@ module.exports = {
           actualStartAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true, description: 'Server time when the session was started; never sent by a client' },
           actualEndAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true, description: 'Server time when the session ended or was stopped' },
           actualDurationSec: { type: 'integer', nullable: true, readOnly: true },
+          raceEntry: { type: 'string', nullable: true, description: 'Trial runs only: the race entry it prepares (same horse, still on, before race day); defaults to the plan target race' },
           simulatedWorkSec: { type: 'integer', nullable: true, readOnly: true, description: 'Work covered on the sensor simulator clock (5 s tick = 30 s of work); separate from the real times' },
           endedBy: { type: 'string', nullable: true, readOnly: true, description: 'Who ended or stopped the run; null when the sensor feed closed it' },
           evaluatedBy: { type: 'string', nullable: true, readOnly: true },
@@ -563,7 +564,22 @@ module.exports = {
           distance: { type: 'number', description: 'Required on create, 400-6000 m' },
           venue: { type: 'string', example: 'Trường đua Đại Nam' },
           surface: { type: 'string', enum: ['turf', 'dirt', 'synthetic', 'sand'] },
-          status: { type: 'string', enum: ['registered', 'confirmed', 'completed', 'withdrawn'], description: 'completed only through PATCH /races/{id}/results' },
+          status: { type: 'string', enum: ['registered', 'confirmed', 'completed', 'withdrawn'], description: 'New entries are registered; confirmed/withdrawn only through POST /races/{id}/decision, completed only through PATCH /races/{id}/results' },
+          decision: {
+            type: 'object',
+            readOnly: true,
+            properties: {
+              status: { type: 'string', enum: ['confirmed', 'withdrawn'] },
+              by: { type: 'string' },
+              at: { type: 'string', format: 'date-time' },
+              trialSession: { type: 'string', nullable: true, description: 'The linked trial run the decision rests on' },
+              trialMet: { type: 'boolean', nullable: true },
+              exception: { type: 'boolean', description: 'Confirmed without a trial run for this entry (reason required)' },
+              reason: { type: 'string' },
+            },
+          },
+          reviewNeeded: { type: 'boolean', readOnly: true, description: 'Health changed after confirmation (non-eligible exam, lock or lower level, incident, fever, run stopped for health); cleared by a new decision' },
+          reviewReason: { type: 'string', readOnly: true },
           result: { type: 'string' },
           position: { type: 'integer', minimum: 1 },
           finishTime: { type: 'string', example: '1:12.45' },
@@ -1473,6 +1489,27 @@ module.exports = {
         parameters: [idParam('id')],
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { position: { type: 'integer', minimum: 1 }, finishTime: { type: 'string' }, prizeMoney: { type: 'number', minimum: 0 }, result: { type: 'string' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
+    '/races/{id}/decision': {
+      post: {
+        tags: ['Races (scaffold)'],
+        summary: "The trainer's decision: confirm the horse for the race or withdraw it (Head Trainer)",
+        description:
+          'A trial result is evidence, not the decision. Confirming re-checks the medical state now (409 if grounded or recovering). trialSession, when given, must be a run of this entry ' +
+          '(raceEntry link, same horse, completed/evaluated); without it the latest such run is used. With no run trial, or a trial that missed its targets, a reason is required ' +
+          '(exception per club policy). Withdrawing needs a reason. Stores decision {status, by, at, trialSession, trialMet, exception, reason}, clears reviewNeeded, notifies the owner, audits race.decision_*.',
+        parameters: [idParam('id')],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['decision'], properties: { decision: { type: 'string', enum: ['confirmed', 'withdrawn'] }, trialSession: { type: 'string' }, reason: { type: 'string' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
+    '/races/{id}/trials': {
+      get: {
+        tags: ['Races (scaffold)'],
+        summary: 'Trial runs linked to this entry, newest first',
+        parameters: [idParam('id')],
+        responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/TrainingSession' } }), 403: responses[403], 404: responses[404] },
       },
     },
     '/races/{id}': {
