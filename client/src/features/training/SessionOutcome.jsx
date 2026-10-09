@@ -69,23 +69,30 @@ export default function SessionOutcome({ session }) {
   const { status, outcome, performanceRating, videoUrl } = session;
 
   if (status === 'cancelled') return <Text type="secondary" className="!text-xs">Buổi tập đã hủy</Text>;
+  if (status === 'missed') return <Text type="secondary" className="!text-xs">Lỡ giờ — không chạy</Text>;
   if (status === 'scheduled') return <Text type="secondary" className="!text-xs">Chưa diễn ra</Text>;
 
   const rows = buildRows(session);
   const hasTargets = rows.some((r) => r.target != null);
   // Rows are only ticked/crossed once the session is finished; mid-session numbers are still moving.
-  const judged = status === 'completed' && outcome?.met != null;
+  const done = status === 'completed' || status === 'evaluated';
+  const judged = done && outcome?.met != null;
 
   return (
     <div className="min-w-[210px]">
       <div className="flex items-center gap-2 mb-1.5">
         {status === 'in_progress' && <Tag color="processing" className="!m-0">Đang đo</Tag>}
-        {status === 'completed' && judged && (
+        {status === 'aborted' && (
+          <Tag color="volcano" className="!m-0">
+            Dừng giữa chừng{session.abortReason ? `: ${session.abortReason}` : ''}
+          </Tag>
+        )}
+        {done && judged && (
           <Tag color={outcome.met ? 'success' : 'error'} className="!m-0 !font-medium">
             {outcome.met ? 'Đạt mục tiêu' : 'Chưa đạt'}
           </Tag>
         )}
-        {status === 'completed' && !judged && (
+        {done && !judged && (
           <Text type="secondary" className="!text-xs">
             {hasTargets ? 'Chưa có số đo để đối chiếu' : 'Không đặt mục tiêu'}
           </Text>

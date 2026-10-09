@@ -50,6 +50,11 @@ const trainingSessionSchema = new mongoose.Schema(
     actualStartAt: { type: Date, default: null },
     actualEndAt: { type: Date, default: null },
     actualDurationSec: { type: Number, default: null },
+    // Work covered on the sensor simulator's compressed clock (each 5 s tick stands for 30 s of work).
+    // Kept apart from the real clock above, which is when the server started and closed the run.
+    simulatedWorkSec: { type: Number, default: null },
+    endedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // null: closed by the sensor feed
+    evaluatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     abortReason: { type: String },
     abortCategory: { type: String, enum: ABORT_CATEGORIES },
     blockedReason: { type: String },

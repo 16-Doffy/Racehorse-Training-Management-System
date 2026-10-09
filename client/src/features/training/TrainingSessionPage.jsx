@@ -29,6 +29,8 @@ import {
   UnorderedListOutlined,
   SafetyCertificateOutlined,
   StopOutlined,
+  CheckCircleOutlined,
+  PauseCircleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -62,18 +64,12 @@ import {
   sessionTimeLabel,
   mondayOf,
   actualTimeLabel,
+  TRAINER_ABORT_OPTIONS,
+  DONE_STATUSES,
 } from './trainingVocab';
 
 const { Title, Text } = Typography;
 
-// What the evaluation form may still set with a bare status. Only a session that ran is evaluated:
-// a booking is completed by running it (pre-check, start), never by ticking it off.
-const NEXT_STATUSES = {
-  in_progress: ['completed', 'cancelled'],
-};
-const RAN = ['in_progress', 'completed', 'evaluated'];
-const statusOptionsFor = (current) =>
-  [current, ...(NEXT_STATUSES[current] || [])].map((value) => ({ value, label: STATUS_LABELS[value] }));
 const SESSION_TYPE_LABELS = { training: 'Buổi tập thường', trial_run: 'Lượt chạy thử' };
 const futureTimeRule = {
   validator: (_, value) =>
@@ -104,7 +100,10 @@ export default function TrainingSessionPage() {
   const [weekStart, setWeekStart] = useState(() => mondayOf(dayjs()));
   const [createForm] = Form.useForm();
   const [evalForm] = Form.useForm();
-  const evalStatus = Form.useWatch('status', evalForm);
+  const [endSession, setEndSession] = useState(null);
+  const [endForm] = Form.useForm();
+  const [abortSession, setAbortSession] = useState(null);
+  const [abortForm] = Form.useForm();
   const draftKind = Form.useWatch('kind', createForm);
   const [examForm] = Form.useForm();
   const [examOpen, setExamOpen] = useState(false);
@@ -243,15 +242,40 @@ export default function TrainingSessionPage() {
       trainerComment: record.trainerComment,
       videoUrl: record.videoUrl,
       performanceRating: record.performanceRating,
-      status: record.status,
-      metrics: {
-        avgHeartRate: record.metrics?.avgHeartRate,
-        maxSpeed: record.metrics?.maxSpeed,
-        distance: record.metrics?.distance,
-      },
     });
     setEvalOpen(true);
   };
+
+  // Ending a run (the work is done) leads straight to its evaluation.
+  const endMutation = useMutation({
+    mutationFn: ({ id, metrics }) => trainingSessionApi.end(id, metrics ? { metrics } : {}),
+    onSuccess: (res) => {
+      const done = res?.data;
+      message.success(done?.outcome?.summary ? `Đã kết thúc buổi tập. ${done.outcome.summary}` : 'Đã kết thúc buổi tập.');
+      invalidate();
+      setEndSession(null);
+      endForm.resetFields();
+      if (done) openEvaluation({ ...done, horse: endSession?.horse || done.horse });
+    },
+    onError: (err) => {
+      if (err?.status === 409) invalidate();
+      message.error(err.message || 'Không kết thúc được buổi tập.');
+    },
+  });
+
+  const abortMutation = useMutation({
+    mutationFn: ({ id, category, reason }) => trainingSessionApi.abort(id, { category, reason }),
+    onSuccess: () => {
+      message.success('Đã dừng buổi tập. Số liệu đến lúc dừng được giữ lại.');
+      invalidate();
+      setAbortSession(null);
+      abortForm.resetFields();
+    },
+    onError: (err) => {
+      if (err?.status === 409) invalidate();
+      message.error(err.message || 'Không dừng được buổi tập.');
+    },
+  });
 
   const cancelMutation = useMutation({
     mutationFn: ({ id, cancelReason }) => trainingSessionApi.update(id, { status: 'cancelled', cancelReason }),
@@ -454,9 +478,19 @@ export default function TrainingSessionPage() {
               {record.status === 'missed' ? 'Xếp lại lịch' : 'Đổi giờ'}
             </Button>
           )}
-          {RAN.includes(record.status) && (
-            <Button size="small" icon={<EditOutlined />} onClick={() => openEvaluation(record)}>
-              Đánh giá
+          {record.status === 'in_progress' && (
+            <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => setEndSession(record)}>
+              Kết thúc
+            </Button>
+          )}
+          {record.status === 'in_progress' && (
+            <Button size="small" danger icon={<PauseCircleOutlined />} onClick={() => setAbortSession(record)}>
+              Dừng giữa chừng
+            </Button>
+          )}
+          {DONE_STATUSES.includes(record.status) && (
+            <Button size="small" type={record.status === 'completed' ? 'primary' : 'default'} icon={<EditOutlined />} onClick={() => openEvaluation(record)}>
+              {record.status === 'completed' ? 'Đánh giá' : 'Sửa đánh giá'}
             </Button>
           )}
           {['scheduled', 'ready', 'blocked'].includes(record.status) && (
@@ -568,6 +602,8 @@ export default function TrainingSessionPage() {
           onEvaluate={openEvaluation}
           onSchedule={openSchedule}
           onCancel={setCancelSession}
+          onEnd={setEndSession}
+          onAbort={setAbortSession}
           schedulingId={scheduleMutation.isPending ? scheduleMutation.variables?.session._id : null}
         />
       )}
@@ -832,7 +868,7 @@ export default function TrainingSessionPage() {
       </Modal>
 
       <Modal
-        title={`Đánh giá buổi tập — ${activeSession?.horse?.name || ''}`}
+        title={`${activeSession?.status === 'evaluated' ? 'Sửa đánh giá' : 'Đánh giá buổi tập'} — ${activeSession?.horse?.name || ''}`}
         open={evalOpen}
         okText="Lưu đánh giá"
         cancelText="Hủy"
@@ -865,56 +901,19 @@ export default function TrainingSessionPage() {
           layout="vertical"
           onFinish={(values) =>
             // An emptied field must reach the server as '' so the link is cleared, not ignored.
-            evalMutation.mutate({ id: activeSession._id, payload: { ...values, videoUrl: values.videoUrl || '' } })
+            evalMutation.mutate({ id: activeSession._id, payload: { ...values, videoUrl: values.videoUrl || '', trainerComment: values.trainerComment || '' } })
           }
         >
-          <Form.Item name="status" label="Trạng thái">
-            <Select options={statusOptionsFor(activeSession?.status)} />
-          </Form.Item>
-
-          <Divider titlePlacement="left" className="!my-2 !text-sm">
-            Chỉ số thực tế
-          </Divider>
-          <Text type="secondary" className="!text-xs block mb-2">
-            Buổi tập có bật cảm biến sẽ tự điền. Buổi tập không bật thì nhập tay ở đây để hệ thống
-            đối chiếu được với mục tiêu.
-          </Text>
-          <Row gutter={16}>
-            <Col xs={8}>
-              <Form.Item
-                name={['metrics', 'avgHeartRate']}
-                label="Nhịp tim TB (bpm)"
-                extra={activePrescription?.targetHeartRateMax ? `Mục tiêu ≤ ${activePrescription.targetHeartRateMax}` : null}
-              >
-                <InputNumber min={METRIC_LIMITS.avgHeartRate[0]} max={METRIC_LIMITS.avgHeartRate[1]} className="w-full" />
-              </Form.Item>
-            </Col>
-            <Col xs={8}>
-              <Form.Item
-                name={['metrics', 'maxSpeed']}
-                label="Tốc độ tối đa (km/h)"
-                extra={activePrescription?.targetSpeedKmh ? `Mục tiêu ≥ ${activePrescription.targetSpeedKmh}` : null}
-              >
-                <InputNumber min={METRIC_LIMITS.maxSpeed[0]} max={METRIC_LIMITS.maxSpeed[1]} className="w-full" />
-              </Form.Item>
-            </Col>
-            <Col xs={8}>
-              <Form.Item
-                name={['metrics', 'distance']}
-                label="Cự ly chạy (m)"
-                extra={activePrescription?.distanceM ? `Mục tiêu ≥ ${activePrescription.distanceM}` : null}
-              >
-                <InputNumber min={METRIC_LIMITS.distance[0]} max={METRIC_LIMITS.distance[1]} step={100} className="w-full" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item
-            name="performanceRating"
-            label="Điểm phong độ (1 = kém, 10 = xuất sắc)"
-            extra={evalStatus !== 'completed' ? 'Chấm điểm khi chuyển buổi tập sang "Đã hoàn thành".' : null}
-          >
-            <InputNumber min={1} max={10} className="w-full" placeholder="VD: 8" disabled={evalStatus !== 'completed'} />
+          {activeSession && (
+            <div className="mb-3">
+              <Text strong className="!text-sm block mb-1">
+                Kết quả đo được
+              </Text>
+              <SessionOutcome session={activeSession} />
+            </div>
+          )}
+          <Form.Item name="performanceRating" label="Điểm phong độ (1 = kém, 10 = xuất sắc)" rules={[{ required: true, message: 'Chấm điểm phong độ' }]}>
+            <InputNumber min={1} max={10} precision={0} className="w-full" placeholder="VD: 8" />
           </Form.Item>
           <Form.Item
             name="trainerComment"
@@ -931,22 +930,9 @@ export default function TrainingSessionPage() {
           >
             <Input placeholder="https://..." allowClear />
           </Form.Item>
-          {/* Mirrors the server rule in trainingSession.controller.js createPostSessionCare. */}
-          {(activeSession?.intensity === 'high' || activeSession?.objective === 'race_simulation') &&
-          activeSession?.status !== 'completed' ? (
-            <Alert
-              type="warning"
-              showIcon
-              title="Đây là buổi tập nặng"
-              description="Khi chuyển sang 'Đã hoàn thành', hệ thống sẽ tự giao việc ngâm chân và tắm cho nhân viên chăm sóc phụ trách, đồng thời báo kết quả cho chủ sở hữu. Nếu nhịp tim trung bình vượt mục tiêu từ 10%, bác sĩ sẽ nhận được yêu cầu khám."
-            />
-          ) : activeSession?.status !== 'completed' ? (
-            <Alert
-              type="info"
-              showIcon
-              title="Khi hoàn thành, chủ sở hữu sẽ nhận được thông báo kết quả buổi tập."
-            />
-          ) : null}
+          {activeSession?.status === 'evaluated' && (
+            <Alert type="info" showIcon title="Buổi này đã được đánh giá. Lưu lại sẽ sửa đánh giá; giá trị cũ được giữ trong nhật ký hệ thống." />
+          )}
         </Form>
       </Modal>
 
@@ -976,6 +962,80 @@ export default function TrainingSessionPage() {
         >
           <Form.Item name="scheduledAt" label="Giờ bắt đầu dự kiến mới" rules={[{ required: true, message: 'Chọn ngày giờ mới' }, futureTimeRule]}>
             <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Kết thúc buổi tập — ${endSession?.horse?.name || ''}`}
+        open={Boolean(endSession)}
+        onCancel={() => setEndSession(null)}
+        onOk={() => endForm.submit()}
+        okText="Kết thúc buổi tập"
+        cancelText="Đóng"
+        confirmLoading={endMutation.isPending}
+        destroyOnHidden
+      >
+        {endSession && (
+          <Form
+            form={endForm}
+            layout="vertical"
+            onFinish={(values) => {
+              const typed = Object.fromEntries(Object.entries(values.metrics || {}).filter(([, v]) => v !== undefined && v !== null));
+              endMutation.mutate({ id: endSession._id, metrics: Object.keys(typed).length ? typed : undefined });
+            }}
+          >
+            <Text className="block mb-2">
+              Kết thúc ngay bây giờ: giờ kết thúc thực tế là lúc bấm, số liệu được đối chiếu với mục tiêu, buổi nặng sẽ giao việc chăm sóc sau tập cho nhân viên.
+            </Text>
+            {endSession.metrics?.sampleCount ? (
+              <SessionOutcome session={endSession} />
+            ) : (
+              <>
+                <Alert className="!mb-3" type="info" showIcon title="Buổi này chưa có số liệu cảm biến. Nhập số đo tay nếu có (không bắt buộc)." />
+                <Row gutter={12}>
+                  <Col xs={8}>
+                    <Form.Item name={['metrics', 'distance']} label="Cự ly (m)">
+                      <InputNumber min={METRIC_LIMITS.distance[0]} max={METRIC_LIMITS.distance[1]} step={100} className="w-full" />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={8}>
+                    <Form.Item name={['metrics', 'maxSpeed']} label="Tốc độ tối đa">
+                      <InputNumber min={METRIC_LIMITS.maxSpeed[0]} max={METRIC_LIMITS.maxSpeed[1]} className="w-full" />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={8}>
+                    <Form.Item name={['metrics', 'avgHeartRate']} label="Nhịp tim TB">
+                      <InputNumber min={METRIC_LIMITS.avgHeartRate[0]} max={METRIC_LIMITS.avgHeartRate[1]} className="w-full" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </>
+            )}
+          </Form>
+        )}
+      </Modal>
+
+      <Modal
+        title={`Dừng giữa chừng — ${abortSession?.horse?.name || ''}`}
+        open={Boolean(abortSession)}
+        onCancel={() => setAbortSession(null)}
+        onOk={() => abortForm.submit()}
+        okText="Dừng buổi tập"
+        okButtonProps={{ danger: true }}
+        cancelText="Đóng"
+        confirmLoading={abortMutation.isPending}
+        destroyOnHidden
+      >
+        <Text className="block mb-3">
+          Số liệu đo được đến lúc dừng và giờ dừng thực tế được giữ lại. Chọn "Sức khỏe" hoặc "Nghi chấn thương" thì bác sĩ nhận yêu cầu khám ưu tiên cao.
+        </Text>
+        <Form form={abortForm} layout="vertical" onFinish={(values) => abortMutation.mutate({ id: abortSession._id, ...values })}>
+          <Form.Item name="category" label="Nhóm nguyên nhân" rules={[{ required: true, message: 'Chọn nhóm nguyên nhân' }]}>
+            <Select options={TRAINER_ABORT_OPTIONS} placeholder="Chọn nhóm nguyên nhân" />
+          </Form.Item>
+          <Form.Item name="reason" label="Lý do" rules={[{ required: true, whitespace: true, message: 'Ghi lý do dừng' }]}>
+            <Input.TextArea rows={2} placeholder="VD: Ngựa khập khiễng chân trước trái sau 300 m." />
           </Form.Item>
         </Form>
       </Modal>

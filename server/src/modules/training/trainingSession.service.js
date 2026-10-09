@@ -14,6 +14,8 @@ const {
   SESSION_STATUS,
   PRECHECK_WINDOW,
   PRECHECK_VALID_HOURS,
+  ABORT_CATEGORY_LABELS,
+  ABORT_NEEDS_EXAM,
   canTransition,
 } = require('../../constants/training');
 const { notifyHorseStaff } = require('../alerts/notification.service');
@@ -208,35 +210,128 @@ function buildFromKind(kind, overrides = {}) {
   return { kind, objective: k.objective, intensity: k.intensity, sessionType: k.sessionType, prescription };
 }
 
-/**
- * Closes a running session once its sensor feed has covered the workout: same path as a trainer
- * marking it completed (outcome, care after hard work, exam if overexerted, owner told), done in
- * the name of whoever started it. `workedSeconds` is the work covered on the simulator's clock.
- */
-async function autoComplete(session, { workedSeconds } = {}) {
-  if (session.status !== 'in_progress') return false;
-  session.status = 'completed';
-  // The simulator runs the work on a compressed clock, so the session ends after the work it
-  // covered, not after the few real seconds the demo took.
-  const started = session.actualStartAt || new Date();
-  session.actualStartAt = started;
-  session.actualDurationSec = workedSeconds ?? Math.round((Date.now() - started.getTime()) / 1000);
-  session.actualEndAt = new Date(started.getTime() + session.actualDurationSec * 1000);
-  session.outcome = computeOutcome(session);
-  await session.save();
-  // Whoever pressed Bắt đầu, else the horse's trainer: the exam request and audit need a person.
+/** Who a closed run is recorded against when nobody pressed a button: whoever started it, else the trainer. */
+async function actorFor(session) {
   const horse = await Horse.findById(session.horse).select('assignedTrainer');
   const userId = session.startedBy || horse?.assignedTrainer;
-  const user = userId ? await User.findById(userId).select('name role') : null;
-  await logAction({
-    actorId: user?._id || null,
-    action: 'trainingSession.auto_complete',
-    targetModel: 'TrainingSession',
-    targetId: session._id,
-    metadata: { distance: session.metrics?.distance, outcome: session.outcome?.met },
-  });
-  await onCompleted(session, user);
-  return true;
+  return userId ? User.findById(userId).select('name role') : null;
+}
+
+/**
+ * Closes a running session: completed when the work is done (the sensor feed or the trainer), aborted
+ * when it was stopped part-way (the trainer, the vet's lock, the horse leaving the club).
+ *
+ * One atomic claim on in_progress: a double click, a retry, the simulator's next tick or a lock landing
+ * at the same moment cannot close it twice, and only the caller that wins runs what follows (outcome,
+ * care after hard work, exam request, owner told). Returns the closed session, or null when it was not
+ * running (anymore).
+ *
+ * The clock is the server's: actualEndAt is now and actualDurationSec is end − start. Work covered on
+ * the simulator's compressed clock goes to simulatedWorkSec and never replaces the real times.
+ * `metrics` (measured by hand) is accepted only for a run the sensor never reported on.
+ */
+async function closeRun(sessionId, { to, user = null, abortCategory, abortReason, workedSeconds, metrics } = {}) {
+  const current = await TrainingSession.findById(sessionId).select('status actualStartAt metrics.sampleCount');
+  if (!current || current.status !== SESSION_STATUS.IN_PROGRESS) return null;
+  const now = new Date();
+  const startedAt = current.actualStartAt || now;
+  const set = {
+    status: to,
+    actualStartAt: startedAt,
+    actualEndAt: now,
+    actualDurationSec: Math.max(0, Math.round((now - startedAt) / 1000)),
+    endedBy: user?._id || null,
+  };
+  if (workedSeconds != null) set.simulatedWorkSec = workedSeconds;
+  if (metrics && !current.metrics?.sampleCount) {
+    for (const [key, value] of Object.entries(metrics)) {
+      if (['avgHeartRate', 'maxHeartRate', 'maxSpeed', 'distance'].includes(key) && value !== undefined && value !== null && value !== '') {
+        set[`metrics.${key}`] = Number(value);
+      }
+    }
+  }
+  if (to === SESSION_STATUS.ABORTED) Object.assign(set, { abortCategory, abortReason });
+
+  const session = await TrainingSession.findOneAndUpdate({ _id: sessionId, status: SESSION_STATUS.IN_PROGRESS }, { $set: set }, { new: true });
+  if (!session) return null;
+
+  const actor = user?.name ? user : (await actorFor(session)) || user;
+  if (to === SESSION_STATUS.COMPLETED) {
+    session.outcome = computeOutcome(session);
+    await TrainingSession.updateOne({ _id: session._id }, { $set: { outcome: session.outcome } });
+    if (actor?._id) {
+      await logAction({
+        actorId: actor._id,
+        action: user ? 'trainingSession.end' : 'trainingSession.auto_complete',
+        targetModel: 'TrainingSession',
+        targetId: session._id,
+        metadata: { distance: session.metrics?.distance, outcome: session.outcome?.met, durationSec: session.actualDurationSec },
+      });
+    }
+    await onCompleted(session, actor);
+  } else {
+    if (actor?._id) {
+      await logAction({
+        actorId: actor._id,
+        action: 'trainingSession.abort',
+        targetModel: 'TrainingSession',
+        targetId: session._id,
+        metadata: { category: abortCategory, reason: abortReason, distance: session.metrics?.distance },
+      });
+    }
+    await onAborted(session, actor);
+  }
+  return session;
+}
+
+/**
+ * A run stopped part-way: the owner is told, the trainer too when someone else stopped it (the vet's
+ * lock), and when the reason is the horse itself the vet is asked to look at it. No care-after-work
+ * tasks: those follow work that was done.
+ */
+async function onAborted(session, actor) {
+  const horse = await Horse.findById(session.horse).select('name owner');
+  if (!horse) return;
+  const what = (SESSION_KINDS[session.kind]?.label || OBJECTIVE_LABELS[session.objective] || 'buổi tập').toLowerCase();
+  const why = `${ABORT_CATEGORY_LABELS[session.abortCategory] || 'dừng'}${session.abortReason ? `: ${session.abortReason}` : ''}`;
+  const ran = session.metrics?.distance ? ` sau ${session.metrics.distance} m` : '';
+  if (horse.owner) {
+    await pushNotification({
+      recipientUser: horse.owner,
+      horse: horse._id,
+      trainingSession: session._id,
+      type: 'session_completed',
+      severity: 'warning',
+      message: `⏹ ${horse.name} dừng buổi ${what} giữa chừng${ran} — ${why}.`,
+    });
+  }
+  if (['medical_lock', 'horse_left'].includes(session.abortCategory)) {
+    await notifyHorseStaff({
+      staff: 'trainer',
+      horse: horse._id,
+      trainingSession: session._id,
+      type: 'session_completed',
+      severity: 'warning',
+      message: `⏹ Buổi ${what} đang chạy của ${horse.name} đã được dừng${ran} — ${why}. Số liệu đến lúc dừng được giữ lại.`,
+    });
+  }
+  if (ABORT_NEEDS_EXAM.includes(session.abortCategory) && actor?._id) {
+    if (!(await ExamRequest.exists({ horse: horse._id, status: 'pending' }))) {
+      await openExamRequest({
+        horse,
+        requestedBy: actor,
+        reason: `Dừng buổi ${what} giữa chừng — ${why}.`,
+        priority: 'high',
+        trainingSession: session._id,
+        message: `🩺 [ƯU TIÊN CAO] ${horse.name} phải dừng buổi ${what} giữa chừng — ${why}. Cần bác sĩ khám.`,
+      });
+    }
+  }
+}
+
+/** The sensor feed covered the workout: the run is completed, its simulated work kept apart. */
+async function autoComplete(session, { workedSeconds } = {}) {
+  return Boolean(await closeRun(session._id, { to: SESSION_STATUS.COMPLETED, workedSeconds }));
 }
 
 /**
@@ -310,5 +405,6 @@ module.exports = {
   onCompleted,
   buildFromKind,
   autoComplete,
+  closeRun,
   OVEREXERTION_RATIO,
 };

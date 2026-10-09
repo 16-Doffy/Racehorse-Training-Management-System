@@ -292,6 +292,9 @@ module.exports = {
           actualStartAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true, description: 'Server time when the session was started; never sent by a client' },
           actualEndAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true, description: 'Server time when the session ended or was stopped' },
           actualDurationSec: { type: 'integer', nullable: true, readOnly: true },
+          simulatedWorkSec: { type: 'integer', nullable: true, readOnly: true, description: 'Work covered on the sensor simulator clock (5 s tick = 30 s of work); separate from the real times' },
+          endedBy: { type: 'string', nullable: true, readOnly: true, description: 'Who ended or stopped the run; null when the sensor feed closed it' },
+          evaluatedBy: { type: 'string', nullable: true, readOnly: true },
           abortReason: { type: 'string', readOnly: true },
           abortCategory: { type: 'string', enum: ['health', 'weather', 'equipment', 'other'], readOnly: true },
           blockedReason: { type: 'string', readOnly: true },
@@ -950,11 +953,11 @@ module.exports = {
           'Sending only { scheduledAt } with no status moves a scheduled/ready/blocked session to a valid future time, resets it to scheduled, ' +
           'and clears readiness/blockedReason so a fresh pre-check is required. A concurrent start or booking change returns 409. ' +
           'Other booking edits (kind, sessionType, objective, intensity, prescription, coachNote, assignedTo) require scheduled status. ' +
-          'Bare body status may request only completed (from in_progress: a booking cannot be marked done without running) or cancelled (optional cancelReason); ready, blocked, in_progress and missed are server-owned.',
+          'Bare body status may request only cancelled (a booking that never ran; optional cancelReason). A running session is stopped with /abort, ended with /end; ready, blocked, in_progress, completed, aborted, evaluated and missed are server-owned.',
         parameters: [idParam('id')],
         requestBody: { content: { 'application/json': { schema: { allOf: [
           { $ref: '#/components/schemas/TrainingSession' },
-          { type: 'object', properties: { status: { type: 'string', enum: ['completed', 'cancelled'] }, overrideReason: { type: 'string' }, cancelReason: { type: 'string' } } },
+          { type: 'object', properties: { status: { type: 'string', enum: ['cancelled'] }, cancelReason: { type: 'string' } } },
         ] }, examples: { moveTime: { summary: 'Move an unstarted booking and invalidate its pre-check', value: { scheduledAt: '2030-01-07T08:00:00+07:00' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
       },
@@ -1021,20 +1024,45 @@ module.exports = {
         responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
+    '/training/sessions/{id}/end': {
+      post: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'End a running session (in_progress → completed)',
+        description:
+          'Claims in_progress atomically: a second call, a retry or the simulator finishing at the same time gets 409 and changes nothing. ' +
+          'actualEndAt is the server time of the call and actualDurationSec = actualEndAt − actualStartAt (the simulator keeps its compressed work in simulatedWorkSec). ' +
+          'Computes outcome against the prescription; for a hard session (high intensity or race simulation) creates icing (+15 min) and bathing (+45 min) tasks for the groom; ' +
+          'raises a high-priority exam request when the average heart rate is 10% or more over the limit; notifies the owner. ' +
+          '`metrics` (measured by hand) is accepted only when the sensor never reported on this run (400 otherwise).',
+        parameters: [idParam('id')],
+        requestBody: { required: false, content: { 'application/json': { schema: { type: 'object', properties: { metrics: { type: 'object', properties: { distance: { type: 'number' }, maxSpeed: { type: 'number' }, avgHeartRate: { type: 'number' } } } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
+    '/training/sessions/{id}/abort': {
+      post: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'Stop a running session part-way (in_progress → aborted)',
+        description:
+          'category (health, injury, behaviour, weather, equipment, other) and reason are required. Atomic like /end. Keeps the metrics measured so far and records the real end time. ' +
+          'No care-after-work tasks. The owner is notified; health/injury also opens a high-priority exam request (unless one is pending). ' +
+          'The system uses two more categories itself: medical_lock (a vet lock or lower training level landing while the session runs) and horse_left (archived horse).',
+        parameters: [idParam('id')],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['category', 'reason'], properties: { category: { type: 'string', enum: ['health', 'injury', 'behaviour', 'weather', 'equipment', 'other'] }, reason: { type: 'string' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
     '/training/sessions/{id}/evaluation': {
       patch: {
         tags: ['Training (Head Trainer)'],
-        summary: "Record the trainer's post-session evaluation (comment, rating, metrics, status)",
+        summary: "File the trainer's evaluation of a completed run (completed → evaluated)",
         description:
-          'Recomputes `outcome` by comparing the recorded metrics against the session prescription. ' +
-          'When this moves the session to `completed` for the first time and the session was hard ' +
-          '(intensity high, or a race simulation), it also creates the follow-up icing and bathing ' +
-          "DailyTasks for the horse's caretaker (who is notified), and notifies the owner that their horse has trained. " +
-          'If the average heart rate is 10% or more over the prescribed limit, a high-priority exam request is raised ' +
-          "for the horse's vet (once per session, and not while the horse already has one pending).",
+          'Only for completed or evaluated sessions (409 otherwise). Accepts performanceRating (integer 1–10), trainerComment and videoUrl only; ' +
+          'metrics and status are refused (400) — what was measured is recorded when the run closes. Filing it again on an evaluated session is a correction: ' +
+          'the audit entry trainingSession.evaluation_corrected keeps the old and new values.',
         parameters: [idParam('id')],
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { trainerComment: { type: 'string' }, performanceRating: { type: 'integer' }, metrics: { type: 'object' }, status: { type: 'string', enum: ['completed', 'cancelled'] }, cancelReason: { type: 'string' }, videoUrl: { type: 'string', description: 'http(s) link; empty string clears it' } } } } } },
-        responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 404: responses[404] },
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { performanceRating: { type: 'integer', minimum: 1, maximum: 10 }, trainerComment: { type: 'string' }, videoUrl: { type: 'string', description: 'http(s) link; empty string clears it' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
     '/health/records': {

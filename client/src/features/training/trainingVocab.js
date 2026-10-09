@@ -174,12 +174,36 @@ const hhmm = (d) => new Date(d).toLocaleTimeString('vi-VN', { hour: '2-digit', m
  * When the session really ran, next to its booked time: "07:42–07:50 (8 phút)", "Bắt đầu 07:42 —
  * đang chạy", or null when it never ran (booked, cancelled, or closed by hand without starting).
  */
+const durationText = (sec) => (sec < 60 ? `${Math.max(0, Math.round(sec))} giây` : `${Math.round(sec / 60)} phút`);
+
+/**
+ * The real clock of a run (when the server started and closed it), and apart from it the work covered on
+ * the sensor simulator's compressed clock: "10:00–10:01 (41 giây) · vận động mô phỏng 4 phút".
+ */
 export function actualTimeLabel(s) {
   if (!s?.actualStartAt) return null;
   if (!s.actualEndAt) return `Bắt đầu ${hhmm(s.actualStartAt)} — đang chạy`;
-  const minutes = Math.max(1, Math.round((s.actualDurationSec || 0) / 60));
-  return `${hhmm(s.actualStartAt)}–${hhmm(s.actualEndAt)} (${minutes} phút)`;
+  const real = `${hhmm(s.actualStartAt)}–${hhmm(s.actualEndAt)} (${durationText(s.actualDurationSec || 0)})`;
+  return s.simulatedWorkSec ? `${real} · vận động mô phỏng ${durationText(s.simulatedWorkSec)}` : real;
 }
+
+// Why a run was stopped part-way (server: ABORT_CATEGORY_LABELS). The last two are set by the system.
+export const ABORT_CATEGORY_LABELS = {
+  health: 'Sức khỏe ngựa bất thường',
+  injury: 'Nghi chấn thương',
+  behaviour: 'Ngựa không hợp tác',
+  weather: 'Thời tiết / mặt sân',
+  equipment: 'Thiết bị / cảm biến',
+  other: 'Lý do khác',
+  medical_lock: 'Bác sĩ khóa tập',
+  horse_left: 'Ngựa ngừng quản lý',
+};
+export const TRAINER_ABORT_OPTIONS = ['health', 'injury', 'behaviour', 'weather', 'equipment', 'other'].map((value) => ({
+  value,
+  label: ABORT_CATEGORY_LABELS[value],
+}));
+// A completed run and an evaluated one are both done work.
+export const DONE_STATUSES = ['completed', 'evaluated'];
 
 // Only light work in the afternoon: the main workout is in the morning (server: AFTERNOON_KINDS).
 export const AFTERNOON_KINDS = ['walk', 'canter'];

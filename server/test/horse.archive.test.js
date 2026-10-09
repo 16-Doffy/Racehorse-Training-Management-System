@@ -97,6 +97,7 @@ test.beforeEach(() => {
   // The vet scope also reaches horses through open exam requests and its own health records.
   ExamRequest.find = (filter) => ({ select: async () => exams.filter((row) => matches(row, filter)) });
   HealthRecord.find = () => ({ select: async () => [] });
+  TrainingSession.find = (filter) => ({ select: async () => sessions.filter((row) => matches(row, filter)) });
   DailyTask.deleteMany = async () => { throw new Error('Archive must preserve task history'); };
   StableAssignment.deleteMany = async () => ({ deletedCount: 1 });
 });

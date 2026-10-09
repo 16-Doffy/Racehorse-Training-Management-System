@@ -32,6 +32,9 @@ router.post('/sessions/:id/pre-check', authorize(ROLES.HEAD_TRAINER), sessionCtr
 router.post('/sessions/:id/start', authorize(ROLES.HEAD_TRAINER), sessionCtrl.startSession);
 // Book a missed session again at a new time: { scheduledAt }.
 router.post('/sessions/:id/reschedule', authorize(ROLES.HEAD_TRAINER), sessionCtrl.rescheduleSession);
+// End (completed) or stop part-way (aborted) a running session; each claims in_progress atomically.
+router.post('/sessions/:id/end', authorize(ROLES.HEAD_TRAINER), sessionCtrl.endSession);
+router.post('/sessions/:id/abort', authorize(ROLES.HEAD_TRAINER), sessionCtrl.abortSession);
 router.patch('/sessions/:id/evaluation', authorize(ROLES.HEAD_TRAINER), sessionCtrl.recordEvaluation);
 router.delete('/sessions/:id', authorize(ROLES.HEAD_TRAINER), sessionCtrl.deleteSession);
 

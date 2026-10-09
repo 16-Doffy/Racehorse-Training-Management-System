@@ -71,8 +71,17 @@ function startSensorSimulator() {
         m.distance = Math.min(target.distance, Math.round((m.distance || 0) + (speed / 3.6) * SIM_SECONDS_PER_TICK));
         const elapsedMinutes = (m.sampleCount * SIM_SECONDS_PER_TICK) / 60;
         const done = m.distance >= target.distance || (target.durationMinutes && elapsedMinutes >= target.durationMinutes);
+        // Written only while the run is still on: a reading that lands after the trainer stopped it, or
+        // after the vet's lock, must not change what was recorded at that moment.
         // eslint-disable-next-line no-await-in-loop
-        await session.save();
+        const kept = await TrainingSession.updateOne(
+          { _id: session._id, status: 'in_progress' },
+          { $set: { 'metrics.avgHeartRate': m.avgHeartRate, 'metrics.sampleCount': m.sampleCount, 'metrics.maxHeartRate': m.maxHeartRate, 'metrics.maxSpeed': m.maxSpeed, 'metrics.distance': m.distance } }
+        );
+        if (!kept.modifiedCount) {
+          formOfSession.delete(key);
+          continue;
+        }
 
         const horseId = session.horse._id;
         // Live readings go to people watching this horse: its owner's horse room and the trainer
@@ -94,8 +103,8 @@ function startSensorSimulator() {
         if (done) {
           formOfSession.delete(key);
           // eslint-disable-next-line no-await-in-loop
-          await autoComplete(session, { workedSeconds: m.sampleCount * SIM_SECONDS_PER_TICK });
-          io.to([`horse:${horseId}`, trainer ? `user:${trainer}` : 'role:head_trainer']).emit('session:completed', { sessionId: session._id, horseId });
+          const closed = await autoComplete(session, { workedSeconds: m.sampleCount * SIM_SECONDS_PER_TICK });
+          if (closed) io.to([`horse:${horseId}`, trainer ? `user:${trainer}` : 'role:head_trainer']).emit('session:completed', { sessionId: session._id, horseId });
         }
       }
     } catch (err) {

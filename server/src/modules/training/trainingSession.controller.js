@@ -23,10 +23,12 @@ const {
   SESSION_KINDS,
   PRESCRIPTION_RANGES,
   METRIC_RANGES,
+  TRAINER_ABORT_CATEGORIES,
+  ABORT_CATEGORY_LABELS,
   rangeProblem,
   kindSpeedProblem,
 } = require('../../constants/training');
-const { computeOutcome, announceSessionToGroom, raiseExamIfOverexerted, onCompleted, buildFromKind } = require('./trainingSession.service');
+const { announceSessionToGroom, buildFromKind, closeRun } = require('./trainingSession.service');
 const { ROLES } = require('../../constants/roles');
 
 // What the trainer describes when booking a session. Status, metrics, rating, outcome and the
@@ -129,18 +131,15 @@ function standingOverride(snapshot, readiness) {
 }
 
 /**
- * The one place a session's status changes. Every route that can move a session (update, start,
- * evaluation) goes through here, so no route can skip the lock and readiness checks — the
- * evaluation endpoint used to set in_progress without either.
- *
- * Mutates `session` (unsaved) and returns { error } or { effects } for the caller to finish.
+ * A bare `status` in a PUT body: the only one allowed is cancelling a booking that never ran. Mutates
+ * `session` (unsaved) and returns { error } when refused.
  */
-async function applyStatusChange(session, next, { user, overrideReason, cancelReason }) {
+async function applyStatusChange(session, next, { cancelReason }) {
   const current = session.status;
-  if (!next || next === current) return { effects: {} };
+  if (!next || next === current) return {};
 
-  // Ready and blocked are not something a request can ask for: they are reached only through the
-  // pre-check, which is what looks at the horse.
+  // Only calling off a booking can be asked for with a bare status. Ready and blocked come from the
+  // pre-check; a run is started, ended, stopped or evaluated through its own endpoint.
   if (!SESSION_BODY_STATUSES.includes(next)) {
     return {
       error: {
@@ -150,39 +149,21 @@ async function applyStatusChange(session, next, { user, overrideReason, cancelRe
       },
     };
   }
-
   if (!canTransition(current, next)) {
+    const running = current === SESSION_STATUS.IN_PROGRESS;
     return {
       error: {
         status: 409,
-        message: `Không thể chuyển buổi tập từ "${SESSION_STATUS_LABELS[current]}" sang "${SESSION_STATUS_LABELS[next]}".`,
+        message: running
+          ? 'Buổi tập đang chạy không hủy được — dùng "Dừng giữa chừng" để giữ lại số liệu đã đo.'
+          : `Không thể chuyển buổi tập từ "${SESSION_STATUS_LABELS[current]}" sang "${SESSION_STATUS_LABELS[next]}".`,
         data: { code: SESSION_ERROR.INVALID_TRANSITION, from: current, to: next },
       },
     };
   }
-
-  const effects = {};
-
-  // The real clock of the session, next to the booked time: when it actually started and ended.
-  if (next === 'in_progress') {
-    session.startedBy = user._id;
-    session.actualStartAt = new Date();
-  }
-  if (next === 'completed' && session.actualStartAt && !session.actualEndAt) {
-    session.actualEndAt = new Date();
-    session.actualDurationSec = Math.round((session.actualEndAt - session.actualStartAt) / 1000);
-  }
-  if (next === 'cancelled' && typeof cancelReason === 'string' && cancelReason.trim()) session.cancelReason = cancelReason.trim();
+  if (next === SESSION_STATUS.CANCELLED && typeof cancelReason === 'string' && cancelReason.trim()) session.cancelReason = cancelReason.trim();
   session.status = next;
-  if (next === 'completed') effects.completed = true;
-  return { effects };
-}
-
-/** Saves a session after applyStatusChange and runs the side effects it asked for. */
-async function finishStatusChange(session, effects, user) {
-  if (effects.completed) session.outcome = computeOutcome(session);
-  await session.save();
-  return effects.completed ? onCompleted(session, user) : 0;
+  return {};
 }
 
 /* -------------------------------------------------------------------------- */
@@ -316,23 +297,32 @@ const updateSession = asyncHandler(async (req, res) => {
     return fail(res, 'Giờ tập mới phải ở tương lai.', 400);
   }
   const previousTime = new Date(session.scheduledAt).getTime();
+  const readStatus = session.status;
   Object.assign(session, changes);
 
-  const { effects, error } = await applyStatusChange(session, req.body.status, {
-    user: req.user,
-    overrideReason: req.body.overrideReason,
-    cancelReason: req.body.cancelReason,
-  });
+  const { error } = await applyStatusChange(session, req.body.status, { cancelReason: req.body.cancelReason });
   if (error) return fail(res, error.message, error.status, error.data);
 
-  await finishStatusChange(session, effects, req.user);
+  // Claimed on the status it was read in: a session started meanwhile is not cancelled behind its back.
+  const saved = await TrainingSession.findOneAndUpdate(
+    { _id: session._id, status: readStatus },
+    { $set: { ...changes, status: session.status, ...(session.cancelReason ? { cancelReason: session.cancelReason } : {}) } },
+    { new: true }
+  );
+  if (!saved) return fail(res, 'Buổi tập vừa thay đổi trạng thái — tải lại rồi thử lại.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });
   // A moved session moves the groom's feeding deadline with it.
-  if (new Date(session.scheduledAt).getTime() !== previousTime) {
-    const horse = await Horse.findById(session.horse).select('name');
-    await announceSessionToGroom(session, horse?.name || 'Ngựa');
+  if (new Date(saved.scheduledAt).getTime() !== previousTime) {
+    const horse = await Horse.findById(saved.horse).select('name');
+    await announceSessionToGroom(saved, horse?.name || 'Ngựa');
   }
-  await logAction({ actorId: req.user._id, action: 'trainingSession.update', targetModel: 'TrainingSession', targetId: session._id });
-  return ok(res, session, 'Training session updated.');
+  await logAction({
+    actorId: req.user._id,
+    action: saved.status === SESSION_STATUS.CANCELLED && readStatus !== SESSION_STATUS.CANCELLED ? 'trainingSession.cancel' : 'trainingSession.update',
+    targetModel: 'TrainingSession',
+    targetId: saved._id,
+    metadata: saved.cancelReason ? { reason: saved.cancelReason } : undefined,
+  });
+  return ok(res, saved, 'Training session updated.');
 });
 
 /**
@@ -557,51 +547,113 @@ async function blockForFever(res, session, bodyTempC, user) {
   });
 }
 
-// Trainer's post-session evaluation: performance rating, professional comment, measured metrics.
+const EVALUATION_FIELDS = ['performanceRating', 'trainerComment', 'videoUrl'];
+
+/**
+ * The trainer's evaluation of a run that was completed: rating, comment, video. It moves the session
+ * to evaluated. What was measured is not part of it: that was recorded when the run closed. Filing it
+ * again on an evaluated session is a correction, allowed, and the audit keeps the old values.
+ */
 const recordEvaluation = asyncHandler(async (req, res) => {
-  const { trainerComment, performanceRating, metrics, status, overrideReason, cancelReason, videoUrl } = req.body;
   const session = await loadSession(req, res);
   if (!session) return undefined;
-  const metricProblem = rangeProblem(metrics, METRIC_RANGES);
-  if (metricProblem) return fail(res, metricProblem, 400);
-
-  const { effects, error } = await applyStatusChange(session, status, { user: req.user, overrideReason, cancelReason });
-  if (error) return fail(res, error.message, error.status, error.data);
-
-  // A score describes a finished session; rating one that hasn't happened yet means nothing.
-  if (performanceRating !== undefined && performanceRating !== null && session.status !== 'completed') {
-    return fail(res, 'Chỉ chấm điểm phong độ khi buổi tập đã hoàn thành.', 400);
+  if (![SESSION_STATUS.COMPLETED, SESSION_STATUS.EVALUATED].includes(session.status)) {
+    return fail(res, `Chỉ đánh giá được buổi tập đã hoàn thành (buổi này đang "${SESSION_STATUS_LABELS[session.status] || session.status}").`, 409, {
+      code: SESSION_ERROR.INVALID_TRANSITION,
+      from: session.status,
+      to: SESSION_STATUS.EVALUATED,
+    });
+  }
+  if (req.body.metrics !== undefined || (req.body.status !== undefined && req.body.status !== SESSION_STATUS.EVALUATED)) {
+    return fail(res, 'Đánh giá chỉ gồm điểm, nhận xét và video — số liệu đo được và trạng thái do lúc kết thúc buổi ghi.', 400);
   }
 
-  if (videoUrl !== undefined && videoUrl !== null && videoUrl !== '') {
-    if (!/^https?:\/\/\S+$/i.test(String(videoUrl).trim())) {
-      return fail(res, 'Link video phải là một địa chỉ http(s) hợp lệ.', 400);
-    }
-    session.videoUrl = String(videoUrl).trim();
-  } else if (videoUrl === '' || videoUrl === null) {
-    session.videoUrl = undefined;
+  const changes = {};
+  const { performanceRating, trainerComment, videoUrl } = req.body;
+  if (performanceRating !== undefined && performanceRating !== null && performanceRating !== '') {
+    const rating = Number(performanceRating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 10) return fail(res, 'Điểm phong độ là số nguyên từ 1 đến 10.', 400);
+    changes.performanceRating = rating;
   }
-  if (trainerComment !== undefined) session.trainerComment = trainerComment;
-  if (performanceRating !== undefined) session.performanceRating = performanceRating;
-  if (metrics !== undefined) session.metrics = { ...session.metrics.toObject(), ...metrics };
-  // Re-judged whenever the numbers change on a finished session, not only at the moment it ends.
-  const reJudged = session.status === 'completed' && !effects.completed;
-  if (reJudged) session.outcome = computeOutcome(session);
+  if (trainerComment !== undefined) changes.trainerComment = String(trainerComment || '').trim();
+  if (videoUrl !== undefined) {
+    const link = String(videoUrl || '').trim();
+    if (link && !/^https?:\/\/\S+$/i.test(link)) return fail(res, 'Link video phải là một địa chỉ http(s) hợp lệ.', 400);
+    changes.videoUrl = link || null;
+  }
+  if (!Object.keys(changes).length) return fail(res, 'Nhập ít nhất điểm phong độ hoặc nhận xét.', 400);
 
-  const careTasksCreated = await finishStatusChange(session, effects, req.user);
-  // Numbers entered after the session was closed get the same overexertion check as live ones.
-  if (reJudged && metrics !== undefined) {
-    const horse = await Horse.findById(session.horse).select('name');
-    if (horse) await raiseExamIfOverexerted(session, req.user, horse);
-  }
+  const before = Object.fromEntries(EVALUATION_FIELDS.map((f) => [f, session[f] ?? null]));
+  const correction = session.status === SESSION_STATUS.EVALUATED;
+  const saved = await TrainingSession.findOneAndUpdate(
+    { _id: session._id, status: session.status },
+    { $set: { ...changes, status: SESSION_STATUS.EVALUATED, evaluatedAt: new Date(), evaluatedBy: req.user._id } },
+    { new: true }
+  );
+  if (!saved) return fail(res, 'Buổi tập vừa được người khác đánh giá — tải lại để xem.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });
+
   await logAction({
     actorId: req.user._id,
-    action: 'trainingSession.evaluate',
+    action: correction ? 'trainingSession.evaluation_corrected' : 'trainingSession.evaluate',
     targetModel: 'TrainingSession',
-    targetId: session._id,
-    metadata: { outcome: session.outcome?.met, careTasksCreated },
+    targetId: saved._id,
+    metadata: correction
+      ? { before, after: Object.fromEntries(EVALUATION_FIELDS.map((f) => [f, saved[f] ?? null])) }
+      : { rating: saved.performanceRating, outcome: saved.outcome?.met },
   });
-  return ok(res, session, 'Session evaluation recorded.');
+  return ok(res, saved, correction ? 'Đã sửa đánh giá (lưu vết trong nhật ký).' : 'Session evaluation recorded.');
+});
+
+/**
+ * The trainer ends a running session (the work is done, or the sensor feed isn't running). Measured
+ * numbers may be typed only for a run the sensor never reported on.
+ * POST /training/sessions/:id/end { metrics? }
+ */
+const endSession = asyncHandler(async (req, res) => {
+  const session = await loadSession(req, res);
+  if (!session) return undefined;
+  if (session.status !== SESSION_STATUS.IN_PROGRESS) {
+    return fail(res, `Chỉ kết thúc được buổi đang diễn ra (buổi này đang "${SESSION_STATUS_LABELS[session.status] || session.status}").`, 409, {
+      code: SESSION_ERROR.INVALID_TRANSITION,
+      from: session.status,
+      to: SESSION_STATUS.COMPLETED,
+    });
+  }
+  const { metrics } = req.body || {};
+  if (metrics !== undefined && metrics !== null) {
+    if (session.metrics?.sampleCount) return fail(res, 'Buổi này đã có số liệu cảm biến — không nhập tay đè lên được.', 400);
+    const problem = rangeProblem(metrics, METRIC_RANGES);
+    if (problem) return fail(res, problem, 400);
+  }
+  const closed = await closeRun(session._id, { to: SESSION_STATUS.COMPLETED, user: req.user, metrics: metrics || undefined });
+  if (!closed) return fail(res, 'Buổi tập vừa kết thúc hoặc đã dừng — tải lại để xem kết quả.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });
+  return ok(res, closed, 'Training session ended.');
+});
+
+/**
+ * The trainer stops a running session part-way. A reason and its category are required; what was
+ * measured until then is kept, and the real end time recorded.
+ * POST /training/sessions/:id/abort { category, reason }
+ */
+const abortSession = asyncHandler(async (req, res) => {
+  const session = await loadSession(req, res);
+  if (!session) return undefined;
+  const category = req.body?.category;
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+  if (!TRAINER_ABORT_CATEGORIES.includes(category)) {
+    return fail(res, `Chọn nhóm nguyên nhân: ${TRAINER_ABORT_CATEGORIES.map((c) => ABORT_CATEGORY_LABELS[c]).join(', ')}.`, 400);
+  }
+  if (!reason) return fail(res, 'Ghi lý do dừng buổi tập.', 400);
+  if (session.status !== SESSION_STATUS.IN_PROGRESS) {
+    return fail(res, `Chỉ dừng được buổi đang diễn ra (buổi này đang "${SESSION_STATUS_LABELS[session.status] || session.status}").`, 409, {
+      code: SESSION_ERROR.INVALID_TRANSITION,
+      from: session.status,
+      to: SESSION_STATUS.ABORTED,
+    });
+  }
+  const closed = await closeRun(session._id, { to: SESSION_STATUS.ABORTED, user: req.user, abortCategory: category, abortReason: reason });
+  if (!closed) return fail(res, 'Buổi tập vừa kết thúc hoặc đã dừng — tải lại để xem.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });
+  return ok(res, closed, 'Training session aborted.');
 });
 
 // A finished session is the record of work done and what came of it; only bookings that never
@@ -688,5 +740,7 @@ module.exports = {
   startSession,
   preCheckSession,
   recordEvaluation,
+  endSession,
+  abortSession,
   deleteSession,
 };

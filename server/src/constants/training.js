@@ -17,8 +17,9 @@ const INTENSITY_LABELS = {
 
 // Training session lifecycle. Single source of truth for which status may follow which: the
 // controller reads it, and nothing else should hard-code a status string for a transition.
-// Completed and cancelled are final: a session the vet's lock cancelled must not be reopened
-// into in_progress, which is what re-arms the sensor feed.
+// A booking that never ran ends cancelled or missed; a run ends completed (the work was done) or
+// aborted (stopped part-way, with a reason); a completed run becomes evaluated when the trainer files
+// the evaluation. None of the end states reopens into in_progress, which is what re-arms the sensor feed.
 const SESSION_STATUS = Object.freeze({
   SCHEDULED: 'scheduled',
   READY: 'ready', // pre-check passed; the only status a session can be started from (T2-04/T2-05)
@@ -31,26 +32,24 @@ const SESSION_STATUS = Object.freeze({
   MISSED: 'missed', // never started and past its grace period
 });
 
-// Edges are added together with the endpoint that uses them. ABORTED and EVALUATED have no way in
-// yet (end/abort and evaluation come later). MISSED is reached only by the missed-session job
-// (markMissedSessions), never by a request. A session is started only from READY and is completed
-// only after it ran: a booking cannot be marked done without the pre-check and the start.
+// Each edge has its own endpoint: pre-check (→ ready/blocked), start (→ in_progress), end (→ completed),
+// abort (→ aborted), evaluation (→ evaluated); missed is set only by the missed-session job. A run is
+// never cancelled: stopping it is an abort, which keeps what was measured.
 const SESSION_TRANSITIONS = Object.freeze({
   [SESSION_STATUS.SCHEDULED]: [SESSION_STATUS.READY, SESSION_STATUS.BLOCKED, SESSION_STATUS.CANCELLED, SESSION_STATUS.MISSED],
   [SESSION_STATUS.READY]: [SESSION_STATUS.IN_PROGRESS, SESSION_STATUS.BLOCKED, SESSION_STATUS.CANCELLED, SESSION_STATUS.MISSED],
   [SESSION_STATUS.BLOCKED]: [SESSION_STATUS.READY, SESSION_STATUS.CANCELLED, SESSION_STATUS.MISSED],
-  [SESSION_STATUS.IN_PROGRESS]: [SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED],
-  [SESSION_STATUS.COMPLETED]: [],
+  [SESSION_STATUS.IN_PROGRESS]: [SESSION_STATUS.COMPLETED, SESSION_STATUS.ABORTED],
+  [SESSION_STATUS.COMPLETED]: [SESSION_STATUS.EVALUATED],
   [SESSION_STATUS.EVALUATED]: [],
   [SESSION_STATUS.ABORTED]: [],
   [SESSION_STATUS.CANCELLED]: [],
   [SESSION_STATUS.MISSED]: [],
 });
 
-// Statuses a client may ask for with a bare `status` (PUT, evaluation). Everything else - ready,
-// blocked, in_progress, and later aborted/evaluated - is reached only through the endpoint that checks
-// its conditions, so a request body can never skip them. COMPLETED goes when the end endpoint lands.
-const SESSION_BODY_STATUSES = Object.freeze([SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED]);
+// The only status a client may ask for with a bare `status` (PUT): calling off a booking that never
+// ran. Every other status is reached through the endpoint that checks its conditions.
+const SESSION_BODY_STATUSES = Object.freeze([SESSION_STATUS.CANCELLED]);
 
 // A passed pre-check stops counting after this long: the horse's condition is judged for now, and a
 // session started much later has to be looked at again. CONFIGURABLE, simplified for the capstone.
@@ -83,12 +82,29 @@ const SESSION_OPEN_STATUSES = Object.freeze([
   SESSION_STATUS.IN_PROGRESS,
 ]);
 
-// Sessions a vet's training lock must stop. Blocked is left out on purpose: it is already held back,
-// and T4-03 decides how it reopens.
-const SESSION_LOCK_CANCELS = Object.freeze([SESSION_STATUS.SCHEDULED, SESSION_STATUS.READY, SESSION_STATUS.IN_PROGRESS]);
+// Bookings a vet's training lock cancels. Blocked is left out on purpose: it is already held back, and
+// reopens only through a new pre-check. A session already running is aborted instead (it ran).
+const SESSION_LOCK_CANCELS = Object.freeze([SESSION_STATUS.SCHEDULED, SESSION_STATUS.READY]);
 
-// Why a trainer stopped a running session.
-const ABORT_CATEGORIES = Object.freeze(['health', 'weather', 'equipment', 'other']);
+// Why a run was stopped part-way. medical_lock and horse_left are set by the system (the vet's lock,
+// the horse leaving the club), the rest are the trainer's choice.
+const ABORT_CATEGORY_LABELS = Object.freeze({
+  health: 'Sức khỏe ngựa bất thường',
+  injury: 'Nghi chấn thương',
+  behaviour: 'Ngựa không hợp tác',
+  weather: 'Thời tiết / mặt sân',
+  equipment: 'Thiết bị / cảm biến',
+  other: 'Lý do khác',
+  medical_lock: 'Bác sĩ khóa tập',
+  horse_left: 'Ngựa ngừng quản lý',
+});
+const ABORT_CATEGORIES = Object.freeze(Object.keys(ABORT_CATEGORY_LABELS));
+const TRAINER_ABORT_CATEGORIES = Object.freeze(['health', 'injury', 'behaviour', 'weather', 'equipment', 'other']);
+// Stopped because something may be wrong with the horse: the vet is asked to look at it.
+const ABORT_NEEDS_EXAM = Object.freeze(['health', 'injury']);
+
+// Runs that did not end in done work, counted apart in reports.
+const SESSION_NOT_DONE_STATUSES = Object.freeze([SESSION_STATUS.ABORTED, SESSION_STATUS.MISSED, SESSION_STATUS.CANCELLED]);
 
 // Sessions whose results count as done work in charts.
 const SESSION_DONE_STATUSES = Object.freeze([SESSION_STATUS.COMPLETED, SESSION_STATUS.EVALUATED]);
@@ -433,6 +449,10 @@ module.exports = {
   NORMAL_TEMP_RANGE,
   preCheckWindow,
   ABORT_CATEGORIES,
+  ABORT_CATEGORY_LABELS,
+  TRAINER_ABORT_CATEGORIES,
+  ABORT_NEEDS_EXAM,
+  SESSION_NOT_DONE_STATUSES,
   SESSION_ERROR,
   canTransition,
   OBJECTIVE_LABELS,

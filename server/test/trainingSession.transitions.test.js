@@ -8,11 +8,22 @@ const {
   canTransition,
 } = require('../src/constants/training');
 
-test('completed and cancelled are final', () => {
+test('cancelled, missed, aborted and evaluated are final; completed only becomes evaluated', () => {
   for (const to of Object.values(S)) {
-    assert.equal(canTransition(S.COMPLETED, to), false, `completed -> ${to}`);
-    assert.equal(canTransition(S.CANCELLED, to), false, `cancelled -> ${to}`);
+    for (const from of [S.CANCELLED, S.MISSED, S.ABORTED, S.EVALUATED]) {
+      assert.equal(canTransition(from, to), false, `${from} -> ${to}`);
+    }
+    assert.equal(canTransition(S.COMPLETED, to), to === S.EVALUATED, `completed -> ${to}`);
   }
+});
+
+test('a run ends completed or aborted, never cancelled', () => {
+  assert.deepEqual([...SESSION_TRANSITIONS[S.IN_PROGRESS]].sort(), [S.ABORTED, S.COMPLETED].sort());
+  assert.equal(canTransition(S.IN_PROGRESS, S.CANCELLED), false);
+  const into = (target) => Object.values(S).filter((from) => canTransition(from, target));
+  assert.deepEqual(into(S.ABORTED), [S.IN_PROGRESS]);
+  assert.deepEqual(into(S.EVALUATED), [S.COMPLETED]);
+  assert.deepEqual(into(S.COMPLETED), [S.IN_PROGRESS]);
 });
 
 test('a running session cannot go back to scheduled or start again', () => {
@@ -40,15 +51,12 @@ test('a session is started only from ready and completed only after it ran', () 
   assert.equal(canTransition(S.IN_PROGRESS, S.COMPLETED), true);
 });
 
-test('a session is started only from ready; aborted/evaluated still have no way in', () => {
+test('a session is started only from ready', () => {
   assert.deepEqual(SESSION_TRANSITIONS[S.SCHEDULED], [S.READY, S.BLOCKED, S.CANCELLED, S.MISSED]);
   assert.deepEqual(SESSION_TRANSITIONS[S.READY], [S.IN_PROGRESS, S.BLOCKED, S.CANCELLED, S.MISSED]);
   assert.equal(canTransition(S.SCHEDULED, S.IN_PROGRESS), false);
   assert.equal(canTransition(S.BLOCKED, S.IN_PROGRESS), false);
   assert.deepEqual(SESSION_TRANSITIONS[S.BLOCKED], [S.READY, S.CANCELLED, S.MISSED]);
-  for (const target of [S.EVALUATED, S.ABORTED]) {
-    for (const from of Object.values(S)) assert.equal(canTransition(from, target), false, `${from} -> ${target}`);
-  }
 });
 
 test('missed is reached only from a session that never ran (set by the missed-session job)', () => {
@@ -59,9 +67,9 @@ test('missed is reached only from a session that never ran (set by the missed-se
   assert.equal(SESSION_BODY_STATUSES.includes(S.MISSED), false);
 });
 
-test('a request body can only ask for completed or cancelled', () => {
+test('a request body can only ask for cancelled (calling off a booking)', () => {
   const { SESSION_BODY_STATUSES } = require('../src/constants/training');
-  assert.deepEqual([...SESSION_BODY_STATUSES].sort(), [S.CANCELLED, S.COMPLETED].sort());
+  assert.deepEqual([...SESSION_BODY_STATUSES], [S.CANCELLED]);
 });
 
 test('the pre-check window runs from 60 minutes before to 30 minutes after the session', () => {
@@ -80,9 +88,9 @@ test('every status has a table entry', () => {
   assert.deepEqual(Object.keys(SESSION_TRANSITIONS).sort(), Object.values(S).sort());
 });
 
-test('a lock stops booked and running sessions, an archive also the blocked ones', () => {
+test('a lock cancels bookings (a run is aborted instead), an archive also the blocked ones', () => {
   const { SESSION_LOCK_CANCELS, SESSION_OPEN_STATUSES, SESSION_DONE_STATUSES } = require('../src/constants/training');
-  assert.deepEqual([...SESSION_LOCK_CANCELS].sort(), [S.IN_PROGRESS, S.READY, S.SCHEDULED].sort());
+  assert.deepEqual([...SESSION_LOCK_CANCELS].sort(), [S.READY, S.SCHEDULED].sort());
   assert.ok(SESSION_OPEN_STATUSES.includes(S.BLOCKED));
   assert.deepEqual([...SESSION_DONE_STATUSES].sort(), [S.COMPLETED, S.EVALUATED].sort());
   for (const done of [S.COMPLETED, S.EVALUATED, S.ABORTED, S.CANCELLED, S.MISSED]) {

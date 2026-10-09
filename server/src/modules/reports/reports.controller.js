@@ -6,7 +6,7 @@ const ExamRequest = require('../../models/ExamRequest');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, fail } = require('../../utils/apiResponse');
 const { horseFilter } = require('../../utils/horseScope');
-const { SESSION_DONE_STATUSES } = require('../../constants/training');
+const { SESSION_DONE_STATUSES, SESSION_NOT_DONE_STATUSES } = require('../../constants/training');
 const { parsePeriodQuery, emptyPeriods, foldRecords } = require('../finance/financeSeries');
 
 /** Builds a { $gte, $lte } range filter from optional `from`/`to` query params, or {} if neither given. */
@@ -76,7 +76,14 @@ const getOverview = asyncHandler(async (req, res) => {
   const [sessionStats, ratingAgg, financeAgg, raceStats, overrideRows, outcomeAgg] = await Promise.all([
     TrainingSession.aggregate([
       { $match: sessionFilter },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
+      // Before runs could be aborted, stopping one marked it cancelled: a cancelled session that had
+      // started is counted as stopped part-way, not as a booking called off.
+      {
+        $group: {
+          _id: { $cond: [{ $and: [{ $eq: ['$status', 'cancelled'] }, { $gt: ['$actualStartAt', null] }] }, 'aborted', '$status'] },
+          count: { $sum: 1 },
+        },
+      },
     ]),
     TrainingSession.aggregate([
       { $match: { ...sessionFilter, performanceRating: { $ne: null } } },
@@ -108,6 +115,7 @@ const getOverview = asyncHandler(async (req, res) => {
   const careCoordination = await buildCareCoordination(range);
   const sessionsByStatus = Object.fromEntries(sessionStats.map((s) => [s._id, s.count]));
   const totalSessions = sessionStats.reduce((sum, s) => sum + s.count, 0);
+  const countOf = (statuses) => statuses.reduce((n, st) => n + (sessionsByStatus[st] || 0), 0);
 
   const buildFinanceSummary = (type) => {
     const rows = financeAgg.filter((r) => r._id.type === type);
@@ -126,6 +134,9 @@ const getOverview = asyncHandler(async (req, res) => {
       trainingPerformance: {
         totalSessions,
         sessionsByStatus,
+        // Done work (completed + evaluated) and runs/bookings that did not end in it, apart.
+        doneSessions: countOf(SESSION_DONE_STATUSES),
+        notDone: Object.fromEntries(SESSION_NOT_DONE_STATUSES.map((st) => [st, sessionsByStatus[st] || 0])),
         avgPerformanceRating: ratingAgg[0] ? Math.round(ratingAgg[0].avgRating * 10) / 10 : null,
         ratedSessionCount: ratingAgg[0]?.ratedCount || 0,
         targetsMet: outcomeAgg.find((o) => o._id === true)?.count || 0,

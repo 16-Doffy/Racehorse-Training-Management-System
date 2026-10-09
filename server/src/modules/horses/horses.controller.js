@@ -12,7 +12,8 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { ROLES } = require('../../constants/roles');
-const { SESSION_OPEN_STATUSES } = require('../../constants/training');
+const { SESSION_OPEN_STATUSES, SESSION_STATUS } = require('../../constants/training');
+const { closeRun } = require('../training/trainingSession.service');
 const { getScopedHorseIds, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { pushNotification } = require('../alerts/notification.service');
 const { clearanceMap } = require('../health/trainingClearance');
@@ -230,8 +231,17 @@ const archiveHorse = asyncHandler(async (req, res) => {
   const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
   if (!reason) return fail(res, 'Hãy ghi lý do ngừng quản lý (VD: đã bán, nghỉ hưu).', 400);
 
+  // A run in progress stops as aborted (it ran: keep what was measured); bookings are called off.
+  const running = await TrainingSession.find({ horse: horse._id, status: SESSION_STATUS.IN_PROGRESS }).select('_id');
+  for (const s of running) {
+    // eslint-disable-next-line no-await-in-loop
+    await closeRun(s._id, { to: SESSION_STATUS.ABORTED, user: req.user, abortCategory: 'horse_left', abortReason: reason });
+  }
   const [sessions, races, plans] = await Promise.all([
-    TrainingSession.updateMany({ horse: horse._id, status: { $in: SESSION_OPEN_STATUSES } }, { status: 'cancelled' }),
+    TrainingSession.updateMany(
+      { horse: horse._id, status: { $in: SESSION_OPEN_STATUSES.filter((st) => st !== SESSION_STATUS.IN_PROGRESS) } },
+      { status: 'cancelled', cancelReason: `Ngựa ngừng quản lý: ${reason}` }
+    ),
     RaceEntry.updateMany({ horse: horse._id, status: { $in: ['registered', 'confirmed'] }, raceDate: { $gte: new Date() } }, { status: 'withdrawn' }),
     TrainingPlan.updateMany({ horse: horse._id, status: { $in: ['draft', 'active'] } }, { status: 'cancelled' }),
     StableAssignment.deleteMany({ horse: horse._id }),
