@@ -16,6 +16,10 @@ const healthRecordSchema = new mongoose.Schema(
       enum: ['eligible', 'monitoring', 'injured', 'quarantined'],
       required: true,
     },
+    // The vet's assessment of how hard the horse may work from now on (after an injury or a treatment):
+    // none, light, moderate, high. Empty for an exam that says nothing about training. The newest one
+    // caps the training level until a later assessment raises it.
+    clearedLevel: { type: String, enum: ['none', 'light', 'moderate', 'high', null], default: null },
     notes: { type: String },
     // X-rays, lab results, scanned prescriptions (stored in GridFS, see utils/fileStore.js).
     attachments: [

@@ -33,6 +33,8 @@ export default function MedicalExaminationForm() {
     weightKg: '',
     diagnosis: '',
     resultStatus: 'eligible',
+    // Return-to-training assessment: how hard the horse may work from now on ('' = this exam says nothing about it).
+    clearedLevel: '',
     symptoms: '',
     notes: '',
   });
@@ -70,6 +72,7 @@ export default function MedicalExaminationForm() {
             weightKg: rec.horse?.weightKg || '',
             diagnosis: rec.diagnosis || '',
             resultStatus: rec.resultStatus || 'eligible',
+            clearedLevel: rec.clearedLevel || '',
             symptoms: '',
             notes: rec.notes || '',
           });
@@ -191,6 +194,7 @@ export default function MedicalExaminationForm() {
       date: examDate,
       diagnosis: formData.diagnosis.trim(),
       resultStatus: formData.resultStatus,
+      clearedLevel: formData.clearedLevel || null,
       vitalSigns: {
         temperatureC: formData.temperatureC ? Number(formData.temperatureC) : undefined,
         heartRate: formData.heartRate ? Number(formData.heartRate) : undefined,
@@ -441,6 +445,26 @@ export default function MedicalExaminationForm() {
                     <option value="injured">🔴 Chấn thương (Injured)</option>
                     <option value="quarantined">⚫ Cách ly y tế (Quarantined)</option>
                   </Form.Select>
+                </Form.Group>
+              </Col>
+
+              <Col xs={12} md={6}>
+                <Form.Group>
+                  <Form.Label className="fw-semibold">Mức vận động được phép (đánh giá trở lại tập)</Form.Label>
+                  <Form.Select
+                    value={formData.clearedLevel}
+                    onChange={(e) => setFormData({ ...formData, clearedLevel: e.target.value })}
+                    disabled={submitting}
+                  >
+                    <option value="">— Lần khám này không đánh giá mức tập —</option>
+                    <option value="none">🛑 Chưa được tập</option>
+                    <option value="light">🩹 Chỉ tập nhẹ</option>
+                    <option value="moderate">🟡 Tập tối đa cường độ vừa</option>
+                    <option value="high">🟢 Tập bình thường</option>
+                  </Form.Select>
+                  <Form.Text className="text-muted">
+                    Kết thúc điều trị chưa có nghĩa là được tập lại: ngựa giữ mức hạn chế cho tới khi bác sĩ chọn mức ở đây. Mức này áp dụng cho tới lần đánh giá sau.
+                  </Form.Text>
                 </Form.Group>
               </Col>
 

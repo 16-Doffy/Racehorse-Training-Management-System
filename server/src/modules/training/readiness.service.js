@@ -75,7 +75,11 @@ async function medicalGate(horse, { intensity } = {}) {
   const clearance = await getTrainingClearance(horse._id);
   if (clearance.level === 'none') {
     gate.status = 'blocked';
-    gate.detail = `Bác sĩ đang khóa huấn luyện: ${clearance.reason || 'chỉ định y tế'}.`;
+    gate.detail =
+      clearance.source === 'awaiting_return'
+        ? 'Đã kết thúc điều trị nhưng bác sĩ chưa đánh giá cho tập lại — chưa được tập.'
+        : `Bác sĩ đang khóa huấn luyện: ${clearance.reason || 'chỉ định y tế'}.`;
+    gate.action = clearance.source === 'awaiting_return' ? 'request_exam' : undefined;
     return gate;
   }
 
@@ -89,7 +93,10 @@ async function medicalGate(horse, { intensity } = {}) {
   // trainer's call, so it blocks like the lock does; within it, the trainer is simply told.
   if (clearance.restricted) {
     const since = clearance.since ? ` (từ ${new Date(clearance.since).toLocaleDateString('vi-VN')})` : '';
-    const limit = `Ngựa đang hồi phục — bác sĩ${clearance.prescribedBy ? ` ${clearance.prescribedBy}` : ''} chỉ cho ${clearance.label}${since}`;
+    const limit =
+      clearance.source === 'awaiting_return'
+        ? `Đã kết thúc điều trị, chờ bác sĩ đánh giá cho tập lại — tạm giữ mức ${clearance.label}${since}`
+        : `Ngựa đang hồi phục — bác sĩ${clearance.prescribedBy ? ` ${clearance.prescribedBy}` : ''} chỉ cho ${clearance.label}${since}`;
     if (!allows(clearance, intensity)) {
       gate.status = 'blocked';
       gate.detail = `${limit}; buổi cường độ ${INTENSITY_WORDS[intensity] || intensity} chưa được phép.`;

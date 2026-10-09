@@ -186,6 +186,8 @@ export default function TrainingLockModal({
           horse: horse._id,
           diagnosis: 'Đánh giá phục hồi & Cho phép luyện tập mức bình thường',
           resultStatus: targetHealthStatus || 'eligible',
+          // The return-to-training assessment itself: the horse may work normally from now on.
+          clearedLevel: 'high',
           notes: recoveryNotes.trim() || 'Mở khóa huấn luyện sau điều trị.',
           date: new Date(),
         });

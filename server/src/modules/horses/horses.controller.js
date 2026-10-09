@@ -18,6 +18,7 @@ const { getScopedHorseIds, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('
 const { pushNotification } = require('../alerts/notification.service');
 const { clearanceMap } = require('../health/trainingClearance');
 const { closeLeftoversFor } = require('./archive.service');
+const { checklistFor } = require('./checklist.service');
 
 /** Adds the vet's current training level (lock / recovery / clear) to each horse. */
 async function withClearance(horses) {
@@ -68,6 +69,23 @@ const listHorses = asyncHandler(async (req, res) => {
   filter.isArchived = req.query.archived === 'true' && req.user.role === ROLES.MANAGER ? true : { $ne: true };
   const horses = await Horse.find(filter).populate(populatePedigree).sort({ name: 1 });
   return ok(res, await withClearance(horses), 'Horses fetched.');
+});
+
+// Where each horse in scope stands from arrival to training, and what comes next (checklist.service.js).
+const listChecklists = asyncHandler(async (req, res) => {
+  const scopedIds = await getScopedHorseIds(req.user);
+  const filter = scopedIds ? { _id: { $in: scopedIds } } : {};
+  filter.isArchived = { $ne: true };
+  const horses = await Horse.find(filter).populate('owner assignedTrainer assignedVet', 'name').select('name owner assignedTrainer assignedVet healthStatus').sort({ name: 1 });
+  return ok(res, await checklistFor(horses), 'Checklists computed.');
+});
+
+const getChecklist = asyncHandler(async (req, res) => {
+  if (!(await canAccessHorse(req.user, req.params.id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+  const horse = await Horse.findById(req.params.id).populate('owner assignedTrainer assignedVet', 'name').select('name owner assignedTrainer assignedVet healthStatus');
+  if (!horse) return fail(res, 'Horse not found.', 404);
+  const [checklist] = await checklistFor([horse]);
+  return ok(res, checklist, 'Checklist computed.');
 });
 
 const getHorse = asyncHandler(async (req, res) => {
@@ -285,4 +303,4 @@ const unarchiveHorse = asyncHandler(async (req, res) => {
   return ok(res, horse, `${horse.name} đã được quản lý trở lại — hãy xếp chuồng và người chăm sóc.`);
 });
 
-module.exports = { listHorses, getHorse, createHorse, updateHorse, deleteHorse, updateCareSchedule, archiveHorse, unarchiveHorse };
+module.exports = { listHorses, listChecklists, getChecklist, getHorse, createHorse, updateHorse, deleteHorse, updateCareSchedule, archiveHorse, unarchiveHorse };

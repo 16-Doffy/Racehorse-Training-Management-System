@@ -328,6 +328,7 @@ module.exports = {
             properties: { temperatureC: { type: 'number' }, heartRate: { type: 'number' }, respiratoryRate: { type: 'number' } },
           },
           resultStatus: { type: 'string', enum: ['eligible', 'monitoring', 'injured', 'quarantined'] },
+          clearedLevel: { type: 'string', nullable: true, enum: ['none', 'light', 'moderate', 'high'], description: 'Return-to-training assessment: how hard the horse may work from now on. The newest one caps the training level until a later one raises it; it also ends the hold of a treatment that ended while still restricting (Treatment.returnLevel). Bookings above the new level are cancelled and not restored.' },
           notes: { type: 'string' },
           attachments: {
             type: 'array',
@@ -1490,6 +1491,17 @@ module.exports = {
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { position: { type: 'integer', minimum: 1 }, finishTime: { type: 'string' }, prizeMoney: { type: 'number', minimum: 0 }, result: { type: 'string' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
       },
+    },
+    '/horses/checklist': {
+      get: {
+        tags: ['Horses'],
+        summary: 'Where each horse in scope stands from arrival to training, and its next step',
+        description: 'Computed from the records, nothing stored: owner, trainer, vet, stall + groom, rations, a vet exam (the default healthStatus is not an assessment), restrictions in force (ongoing treatment, a treatment ended while restricting = awaiting a return assessment, the latest assessment), target race (optional), active plan, sessions in the next 7 days. Each item: { key, label, done, detail, who, optional? }; nextStep { label, who, blockedReason }; blocked.',
+        responses: { 200: responses[200]({ type: 'array', items: { type: 'object' } }) },
+      },
+    },
+    '/horses/{id}/checklist': {
+      get: { tags: ['Horses'], summary: 'The same checklist for one horse', parameters: [idParam('id')], responses: { 200: responses[200]({ type: 'object' }), 403: responses[403], 404: responses[404] } },
     },
     '/settings/policy': {
       get: {

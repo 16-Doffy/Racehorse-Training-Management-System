@@ -18,7 +18,7 @@ const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../
 const pick = require('../../utils/pick');
 const { syncHorseHealthStatus } = require('./injuryMarker.controller');
 const InventoryItem = require('../../models/InventoryItem');
-const { LEVELS, LEVEL_RANK, INTENSITY_RANK, levelOf, getTrainingClearance } = require('./trainingClearance');
+const { LEVELS, LEVEL_RANK, INTENSITY_RANK, levelOf, getTrainingClearance, LEVEL_LABELS } = require('./trainingClearance');
 const { withSupplyStatus } = require('../inventory/stock.service');
 
 const TREATMENT_FIELDS = ['healthRecord', 'horse', 'medications', 'careInstructions', 'isTrainingLocked', 'trainingLevel', 'lockReason', 'startDate', 'endDate', 'status'];
@@ -400,9 +400,16 @@ const updateTreatment = asyncHandler(async (req, res) => {
     if (error) return fail(res, error, 400);
     changes.medications = medications;
   }
+  // Ending a treatment that still restricted training does not clear the horse: it stays at that level
+  // until a vet assesses it for a return to training (HealthRecord.clearedLevel).
+  const endedRestricted = changes.status && changes.status !== 'ongoing' && treatment.status === 'ongoing' && previousLevel !== 'high';
   if (changes.status && changes.status !== 'ongoing') {
     changes.isTrainingLocked = false;
     changes.trainingLevel = 'high';
+    if (endedRestricted) {
+      changes.returnLevel = previousLevel;
+      if (!changes.endDate) changes.endDate = new Date();
+    }
   }
   const levelError = applyTrainingLevel(changes, treatment);
   if (levelError) return fail(res, levelError, 400);
@@ -411,8 +418,18 @@ const updateTreatment = asyncHandler(async (req, res) => {
   await treatment.save();
 
   await logAction({ actorId: req.user._id, action: 'treatment.update', targetModel: 'Treatment', targetId: treatment._id });
-  // Completing a treatment ends its restriction too: the horse counts as recovered from it.
-  await onTrainingLevelChanged(treatment, { previousLevel, actor: req.user });
+  if (endedRestricted) {
+    await notifyHorseStaff({
+      staff: 'trainer',
+      horse: treatment.horse,
+      type: 'training_restricted',
+      severity: 'info',
+      message: `🩺 Đã kết thúc điều trị cho ngựa, nhưng chưa được tập lại: chờ bác sĩ đánh giá trở lại tập (đang giữ mức "${LEVEL_LABELS[previousLevel]}").`,
+    });
+    await logAction({ actorId: req.user._id, action: 'treatment.ended_awaiting_return', targetModel: 'Treatment', targetId: treatment._id, metadata: { level: previousLevel } });
+  } else {
+    await onTrainingLevelChanged(treatment, { previousLevel, actor: req.user });
+  }
   // Also removes the care tasks still pending when the treatment has just been completed.
   await sendCareOrders(treatment, req.user);
   await syncHorseHealthStatus(treatment.horse);
@@ -502,4 +519,5 @@ const listCareOrders = asyncHandler(async (req, res) => {
   return ok(res, rows, 'Care orders fetched.');
 });
 
-module.exports = { listTreatments, getTreatment, createTreatment, updateTreatment, setTrainingLock, listCareOrders };
+module.exports = {
+  cancelPendingSessionsForLock, listTreatments, getTreatment, createTreatment, updateTreatment, setTrainingLock, listCareOrders };

@@ -6,14 +6,60 @@ const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { getScopedHorseIds, horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
-const { pushNotification } = require('../alerts/notification.service');
+const { pushNotification, notifyHorseStaff } = require('../alerts/notification.service');
+const { getTrainingClearance, LEVELS, LEVEL_LABELS } = require('./trainingClearance');
 const { openExamRequest } = require('./examRequest.service');
 const { resolveIncidentsWithRecord } = require('../stable/incident.service');
 const { ROLES } = require('../../constants/roles');
 const pick = require('../../utils/pick');
 const { saveFile, deleteFileByUrl } = require('../../utils/fileStore');
 
-const RECORD_FIELDS = ['horse', 'date', 'diagnosis', 'vitalSigns', 'resultStatus', 'notes'];
+const RECORD_FIELDS = ['horse', 'date', 'diagnosis', 'vitalSigns', 'resultStatus', 'notes', 'clearedLevel'];
+
+/** "" or null clears it; anything else must be a training level. Returns an error message or null. */
+function clearedLevelProblem(body) {
+  if (body.clearedLevel === '' || body.clearedLevel === null) {
+    body.clearedLevel = null;
+    return null;
+  }
+  if (body.clearedLevel !== undefined && !LEVELS.includes(body.clearedLevel)) return 'Mức vận động được phép không hợp lệ (none, light, moderate, high).';
+  return null;
+}
+
+/**
+ * A vet's return-to-training assessment (an exam with clearedLevel) takes effect at once: bookings above
+ * what the horse may now do are cancelled, and the trainer is told the level and that cancelled bookings
+ * are not brought back — the schedule is regenerated to fit. Other restrictions still in force (another
+ * ongoing treatment) are named.
+ */
+async function applyReturnAssessment(record, vet) {
+  const { cancelPendingSessionsForLock } = require('./treatment.controller');
+  const clearance = await getTrainingClearance(record.horse);
+  const horse = await Horse.findById(record.horse).select('name');
+  let note = '';
+  if (clearance.restricted) {
+    const { cancelled, aborted } = await cancelPendingSessionsForLock(record.horse, vet, clearance.level, `đánh giá trở lại tập: ${clearance.label}`);
+    if (cancelled) note += ` Đã hủy ${cancelled} buổi vượt mức cho phép.`;
+    if (aborted) note += ` Đã dừng ${aborted} buổi đang chạy.`;
+  }
+  const allowed = record.clearedLevel === 'high' ? 'cho tập lại bình thường' : `cho ${LEVEL_LABELS[record.clearedLevel]}`;
+  const other = clearance.restricted && clearance.source !== 'assessment' ? ` Hạn chế khác vẫn còn hiệu lực: ${clearance.label} (${clearance.reason || 'phác đồ đang điều trị'}).` : '';
+  await notifyHorseStaff({
+    staff: 'trainer',
+    horse: record.horse,
+    type: clearance.restricted ? 'training_restricted' : 'training_unlocked',
+    severity: 'info',
+    message: `🩺 Bác sĩ ${vet.name} đánh giá trở lại tập cho ${horse?.name || 'ngựa'}: ${allowed}.${other}${note} Buổi đã hủy trước đó không tự khôi phục — hãy sinh lại lịch phù hợp.`,
+    extraRooms: [`horse:${record.horse}`],
+  });
+  await logAction({
+    actorId: vet._id,
+    action: 'healthRecord.return_assessment',
+    targetModel: 'HealthRecord',
+    targetId: record._id,
+    metadata: { clearedLevel: record.clearedLevel, effective: clearance.level },
+  });
+}
 
 const listRecords = asyncHandler(async (req, res) => {
   const filter = {};
@@ -44,6 +90,8 @@ async function isLatestRecord(record) {
 // status board (eligible / monitoring / injured / quarantined) and the training readiness gates.
 const createRecord = asyncHandler(async (req, res) => {
   const body = pick(req.body, RECORD_FIELDS);
+  const levelProblem = clearedLevelProblem(body);
+  if (levelProblem) return fail(res, levelProblem, 400);
   if (!(await canAccessHorse(req.user, body.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
 
   const record = await HealthRecord.create({ ...body, examinedBy: req.user._id });
@@ -63,6 +111,7 @@ const createRecord = asyncHandler(async (req, res) => {
   }
 
   await logAction({ actorId: req.user._id, action: 'healthRecord.create', targetModel: 'HealthRecord', targetId: record._id });
+  if (record.clearedLevel) await applyReturnAssessment(record, req.user);
   await closeRequestsWithRecord(record, req.user);
   // The same exam answers whatever the groom reported about this horse.
   await resolveIncidentsWithRecord(record, req.user);
@@ -77,6 +126,9 @@ const updateRecord = asyncHandler(async (req, res) => {
 
   // The horse an exam was about can't be changed afterwards.
   const { horse, ...changes } = pick(req.body, RECORD_FIELDS);
+  const levelProblem = clearedLevelProblem(changes);
+  if (levelProblem) return fail(res, levelProblem, 400);
+  const levelChanged = changes.clearedLevel !== undefined && changes.clearedLevel !== record.clearedLevel;
   Object.assign(record, changes);
   await record.save();
 
@@ -86,6 +138,7 @@ const updateRecord = asyncHandler(async (req, res) => {
     await Horse.findByIdAndUpdate(record.horse, { healthStatus: record.resultStatus });
   }
   await logAction({ actorId: req.user._id, action: 'healthRecord.update', targetModel: 'HealthRecord', targetId: record._id });
+  if (levelChanged && record.clearedLevel) await applyReturnAssessment(record, req.user);
 
   return ok(res, record, 'Health record updated.');
 });
