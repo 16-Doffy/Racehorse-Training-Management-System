@@ -149,7 +149,7 @@ function LiveCard({ session, readings }) {
  * feed (`sensor:reading`, sent to the horse's trainer) and a heart-rate line against the session's
  * own ceiling. Shown only while something is running.
  */
-export default function LiveSessionMonitor({ sessions = [] }) {
+export default function LiveSessionMonitor({ sessions = [], onSessionCompleted }) {
   const running = sessions.filter((s) => s.status === 'in_progress');
   const [readings, setReadings] = useState({});
   const queryClient = useQueryClient();
@@ -165,9 +165,10 @@ export default function LiveSessionMonitor({ sessions = [] }) {
       });
     };
     // A finished session leaves the board at once instead of at the next poll.
-    const onCompleted = () => {
+    const onCompleted = (payload) => {
       queryClient.invalidateQueries({ queryKey: ['training-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+      if (payload?.sessionId) onSessionCompleted?.(payload.sessionId);
     };
     socket.on('sensor:reading', onReading);
     socket.on('session:completed', onCompleted);
@@ -175,7 +176,7 @@ export default function LiveSessionMonitor({ sessions = [] }) {
       socket.off('sensor:reading', onReading);
       socket.off('session:completed', onCompleted);
     };
-  }, [queryClient]);
+  }, [queryClient, onSessionCompleted]);
 
   if (!running.length) return null;
   return (

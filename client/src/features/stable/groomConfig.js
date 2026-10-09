@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { SESSION_STATUS_LABELS } from '../training/sessionStatus';
 
 // Shared labels/colors for the Groom screens (tasks, stable map, feeding, incidents, supplies).
 // Visual language follows the Horse Owner screens: forest #022c22 + gold #eab308 on cream.
@@ -141,7 +142,7 @@ export function buildDailyRoutine({ horseIds, feedings, sessions, day }) {
         time: at.format('HH:mm'),
         title: s.sessionType === 'trial_run' ? '🏁 Chạy thử' : '🏇 Buổi tập',
         horse: s.horse,
-        detail: s.status === 'in_progress' ? 'Đang diễn ra' : s.status === 'completed' ? 'Đã hoàn thành' : 'Đã lên lịch',
+        detail: SESSION_STATUS_LABELS[s.status] || s.status,
         status: s.status,
       });
     });

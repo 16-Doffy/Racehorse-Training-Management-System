@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Table,
   Button,
@@ -18,7 +18,7 @@ import {
   Tooltip,
   Space,
 } from 'antd';
-import { message } from '../../lib/antdStatic';
+import { message, notification } from '../../lib/antdStatic';
 import {
   PlusOutlined,
   EditOutlined,
@@ -290,6 +290,44 @@ export default function TrainingSessionPage() {
     },
   });
 
+  // The sensor feed finished a run: offer its evaluation straight away.
+  const offerEvaluation = useCallback(
+    async (sessionId) => {
+      const res = await trainingSessionApi.getOne(sessionId).catch(() => null);
+      const done = res?.data;
+      if (!done || done.status !== 'completed') return;
+      const key = `done-${sessionId}`;
+      notification.success({
+        key,
+        title: `${done.horse?.name || 'Ngựa'} đã xong buổi tập`,
+        description: done.outcome?.summary || 'Buổi tập đã hoàn thành.',
+        duration: 0,
+        actions: (
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => {
+              notification.destroy(key);
+              openEvaluation(done);
+            }}
+          >
+            Đánh giá ngay
+          </Button>
+        ),
+      });
+    },
+    // openEvaluation only sets state on this page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  // A session held back by a medical gate: ask the vet straight from it.
+  const requestExamFor = (session) => {
+    setDraft((current) => ({ ...current, horse: session.horse?._id || session.horse }));
+    examForm.setFieldsValue({ priority: 'high', reason: `Buổi tập ${sessionTimeLabel(session.scheduledAt)} bị chặn: ${session.blockedReason || 'chưa đủ điều kiện'}` });
+    setExamOpen(true);
+  };
+
   const cancelMutation = useMutation({
     mutationFn: ({ id, cancelReason }) => trainingSessionApi.update(id, { status: 'cancelled', cancelReason }),
     onSuccess: () => {
@@ -470,6 +508,11 @@ export default function TrainingSessionPage() {
       fixed: 'right',
       render: (_, record) => (
         <Space size={4} wrap>
+          {record.status === 'blocked' && (
+            <Button size="small" icon={<SafetyCertificateOutlined />} onClick={() => requestExamFor(record)}>
+              Yêu cầu bác sĩ khám
+            </Button>
+          )}
           {['scheduled', 'blocked'].includes(record.status) && (
             <Button size="small" type="primary" icon={<SafetyCertificateOutlined />} onClick={() => setPreCheckSession(record)}>
               {record.status === 'blocked' ? 'Kiểm tra lại' : 'Kiểm tra sẵn sàng'}
@@ -602,7 +645,7 @@ export default function TrainingSessionPage() {
           }
         />
       )}
-      <LiveSessionMonitor sessions={sessionsData?.data || []} />
+      <LiveSessionMonitor sessions={sessionsData?.data || []} onSessionCompleted={offerEvaluation} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Segmented
@@ -640,6 +683,7 @@ export default function TrainingSessionPage() {
           onCancel={setCancelSession}
           onEnd={setEndSession}
           onAbort={setAbortSession}
+          onRequestExam={requestExamFor}
           schedulingId={scheduleMutation.isPending ? scheduleMutation.variables?.session._id : null}
         />
       )}

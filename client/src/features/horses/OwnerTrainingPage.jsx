@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SESSION_STATUS_LABELS } from '../training/sessionStatus';
 import { Typography, Select, Tag, Table, Descriptions, Segmented } from 'antd';
 import {
   CalendarOutlined,
@@ -19,15 +20,16 @@ const SESSION_TYPE_CONFIG = {
 };
 
 const SESSION_STATUS_CONFIG = {
-  scheduled: { color: 'bg-gray-100 text-gray-600 border-gray-200', label: 'Đã lên lịch' },
-  in_progress: { color: 'bg-blue-50 text-blue-600 border-blue-200', label: 'Đang diễn ra' },
-  completed: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: 'Hoàn thành' },
-  cancelled: { color: 'bg-red-50 text-red-600 border-red-200', label: 'Đã huỷ' },
-  ready: { color: 'bg-cyan-50 text-cyan-600 border-cyan-200', label: 'Sẵn sàng' },
-  blocked: { color: 'bg-amber-50 text-amber-600 border-amber-200', label: 'Tạm hoãn' },
-  evaluated: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: 'Đã đánh giá' },
-  aborted: { color: 'bg-red-50 text-red-600 border-red-200', label: 'Dừng giữa chừng' },
-  missed: { color: 'bg-gray-100 text-gray-600 border-gray-200', label: 'Đã lỡ giờ' },
+  // Wording shared with the trainer's and the groom's screens (training/sessionStatus.js).
+  scheduled: { color: 'bg-gray-100 text-gray-600 border-gray-200', label: SESSION_STATUS_LABELS.scheduled },
+  in_progress: { color: 'bg-blue-50 text-blue-600 border-blue-200', label: SESSION_STATUS_LABELS.in_progress },
+  completed: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: SESSION_STATUS_LABELS.completed },
+  cancelled: { color: 'bg-red-50 text-red-600 border-red-200', label: SESSION_STATUS_LABELS.cancelled },
+  ready: { color: 'bg-cyan-50 text-cyan-600 border-cyan-200', label: SESSION_STATUS_LABELS.ready },
+  blocked: { color: 'bg-amber-50 text-amber-600 border-amber-200', label: SESSION_STATUS_LABELS.blocked },
+  evaluated: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: SESSION_STATUS_LABELS.evaluated },
+  aborted: { color: 'bg-red-50 text-red-600 border-red-200', label: SESSION_STATUS_LABELS.aborted },
+  missed: { color: 'bg-gray-100 text-gray-600 border-gray-200', label: SESSION_STATUS_LABELS.missed },
 };
 
 const PHASE_LABELS = {

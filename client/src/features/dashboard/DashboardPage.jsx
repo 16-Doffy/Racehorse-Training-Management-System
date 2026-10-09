@@ -11,6 +11,7 @@ import FitnessOverviewChart from './FitnessOverviewChart';
 import ExamRequestsCard from './ExamRequestsCard';
 import OpenIncidentsCard from './OpenIncidentsCard';
 import CareOrdersCard from './CareOrdersCard';
+import NextStepsCard from './NextStepsCard';
 import { STATUS_TONES } from '../../layouts/forestTheme';
 
 const { Title, Paragraph } = Typography;
@@ -124,6 +125,8 @@ export default function DashboardPage() {
           }
         />
       )}
+
+      <NextStepsCard />
 
       {isHeadTrainer && <ExamRequestsCard />}
 

@@ -35,7 +35,7 @@ function workout(p) {
 
 const slotLabel = (scheduledAt) => (dayjs(scheduledAt).hour() < 12 ? 'Sáng' : 'Chiều');
 
-function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onCancel, onEnd, onAbort, starting, scheduling }) {
+function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onCancel, onEnd, onAbort, onRequestExam, starting, scheduling }) {
   const policy = useClubPolicy();
   const kind = SESSION_KINDS[session.kind];
   const status = statusMeta(session.status);
@@ -91,6 +91,11 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onC
         {['scheduled', 'blocked'].includes(session.status) && (
           <Button size="small" type="primary" icon={<SafetyCertificateOutlined />} onClick={() => onPreCheck(session)}>
             {session.status === 'blocked' ? 'Kiểm tra lại' : 'Kiểm tra sẵn sàng'}
+          </Button>
+        )}
+        {session.status === 'blocked' && onRequestExam && (
+          <Button size="small" icon={<SafetyCertificateOutlined />} onClick={() => onRequestExam(session)}>
+            Yêu cầu bác sĩ khám
           </Button>
         )}
         {session.status === 'ready' && (
@@ -162,7 +167,7 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onC
  * A week of training: one row per horse, one column per day (Monday first). A row whose horse
  * follows an active plan can book its week from the plan's template.
  */
-export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], plans = [], onGenerate, generatingPlanId, onStart, onPreCheck, startingId, onEvaluate, onSchedule, onCancel, onEnd, onAbort, schedulingId }) {
+export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], plans = [], onGenerate, generatingPlanId, onStart, onPreCheck, startingId, onEvaluate, onSchedule, onCancel, onEnd, onAbort, onRequestExam, schedulingId }) {
   const days = WEEK_DAYS.map((w, i) => ({ ...w, date: weekStart.add(i, 'day') }));
   const weekEnd = weekStart.add(7, 'day');
   const inWeek = sessions
@@ -260,6 +265,7 @@ export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], p
                               onCancel={onCancel}
                               onEnd={onEnd}
                               onAbort={onAbort}
+                              onRequestExam={onRequestExam}
                               starting={startingId === s._id}
                               scheduling={schedulingId === s._id}
                             />
