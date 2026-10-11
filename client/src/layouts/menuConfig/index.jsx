@@ -20,6 +20,7 @@ import {
   BarChartOutlined,
 } from '@ant-design/icons';
 import { ROLES } from '../../constants/roles';
+import { GROOM_WEB_ENABLED } from '../../features/groomWeb/config';
 
 // Menu definitions per role. Every entry maps to a real route (core flows link to their real
 // page, scaffold modules link to a ComingSoonPage) so the Sider never dead-ends.
@@ -67,5 +68,11 @@ const MENUS = {
 };
 
 export function getMenuByRole(role) {
+  if (role === ROLES.GROOM && GROOM_WEB_ENABLED) return [
+    { key: 'tasks', icon: <CarryOutOutlined />, label: 'Công việc chăm sóc', path: '/groom/tasks' },
+    { key: 'care', icon: <HomeOutlined />, label: 'Chuồng & Y lệnh', path: '/groom/care' },
+    { key: 'incidents', icon: <WarningOutlined />, label: 'Báo cáo sự cố', path: '/groom/incidents' },
+    { key: 'supplies', icon: <ShoppingOutlined />, label: 'Vật tư & Đề xuất', path: '/groom/supplies' },
+  ];
   return MENUS[role] || [];
 }

@@ -1,16 +1,43 @@
-# React + Vite
+# Web — Racehorse TMS
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + Vite + Ant Design + Tailwind, dùng cho Manager, Head Trainer, Vet và Owner.
+Groom dùng app `mobile/` khi demo. Có [web test tạm](../docs/GROOM_WEB_TESTING.md)
+mặc định bật trong dev, tắt trong production; không thay đổi mobile.
 
-Currently, two official plugins are available:
+## Chạy
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Từ thư mục gốc, dùng Node.js 22.12+:
 
-## React Compiler
+```powershell
+npm install
+Copy-Item client/.env.example client/.env
+npm run dev -w client
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+`.env.example` trỏ backend local. Nếu dùng Render, cấu hình `VITE_API_BASE_URL`
+và `VITE_SOCKET_URL` theo [DEPLOYMENT.md](../DEPLOYMENT.md). Khởi động lại Vite
+sau khi đổi env. Mặc định web ở `http://localhost:5173`.
 
-## Expanding the Oxlint configuration
+## Màn hình theo vai trò
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+| Vai trò | Route chính |
+|---|---|
+| Manager | `/horses`, `/admin/users`, `/admin/stables`, `/inventory`, `/finance`, `/admin/reports`, `/admin/audit-logs` |
+| HLV | `/horses`, `/training/plans`, `/training/sessions`, `/stable/tasks`, `/races` |
+| Vet | `/veterinarian`, `/veterinarian/horses`, `/veterinarian/injuries`, `/veterinarian/treatments`, `/veterinarian/prescriptions`, `/veterinarian/inventory`, `/veterinarian/schedules` |
+| Owner | `/horses`, `/owner/health`, `/owner/training`, `/owner/stable`, `/owner/races`, `/owner/evaluations`, `/finance` |
+| Groom (web test tạm) | `/groom/tasks`, `/groom/care`, `/groom/incidents`, `/groom/supplies` khi bật cờ |
+
+`/` hiển thị Tổng quan theo role; `/profile` là hồ sơ chung.
+Route và menu hiện tại nằm ở `src/router/AppRouter.jsx`, `src/layouts/menuConfig/index.jsx`.
+Quyền route không thay thế quyền API và phạm vi ngựa ở server.
+
+## Flow và kiểm tra
+
+- [Flow hiện tại](../docs/CURRENT_FLOW.md): thứ tự thao tác và điều kiện chuyển bước.
+- [Checklist test](../docs/TEST_CHECKLIST.md): test xuyên vai trò, chưa đánh dấu E2E đạt.
+- `npm run lint -w client`: oxlint.
+- `npm run build -w client`: build vào `client/dist`.
+
+Dashboard Owner còn biểu đồ/KPI và định giá giả; thẻ tóm tắt từng ngựa đọc API thật.
+Không dùng số dashboard cũ để xác nhận kết quả test.

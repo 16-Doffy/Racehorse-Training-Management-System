@@ -39,8 +39,8 @@ function shortagesFrom(supplies, stockById) {
   return missing;
 }
 
-async function stockMap(ids) {
-  const items = await InventoryItem.find({ _id: { $in: [...new Set(ids.map(String))] } }).select('name unit quantity');
+async function stockMap(ids, { session = null } = {}) {
+  const items = await InventoryItem.find({ _id: { $in: [...new Set(ids.map(String))] } }).select('name unit quantity').session(session);
   return new Map(items.map((i) => [String(i._id), i]));
 }
 
@@ -60,38 +60,40 @@ async function withSupplyStatus(tasks) {
 }
 
 /**
- * Takes a task's supplies out of stock, all or nothing. Each decrement only applies while enough is
- * left (so two grooms can't both take the last bag); if one fails, the ones already taken are put
- * back. Returns { ok: true } or { ok: false, missing }.
+ * Called inside the same transaction as task completion. No notifications before commit.
+ * Each decrement still checks available quantity; aborting rolls back all earlier lines.
  */
-async function consumeSupplies(supplies, { actor, task }) {
+async function consumeSupplies(supplies, { session }) {
+  if (!session?.inTransaction()) throw new Error('Stock consumption requires the task transaction.');
   const lines = (supplies || []).filter((s) => s.inventoryItem && s.amount > 0);
   if (lines.length === 0) return { ok: true, consumed: [] };
+
+  const missing = shortagesFrom(lines, await stockMap(lines.map((line) => line.inventoryItem), { session }));
+  if (missing.length) return { ok: false, missing };
 
   const taken = [];
   for (const line of lines) {
     // eslint-disable-next-line no-await-in-loop
-    const res = await InventoryItem.updateOne({ _id: line.inventoryItem, quantity: { $gte: line.amount } }, { $inc: { quantity: -line.amount } });
+    const res = await InventoryItem.updateOne({ _id: line.inventoryItem, quantity: { $gte: line.amount } }, { $inc: { quantity: -line.amount } }, { session });
     if (res.modifiedCount !== 1) {
-      for (const done of taken) {
-        // eslint-disable-next-line no-await-in-loop
-        await InventoryItem.updateOne({ _id: done.inventoryItem }, { $inc: { quantity: done.amount } });
-      }
-      const missing = shortagesFrom(lines, await stockMap(lines.map((l) => l.inventoryItem)));
-      return { ok: false, missing };
+      throw Object.assign(new Error('Tồn kho vừa thay đổi — tải lại công việc rồi thử lại.'), { statusCode: 409 });
     }
     taken.push(line);
   }
 
+  return { ok: true, consumed: taken };
+}
+
+async function recordConsumption(consumed, { actor, task }) {
+  if (!consumed.length) return;
   await logAction({
     actorId: actor._id,
     action: 'inventory.consume',
     targetModel: 'DailyTask',
     targetId: task._id,
-    metadata: { items: taken.map((l) => ({ item: l.inventoryItem, amount: l.amount, unit: l.unit })) },
+    metadata: { items: consumed.map((l) => ({ item: l.inventoryItem, amount: l.amount, unit: l.unit })) },
   });
-  await warnLowStock(taken.map((l) => l.inventoryItem));
-  return { ok: true, consumed: taken };
+  await warnLowStock(consumed.map((l) => l.inventoryItem));
 }
 
 /**
@@ -185,4 +187,4 @@ async function itemInUse(itemId) {
   return [...rations.map((r) => r.horse?.name), ...treatments.map((t) => t.horse?.name)].filter(Boolean);
 }
 
-module.exports = { withSupplyStatus, consumeSupplies, computeForecast, warnLowStock, itemInUse, shortagesFrom, stockMap, LOW_STOCK_DAYS };
+module.exports = { withSupplyStatus, consumeSupplies, recordConsumption, computeForecast, warnLowStock, itemInUse, shortagesFrom, stockMap, LOW_STOCK_DAYS };

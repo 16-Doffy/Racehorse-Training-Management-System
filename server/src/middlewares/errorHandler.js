@@ -26,7 +26,7 @@ function errorHandler(err, req, res, next) {
   }
 
   const status = err.statusCode || 500;
-  return fail(res, err.message || 'Internal server error.', status);
+  return fail(res, err.message || 'Internal server error.', status, err.data);
 }
 
 function notFound(req, res) {

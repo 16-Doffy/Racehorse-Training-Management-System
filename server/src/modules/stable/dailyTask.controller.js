@@ -10,13 +10,14 @@ const { logAction } = require('../audit/audit.service');
 const { announceIncidentUpdate } = require('./incident.service');
 const { taskTiming, dayBounds } = require('../../utils/taskTiming');
 const { saveFile } = require('../../utils/fileStore');
-const { withSupplyStatus, consumeSupplies, stockMap, shortagesFrom } = require('../inventory/stock.service');
+const { withSupplyStatus, consumeSupplies, recordConsumption, stockMap, shortagesFrom } = require('../inventory/stock.service');
 const StableAssignment = require('../../models/StableAssignment');
 const FeedingSchedule = require('../../models/FeedingSchedule');
 const Treatment = require('../../models/Treatment');
 const { clearanceMap, levelOf } = require('../health/trainingClearance');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
+const { runTransaction, operationError, afterCommit } = require('../../utils/transaction');
 
 const TASK_FIELDS = ['horse', 'assignedTo', 'taskType', 'mealSlot', 'scheduledDate', 'dueTime', 'note'];
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -331,87 +332,53 @@ function readAction(body = {}) {
 }
 
 const completeTask = asyncHandler(async (req, res) => {
-  let task = await loadTask(req, res);
-  if (!task) return undefined;
+  const loaded = await loadTask(req, res);
+  if (!loaded) return undefined;
   const action = readAction(req.body);
   if (action.error) return fail(res, action.error, action.status);
-  // The same action sent again (its answer was lost on a bad connection): answer it, change nothing.
-  if (action.opId && task.opIds?.includes(action.opId)) return ok(res, task, 'Already recorded.');
-
-  // A meal the trainer called off (e.g. fasting before a race) must not be recorded as eaten.
-  if (task.status === 'skipped') {
-    return fail(res, task.skipReason ? 'Công việc này đã được ghi nhận là không thực hiện được.' : 'Công việc này đã được HLV cho bỏ qua.', 409);
-  }
-
-  // The first completion time is when the horse actually ate; completing again (e.g. to add an
-  // observation afterwards) must not move it, or the readiness board would see a meal that never
-  // happened.
-  if (task.status !== 'completed') {
-    // Only within the task's window on the real clock: breakfast ticked at 23:00 would record a
-    // meal eaten at 23:00, and yesterday's dose can't be given today (utils/taskTiming.js).
-    // Judged at the time the work was done, not when the phone got signal: a meal fed at 06:10 and
-    // sent at 08:30 is a meal at 06:10; one fed outside its window is refused with the reason.
-    const timing = taskTiming(task, action.performedAt);
-    if (!timing.canComplete) return fail(res, timing.reason, 409, { timing, performedAt: action.performedAt });
-    // One completion gets through — a second phone, or a resend while the first is still in flight —
-    // so the stock is taken once. Claimed before the stock moves; released again if the stock is short.
-    const claimed = await DailyTask.findOneAndUpdate(
-      { _id: task._id, status: 'pending' },
-      {
-        $set: {
-          status: 'completed',
-          completedAt: action.performedAt,
-          receivedAt: new Date(),
-          recordedLate: action.late,
-          ...(task.acknowledgedAt ? {} : { acknowledgedAt: action.performedAt }),
-        },
-        ...(action.opId ? { $push: { opIds: { $each: [action.opId], $slice: -20 } } } : {}),
-      },
-      { new: true }
-    );
-    if (!claimed) {
-      const now = await DailyTask.findById(task._id).select('status completedAt opIds');
-      if (action.opId && now?.opIds?.includes(action.opId)) return ok(res, await DailyTask.findById(task._id), 'Already recorded.');
-      return fail(res, 'Công việc này vừa được ghi nhận từ nơi khác.', 409, { status: now?.status, completedAt: now?.completedAt || null });
-    }
-    // A meal or a dose takes its supplies out of stock; without them it can't be recorded as given.
-    // The groom asks the Manager for more instead (restock request, which can name this task).
-    const stock = await consumeSupplies(task.supplies, { actor: req.user, task: claimed });
-    if (!stock.ok) {
-      await DailyTask.updateOne(
-        { _id: task._id, status: 'completed' },
-        { $set: { status: 'pending', recordedLate: false }, $unset: { completedAt: 1, receivedAt: 1 }, ...(action.opId ? { $pull: { opIds: action.opId } } : {}) }
-      );
-      const list = stock.missing.map((m) => `${m.name} (cần ${m.needed} ${m.unit}, còn ${m.available} ${m.unit})`).join('; ');
-      return fail(res, `Thiếu vật tư: ${list} — hãy gửi đề xuất bổ sung cho Quản lý.`, 409, { missing: stock.missing });
-    }
-    task = claimed;
-  }
-
+  if (action.opId && loaded.opIds?.includes(action.opId)) return ok(res, loaded, 'Already recorded.');
   const observation = readObservation(req.body);
-  if (observation) {
-    const previous = task.observation?.toObject ? task.observation.toObject() : task.observation || {};
-    task.observation = { ...previous, ...Object.fromEntries(Object.entries(observation).filter(([, v]) => v !== undefined)), recordedAt: action.performedAt };
-  }
-  if (action.opId && !task.opIds?.includes(action.opId)) task.opIds = [...(task.opIds || []), action.opId].slice(-20);
-  await task.save();
-
-  // Refusing feed or abnormal droppings are among the earliest signs something is wrong, and
-  // should not wait for someone to notice a row in a list.
+  const result = await runTransaction(async (session) => {
+    let task = await DailyTask.findOne({ _id: loaded._id, assignedTo: req.user._id }).session(session);
+    if (!task) throw operationError(409, 'Task assignment has changed.');
+    if (action.opId && task.opIds?.includes(action.opId)) {
+      task.$session(null);
+      return { task, replayed: true, consumed: [] };
+    }
+    if (task.status === 'skipped') throw operationError(409, 'Công việc này đã được bỏ qua.');
+    let consumed = [];
+    if (task.status !== 'completed') {
+      const timing = taskTiming(task, action.performedAt);
+      if (!timing.canComplete) throw operationError(409, timing.reason, { timing, performedAt: action.performedAt });
+      task.status = 'completed';
+      task.completedAt = action.performedAt;
+      task.receivedAt = new Date();
+      task.recordedLate = action.late;
+      if (!task.acknowledgedAt) task.acknowledgedAt = action.performedAt;
+      // Lock this task before deducting stock; every write rolls back together on failure.
+      await task.save({ session });
+      const stock = await consumeSupplies(task.supplies, { session });
+      if (!stock.ok) throw operationError(409, 'Thiếu vật tư — hãy gửi đề xuất bổ sung cho Quản lý.', { missing: stock.missing });
+      consumed = stock.consumed;
+    }
+    if (observation) {
+      const previous = task.observation?.toObject ? task.observation.toObject() : task.observation || {};
+      task.observation = { ...previous, ...Object.fromEntries(Object.entries(observation).filter(([, v]) => v !== undefined)), recordedAt: action.performedAt };
+    }
+    if (action.opId && !task.opIds?.includes(action.opId)) task.opIds = [...(task.opIds || []), action.opId].slice(-20);
+    await task.save({ session });
+    task.$session(null);
+    return { task, consumed, replayed: false };
+  });
+  if (result.replayed) return ok(res, result.task, 'Already recorded.');
+  await afterCommit('task-stock', () => recordConsumption(result.consumed, { actor: req.user, task: result.task }));
   const signs = observation ? warningSigns(observation) : [];
-  if (signs.length) {
-    const horse = await Horse.findById(task.horse).select('name');
-    const note = observation.behaviourNote ? `: ${observation.behaviourNote}` : '.';
-    await notifyHorseStaff({
-      staff: 'vet',
-      horse: task.horse,
-      type: 'incident_report',
-      severity: 'warning',
-      message: `⚠️ ${horse?.name || 'Ngựa'} có dấu hiệu bất thường (${signs.join(', ')})${note}`,
-    });
-  }
-
-  return ok(res, task, 'Task marked as completed.');
+  if (signs.length) await afterCommit('task-observation', async () => {
+    const horse = await Horse.findById(result.task.horse).select('name');
+    await notifyHorseStaff({ staff: 'vet', horse: result.task.horse, type: 'incident_report', severity: 'warning',
+      message: (horse?.name || 'Ngựa') + ' có dấu hiệu bất thường (' + signs.join(', ') + ')' + (observation.behaviourNote ? ': ' + observation.behaviourNote : '.') });
+  });
+  return ok(res, result.task, 'Task marked as completed.');
 });
 
 // Groom-reported incident, with optional photo evidence uploaded via multipart/form-data.

@@ -642,10 +642,12 @@ module.exports = {
     { name: 'Training (Head Trainer)' },
     { name: 'Health (Veterinarian)' },
     { name: 'Stable (Groom)' },
-    { name: 'Feeding (scaffold)' },
-    { name: 'Inventory (scaffold)' },
-    { name: 'Races (scaffold)' },
-    { name: 'Finance (scaffold)' },
+    { name: 'Feeding' },
+    { name: 'Inventory' },
+    { name: 'Races' },
+    { name: 'Finance' },
+    { name: 'Files', description: 'Image/PDF uploads stored in MongoDB GridFS and signed file downloads' },
+    { name: 'Settings', description: 'Read the configured club policy; changes are made through server environment variables' },
     { name: 'Notifications' },
     { name: 'Audit Log (Manager)' },
     { name: 'Reports (Manager)' },
@@ -1054,7 +1056,7 @@ module.exports = {
         description:
           'Claims in_progress atomically: a second call, a retry or the simulator finishing at the same time gets 409 and changes nothing. ' +
           'actualEndAt is the server time of the call and actualDurationSec = actualEndAt − actualStartAt (the simulator keeps its compressed work in simulatedWorkSec). ' +
-          'Computes outcome against the prescription; for a hard session (high intensity or race simulation) creates icing (+15 min) and bathing (+45 min) tasks for the groom; ' +
+          'Computes outcome against the prescription; for a hard session (high intensity or race simulation) creates icing and bathing tasks for the assigned groom at the configured policy offsets (defaults +15/+45 min); ' +
           'raises a high-priority exam request when the average heart rate is 10% or more over the limit; notifies the owner. ' +
           '`metrics` (measured by hand) is accepted only when the sensor never reported on this run (400 otherwise).',
         parameters: [idParam('id')],
@@ -1241,7 +1243,7 @@ module.exports = {
       },
     },
     '/health/injury-markers': {
-      get: { tags: ['Health (Veterinarian)'], summary: 'List injury markers (2D placeholder for a future 3D viewer)', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/InjuryMarker' } }) } },
+      get: { tags: ['Health (Veterinarian)'], summary: 'List injury markers for the anatomical viewer', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/InjuryMarker' } }) } },
       post: { tags: ['Health (Veterinarian)'], summary: 'Create injury marker', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/InjuryMarker' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/InjuryMarker' }), 403: responses[403] } },
     },
     '/health/injury-markers/{id}': {
@@ -1411,35 +1413,35 @@ module.exports = {
       delete: { tags: ['Stable (Groom)'], summary: 'Remove stall assignment (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
     },
     '/feeding': {
-      get: { tags: ['Feeding (scaffold)'], summary: 'List feeding schedules', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FeedingSchedule' } }) } },
-      post: { tags: ['Feeding (scaffold)'], summary: 'Create feeding schedule (Head Trainer, Manager)', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FeedingSchedule' }), 403: responses[403] } },
+      get: { tags: ['Feeding'], summary: 'List feeding schedules', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FeedingSchedule' } }) } },
+      post: { tags: ['Feeding'], summary: 'Create feeding schedule (Head Trainer, Manager)', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FeedingSchedule' }), 403: responses[403] } },
     },
     '/feeding/{id}': {
-      get: { tags: ['Feeding (scaffold)'], summary: 'Get feeding schedule', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/FeedingSchedule' }), 404: responses[404] } },
-      put: { tags: ['Feeding (scaffold)'], summary: 'Update feeding schedule (Head Trainer, Manager)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/FeedingSchedule' }), 404: responses[404] } },
-      delete: { tags: ['Feeding (scaffold)'], summary: 'Delete feeding schedule (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
+      get: { tags: ['Feeding'], summary: 'Get feeding schedule', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/FeedingSchedule' }), 404: responses[404] } },
+      put: { tags: ['Feeding'], summary: 'Update feeding schedule (Head Trainer, Manager)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/FeedingSchedule' }), 404: responses[404] } },
+      delete: { tags: ['Feeding'], summary: 'Delete feeding schedule (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
     '/inventory': {
-      get: { tags: ['Inventory (scaffold)'], summary: 'List inventory items', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/InventoryItem' } }) } },
-      post: { tags: ['Inventory (scaffold)'], summary: 'Create inventory item (Manager)', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/InventoryItem' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/InventoryItem' }), 403: responses[403] } },
+      get: { tags: ['Inventory'], summary: 'List inventory items', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/InventoryItem' } }) } },
+      post: { tags: ['Inventory'], summary: 'Create inventory item (Manager)', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/InventoryItem' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/InventoryItem' }), 403: responses[403] } },
     },
     '/inventory/{id}': {
-      get: { tags: ['Inventory (scaffold)'], summary: 'Get inventory item', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 404: responses[404] } },
-      put: { tags: ['Inventory (scaffold)'], summary: 'Update inventory item (Manager)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/InventoryItem' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 404: responses[404] } },
-      delete: { tags: ['Inventory (scaffold)'], summary: 'Delete inventory item (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
+      get: { tags: ['Inventory'], summary: 'Get inventory item', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 404: responses[404] } },
+      put: { tags: ['Inventory'], summary: 'Update inventory item (Manager)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/InventoryItem' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 404: responses[404] } },
+      delete: { tags: ['Inventory'], summary: 'Delete inventory item (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
     '/inventory/{id}/restock-request': {
-      post: { tags: ['Inventory (scaffold)'], summary: 'Request a restock (Groom, Head Trainer, Veterinarian) — the Manager is notified', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['quantity'], properties: { quantity: { type: 'number', minimum: 1 }, packs: { type: 'number', description: 'Alternative to quantity for items with a pack size' }, note: { type: 'string' }, task: { type: 'string', description: 'The meal/dose task this shortage is blocking — the Manager is told, and the groom is told when it is approved' } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 404: responses[404] } },
+      post: { tags: ['Inventory'], summary: 'Request a restock (Groom, Head Trainer, Veterinarian) — the Manager is notified', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['quantity'], properties: { quantity: { type: 'number', minimum: 1 }, packs: { type: 'number', description: 'Alternative to quantity for items with a pack size' }, note: { type: 'string' }, task: { type: 'string', description: 'The meal/dose task this shortage is blocking — the Manager is told, and the groom is told when it is approved' } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 404: responses[404] } },
     },
     '/inventory/{id}/receive': {
       post: {
-        tags: ['Inventory (scaffold)'],
-        summary: 'Record a delivery by quantity (in the item unit) or by packs (Manager) — the only place stock goes up',
+        tags: ['Inventory'],
+        summary: 'Record a delivery by quantity (in the item unit) or by packs (Manager)',
         description:
           'With requestId: receives that approved request — quantity defaults to what was requested; one atomic claim, so a second or concurrent ' +
           'receive gets 409 and adds nothing; the request becomes received (receivedAt, receivedQty, receivedBy) and the requester is told. ' +
           'A pending or rejected request → 409. A request approved before the receive step existed (no awaitingDelivery) already added its ' +
-          'quantity when it was approved → 409, nothing added. Without requestId: a delivery not tied to a request.',
+          'quantity when it was approved → 409, nothing added. Without requestId: a separate delivery not tied to a request; repeated calls add stock each time.',
         parameters: [idParam('id')],
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { requestId: { type: 'string' }, quantity: { type: 'number' }, packs: { type: 'number' }, note: { type: 'string' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
@@ -1447,14 +1449,14 @@ module.exports = {
     },
     '/inventory/forecast': {
       get: {
-        tags: ['Inventory (scaffold)'],
+        tags: ['Inventory'],
         summary: 'Daily use of each stock item from rations and ongoing treatments, and days of stock left',
         responses: { 200: responses[200]({ type: 'array', items: { type: 'object', properties: { _id: { type: 'string' }, name: { type: 'string' }, unit: { type: 'string' }, quantity: { type: 'number' }, dailyUsage: { type: 'number' }, daysLeft: { type: 'integer', nullable: true }, usedBy: { type: 'array', items: { type: 'object' } } } } }) },
       },
     },
     '/inventory/proposals': {
       post: {
-        tags: ['Inventory (scaffold)'],
+        tags: ['Inventory'],
         summary: 'Propose a new item that is not in the stock list yet (Groom, Head Trainer, Veterinarian)',
         description:
           'Creates the item as a proposal (isProposed, quantity 0) carrying one restock request; the Manager is notified. ' +
@@ -1484,7 +1486,7 @@ module.exports = {
     },
     '/inventory/{id}/restock-requests/{reqId}': {
       patch: {
-        tags: ['Inventory (scaffold)'],
+        tags: ['Inventory'],
         summary: 'Approve or reject a pending restock request (Manager) — approving orders it; stock changes when it is received',
         parameters: [idParam('id'), idParam('reqId', 'The restockRequests sub-document id')],
         requestBody: {
@@ -1496,17 +1498,17 @@ module.exports = {
       },
     },
     '/races': {
-      get: { tags: ['Races (scaffold)'], summary: 'List race entries', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/RaceEntry' } }) } },
-      post: { tags: ['Races (scaffold)'], summary: 'Register a horse for a race (Head Trainer) — 409 if the vet has grounded the horse (training lock, injured, quarantined)', description: 'Writable fields: horse, raceName, raceDate (today or later), distance (required, 400-6000 m), venue, surface, status. Results go through PATCH /races/{id}/results (400 otherwise).', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/RaceEntry' }), 403: responses[403] } },
+      get: { tags: ['Races'], summary: 'List race entries', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/RaceEntry' } }) } },
+      post: { tags: ['Races'], summary: 'Register a horse for a race (Head Trainer) — 409 if the vet has grounded the horse (training lock, injured, quarantined)', description: 'Writable fields: horse, raceName, raceDate (today or later), distance (required, 400-6000 m), venue, surface, status. Results go through PATCH /races/{id}/results (400 otherwise).', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/RaceEntry' }), 403: responses[403] } },
     },
     '/races/{id}/results': {
       patch: {
-        tags: ['Races (scaffold)'],
+        tags: ['Races'],
         summary: 'Record the result: placing, time, prize money (Head Trainer, Manager)',
         description:
           'Refused (409) before race day or for a withdrawn entry. Completes the entry, builds `result` from placing and ' +
-          'time when none is typed, updates the horse\'s achievements, and turns prizeMoney into one revenue record ' +
-          '(category prize) linked to the entry — updated on correction, removed when set to 0. The owner is notified.',
+          'time when none is typed, updates the horse\'s achievements, and turns prizeMoney into a revenue record ' +
+          '(category prize, source race_prize) linked to the entry — updated on correction, removed when set to 0. Entry, prize and achievement writes share a transaction, with a unique financial raceEntry key. Requires MongoDB replica set. Identical retries do not duplicate records or notify again. The owner is notified after commit.',
         parameters: [idParam('id')],
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { position: { type: 'integer', minimum: 1 }, finishTime: { type: 'string' }, prizeMoney: { type: 'number', minimum: 0 }, result: { type: 'string' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
@@ -1545,7 +1547,7 @@ module.exports = {
     },
     '/races/{id}/decision': {
       post: {
-        tags: ['Races (scaffold)'],
+        tags: ['Races'],
         summary: "The trainer's decision: confirm the horse for the race or withdraw it (Head Trainer)",
         description:
           'A trial result is evidence, not the decision. Confirming re-checks the medical state now (409 if grounded or recovering). trialSession, when given, must be a run of this entry ' +
@@ -1558,20 +1560,20 @@ module.exports = {
     },
     '/races/{id}/trials': {
       get: {
-        tags: ['Races (scaffold)'],
+        tags: ['Races'],
         summary: 'Trial runs linked to this entry, newest first',
         parameters: [idParam('id')],
         responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/TrainingSession' } }), 403: responses[403], 404: responses[404] },
       },
     },
     '/races/{id}': {
-      get: { tags: ['Races (scaffold)'], summary: 'Get race entry', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
-      put: { tags: ['Races (scaffold)'], summary: 'Update race entry (Head Trainer)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
-      delete: { tags: ['Races (scaffold)'], summary: 'Delete race entry (Head Trainer, Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
+      get: { tags: ['Races'], summary: 'Get race entry', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
+      put: { tags: ['Races'], summary: 'Update race entry (Head Trainer)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
+      delete: { tags: ['Races'], summary: 'Delete race entry (Head Trainer, Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
     '/finance/mine/summary': {
       get: {
-        tags: ['Finance (scaffold)'],
+        tags: ['Finance'],
         summary: "Owner's periodic statement: cost, medical and revenue per month or quarter",
         description:
           'Totals for the owner\'s horses over one year: `periods` (12 months or 4 quarters, each with cost, revenue, net, ' +
@@ -1585,16 +1587,16 @@ module.exports = {
       },
     },
     '/finance/mine': {
-      get: { tags: ['Finance (scaffold)'], summary: "Owner's own cost/revenue records", responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FinancialRecord' } }), 403: responses[403] } },
+      get: { tags: ['Finance'], summary: "Owner's own cost/revenue records", responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FinancialRecord' } }), 403: responses[403] } },
     },
     '/finance': {
-      get: { tags: ['Finance (scaffold)'], summary: 'List all financial records (Manager)', parameters: [{ name: 'horse', in: 'query', schema: { type: 'string' } }], description: 'Each record carries source (manual / race_prize) and recordedBy { name }.', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FinancialRecord' } }), 403: responses[403] } },
-      post: { tags: ['Finance (scaffold)'], summary: 'Record a cost/revenue entry (Manager)', description: 'Accepts horse, type, category, amount, date, note; source is always manual (prize money comes from race results).', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FinancialRecord' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FinancialRecord' }), 403: responses[403] } },
+      get: { tags: ['Finance'], summary: 'List all financial records (Manager)', parameters: [{ name: 'horse', in: 'query', schema: { type: 'string' } }], description: 'Each record carries source (manual / race_prize) and recordedBy { name }.', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FinancialRecord' } }), 403: responses[403] } },
+      post: { tags: ['Finance'], summary: 'Record a cost/revenue entry (Manager)', description: 'Accepts horse, type, category, amount, date, note; source is always manual (prize money comes from race results).', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FinancialRecord' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FinancialRecord' }), 403: responses[403] } },
     },
     '/finance/{id}': {
-      get: { tags: ['Finance (scaffold)'], summary: 'Get financial record (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/FinancialRecord' }), 404: responses[404] } },
-      put: { tags: ['Finance (scaffold)'], summary: 'Update financial record (Manager) — manual records only', description: 'A record written by a race result (source race_prize) → 409: correct it through PATCH /races/{id}/results.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FinancialRecord' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/FinancialRecord' }), 404: responses[404], 409: responses[409] } },
-      delete: { tags: ['Finance (scaffold)'], summary: 'Delete financial record (Manager) — manual records only', description: 'A race_prize record → 409.', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404], 409: responses[409] } },
+      get: { tags: ['Finance'], summary: 'Get financial record (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/FinancialRecord' }), 404: responses[404] } },
+      put: { tags: ['Finance'], summary: 'Update financial record (Manager) — manual records only', description: 'A record written by a race result (source race_prize) → 409: correct it through PATCH /races/{id}/results.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FinancialRecord' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/FinancialRecord' }), 404: responses[404], 409: responses[409] } },
+      delete: { tags: ['Finance'], summary: 'Delete financial record (Manager) — manual records only', description: 'A race_prize record → 409.', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404], 409: responses[409] } },
     },
     '/notifications': {
       get: { tags: ['Notifications'], summary: 'List my notifications (addressed to me or to my role)', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/Notification' } }) } },
