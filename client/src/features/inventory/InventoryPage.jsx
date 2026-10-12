@@ -223,7 +223,7 @@ function ReceiveModal({ item, request = null, onClose }) {
   const queryClient = useQueryClient();
   const hasPack = Boolean(item?.packUnit && item?.packSize);
   const [mode, setMode] = useState(request ? 'units' : 'packs');
-  const [amount, setAmount] = useState(request?.quantity ?? null);
+  const [amount, setAmount] = useState(request?.approvedQuantity ?? request?.quantity ?? null);
   const [note, setNote] = useState('');
   const byPacks = hasPack && mode === 'packs';
   const added = amount ? (byPacks ? amount * item.packSize : amount) : 0;
@@ -291,6 +291,10 @@ export default function InventoryPage() {
   const [receiving, setReceiving] = useState(null);
   const [rejecting, setRejecting] = useState(null);
   const [rejectNote, setRejectNote] = useState('');
+  // Approving opens a small form: the quantity may be less than asked (e.g. 15 of 20 kg).
+  const [approving, setApproving] = useState(null);
+  const [approvedQty, setApprovedQty] = useState(null);
+  const [approveNote, setApproveNote] = useState('');
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['inventory'] });
@@ -298,12 +302,13 @@ export default function InventoryPage() {
   };
 
   const decideMutation = useMutation({
-    mutationFn: ({ itemId, requestId, status, note }) => inventoryApi.decideRestock(itemId, requestId, { status, note }),
+    mutationFn: ({ itemId, requestId, status, note, approvedQuantity }) => inventoryApi.decideRestock(itemId, requestId, { status, note, approvedQuantity }),
     onSuccess: (_res, variables) => {
       message.success(variables.status === 'approved' ? 'Đã duyệt — kho chỉ cộng khi bấm "Nhận hàng" lúc hàng về.' : 'Đã từ chối yêu cầu.');
       refresh();
       setRejecting(null);
       setRejectNote('');
+      setApproving(null);
     },
     onError: (err) => message.error(err.message || 'Thao tác thất bại.'),
   });
@@ -330,6 +335,9 @@ export default function InventoryPage() {
         itemId: item._id,
         requestId: r._id,
         quantity: r.quantity,
+        approvedQuantity: r.approvedQuantity ?? null,
+        priority: r.priority || 'normal',
+        destinationBlock: r.destinationBlock || null,
         note: r.note,
         blocking: Boolean(r.task),
         requestedBy: r.requestedBy?.name || r.requestedBy,
@@ -346,7 +354,9 @@ export default function InventoryPage() {
           <span>{r.item.name}</span>
           <Tag className="!m-0">{CATEGORY_LABELS[r.item.category]}</Tag>
           {r.item.isProposed && <Tag color="purple" className="!m-0">Vật tư mới</Tag>}
+          {r.priority === 'urgent' && <Tag color="red" className="!m-0">Khẩn</Tag>}
           {r.blocking && <Tag color="red" className="!m-0">Đang chặn việc</Tag>}
+          {r.destinationBlock && <Tag className="!m-0">Cho {r.destinationBlock}</Tag>}
         </Space>
       ),
     },
@@ -355,7 +365,14 @@ export default function InventoryPage() {
       key: 'current',
       render: (_, r) => (r.item.isProposed ? <span className="text-gray-400">Chưa có trong kho</span> : stockText(r.item)),
     },
-    { title: 'Đề xuất thêm', key: 'quantity', render: (_, r) => `+${stockText(r.item, r.quantity)}` },
+    {
+      title: 'Đề xuất thêm',
+      key: 'quantity',
+      render: (_, r) =>
+        r.status === 'approved' && r.approvedQuantity !== null && r.approvedQuantity < r.quantity
+          ? `Duyệt ${r.approvedQuantity}/${r.quantity} ${r.item.unit}`
+          : `+${stockText(r.item, r.quantity)}`,
+    },
     { title: 'Lý do', dataIndex: 'note', key: 'note', render: (v) => v || <span className="text-gray-400">—</span> },
     { title: 'Người đề xuất', dataIndex: 'requestedBy', key: 'requestedBy', render: (v) => v || '—' },
     { title: 'Thời gian', dataIndex: 'requestedAt', key: 'requestedAt', render: (d) => (d ? dayjs(d).format('DD/MM HH:mm') : '—') },
@@ -377,7 +394,11 @@ export default function InventoryPage() {
             size="small"
             icon={<CheckOutlined />}
             loading={decideMutation.isPending && decideMutation.variables?.requestId === r.requestId}
-            onClick={() => decideMutation.mutate({ itemId: r.itemId, requestId: r.requestId, status: 'approved' })}
+            onClick={() => {
+              setApproving(r);
+              setApprovedQty(r.quantity);
+              setApproveNote('');
+            }}
           >
             Duyệt
           </Button>
@@ -572,6 +593,36 @@ export default function InventoryPage() {
         request={receiving?.request || null}
         onClose={() => setReceiving(null)}
       />
+      <Modal
+        title={approving ? `Duyệt đề xuất — ${approving.item.name}` : ''}
+        open={Boolean(approving)}
+        okText="Duyệt"
+        cancelText="Huỷ"
+        confirmLoading={decideMutation.isPending}
+        okButtonProps={{ disabled: !approvedQty || approvedQty <= 0 || approvedQty > (approving?.quantity || 0) }}
+        onCancel={() => setApproving(null)}
+        onOk={() =>
+          decideMutation.mutate({
+            itemId: approving.itemId,
+            requestId: approving.requestId,
+            status: 'approved',
+            approvedQuantity: approvedQty,
+            note: approveNote || undefined,
+          })
+        }
+        destroyOnHidden
+      >
+        <Text type="secondary" className="block !text-xs mb-2">
+          Duyệt là đặt hàng; kho chỉ tăng khi bấm "Nhận hàng" lúc hàng về. Có thể duyệt ít hơn số đề xuất.
+        </Text>
+        <div className="flex items-center gap-2 mb-3">
+          <InputNumber min={0.01} max={approving?.quantity} value={approvedQty} onChange={setApprovedQty} style={{ width: 140 }} />
+          <Text>
+            / {approving?.quantity} {approving?.item.unit} đề xuất
+          </Text>
+        </div>
+        <Input.TextArea rows={2} value={approveNote} onChange={(e) => setApproveNote(e.target.value)} placeholder="Ghi chú cho người đề xuất (không bắt buộc) — VD: Duyệt 15 kg, phần còn lại tháng sau." />
+      </Modal>
       <Modal
         title={rejecting ? `Từ chối đề xuất — ${rejecting.item.name}` : ''}
         open={Boolean(rejecting)}

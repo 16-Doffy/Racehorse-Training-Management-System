@@ -10,6 +10,7 @@ const { pushNotification } = require('../alerts/notification.service');
 const DailyTask = require('../../models/DailyTask');
 const { computeForecast, itemInUse } = require('./stock.service');
 const { logAction } = require('../audit/audit.service');
+const { canAccessHorse } = require('../../utils/horseScope');
 
 // Restock requests are reviewed by name on the Manager's screen, so the requester is populated
 // here — otherwise the list hands back a raw ObjectId and the UI has nothing to show.
@@ -87,6 +88,15 @@ async function tellManagers(message) {
   await pushNotification({ recipientRole: ROLES.MANAGER, type: 'restock_request', severity: 'info', message });
 }
 
+/** priority (normal | urgent) and destinationBlock from a request body. Returns { priority, destinationBlock } or { error }. */
+function readRequestMeta(body = {}) {
+  const priority = body.priority === undefined || body.priority === null || body.priority === '' ? 'normal' : body.priority;
+  if (!['normal', 'urgent'].includes(priority)) return { error: 'Mức ưu tiên chỉ là "normal" hoặc "urgent".' };
+  const destinationBlock = typeof body.destinationBlock === 'string' && body.destinationBlock.trim() ? body.destinationBlock.trim().slice(0, 100) : null;
+  return { priority, destinationBlock };
+}
+const urgentMark = (priority) => (priority === 'urgent' ? '🚨 KHẨN — ' : '');
+
 const requestRestock = asyncHandler(async (req, res) => {
   const item = await InventoryItem.findById(req.params.id);
   if (!item) return fail(res, 'Inventory item not found.', 404);
@@ -95,21 +105,26 @@ const requestRestock = asyncHandler(async (req, res) => {
   const { quantity, error } = toUnits(item, req.body);
   if (error) return fail(res, error, 400);
 
+  const meta = readRequestMeta(req.body);
+  if (meta.error) return fail(res, meta.error, 400);
   const note = typeof req.body.note === 'string' ? req.body.note.trim() : undefined;
-  // A request raised from a meal or dose that can't be recorded for lack of stock says so.
+  // A request raised from a meal or dose that can't be recorded for lack of stock says so. Only from
+  // work the requester can see: a groom's own task, a trainer's or vet's horse.
   let task = null;
   if (req.body.task) {
     task = await DailyTask.findById(req.body.task).populate('horse', 'name');
     if (!task) return fail(res, 'Không tìm thấy công việc.', 404);
+    const own = req.user.role === ROLES.GROOM ? String(task.assignedTo) === String(req.user._id) : await canAccessHorse(req.user, task.horse?._id || task.horse);
+    if (!own) return fail(res, 'Công việc này không phải của bạn — không gắn vào đề xuất được.', 403);
   }
-  item.restockRequests.push({ requestedBy: req.user._id, quantity, note, task: task?._id || null });
+  item.restockRequests.push({ requestedBy: req.user._id, quantity, note, task: task?._id || null, priority: meta.priority, destinationBlock: meta.destinationBlock });
   await item.save();
   const blocking = task ? ` — đang chặn việc ${task.taskType === 'feeding' ? 'cho ăn' : 'cho thuốc'} của ${task.horse?.name || 'ngựa'}` : '';
   await pushNotification({
     recipientRole: ROLES.MANAGER,
     type: 'restock_request',
-    severity: task ? 'warning' : 'info',
-    message: `📦 ${req.user.name} đề xuất bổ sung ${quantity} ${item.unit}${packNote(item, quantity)} "${item.name}"${blocking}${note ? `: ${note}` : '.'}`,
+    severity: task || meta.priority === 'urgent' ? 'warning' : 'info',
+    message: `${urgentMark(meta.priority)}📦 ${req.user.name} đề xuất bổ sung ${quantity} ${item.unit}${packNote(item, quantity)} "${item.name}"${meta.destinationBlock ? ` cho ${meta.destinationBlock}` : ''}${blocking}${note ? `: ${note}` : '.'}`,
   });
   return ok(res, item, 'Restock requested.');
 });
@@ -127,6 +142,8 @@ const proposeItem = asyncHandler(async (req, res) => {
   if (typeof unit !== 'string' || !unit.trim()) return fail(res, 'Hãy nhập đơn vị tính.', 400);
   if (!CATEGORIES.includes(category)) return fail(res, 'Danh mục không hợp lệ.', 400);
   if (!Number.isFinite(quantity) || quantity <= 0) return fail(res, 'Số lượng đề xuất phải là số dương.', 400);
+  const meta = readRequestMeta(req.body);
+  if (meta.error) return fail(res, meta.error, 400);
 
   const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const existing = await InventoryItem.findOne({ name: new RegExp(`^${escaped}$`, 'i') }).select('_id name isProposed');
@@ -142,9 +159,9 @@ const proposeItem = asyncHandler(async (req, res) => {
     quantity: 0,
     isProposed: true,
     proposedBy: req.user._id,
-    restockRequests: [{ requestedBy: req.user._id, quantity, note }],
+    restockRequests: [{ requestedBy: req.user._id, quantity, note, priority: meta.priority, destinationBlock: meta.destinationBlock || stableBlock || null }],
   });
-  await tellManagers(`🆕 ${req.user.name} đề xuất vật tư mới: ${quantity} ${item.unit} "${item.name}"${note ? ` — ${note}` : '.'}`);
+  await tellManagers(`${urgentMark(meta.priority)}🆕 ${req.user.name} đề xuất vật tư mới: ${quantity} ${item.unit} "${item.name}"${note ? ` — ${note}` : '.'}`);
   return ok(res, item, 'New item proposed.');
 });
 
@@ -165,6 +182,13 @@ const reviewRestockRequest = asyncHandler(async (req, res) => {
   if (request.status !== 'pending') {
     return fail(res, `Request already ${request.status}.`, 409);
   }
+  // Approving less than asked: up to the requested quantity, in the item's unit.
+  let approvedQuantity = null;
+  if (status === 'approved' && req.body.approvedQuantity !== undefined && req.body.approvedQuantity !== null && req.body.approvedQuantity !== '') {
+    approvedQuantity = Number(req.body.approvedQuantity);
+    if (!Number.isFinite(approvedQuantity) || approvedQuantity <= 0) return fail(res, 'Số lượng duyệt phải là số dương.', 400);
+    if (approvedQuantity > request.quantity) return fail(res, `Số lượng duyệt không được vượt số đề xuất (${request.quantity} ${item.unit}).`, 400);
+  }
 
   Object.assign(request, {
     status,
@@ -174,6 +198,7 @@ const reviewRestockRequest = asyncHandler(async (req, res) => {
   });
   if (status === 'approved') {
     request.awaitingDelivery = true;
+    request.approvedQuantity = approvedQuantity ?? request.quantity;
     item.isProposed = false; // a proposed item becomes part of the stock list (at 0 until it arrives)
   }
 
@@ -190,7 +215,7 @@ const reviewRestockRequest = asyncHandler(async (req, res) => {
     severity: status === 'approved' ? 'info' : 'warning',
     message:
       status === 'approved'
-        ? `✅ Yêu cầu bổ sung ${request.quantity} ${item.unit} "${item.name}" đã được duyệt — đang chờ hàng về; bạn sẽ được báo khi kho nhận hàng.`
+        ? `✅ Yêu cầu bổ sung "${item.name}" đã được duyệt ${request.approvedQuantity < request.quantity ? `${request.approvedQuantity}/${request.quantity}` : request.quantity} ${item.unit} — đang chờ hàng về; bạn sẽ được báo khi kho nhận hàng.`
         : `❌ Yêu cầu ${dropProposal ? 'thêm vật tư mới' : 'bổ sung'} ${request.quantity} ${item.unit} "${item.name}" đã bị từ chối${
             request.reviewNote ? `: ${request.reviewNote}` : '.'
           }`,
@@ -214,8 +239,8 @@ const receiveStock = asyncHandler(async (req, res) => {
     if (request.status === 'approved' && !request.awaitingDelivery) return fail(res, 'Đề xuất này đã được cộng kho lúc duyệt (trước khi có bước nhận hàng) — không cộng lại.', 409);
     if (request.status !== 'approved') return fail(res, `Đề xuất đang "${request.status}" — chỉ nhận hàng cho đề xuất đã duyệt.`, 409);
   }
-  // A delivery for a request defaults to what was asked for.
-  const body = request && req.body.quantity === undefined && req.body.packs === undefined ? { quantity: request.quantity } : req.body;
+  // A delivery for a request defaults to what was approved (or asked for, on older requests).
+  const body = request && req.body.quantity === undefined && req.body.packs === undefined ? { quantity: request.approvedQuantity ?? request.quantity } : req.body;
   const { quantity, error } = toUnits(item, body);
   if (error) return fail(res, error, 400);
 

@@ -32,6 +32,8 @@ const TASK_LABELS = {
   icing: 'Ngâm chân nước đá',
   medication: 'Cho dùng thuốc',
   monitoring: 'Theo dõi theo y lệnh',
+  hoof_care: 'Chăm sóc móng',
+  other: 'Việc khác',
 };
 const MEAL_LABELS = { morning: 'bữa sáng', noon: 'bữa trưa', evening: 'bữa chiều' };
 const APPETITE = { full: 'ăn hết', partial: 'ăn dở', refused: 'BỎ ĂN' };

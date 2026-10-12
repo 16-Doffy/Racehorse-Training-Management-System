@@ -13,7 +13,7 @@ test('real MongoDB + HTTP flow across Manager, Trainer, Vet, Groom and Owner', {
     assert.ok(checklist.items.find((i) => i.key === 'health').done);
     feed = await api('manager', 'POST', '/inventory', { name: 'TEST hay', category: 'feed', unit: 'kg', quantity: 100 }, 201);
     await api('trainer', 'POST', '/feeding', { horse: horse._id, mealTime: 'noon', timeOfDay: clock(), items: [{ inventoryItem: feed._id, amount: 2 }] }, 201);
-    await api('trainer', 'POST', '/feeding', { horse: horse._id, mealTime: 'noon', timeOfDay: clock(), items: [] }, 409);
+    await api('trainer', 'POST', '/feeding', { horse: horse._id, mealTime: 'noon', timeOfDay: clock(), items: [{ inventoryItem: feed._id, amount: 1 }] }, 409);
     const tasks = await api('groom', 'GET', `/stable/tasks?horse=${horse._id}`);
     const meal = tasks.find((task) => task.taskType === 'feeding');
     assert.ok(meal, 'Ration should generate a meal task');

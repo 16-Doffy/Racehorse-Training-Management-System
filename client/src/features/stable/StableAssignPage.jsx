@@ -538,12 +538,25 @@ function RationList() {
     {
       title: 'Duyệt',
       key: 'approvedBy',
-      render: (_, r) =>
-        r.approvedBy ? (
-          <Tag color="green">Đã duyệt — {r.approvedBy.name}</Tag>
-        ) : (
-          <Tag color="gold">Chờ duyệt</Tag>
-        ),
+      render: (_, r) => {
+        const unlinked = (r.items || []).some((i) => !i.inventoryItem);
+        return (
+          <div className="flex flex-col items-start gap-1">
+            {r.approvedBy && r.items?.length ? (
+              <Tag color="green" className="!m-0">Đã duyệt — {r.approvedBy.name}</Tag>
+            ) : (
+              <Tooltip title="Groom không ghi nhận được bữa này cho tới khi khẩu phần có món và được duyệt. Bấm Sửa rồi Lưu để duyệt.">
+                <Tag color="red" className="!m-0">Chưa duyệt — Groom chưa ghi nhận được</Tag>
+              </Tooltip>
+            )}
+            {unlinked && (
+              <Tooltip title="Món ghi bằng chữ không trừ kho. Bấm Sửa, chọn lại món từ kho rồi Lưu.">
+                <Tag color="orange" className="!m-0">Có món chưa gắn kho</Tag>
+              </Tooltip>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: '',
@@ -598,15 +611,7 @@ function RationList() {
               payload: {
                 ...values,
                 timeOfDay: values.timeOfDay ? dayjs(values.timeOfDay).format('HH:mm') : undefined,
-                items: (values.items || [])
-                  .map((i) =>
-                    i?.inventoryItem && i?.amount
-                      ? { inventoryItem: i.inventoryItem, amount: i.amount }
-                      : i?.legacyType && i?.legacyQuantity
-                        ? { type: i.legacyType, quantity: i.legacyQuantity }
-                        : null
-                  )
-                  .filter(Boolean),
+                items: (values.items || []).filter((i) => i?.inventoryItem && i?.amount).map((i) => ({ inventoryItem: i.inventoryItem, amount: i.amount })),
               },
             })
           }
@@ -652,11 +657,11 @@ function RationList() {
                         <div className="mb-2">
                           {row.legacyType && !row.inventoryItem && (
                             <Text type="warning" className="block !text-xs">
-                              Món cũ: {FEED_TYPE_LABELS[row.legacyType] || row.legacyType} {row.legacyQuantity} — chọn lại từ kho để kho tự trừ.
+                              Món cũ: {FEED_TYPE_LABELS[row.legacyType] || row.legacyType} {row.legacyQuantity} — chọn lại từ kho (bắt buộc) hoặc xoá dòng này.
                             </Text>
                           )}
                           <Space align="baseline" className="!flex">
-                            <Form.Item name={[field.name, 'inventoryItem']} className="!mb-0">
+                            <Form.Item name={[field.name, 'inventoryItem']} className="!mb-0" rules={[{ required: true, message: 'Chọn món trong kho' }]}>
                               <Select
                                 placeholder="Chọn thức ăn trong kho"
                                 style={{ width: 240 }}
@@ -666,7 +671,11 @@ function RationList() {
                                 }))}
                               />
                             </Form.Item>
-                            <Form.Item name={[field.name, 'amount']} className="!mb-0">
+                            <Form.Item
+                              name={[field.name, 'amount']}
+                              className="!mb-0"
+                              rules={[{ required: true, message: 'Nhập lượng' }, { type: 'number', min: 0.01, message: 'Lượng phải lớn hơn 0' }]}
+                            >
                               <InputNumber min={0} step={0.5} placeholder="Lượng" style={{ width: 110 }} />
                             </Form.Item>
                             <Text type="secondary">{item?.unit || ''}</Text>

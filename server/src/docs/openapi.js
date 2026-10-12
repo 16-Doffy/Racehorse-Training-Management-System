@@ -360,6 +360,7 @@ module.exports = {
                 startDate: { type: 'string', format: 'date-time', description: 'This medicine only; no doses before it' },
                 endDate: { type: 'string', format: 'date-time', description: 'This medicine only; no doses after it' },
                 instructions: { type: 'string', description: 'How to give it (after food, mix with water…)' },
+                route: { type: 'string', enum: ['oral', 'im', 'iv', 'sc', 'topical', 'eye', 'other'], nullable: true, description: 'How it is given: by mouth, IM/IV/SC injection, on the skin, in the eye, other. Returned by GET /health/treatments and GET /stable/my-care-plan; null on older prescriptions' },
               },
             },
           },
@@ -398,7 +399,7 @@ module.exports = {
           assignedTo: { type: 'string' },
           taskType: {
             type: 'string',
-            enum: ['feeding', 'cleaning', 'bathing', 'icing', 'medication', 'monitoring', 'other'],
+            enum: ['feeding', 'cleaning', 'bathing', 'icing', 'hoof_care', 'medication', 'monitoring', 'other'],
             description: 'medication / monitoring are created from a vet treatment only; they cannot be assigned by hand',
           },
           source: {
@@ -548,7 +549,12 @@ module.exports = {
                 requestedBy: { type: 'string' },
                 quantity: { type: 'number' },
                 note: { type: 'string' },
-                status: { type: 'string', enum: ['pending', 'approved', 'rejected'] },
+                status: { type: 'string', enum: ['pending', 'approved', 'received', 'rejected'] },
+                priority: { type: 'string', enum: ['normal', 'urgent'] },
+                destinationBlock: { type: 'string', nullable: true },
+                approvedQuantity: { type: 'number', nullable: true, description: 'What the Manager approved (≤ quantity)' },
+                awaitingDelivery: { type: 'boolean' },
+                receivedQty: { type: 'number', nullable: true },
                 reviewedBy: { type: 'string', nullable: true },
                 reviewedAt: { type: 'string', format: 'date-time', nullable: true },
                 reviewNote: { type: 'string' },
@@ -1268,7 +1274,7 @@ module.exports = {
         tags: ['Stable (Groom)'],
         summary: 'Edit an assigned task — reassign to another Groom, move the date, or correct the type (Head Trainer / Manager). Refused with 409 once the task is completed.',
         parameters: [idParam('id')],
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { horse: { type: 'string' }, assignedTo: { type: 'string' }, taskType: { type: 'string', enum: ['feeding', 'cleaning', 'bathing', 'icing', 'other'] }, scheduledDate: { type: 'string', format: 'date-time', description: 'Day of the job' }, dueTime: { type: 'string', example: '09:30', description: 'Required for every type but feeding (whose time is its mealSlot)' }, mealSlot: { type: 'string', enum: ['morning', 'noon', 'evening'] }, note: { type: 'string', description: 'Required for "other": what the job is' } } } } } },
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { horse: { type: 'string' }, assignedTo: { type: 'string' }, taskType: { type: 'string', enum: ['feeding', 'cleaning', 'bathing', 'icing', 'hoof_care', 'other'] }, scheduledDate: { type: 'string', format: 'date-time', description: 'Day of the job' }, dueTime: { type: 'string', example: '09:30', description: 'Required for every type but feeding (whose time is its mealSlot)' }, mealSlot: { type: 'string', enum: ['morning', 'noon', 'evening'] }, note: { type: 'string', description: 'Required for "other": what the job is' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404], 409: responses[409] },
       },
       delete: {
@@ -1434,11 +1440,11 @@ module.exports = {
     },
     '/feeding': {
       get: { tags: ['Feeding'], summary: 'List feeding schedules', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FeedingSchedule' } }) } },
-      post: { tags: ['Feeding'], summary: 'Create feeding schedule (Head Trainer, Manager)', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FeedingSchedule' }), 403: responses[403] } },
+      post: { tags: ['Feeding'], summary: 'Create feeding schedule (Head Trainer, Manager)', description: 'items: at least one line, each { inventoryItem (a feed item in stock), amount > 0 } — a line typed as text is refused (400), since it cannot leave stock. approvedBy is stamped with the caller; a meal can only be recorded by the groom when its ration has an approver and lines (409 NO_APPROVED_RATION otherwise).', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FeedingSchedule' }), 403: responses[403] } },
     },
     '/feeding/{id}': {
       get: { tags: ['Feeding'], summary: 'Get feeding schedule', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/FeedingSchedule' }), 404: responses[404] } },
-      put: { tags: ['Feeding'], summary: 'Update feeding schedule (Head Trainer, Manager)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/FeedingSchedule' }), 404: responses[404] } },
+      put: { tags: ['Feeding'], summary: 'Update feeding schedule (Head Trainer, Manager)', description: 'Same item rules as create when items is sent. Saving an older ration stamps the approver and requires its lines to be tied to stock.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/FeedingSchedule' }), 404: responses[404] } },
       delete: { tags: ['Feeding'], summary: 'Delete feeding schedule (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
     '/inventory': {
@@ -1451,14 +1457,14 @@ module.exports = {
       delete: { tags: ['Inventory'], summary: 'Delete inventory item (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
     '/inventory/{id}/restock-request': {
-      post: { tags: ['Inventory'], summary: 'Request a restock (Groom, Head Trainer, Veterinarian) — the Manager is notified', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['quantity'], properties: { quantity: { type: 'number', minimum: 1 }, packs: { type: 'number', description: 'Alternative to quantity for items with a pack size' }, note: { type: 'string' }, task: { type: 'string', description: 'The meal/dose task this shortage is blocking — the Manager is told, and the groom is told when it is approved' } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 404: responses[404] } },
+      post: { tags: ['Inventory'], summary: 'Request a restock (Groom, Head Trainer, Veterinarian) — the Manager is notified', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['quantity'], properties: { quantity: { type: 'number', minimum: 1 }, packs: { type: 'number', description: 'Alternative to quantity for items with a pack size' }, note: { type: 'string' }, priority: { type: 'string', enum: ['normal', 'urgent'], default: 'normal', description: 'urgent is flagged to the Manager' }, destinationBlock: { type: 'string', description: 'Stable block it is for; empty = main store' }, task: { type: 'string', description: 'Must be the groom\'s own task (a trainer/vet: a horse in their scope), else 403. The meal/dose task this shortage is blocking — the Manager is told, and the groom is told when it is approved' } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 400: responses[400], 404: responses[404] } },
     },
     '/inventory/{id}/receive': {
       post: {
         tags: ['Inventory'],
         summary: 'Record a delivery by quantity (in the item unit) or by packs (Manager)',
         description:
-          'With requestId: receives that approved request — quantity defaults to what was requested; one atomic claim, so a second or concurrent ' +
+          'With requestId: receives that approved request — quantity defaults to approvedQuantity (or what was requested, on older requests); one atomic claim, so a second or concurrent ' +
           'receive gets 409 and adds nothing; the request becomes received (receivedAt, receivedQty, receivedBy) and the requester is told. ' +
           'A pending or rejected request → 409. A request approved before the receive step existed (no awaitingDelivery) already added its ' +
           'quantity when it was approved → 409, nothing added. Without requestId: a separate delivery not tied to a request; repeated calls add stock each time.',
@@ -1511,7 +1517,7 @@ module.exports = {
         parameters: [idParam('id'), idParam('reqId', 'The restockRequests sub-document id')],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', required: ['status'], properties: { status: { type: 'string', enum: ['approved', 'rejected'] }, note: { type: 'string', description: 'Shown to the requester' } } } } },
+          content: { 'application/json': { schema: { type: 'object', required: ['status'], properties: { status: { type: 'string', enum: ['approved', 'rejected'] }, approvedQuantity: { type: 'number', description: 'Approve less than asked (≤ quantity, item unit); default the full quantity. The delivery defaults to it' }, note: { type: 'string', description: 'Shown to the requester' } } } } },
         },
         description: 'Records who reviewed it. Approving sets awaitingDelivery and leaves the stock as it is (POST /inventory/{id}/receive { requestId } adds it when the goods arrive). Approving a proposed item turns it into a regular item at 0; rejecting a proposal with nothing else pending deletes it (data: null).',
         responses: { 200: responses[200]({ $ref: '#/components/schemas/InventoryItem' }), 403: responses[403], 404: responses[404], 409: responses[409] },

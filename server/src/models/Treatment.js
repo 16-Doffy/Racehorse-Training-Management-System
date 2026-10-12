@@ -15,6 +15,9 @@ const medicationSchema = new mongoose.Schema(
     startDate: { type: Date },
     endDate: { type: Date },
     instructions: { type: String },
+    // How it is given: by mouth, injection into muscle / vein / under the skin, on the skin, in the eye.
+    // Shown to the groom, who confirms the right route before ticking the dose. Older prescriptions: null.
+    route: { type: String, enum: ['oral', 'im', 'iv', 'sc', 'topical', 'eye', 'other', null], default: null },
     prescribedAt: { type: Date, default: Date.now },
     status: { type: String, enum: ['ongoing', 'completed', 'cancelled'], default: 'ongoing' },
   },

@@ -173,6 +173,8 @@ const toDate = (v) => {
  * else from the ticked `timeSlots` (morning 07:00, noon 11:30, afternoon 15:00, evening 19:00).
  * A medicine may carry its own startDate / endDate. Returns { medications } or { error }.
  */
+const MEDICATION_ROUTES = ['oral', 'im', 'iv', 'sc', 'topical', 'eye', 'other'];
+
 async function normalizeMedications(list) {
   if (!Array.isArray(list)) return { error: 'medications phải là danh sách.' };
   const ids = list.map((m) => m.inventoryItem).filter(Boolean);
@@ -206,6 +208,8 @@ async function normalizeMedications(list) {
     if (startDate && endDate && endDate < startDate) return { error: `${label}: ngày kết thúc phải sau ngày bắt đầu.` };
     const name = String(m.name || item?.name || '').trim();
     if (!name) return { error: `${label}: thiếu tên thuốc.` };
+    const route = m.route === undefined || m.route === null || m.route === '' ? null : m.route;
+    if (route && !MEDICATION_ROUTES.includes(route)) return { error: `${label}: đường dùng không hợp lệ (uống, tiêm bắp, tiêm tĩnh mạch, tiêm dưới da, bôi ngoài, nhỏ mắt, khác).` };
     out.push({
       name,
       dosage: String(m.dosage || (item && amount ? `${amount} ${item.unit}/lần` : '')).trim() || 'theo chỉ định',
@@ -218,6 +222,7 @@ async function normalizeMedications(list) {
       startDate,
       endDate,
       instructions: String(m.instructions || '').trim() || undefined,
+      route,
       prescribedAt: m.prescribedAt ? new Date(m.prescribedAt) : new Date(),
       status: m.status || 'ongoing',
     });

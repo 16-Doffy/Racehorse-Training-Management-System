@@ -7,6 +7,7 @@ const { startSensorSimulator } = require('./src/realtime/sensorSimulator');
 const { startCareScheduler } = require('./src/realtime/careScheduler');
 const { startDailyTaskGenerator } = require('./src/realtime/dailyTaskGenerator');
 const { startMissedSessionWatcher } = require('./src/realtime/missedSessionWatcher');
+const { startMissedCareWatcher } = require('./src/realtime/missedCareWatcher');
 
 async function start() {
   await connectDB();
@@ -25,6 +26,7 @@ async function start() {
     startCareScheduler();
     startDailyTaskGenerator();
     startMissedSessionWatcher();
+    startMissedCareWatcher();
   });
 }
 

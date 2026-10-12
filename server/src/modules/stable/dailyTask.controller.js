@@ -26,12 +26,13 @@ const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // What a trainer or manager may hand out by hand. Medication and monitoring are the vet's care
 // orders: they come from a treatment, not from this form.
-const MANUAL_TASK_TYPES = ['feeding', 'cleaning', 'bathing', 'icing', 'other'];
+const MANUAL_TASK_TYPES = ['feeding', 'cleaning', 'bathing', 'icing', 'hoof_care', 'other'];
 const TASK_LABELS = {
   feeding: 'cho ăn',
   cleaning: 'vệ sinh chuồng',
   bathing: 'tắm rửa',
   icing: 'ngâm chân nước đá',
+  hoof_care: 'chăm sóc móng',
   medication: 'cho dùng thuốc',
   monitoring: 'theo dõi theo y lệnh',
   other: 'việc khác',
@@ -601,7 +602,7 @@ const myCarePlan = asyncHandler(async (req, res) => {
       medications: t.medications.map((m) => {
         const s = stockOf(m.inventoryItem);
         const daily = (m.amount || 0) * Math.max((m.times || []).length, 1);
-        return { name: m.name, dosage: m.dosage, amount: m.amount, times: m.times, stock: s, enough: s ? s.available >= daily : null, dailyNeed: m.amount ? daily : null };
+        return { name: m.name, dosage: m.dosage, amount: m.amount, times: m.times, route: m.route || null, stock: s, enough: s ? s.available >= daily : null, dailyNeed: m.amount ? daily : null };
       }),
     }));
     // One day's need per stock item for this horse, against what is in stock.

@@ -30,7 +30,7 @@ const dailyTaskSchema = new mongoose.Schema(
       type: String,
       // medication / monitoring are the vet's care orders (see health/treatmentCare.service.js).
       // 'other' is any job the list doesn't name; its note says what it is.
-      enum: ['feeding', 'cleaning', 'bathing', 'icing', 'medication', 'monitoring', 'other'],
+      enum: ['feeding', 'cleaning', 'bathing', 'icing', 'hoof_care', 'medication', 'monitoring', 'other'],
       required: true,
     },
     // Who the work comes from: assigned by hand (trainer/manager), ordered by the vet through a
@@ -67,6 +67,8 @@ const dailyTaskSchema = new mongoose.Schema(
     recordedLate: { type: Boolean, default: false },
     // The app's ids for the actions already applied, so a resend of the same action is answered, not repeated.
     opIds: { type: [String], default: [] },
+    // A vet's dose whose window closed with nobody recording it: when the vet was told (once).
+    missedNotifiedAt: { type: Date, default: null },
     // The groom has seen the task and taken it on — for a vet's order, the trainer and manager can
     // tell "nobody has picked this up" apart from "picked up, not done yet".
     acknowledgedAt: { type: Date, default: null },

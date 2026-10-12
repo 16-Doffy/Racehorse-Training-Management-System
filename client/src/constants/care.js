@@ -20,6 +20,7 @@ export const TASK_TYPE_LABELS = {
   cleaning: 'Vệ sinh chuồng',
   bathing: 'Tắm rửa',
   icing: 'Ngâm chân nước đá',
+  hoof_care: 'Chăm sóc móng',
   medication: 'Cho dùng thuốc',
   monitoring: 'Theo dõi theo y lệnh',
   other: 'Khác',
@@ -32,7 +33,7 @@ export const TASK_TIMING_META = {
   late: { label: 'Trễ hạn', color: 'orange' },
   missed: { label: 'Đã lỡ', color: 'red' },
 };
-export const ASSIGNABLE_TASK_TYPES = ['cleaning', 'bathing', 'icing', 'other']; // meals come from rations
+export const ASSIGNABLE_TASK_TYPES = ['cleaning', 'bathing', 'icing', 'hoof_care', 'other']; // meals come from rations
 
 // Where a task came from (DailyTask.source).
 export const TASK_SOURCE_META = {

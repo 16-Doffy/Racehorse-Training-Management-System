@@ -22,6 +22,11 @@ const restockRequestSchema = new mongoose.Schema({
   reviewNote: { type: String, trim: true },
   // The task this request is holding up (a meal or dose the groom can't record without the stock).
   task: { type: mongoose.Schema.Types.ObjectId, ref: 'DailyTask', default: null },
+  // How soon it is needed, and the stable block it is for (empty = the main store).
+  priority: { type: String, enum: ['normal', 'urgent'], default: 'normal' },
+  destinationBlock: { type: String, trim: true, default: null },
+  // The Manager may approve less than asked (e.g. 15 of 20 kg); the delivery defaults to this.
+  approvedQuantity: { type: Number, default: null },
 });
 
 /**

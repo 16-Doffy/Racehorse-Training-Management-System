@@ -185,3 +185,20 @@ Chạy local ngày 12/10/2026, TZ Asia/Ho_Chi_Minh. MongoDB là replica set mộ
 **Chờ API của đồng đội:** DEP-01 (đường dùng), DEP-02 (báo liều bị bỏ lỡ), DEP-03 (duyệt một phần, ưu tiên), DEP-04 (cấp phát và Groom xác nhận nhận hàng), DEP-05 (chăm sóc móng).
 
 **Cải tiến sau:** realtime qua socket thay cho kiểm tra chuông mỗi phút; ảnh sự cố nén trước khi gửi; cảnh báo sắp hết hạn theo từng lô hàng.
+
+## H. Phản hồi của backend (Duy, 12/10/2026)
+
+| Mục | Trạng thái | Cách dùng |
+|---|---|---|
+| DEP-01 Đường dùng | **Đã có (backend)** | `Treatment.medications[].route`: `oral, im, iv, sc, topical, eye, other` (null với toa cũ). Có trong `GET /health/treatments` và `GET /stable/my-care-plan` (`prescriptions[].medications[].route`). Form kê đơn web của bác sĩ chưa có ô chọn — chờ phần web bác sĩ. |
+| DEP-02 Liều bị bỏ lỡ | **Đã có** | Job mỗi 10 phút: việc `medication`/`monitoring` nguồn `vet`, còn `pending`, đã `missed` → báo bác sĩ phụ trách ngựa một lần (`type: care_order`, đánh dấu `missedNotifiedAt`). Chỉ xét hôm nay và hôm qua; không xếp lại, không gấp đôi liều. |
+| DEP-03 Duyệt một phần / ưu tiên / nơi nhận | **Đã có** | `POST /inventory/:id/restock-request` và `POST /inventory/proposals` nhận `priority` (`normal`/`urgent`, sai → 400) và `destinationBlock`. Manager duyệt bằng `PATCH …/restock-requests/:reqId { status: 'approved', approvedQuantity }` (≤ `quantity`). Nhận hàng mặc định theo `approvedQuantity`. `GET /inventory` trả `priority`, `destinationBlock`, `approvedQuantity`, `receivedQty`. Web Manager đã hiện "Khẩn", "Cho Block A", "Duyệt 6/10 kg". |
+| DEP-04 Cấp phát về khu | **Chưa làm — cần chốt thiết kế** | Câu hỏi chính: khi Groom hoàn thành bữa/liều thì trừ kho chung (như hiện nay) hay kho của khu? Nếu trừ kho khu thì phải đổi cách trừ kho của luồng chăm sóc → để sau demo. |
+| DEP-05 Chăm sóc móng | **Đã có** | `taskType: 'hoof_care'` (enum, việc giao tay, form giao việc của HLV). App chỉ cần thêm nhãn "Chăm sóc móng". |
+| DEP-06 Khẩu phần gắn kho | **Đã có** | Server từ chối dòng không có `inventoryItem` và khẩu phần rỗng (400). Form HLV bắt buộc chọn món; bảng khẩu phần báo "Chưa duyệt — Groom chưa ghi nhận được" / "Có món chưa gắn kho". Khẩu phần cũ: HLV bấm Sửa → chọn lại món → Lưu (đóng dấu duyệt). |
+| DEP-07 Ngựa chưa có khẩu phần | **Giữ như app đang làm** | Việc "Cho ăn trong ngày" vẫn sinh để Groom bấm "Báo HLV chưa có khẩu phần"; HLV thấy ở checklist ("Bước tiếp theo"). |
+| DEP-08 Loại/thời điểm sự cố cho bác sĩ | Phần web bác sĩ | Backend đã trả `incidentReport.category`, `occurredAt`. |
+| DEP-09 Kiểm tra việc gắn đề xuất | **Đã có** | Groom gắn việc không phải của mình → 403; HLV/bác sĩ chỉ việc của ngựa trong phạm vi. |
+| DEP-10 Triển khai | **Đã deploy** | Code trên `main` tự deploy Render (Atlas là replica set). |
+
+Kiểm thử: `server/test/integration/groomRequests.test.js` (6 ca), cùng 30 ca cũ: 36/36 đạt.

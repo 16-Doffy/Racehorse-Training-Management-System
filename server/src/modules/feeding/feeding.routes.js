@@ -17,7 +17,11 @@ const InventoryItem = require('../../models/InventoryItem');
  */
 async function normalizeRationItems(req, res, next) {
   try {
-    if (req.body.items === undefined) return next();
+    // A ration is what the groom gives and what leaves stock: at least one line, each a stock item.
+    if (req.body.items === undefined) {
+      if (req.method === 'POST') return res.status(400).json({ success: false, data: null, message: 'Khẩu phần cần ít nhất một món chọn từ kho.' });
+      return next();
+    }
     if (!Array.isArray(req.body.items)) return res.status(400).json({ success: false, data: null, message: 'items phải là danh sách.' });
     const ids = req.body.items.map((i) => i?.inventoryItem).filter(Boolean);
     const stock = ids.length ? await InventoryItem.find({ _id: { $in: ids } }).select('name unit category isActive') : [];
@@ -26,8 +30,7 @@ async function normalizeRationItems(req, res, next) {
     for (const [i, raw] of req.body.items.entries()) {
       if (!raw) continue;
       if (!raw.inventoryItem) {
-        if (raw.type && raw.quantity) items.push({ type: raw.type, quantity: raw.quantity });
-        continue;
+        return res.status(400).json({ success: false, data: null, message: `Món thứ ${i + 1}: chọn mặt hàng trong kho — món ghi bằng chữ không trừ kho được.` });
       }
       const item = byId.get(String(raw.inventoryItem));
       const fail400 = (message) => res.status(400).json({ success: false, data: null, message: `Món thứ ${i + 1}: ${message}` });
@@ -38,6 +41,7 @@ async function normalizeRationItems(req, res, next) {
       if (!Number.isFinite(amount) || amount <= 0) return fail400('lượng mỗi bữa phải là số dương.');
       items.push({ type: item.name, quantity: `${amount} ${item.unit}`, inventoryItem: item._id, amount, unit: item.unit });
     }
+    if (!items.length) return res.status(400).json({ success: false, data: null, message: 'Khẩu phần cần ít nhất một món chọn từ kho.' });
     req.body.items = items;
     return next();
   } catch (err) {
