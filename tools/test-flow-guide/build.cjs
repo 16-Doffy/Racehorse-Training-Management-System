@@ -52,6 +52,6 @@ cases.push(
 if (cases.filter(c => c.id.startsWith('A')).length !== 10 || cases.filter(c => c.id.startsWith('T')).length !== 4) throw new Error('Checklist extraction failed.');
 const file = path.join(__dirname, 'index.html');
 const html = fs.readFileSync(file, 'utf8');
-const data = JSON.stringify({ groups, cases }).replace(/</g, '\\u003c');
+const data = JSON.stringify({ groups, cases, forms: require('./forms.cjs') }).replace(/</g, '\\u003c');
 fs.writeFileSync(file, html.replace(/(<script id="flow-data" type="application\/json">)[\s\S]*?(<\/script>)/, '$1' + data + '$2'));
-console.log(`Standalone guide: ${cases.length} cases, ${groups.length} groups.`);
+console.log(`Standalone guide: ${cases.length} cases, ${groups.length} groups, ${require('./forms.cjs').length} forms.`);

@@ -1,7 +1,7 @@
 import { useSelector } from 'react-redux';
 import { useNavigate, Link } from 'react-router-dom';
-import { Typography, Card, Row, Col, Statistic, Alert, Tag, Button } from 'antd';
-import { AppstoreOutlined, CheckCircleOutlined, EyeOutlined, MedicineBoxOutlined } from '@ant-design/icons';
+import { Typography, Card, Row, Col, Statistic, Alert, Tag, Button, Tooltip } from 'antd';
+import { AppstoreOutlined, CheckCircleOutlined, EyeOutlined, MedicineBoxOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { horsesApi } from '../horses/horsesApi';
 import { trainingSessionApi } from '../training/trainingApi';
@@ -12,12 +12,13 @@ import ExamRequestsCard from './ExamRequestsCard';
 import OpenIncidentsCard from './OpenIncidentsCard';
 import CareOrdersCard from './CareOrdersCard';
 import NextStepsCard from './NextStepsCard';
+import ManagerQueueCard from './ManagerQueueCard';
 import { STATUS_TONES } from '../../layouts/forestTheme';
 
 const { Title, Paragraph } = Typography;
 
 /** One counter on the dashboard: a tinted icon and a figure coloured by what it means. */
-function StatCard({ title, value, tone, icon, onClick }) {
+function StatCard({ title, value, tone, icon, onClick, hint }) {
   const { color, bg } = STATUS_TONES[tone];
   return (
     <Card hoverable onClick={onClick} styles={{ body: { padding: 20 } }}>
@@ -25,7 +26,21 @@ function StatCard({ title, value, tone, icon, onClick }) {
         <span className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ background: bg, color }}>
           {icon}
         </span>
-        <Statistic title={title} value={value} styles={{ content: { color, fontWeight: 600 } }} />
+        <Statistic
+          title={
+            hint ? (
+              <Tooltip title={hint}>
+                <span>
+                  {title} <InfoCircleOutlined className="text-xs" />
+                </span>
+              </Tooltip>
+            ) : (
+              title
+            )
+          }
+          value={value}
+          styles={{ content: { color, fontWeight: 600 } }}
+        />
       </div>
     </Card>
   );
@@ -45,8 +60,13 @@ export default function DashboardPage() {
   const { user } = useSelector((state) => state.auth);
   const navigate = useNavigate();
   const isHeadTrainer = user?.role === ROLES.HEAD_TRAINER;
+  const isManager = user?.role === ROLES.MANAGER;
   const { data } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const horses = data?.data || [];
+  // Same query as NextStepsCard: whether each horse has a vet's exam and no restriction in force.
+  const { data: checklistData } = useQuery({ queryKey: ['horses', 'checklist'], queryFn: () => horsesApi.checklists() });
+  const checklistByHorse = new Map((checklistData?.data || []).map((r) => [String(r.horse._id), r]));
+  const itemDone = (horse, key) => Boolean(checklistByHorse.get(String(horse._id))?.items.find((i) => i.key === key)?.done);
 
   // Only fetched for the Head Trainer, who's the one this chart is for (§ Head Trainer
   // requirement: "bảng tiến độ và biểu đồ thể lực tổng quan").
@@ -62,7 +82,9 @@ export default function DashboardPage() {
   // the server attaches to every horse.
   const restrictedHorses = horses.filter((h) => h.trainingClearance?.restricted);
 
-  const eligible = horses.filter((h) => h.healthStatus === 'eligible').length;
+  // A new horse is "eligible" by default before any vet has seen it, so the count also needs the
+  // exam and no restriction from the vet — the same things the pre-check looks at.
+  const eligible = horses.filter((h) => h.healthStatus === 'eligible' && itemDone(h, 'health') && itemDone(h, 'clearance')).length;
   const monitoring = horses.filter((h) => h.healthStatus === 'monitoring').length;
   const injured = horses.filter((h) => h.healthStatus === 'injured').length;
 
@@ -81,7 +103,14 @@ export default function DashboardPage() {
           <StatCard title="Tổng số ngựa" value={horses.length} tone="neutral" icon={<AppstoreOutlined />} onClick={() => navigate('/horses')} />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <StatCard title="Đủ điều kiện" value={eligible} tone="good" icon={<CheckCircleOutlined />} onClick={() => navigate('/horses')} />
+          <StatCard
+            title="Đủ điều kiện tập"
+            hint="Ngựa khỏe, đã có hồ sơ khám của bác sĩ và không bị hạn chế tập. Ngựa mới chưa khám không được tính."
+            value={eligible}
+            tone="good"
+            icon={<CheckCircleOutlined />}
+            onClick={() => navigate('/horses')}
+          />
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <StatCard title="Cần theo dõi" value={monitoring} tone="watch" icon={<EyeOutlined />} onClick={() => navigate('/horses')} />
@@ -125,6 +154,8 @@ export default function DashboardPage() {
           }
         />
       )}
+
+      {isManager && <ManagerQueueCard />}
 
       <NextStepsCard />
 
