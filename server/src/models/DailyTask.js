@@ -6,6 +6,10 @@ const incidentReportSchema = new mongoose.Schema(
     description: { type: String, required: true },
     images: [{ type: String }], // relative URLs served from /uploads
     severity: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
+    // What kind of incident, and when it happened (the groom may report it a while after seeing it).
+    // Optional: reports filed before these existed carry neither.
+    category: { type: String, enum: ['refused_feed', 'illness', 'hoof_injury', 'behaviour', 'accident', 'other', null], default: null },
+    occurredAt: { type: Date, default: null },
     reportedAt: { type: Date, default: Date.now },
     // A report used to end at the vet's notification bell: nothing recorded whether anyone had
     // looked at the horse. Open until the vet picks it up and closes it (or files an exam).

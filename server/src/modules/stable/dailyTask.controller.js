@@ -14,6 +14,8 @@ const { withSupplyStatus, consumeSupplies, recordConsumption, stockMap, shortage
 const StableAssignment = require('../../models/StableAssignment');
 const FeedingSchedule = require('../../models/FeedingSchedule');
 const Treatment = require('../../models/Treatment');
+const InventoryItem = require('../../models/InventoryItem');
+const { wantedTasks, isActiveToday, keyOf: careKey } = require('../health/treatmentCare.service');
 const { clearanceMap, levelOf } = require('../health/trainingClearance');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
@@ -331,6 +333,78 @@ function readAction(body = {}) {
   return { performedAt: at, opId, late: now - at.getTime() > SYNC_LATE_MINUTES * 60000 };
 }
 
+const supplyKey = (supplies = []) =>
+  supplies
+    .filter((s) => s.inventoryItem && s.amount)
+    .map((s) => `${s.inventoryItem}:${s.amount}`)
+    .sort()
+    .join('|');
+
+/**
+ * What stops a pending task from being recorded, beyond its time window and the stock count. Each
+ * is checked against where the work comes from as it stands now, not as it stood when the task was
+ * created: a meal needs an approved ration for its slot, a dose needs the vet's current
+ * prescription (whose amount is what leaves stock), and nothing is given from an expired item.
+ * Returns { blocker: { status, message, data } } or { supplies } — the supplies to take out.
+ */
+async function completionCheck(task) {
+  let { supplies } = task;
+
+  if (task.taskType === 'feeding') {
+    const ration = task.mealSlot
+      ? await FeedingSchedule.exists({ horse: task.horse, mealTime: task.mealSlot, approvedBy: { $ne: null }, 'items.0': { $exists: true } })
+      : null;
+    if (!ration) {
+      return {
+        blocker: {
+          status: 409,
+          message: 'Ngựa chưa có khẩu phần được duyệt cho bữa này — chưa ghi nhận cho ăn được. Hãy báo HLV lập khẩu phần.',
+          data: { code: 'NO_APPROVED_RATION' },
+        },
+      };
+    }
+  }
+
+  if (task.source === 'vet' && task.treatment) {
+    const treatment = await Treatment.findById(task.treatment).select('status startDate endDate medications careInstructions');
+    const bounds = dayBounds(task.scheduledDate);
+    if (!treatment || !isActiveToday(treatment, bounds)) {
+      return {
+        blocker: { status: 409, message: 'Đợt điều trị này đã kết thúc — không ghi nhận liều này nữa.', data: { code: 'TREATMENT_ENDED' } },
+      };
+    }
+    // Same key as the care-task sync uses: the order still exists when its note and time do.
+    const current = (await wantedTasks(treatment, bounds)).find((w) => careKey(w) === careKey(task));
+    if (!current) {
+      return {
+        blocker: {
+          status: 409,
+          message: 'Bác sĩ đã thay đổi hoặc ngừng y lệnh này — tải lại để xem liều hiện tại.',
+          data: { code: 'PRESCRIPTION_CHANGED' },
+        },
+      };
+    }
+    // The vet changed the amount per dose but not the note: the sync keeps the task, so the stock
+    // taken follows the prescription as it is now.
+    if (supplyKey(current.supplies) !== supplyKey(task.supplies)) supplies = current.supplies;
+  }
+
+  const ids = (supplies || []).map((s) => s.inventoryItem).filter(Boolean);
+  if (ids.length) {
+    const expired = await InventoryItem.find({ _id: { $in: ids }, expiryDate: { $ne: null, $lt: dayBounds(new Date()).start } }).select('name expiryDate');
+    if (expired.length) {
+      return {
+        blocker: {
+          status: 409,
+          message: `Vật tư đã hết hạn: ${expired.map((i) => i.name).join(', ')} — không được dùng; hãy báo Quản lý thay lô mới.`,
+          data: { code: 'EXPIRED_SUPPLY', expired: expired.map((i) => ({ inventoryItem: i._id, name: i.name, expiryDate: i.expiryDate })) },
+        },
+      };
+    }
+  }
+  return { supplies };
+}
+
 const completeTask = asyncHandler(async (req, res) => {
   const loaded = await loadTask(req, res);
   if (!loaded) return undefined;
@@ -338,6 +412,16 @@ const completeTask = asyncHandler(async (req, res) => {
   if (action.error) return fail(res, action.error, action.status);
   if (action.opId && loaded.opIds?.includes(action.opId)) return ok(res, loaded, 'Already recorded.');
   const observation = readObservation(req.body);
+  if (observation?.amountEatenPercent !== undefined) {
+    const eaten = Number(observation.amountEatenPercent);
+    if (!Number.isFinite(eaten) || eaten < 0 || eaten > 100) return fail(res, 'Lượng ăn được phải từ 0 đến 100%.', 400);
+    observation.amountEatenPercent = Math.round(eaten);
+  }
+  // A horse that refused its feed ate none of it; say so in the number the readiness check reads.
+  if (observation?.appetite === 'refused' && observation.amountEatenPercent === undefined) observation.amountEatenPercent = 0;
+  // Checked only on the first completion: adding an observation to work already done is not giving it again.
+  const check = loaded.status === 'pending' ? await completionCheck(loaded) : { supplies: loaded.supplies };
+  if (check.blocker) return fail(res, check.blocker.message, check.blocker.status, check.blocker.data);
   const result = await runTransaction(async (session) => {
     let task = await DailyTask.findOne({ _id: loaded._id, assignedTo: req.user._id }).session(session);
     if (!task) throw operationError(409, 'Task assignment has changed.');
@@ -358,6 +442,8 @@ const completeTask = asyncHandler(async (req, res) => {
       task.receivedAt = new Date();
       task.recordedLate = action.late;
       if (!task.acknowledgedAt) task.acknowledgedAt = action.performedAt;
+      // What actually leaves stock is what the task records as issued.
+      if (supplyKey(check.supplies) !== supplyKey(task.supplies)) task.supplies = check.supplies;
       // Lock this task before deducting stock; every write rolls back together on failure.
       await task.save({ session });
       const stock = await consumeSupplies(task.supplies, { session });
@@ -388,10 +474,36 @@ const completeTask = asyncHandler(async (req, res) => {
   return ok(res, result.task, 'Task marked as completed.');
 });
 
+const INCIDENT_CATEGORIES = {
+  refused_feed: 'bỏ ăn',
+  illness: 'nghi bệnh',
+  hoof_injury: 'chấn thương móng',
+  behaviour: 'hành vi bất thường',
+  accident: 'tai nạn tại chuồng',
+  other: 'khác',
+};
+// An incident is reported when it is seen or soon after; a week-old one is a history note, not an alert.
+const INCIDENT_MAX_AGE_DAYS = 7;
+
+/** `occurredAt` from the form: when the groom saw it. Absent means now. Returns { at } or { error }. */
+function readOccurredAt(value) {
+  if (value === undefined || value === null || value === '') return { at: null };
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return { error: 'Thời điểm xảy ra không hợp lệ.' };
+  const now = Date.now();
+  if (at.getTime() > now + CLOCK_SKEW_MINUTES * 60000) return { error: 'Thời điểm xảy ra ở tương lai — kiểm tra lại đồng hồ điện thoại.' };
+  if (at.getTime() < now - INCIDENT_MAX_AGE_DAYS * 86400000) return { error: `Sự cố đã quá ${INCIDENT_MAX_AGE_DAYS} ngày — hãy báo trực tiếp bác sĩ/HLV.` };
+  return { at };
+}
+
 // Groom-reported incident, with optional photo evidence uploaded via multipart/form-data.
 const reportIncident = asyncHandler(async (req, res) => {
   const { description, severity } = req.body;
   if (!description || !description.trim()) return fail(res, 'Incident description is required.', 400);
+  const category = req.body.category || null;
+  if (category && !INCIDENT_CATEGORIES[category]) return fail(res, 'Loại sự cố không hợp lệ.', 400);
+  const occurred = readOccurredAt(req.body.occurredAt);
+  if (occurred.error) return fail(res, occurred.error, 400);
 
   const task = await loadTask(req, res);
   if (!task) return undefined;
@@ -401,16 +513,25 @@ const reportIncident = asyncHandler(async (req, res) => {
     (req.files || []).map((f) => saveFile(f, { uploadedBy: req.user._id, purpose: 'incident', task: task._id }))
   );
   const images = stored.map((f) => f.url);
-  task.incidentReport = { description, severity: severity || 'medium', images, reportedAt: new Date() };
+  task.incidentReport = {
+    description,
+    severity: severity || 'medium',
+    category,
+    occurredAt: occurred.at,
+    images,
+    reportedAt: new Date(),
+  };
   await task.save();
 
   // The vet has to act on it; the trainer has to know before working the horse.
   const horse = await Horse.findById(task.horse).select('name');
+  const kind = category ? ` (${INCIDENT_CATEGORIES[category]})` : '';
+  const when = occurred.at ? ` — lúc ${occurred.at.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : '';
   const alert = {
     horse: task.horse,
     type: 'incident_report',
     severity: severity === 'high' ? 'critical' : 'warning',
-    message: `⚠️ ${req.user.name} báo sự cố với ${horse?.name || 'Ngựa'}: ${description}`,
+    message: `⚠️ ${req.user.name} báo sự cố${kind} với ${horse?.name || 'Ngựa'}${when}: ${description}`,
   };
   await notifyHorseStaff({ ...alert, staff: 'vet' });
   await notifyHorseStaff({ ...alert, staff: 'trainer' });
