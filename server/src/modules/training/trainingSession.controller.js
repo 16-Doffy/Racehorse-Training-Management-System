@@ -4,6 +4,7 @@ const Horse = require('../../models/Horse');
 const RaceEntry = require('../../models/RaceEntry');
 const ExamRequest = require('../../models/ExamRequest');
 const StableAssignment = require('../../models/StableAssignment');
+const { readingsOf } = require('../../realtime/liveReadings');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
@@ -203,6 +204,13 @@ async function applyStatusChange(session, next, { cancelReason }) {
 }
 
 /* -------------------------------------------------------------------------- */
+
+// The last readings of a running session (realtime/liveReadings.js), for a screen opened mid-run.
+const getSessionReadings = asyncHandler(async (req, res) => {
+  const session = await loadSession(req, res);
+  if (!session) return undefined;
+  return ok(res, session.status === 'in_progress' ? readingsOf(session._id) : [], 'Live readings fetched.');
+});
 
 const listSessions = asyncHandler(async (req, res) => {
   const { trainingPlan, status, sessionType } = req.query;
@@ -814,6 +822,7 @@ const rescheduleSession = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  getSessionReadings,
   rescheduleSession,
   listSessions,
   getSession,

@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, ReferenceLine, ResponsiveContainer, Tool
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { getSocket } from '../../lib/socket';
+import { trainingSessionApi } from './trainingApi';
 import { SESSION_KINDS, OBJECTIVE_LABELS } from './trainingVocab';
 import { FOREST, STATUS_TONES } from '../../layouts/forestTheme';
 
@@ -12,6 +13,10 @@ const { Text } = Typography;
 
 // Readings kept per session for the chart: 40 ticks of 5 s, a little over three minutes on screen.
 const KEEP = 40;
+// Readings outlive this screen while the browser tab is open: going to another page and back
+// keeps the chart instead of starting it again (the server also hands back its last readings).
+const liveCache = new Map();
+const toPoint = (r) => ({ hr: r.hr ?? r.heartRate, speed: r.speed, distance: r.distance, targetDistance: r.targetDistance });
 const GRID = '#E4DFD3';
 const AXIS = '#8A8578';
 
@@ -46,9 +51,12 @@ function Figure({ icon, label, value, unit, sub, tone }) {
 function LiveCard({ session, readings }) {
   const target = targetsOf(session);
   const last = readings[readings.length - 1];
+  // Until the next reading arrives, show the last one the server kept rather than a dash.
+  const heartRate = last?.hr ?? session.metrics?.lastHeartRate;
+  const speed = last?.speed ?? session.metrics?.lastSpeed;
   const distance = last?.distance ?? session.metrics?.distance ?? 0;
   const targetDistance = last?.targetDistance ?? target.distance;
-  const over = last && last.hr > target.heartRateMax;
+  const over = heartRate != null && heartRate > target.heartRateMax;
   const kind = SESSION_KINDS[session.kind];
   const data = readings.map((r, i) => ({ i, hr: r.hr, speed: r.speed }));
   const startedAt = session.actualStartAt ? dayjs(session.actualStartAt).format('HH:mm') : null;
@@ -82,7 +90,7 @@ function LiveCard({ session, readings }) {
         <Figure
           icon={<HeartFilled />}
           label="Nhịp tim"
-          value={last?.hr}
+          value={heartRate}
           unit="bpm"
           sub={`Giới hạn ${target.heartRateMax} · TB ${session.metrics?.avgHeartRate ? Math.round(session.metrics.avgHeartRate) : '—'}`}
           tone={over ? STATUS_TONES.bad : STATUS_TONES.neutral}
@@ -90,7 +98,7 @@ function LiveCard({ session, readings }) {
         <Figure
           icon={<ThunderboltFilled />}
           label="Tốc độ"
-          value={last?.speed}
+          value={speed}
           unit="km/h"
           sub={target.speed ? `Mục tiêu ${target.speed} km/h` : null}
           tone={STATUS_TONES.neutral}
@@ -151,24 +159,46 @@ function LiveCard({ session, readings }) {
  */
 export default function LiveSessionMonitor({ sessions = [], onSessionCompleted }) {
   const running = sessions.filter((s) => s.status === 'in_progress');
-  const [readings, setReadings] = useState({});
+  const [readings, setReadings] = useState(() => Object.fromEntries(liveCache));
   const queryClient = useQueryClient();
+  const runningIds = running.map((s) => s._id).join(',');
+
+  // A run that was already going when this screen opened: fetch what the server kept of it.
+  useEffect(() => {
+    if (!runningIds) return;
+    for (const id of runningIds.split(',')) {
+      if (liveCache.get(id)?.length) continue;
+      trainingSessionApi
+        .readings(id)
+        .then((res) => {
+          const list = (res?.data || []).map(toPoint).slice(-KEEP);
+          if (!list.length) return;
+          const merged = [...list, ...(liveCache.get(id) || [])].slice(-KEEP);
+          liveCache.set(id, merged);
+          setReadings((prev) => ({ ...prev, [id]: merged }));
+        })
+        .catch(() => {});
+    }
+  }, [runningIds]);
 
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return undefined;
     if (!socket.connected) socket.connect();
     const onReading = (r) => {
-      setReadings((prev) => {
-        const list = [...(prev[r.sessionId] || []), { hr: r.heartRate, speed: r.speed, distance: r.distance, targetDistance: r.targetDistance }];
-        return { ...prev, [r.sessionId]: list.slice(-KEEP) };
-      });
+      const id = String(r.sessionId);
+      const list = [...(liveCache.get(id) || []), toPoint(r)].slice(-KEEP);
+      liveCache.set(id, list);
+      setReadings((prev) => ({ ...prev, [id]: list }));
     };
     // A finished session leaves the board at once instead of at the next poll.
     const onCompleted = (payload) => {
       queryClient.invalidateQueries({ queryKey: ['training-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
-      if (payload?.sessionId) onSessionCompleted?.(payload.sessionId);
+      if (payload?.sessionId) {
+        liveCache.delete(String(payload.sessionId));
+        onSessionCompleted?.(payload.sessionId);
+      }
     };
     socket.on('sensor:reading', onReading);
     socket.on('session:completed', onCompleted);

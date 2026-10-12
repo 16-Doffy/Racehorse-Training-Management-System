@@ -15,6 +15,8 @@ export const trainingPlanApi = {
 export const trainingSessionApi = {
   ...sessionsBase,
   recordEvaluation: (id, payload) => axiosClient.patch(`/training/sessions/${id}/evaluation`, payload),
+  /** The last sensor readings of a running session, to draw the chart when the screen opens mid-run. */
+  readings: (id) => axiosClient.get(`/training/sessions/${id}/readings`),
   // The four readiness gates for a proposed session (medical, vet clearance, nutrition, care
   // assignment). Open to every role, so other screens can show the same board.
   readiness: (params) => axiosClient.get('/training/sessions/readiness', { params }),

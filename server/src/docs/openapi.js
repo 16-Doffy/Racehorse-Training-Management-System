@@ -1058,6 +1058,15 @@ module.exports = {
         responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
+    '/training/sessions/{id}/readings': {
+      get: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'The last sensor readings of a running session (up to 40, oldest first)',
+        description: 'Each { hr, speed, distance, targetDistance, at }. Kept in memory for a session in_progress (empty otherwise, or after a server restart); metrics.lastHeartRate / lastSpeed stay on the session.',
+        parameters: [idParam('id')],
+        responses: { 200: responses[200]({ type: 'array', items: { type: 'object' } }), 403: responses[403], 404: responses[404] },
+      },
+    },
     '/training/sessions/{id}/end': {
       post: {
         tags: ['Training (Head Trainer)'],

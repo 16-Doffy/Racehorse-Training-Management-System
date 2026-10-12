@@ -3,6 +3,7 @@ const { evaluateMetrics } = require('./alertEvaluator');
 const { getIO } = require('./socketServer');
 const { SESSION_KINDS } = require('../constants/training');
 const { autoComplete } = require('../modules/training/trainingSession.service');
+const { pushReading, clearReadings } = require('./liveReadings');
 
 const TICK_MS = 5000;
 // Each 5-second tick stands for 30 seconds of work, so a 2400 m canter finishes in under a minute
@@ -76,12 +77,14 @@ function startSensorSimulator() {
         // eslint-disable-next-line no-await-in-loop
         const kept = await TrainingSession.updateOne(
           { _id: session._id, status: 'in_progress' },
-          { $set: { 'metrics.avgHeartRate': m.avgHeartRate, 'metrics.sampleCount': m.sampleCount, 'metrics.maxHeartRate': m.maxHeartRate, 'metrics.maxSpeed': m.maxSpeed, 'metrics.distance': m.distance } }
+          { $set: { 'metrics.avgHeartRate': m.avgHeartRate, 'metrics.sampleCount': m.sampleCount, 'metrics.maxHeartRate': m.maxHeartRate, 'metrics.maxSpeed': m.maxSpeed, 'metrics.distance': m.distance, 'metrics.lastHeartRate': heartRate, 'metrics.lastSpeed': speed } }
         );
         if (!kept.modifiedCount) {
           formOfSession.delete(key);
+          clearReadings(key);
           continue;
         }
+        pushReading(key, { hr: heartRate, speed, distance: m.distance, targetDistance: target.distance, at: Date.now() });
 
         const horseId = session.horse._id;
         // Live readings go to people watching this horse: its owner's horse room and the trainer
@@ -102,6 +105,7 @@ function startSensorSimulator() {
 
         if (done) {
           formOfSession.delete(key);
+          clearReadings(key);
           // eslint-disable-next-line no-await-in-loop
           const closed = await autoComplete(session, { workedSeconds: m.sampleCount * SIM_SECONDS_PER_TICK });
           if (closed) io.to([`horse:${horseId}`, trainer ? `user:${trainer}` : 'role:head_trainer']).emit('session:completed', { sessionId: session._id, horseId });
