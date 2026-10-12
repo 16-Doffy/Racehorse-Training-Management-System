@@ -36,6 +36,8 @@ const notificationSchema = new mongoose.Schema(
         'task_assigned',
         'care_order',
         'session_scheduled',
+        // To the trainer (and the groom): a meal's window closed with nobody recording it.
+        'meal_missed',
         // A vet picked up or closed an incident — to the groom who reported it and the trainer.
         'incident_update',
         'system',

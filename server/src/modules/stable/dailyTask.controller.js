@@ -741,7 +741,71 @@ const handleIncident = asyncHandler(async (req, res) => {
   return ok(res, task, 'Incident updated.');
 });
 
+const MEAL_SLOT_LABELS = { morning: 'bữa sáng', noon: 'bữa trưa', evening: 'bữa chiều' };
+const hhmm = (d) => new Date(d).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+/**
+ * A meal of today that was missed (its window closed unrecorded, or the groom reported it could not
+ * be given): the trainer or manager asks for it to be given now. A new feeding task for the same
+ * slot, from the ration as it stands, for the horse's groom; once per missed meal. When the groom
+ * records it, the readiness check sees the horse has eaten (and the digestion wait starts then).
+ * POST /stable/tasks/:id/make-up
+ */
+const makeUpMeal = asyncHandler(async (req, res) => {
+  const task = await DailyTask.findById(req.params.id);
+  if (!task) return fail(res, 'Daily task not found.', 404);
+  if (!(await canAccessHorse(req.user, task.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+  if (task.taskType !== 'feeding' || !task.mealSlot || task.makeUpOf) return fail(res, 'Chỉ báo cho ăn bù được cho một bữa theo khẩu phần.', 400);
+  const today = dayBounds(new Date());
+  if (task.scheduledDate < today.start || task.scheduledDate >= today.end) {
+    return fail(res, 'Chỉ cho ăn bù bữa của hôm nay — bữa của ngày trước đã qua; bữa tiếp theo theo lịch sẽ thay.', 409);
+  }
+  const missed = task.status === 'skipped' || (task.status === 'pending' && taskTiming(task).state === 'missed');
+  if (!missed) {
+    return fail(res, task.status === 'completed' ? 'Bữa này đã được ghi nhận cho ăn.' : 'Bữa này chưa quá hạn — nhân viên vẫn ghi nhận được.', 409);
+  }
+  if (task.makeUpTask) {
+    const existing = await DailyTask.findById(task.makeUpTask).select('status completedAt createdAt');
+    return fail(res, `Đã báo cho ăn bù lúc ${hhmm(existing?.createdAt || new Date())}${existing?.status === 'completed' ? ` — đã cho ăn lúc ${hhmm(existing.completedAt)}` : ' — đang chờ nhân viên'}.`, 409, { makeUp: task.makeUpTask });
+  }
+  const ration = await FeedingSchedule.findOne({ horse: task.horse, mealTime: task.mealSlot, approvedBy: { $ne: null }, 'items.0': { $exists: true } });
+  if (!ration) return fail(res, 'Bữa này chưa có khẩu phần được duyệt — lập khẩu phần trước.', 409);
+
+  const assignment = await StableAssignment.findOne({ horse: task.horse }).select('assignedCaretaker');
+  const assignee = assignment?.assignedCaretaker || task.assignedTo;
+  const label = MEAL_SLOT_LABELS[task.mealSlot];
+  const makeUp = await DailyTask.create({
+    horse: task.horse,
+    assignedTo: assignee,
+    taskType: 'feeding',
+    source: 'trainer',
+    mealSlot: task.mealSlot,
+    scheduledDate: new Date(),
+    supplies: (ration.items || []).filter((i) => i.inventoryItem && i.amount).map((i) => ({ inventoryItem: i.inventoryItem, name: i.type, amount: i.amount, unit: i.unit })),
+    note: `Cho ăn bù — ${label} ${hhmm(task.scheduledDate)} bị bỏ lỡ`,
+    makeUpOf: task._id,
+  });
+  // One make-up per missed meal, even if two people click at once.
+  const claimed = await DailyTask.updateOne({ _id: task._id, makeUpTask: null }, { $set: { makeUpTask: makeUp._id } });
+  if (claimed.modifiedCount !== 1) {
+    await makeUp.deleteOne();
+    return fail(res, 'Bữa này vừa được báo cho ăn bù — tải lại để xem.', 409);
+  }
+
+  const horse = await Horse.findById(task.horse).select('name');
+  await pushNotification({
+    recipientUser: assignee,
+    horse: task.horse,
+    type: 'task_assigned',
+    severity: 'warning',
+    message: `🍽️ ${req.user.name} yêu cầu cho ăn bù ${label} của ${horse?.name || 'ngựa'} ngay bây giờ (bữa ${hhmm(task.scheduledDate)} bị bỏ lỡ). Ghi nhận ở mục Cho ăn khi xong.`,
+  });
+  await logAction({ actorId: req.user._id, action: 'dailyTask.make_up_meal', targetModel: 'DailyTask', targetId: makeUp._id, metadata: { missed: task._id, mealSlot: task.mealSlot } });
+  return created(res, makeUp, 'Make-up meal assigned.');
+});
+
 module.exports = {
+  makeUpMeal,
   listTasks,
   getTask,
   createTask,

@@ -74,6 +74,11 @@ async function startIntegration(label = 'flow') {
 function clock(at = new Date()) {
   return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
 }
+/** The meal a time of day belongs to (rations: breakfast before 11:00, lunch to 15:59, then the evening meal). */
+function mealSlotAt(at = new Date()) {
+  const h = at.getHours();
+  return h < 11 ? 'morning' : h < 16 ? 'noon' : 'evening';
+}
 function future(minutes = 10) { return new Date(Date.now() + minutes * 60000).toISOString(); }
 function day(offset = 0) {
   const date = new Date();
@@ -108,4 +113,4 @@ async function start(ctx, session) {
   return ctx.api('trainer', 'POST', `/training/sessions/${session._id}/start`, { overrideReason: 'Test fixture supervised by trainer.' });
 }
 
-module.exports = { startIntegration, intake, planFor, book, start, clock, day, future, TEST_PASSWORD };
+module.exports = { startIntegration, intake, planFor, book, start, clock, day, future, mealSlotAt, TEST_PASSWORD };

@@ -115,6 +115,8 @@ Màn web đọc policy này; chỉnh qua env server rồi restart/redeploy, chư
 | `POLICY_MORNING_TIME` / `POLICY_AFTERNOON_TIME` | 07:30 / 16:00 | Giờ mặc định trong kế hoạch mới |
 | `AFTERNOON_LIGHT_ONLY` | `true` | Từ 12:00 chỉ cho `walk`/`canter` |
 | `POLICY_ICING_AFTER_MIN` / `POLICY_BATHING_AFTER_MIN` | 15 / 45 phút | Việc chăm sóc sau buổi nặng hoàn thành |
+| `MISSED_MEAL_BLOCKS_HARD_WORK` | `true` | Bữa ngay trước giờ tập bị bỏ lỡ/không cho ăn được (hoặc 24 giờ không có bữa nào) và quá `POLICY_MAX_FAST_HOURS` chưa ăn → chặn bài trung bình/nặng, bài nhẹ chỉ cảnh báo. HLV có nút "Báo nhân viên cho ăn bù" |
+| `POLICY_MEAL_MIN_GAP_HOURS` | 3 giờ | Hai bữa trong khẩu phần của một ngựa cách nhau ít nhất chừng này; giờ mỗi bữa: sáng trước 11:00, trưa 11:00–15:59, chiều từ 16:00 |
 
 Khi demo trial buổi chiều, chọn môi trường test riêng và đặt
 `AFTERNOON_LIGHT_ONLY=false` nếu cần. Ghi cấu hình vào biên bản test và trả lại

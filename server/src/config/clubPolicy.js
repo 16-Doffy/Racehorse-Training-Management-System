@@ -41,6 +41,11 @@ const clubPolicy = Object.freeze({
   // Care after a hard session, minutes after it really ended.
   icingAfterMin: num('POLICY_ICING_AFTER_MIN', 15),
   bathingAfterMin: num('POLICY_BATHING_AFTER_MIN', 45),
+  // The meal right before a session was missed (or nothing recorded in 24 h) and nothing eaten within
+  // maxFastHours: harder work is blocked until the horse is fed and it is recorded. Light work warns.
+  missedMealBlocksHardWork: flag('MISSED_MEAL_BLOCKS_HARD_WORK', true),
+  // Two meals of one horse at least this many hours apart (rations).
+  mealMinGapHours: num('POLICY_MEAL_MIN_GAP_HOURS', 3),
 });
 
 module.exports = clubPolicy;

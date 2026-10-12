@@ -13,6 +13,7 @@ import OpenIncidentsCard from './OpenIncidentsCard';
 import CareOrdersCard from './CareOrdersCard';
 import NextStepsCard from './NextStepsCard';
 import ManagerQueueCard from './ManagerQueueCard';
+import MissedMealsCard from './MissedMealsCard';
 import { STATUS_TONES } from '../../layouts/forestTheme';
 
 const { Title, Paragraph } = Typography;
@@ -156,6 +157,9 @@ export default function DashboardPage() {
       )}
 
       {isManager && <ManagerQueueCard />}
+
+      {/* A horse that may not have eaten: shown to both roles this page serves. */}
+      <MissedMealsCard />
 
       <NextStepsCard />
 

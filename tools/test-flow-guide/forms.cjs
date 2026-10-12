@@ -49,7 +49,8 @@ module.exports = [
     rows: [
       ['Ngựa', 'TEST Sao Mai', 'Mỗi ngựa, mỗi bữa chỉ 1 khẩu phần', 'Tạo bữa trưa lần hai cho cùng ngựa'],
       ['Bữa', 'Bữa trưa', 'Bữa sáng · Bữa trưa · Bữa tối', ''],
-      ['Giờ cho ăn', 'Khoảng 2 giờ trước giờ tập định chạy', 'Groom tick được từ 60 phút trước đến 4 giờ sau giờ cho ăn', ''],
+      ['Giờ cho ăn', 'Khoảng 2 giờ trước giờ tập định chạy (đúng buổi: sáng trước 11:00, trưa 11:00–15:59, chiều từ 16:00)', 'Đúng buổi của bữa; cách bữa khác của ngựa ≥ 3 giờ. Groom tick được từ 60 phút trước đến 4 giờ sau giờ cho ăn', 'Bữa trưa 23:00, hoặc hai bữa cách nhau 30 phút'],
+      ['Nút Xoá (thùng rác)', 'Xoá một khẩu phần thử', 'HLV/Manager xoá được; việc cho ăn chưa làm của bữa đó hôm nay bị bỏ theo, lịch sử giữ nguyên', ''],
       ['Thức ăn + lượng', 'Cỏ khô Timothy 2 kg, Cám 1.5 kg', 'Mỗi dòng phải chọn món trong kho và nhập lượng > 0; ít nhất 1 món. Bữa chỉ có cỏ khô: chỉ cảnh báo. Bữa có cám hoặc ngũ cốc: bài nặng trong 60 phút bị chặn, 60–90 phút cảnh báo', 'Bấm Lưu khi chưa chọn món (báo "Chọn món trong kho")'],
       ['Cột Duyệt trong bảng', 'Đã duyệt — tên HLV', 'Lưu khẩu phần là duyệt. "Chưa duyệt" hoặc "Có món chưa gắn kho": Groom không ghi nhận được bữa (hoặc kho không trừ) — bấm Sửa rồi Lưu', ''],
     ],
@@ -72,7 +73,8 @@ module.exports = [
       ['Nhịp tim tối đa (bpm)', 'Đi bộ 120 · Phi chậm 170 · Tập dốc 190 · Phi nhanh 215 · Chạy thử 225', '60–240', ''],
       ['Thời lượng dự kiến (phút)', '30', '5–180', ''],
       ['Dặn dò trước buổi tập', 'Giữ nhịp đều, chú ý chân trước phải', 'Không bắt buộc', ''],
-      ['Lý do (khi có cảnh báo vàng)', 'Ngựa mới nhập, đã ăn lúc 06:00 ngoài hệ thống, HLV theo dõi trực tiếp', 'Cảnh báo vàng phải ghi lý do. Chặn đỏ (khóa y tế, sốt, vừa ăn cám trước bài nặng) không ghi đè được', 'Bỏ trống lý do khi có cảnh báo'],
+      ['Lý do (khi có cảnh báo vàng)', 'Ngựa mới nhập, đã ăn lúc 06:00 ngoài hệ thống, HLV theo dõi trực tiếp', 'Cảnh báo vàng phải ghi lý do. Chặn đỏ (khóa y tế, sốt, vừa ăn cám trước bài nặng, bữa trước giờ tập bị bỏ lỡ với bài trung bình/nặng) không ghi đè được', 'Bỏ trống lý do khi có cảnh báo'],
+      ['Dinh dưỡng bị chặn vì bữa bị bỏ lỡ', 'Bấm "Báo nhân viên cho ăn bù" (trong bảng điều kiện hoặc thẻ "Bữa bị bỏ lỡ hôm nay" ở Tổng quan)', 'Chỉ bữa của hôm nay; mỗi bữa một lần. Groom ghi nhận xong thì kiểm tra lại (chờ đủ thời gian tiêu hóa)', 'Báo cho ăn bù lần hai cho cùng bữa'],
     ],
   },
   {

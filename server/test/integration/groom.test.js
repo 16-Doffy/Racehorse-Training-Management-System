@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { startIntegration, intake, clock, day } = require('../../test-support/integration');
+const { startIntegration, intake, clock, day, mealSlotAt } = require('../../test-support/integration');
 
 // The groom's side of the work: what may be recorded, what it takes out of stock, and what it tells
 // the people who ordered it. Other roles appear only to set up the work the groom carries out.
@@ -30,8 +30,8 @@ test('groom care work against real MongoDB', { skip: !process.env.TEST_MONGO_URI
   let meal;
   await t.test('a meal short of stock is refused with what is missing, then recorded once', async () => {
     hay = await api('manager', 'POST', '/inventory', { name: 'TEST Groom hay', category: 'feed', unit: 'kg', quantity: 1 }, 201);
-    await api('trainer', 'POST', '/feeding', { horse: horse._id, mealTime: 'noon', timeOfDay: clock(), items: [{ inventoryItem: hay._id, amount: 3 }] }, 201);
-    meal = (await myTasks()).find((task) => task.taskType === 'feeding' && task.mealSlot === 'noon');
+    await api('trainer', 'POST', '/feeding', { horse: horse._id, mealTime: mealSlotAt(), timeOfDay: clock(), items: [{ inventoryItem: hay._id, amount: 3 }] }, 201);
+    meal = (await myTasks()).find((task) => task.taskType === 'feeding' && task.mealSlot === mealSlotAt());
     assert.ok(meal);
     assert.deepEqual(meal.supplyStatus, {
       ok: false,
@@ -60,14 +60,14 @@ test('groom care work against real MongoDB', { skip: !process.env.TEST_MONGO_URI
   await t.test('eaten share is checked, and a refused meal counts as nothing eaten', async () => {
     const bad = await raw('groom', 'PATCH', `/stable/tasks/${meal._id}/complete`, { amountEatenPercent: 140 });
     assert.equal(bad.status, 400);
-    const second = await models.DailyTask.create({ horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', mealSlot: 'noon', scheduledDate: new Date(), supplies: [] });
+    const second = await models.DailyTask.create({ horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', mealSlot: mealSlotAt(), scheduledDate: new Date(), supplies: [] });
     await api('groom', 'PATCH', `/stable/tasks/${second._id}/complete`, { observation: { appetite: 'Bỏ ăn' } });
     assert.equal((await models.DailyTask.findById(second._id)).observation.amountEatenPercent, 0);
   });
 
   await t.test('a meal slot with no approved ration cannot be recorded', async () => {
-    // The horse has a noon ration only; an evening meal task has nothing approved behind it.
-    const orphan = await models.DailyTask.create({ horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', mealSlot: 'evening', scheduledDate: new Date(), supplies: [] });
+    // The horse has a ration for the current meal only; another meal's task has nothing approved behind it.
+    const orphan = await models.DailyTask.create({ horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', mealSlot: mealSlotAt() === 'evening' ? 'morning' : 'evening', scheduledDate: new Date(), supplies: [] });
     const refused = await raw('groom', 'PATCH', `/stable/tasks/${orphan._id}/complete`, {});
     assert.equal(refused.status, 409);
     assert.equal(refused.body.data.code, 'NO_APPROVED_RATION');

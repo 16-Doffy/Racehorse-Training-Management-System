@@ -202,3 +202,16 @@ Chạy local ngày 12/10/2026, TZ Asia/Ho_Chi_Minh. MongoDB là replica set mộ
 | DEP-10 Triển khai | **Đã deploy** | Code trên `main` tự deploy Render (Atlas là replica set). |
 
 Kiểm thử: `server/test/integration/groomRequests.test.js` (6 ca), cùng 30 ca cũ: 36/36 đạt.
+
+### Bữa bị bỏ lỡ — phần backend đã làm và việc của app (12/10/2026)
+
+Backend (Duy, đã có):
+- Bữa có khẩu phần hết khung giờ mà chưa ghi nhận → báo HLV phụ trách và nhắc Groom một lần (`type: 'meal_missed'`, đánh dấu `missedNotifiedAt`).
+- Kiểm tra trước buổi tập: bữa ngay trước giờ tập bị bỏ lỡ hoặc Groom báo không cho ăn, và quá 6 giờ chưa ăn → chặn bài trung bình/nặng (bài nhẹ chỉ cảnh báo). Công tắc `MISSED_MEAL_BLOCKS_HARD_WORK`.
+- HLV/Manager bấm "Báo nhân viên cho ăn bù" (`POST /stable/tasks/:id/make-up`, chỉ bữa của hôm nay): tạo việc cho ăn mới cùng bữa, giờ = lúc bấm, `makeUpOf` = bữa bị bỏ lỡ, `note: "Cho ăn bù — bữa … bị bỏ lỡ"`, vật tư theo khẩu phần hiện tại; Groom nhận thông báo `task_assigned`. App hiện đã thấy việc này ở thẻ bữa (danh sách trả việc mới nhất trước).
+- Giờ khẩu phần: sáng trước 11:00, trưa 11:00–15:59, chiều từ 16:00; hai bữa cách nhau ≥ 3 giờ. HLV xoá được khẩu phần (việc cho ăn chưa làm của bữa đó hôm nay bị bỏ theo).
+
+Đề nghị cho app (Tien):
+- Bữa "Quá hạn ghi nhận" vẫn hiện 2 nút: **"Không cho ăn được"** (gọi `PATCH /stable/tasks/:id/not-done` — server cho phép sau khi quá giờ, HLV được báo) và **"Đã cho ăn, quên ghi"** (gửi `performedAt` = giờ thật, phải trong khung giờ của bữa và trong 24 giờ; server lưu `recordedLate`).
+- Hiện nhãn "Cho ăn bù" cho việc có `makeUpOf` (giờ lấy từ `scheduledDate` của việc, không lấy giờ khẩu phần).
+- Thông báo `meal_missed`: biểu tượng/nhãn riêng nếu app phân loại thông báo.

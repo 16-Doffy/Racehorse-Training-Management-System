@@ -69,6 +69,10 @@ const dailyTaskSchema = new mongoose.Schema(
     opIds: { type: [String], default: [] },
     // A vet's dose whose window closed with nobody recording it: when the vet was told (once).
     missedNotifiedAt: { type: Date, default: null },
+    // A meal given late because the scheduled one was missed: the trainer asked for it (make-up).
+    makeUpOf: { type: mongoose.Schema.Types.ObjectId, ref: 'DailyTask', default: null },
+    // On the missed meal: the make-up asked for it (one per missed meal).
+    makeUpTask: { type: mongoose.Schema.Types.ObjectId, ref: 'DailyTask', default: null },
     // The groom has seen the task and taken it on — for a vet's order, the trainer and manager can
     // tell "nobody has picked this up" apart from "picked up, not done yet".
     acknowledgedAt: { type: Date, default: null },

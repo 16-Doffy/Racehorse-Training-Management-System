@@ -19,6 +19,7 @@ router.delete('/tasks/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), taskCt
 router.patch('/tasks/:id/complete', authorize(ROLES.GROOM), taskCtrl.completeTask);
 router.patch('/tasks/:id/acknowledge', authorize(ROLES.GROOM), taskCtrl.acknowledgeTask);
 router.patch('/tasks/:id/not-done', authorize(ROLES.GROOM), taskCtrl.reportNotDone);
+router.post('/tasks/:id/make-up', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), taskCtrl.makeUpMeal);
 router.post(
   '/tasks/:id/incident',
   authorize(ROLES.GROOM),

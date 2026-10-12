@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { startIntegration, intake, planFor, book, start, clock, day, future } = require('../../test-support/integration');
+const { startIntegration, intake, planFor, book, start, clock, day, future, mealSlotAt } = require('../../test-support/integration');
 
 test('real MongoDB + HTTP flow across Manager, Trainer, Vet, Groom and Owner', { skip: !process.env.TEST_MONGO_URI }, async (t) => {
   const ctx = await startIntegration('flow');
@@ -12,8 +12,8 @@ test('real MongoDB + HTTP flow across Manager, Trainer, Vet, Groom and Owner', {
     const checklist = await api('trainer', 'GET', `/horses/${horse._id}/checklist`);
     assert.ok(checklist.items.find((i) => i.key === 'health').done);
     feed = await api('manager', 'POST', '/inventory', { name: 'TEST hay', category: 'feed', unit: 'kg', quantity: 100 }, 201);
-    await api('trainer', 'POST', '/feeding', { horse: horse._id, mealTime: 'noon', timeOfDay: clock(), items: [{ inventoryItem: feed._id, amount: 2 }] }, 201);
-    await api('trainer', 'POST', '/feeding', { horse: horse._id, mealTime: 'noon', timeOfDay: clock(), items: [{ inventoryItem: feed._id, amount: 1 }] }, 409);
+    await api('trainer', 'POST', '/feeding', { horse: horse._id, mealTime: mealSlotAt(), timeOfDay: clock(), items: [{ inventoryItem: feed._id, amount: 2 }] }, 201);
+    await api('trainer', 'POST', '/feeding', { horse: horse._id, mealTime: mealSlotAt(), timeOfDay: clock(), items: [{ inventoryItem: feed._id, amount: 1 }] }, 409);
     const tasks = await api('groom', 'GET', `/stable/tasks?horse=${horse._id}`);
     const meal = tasks.find((task) => task.taskType === 'feeding');
     assert.ok(meal, 'Ration should generate a meal task');
@@ -113,7 +113,7 @@ test('real MongoDB + HTTP flow across Manager, Trainer, Vet, Groom and Owner', {
     assert.equal((await models.TrainingSession.findById(fever._id)).status, 'blocked');
     assert.equal(await models.ExamRequest.countDocuments({ horse: fixture.horse._id, status: 'pending' }), 1);
     await api('vet', 'POST', '/health/records', { horse: fixture.horse._id, diagnosis: 'Fever resolved', resultStatus: 'eligible', clearedLevel: 'high' }, 201);
-    const run = await book(ctx, fixture.horse, recoveryPlan, { kind: 'breeze' });
+    const run = await book(ctx, fixture.horse, recoveryPlan, { kind: 'walk' });
     await start(ctx, run);
     const treatment = await api('vet', 'POST', '/health/treatments', { horse: fixture.horse._id, healthRecord: fixture.record._id, trainingLevel: 'none', lockReason: 'Test medical lock' }, 201);
     assert.equal((await models.TrainingSession.findById(run._id)).status, 'aborted');

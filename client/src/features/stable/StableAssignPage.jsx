@@ -35,6 +35,7 @@ import { dailyTaskApi, incidentApi } from './stableApi';
 import { horsesApi } from '../horses/horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { feedingApi } from '../feeding/feedingApi';
+import { useClubPolicy } from '../training/useClubPolicy';
 import { inventoryApi } from '../inventory/inventoryApi';
 import { ROLES } from '../../constants/roles';
 import {
@@ -419,6 +420,7 @@ function TaskList() {
 /* -------------------------------------------------------------------------- */
 
 function RationList() {
+  const policy = useClubPolicy();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form] = Form.useForm();
@@ -463,6 +465,16 @@ function RationList() {
       form.resetFields();
     },
     onError: (err) => message.error(err.message || 'Lưu khẩu phần thất bại.'),
+  });
+
+  const deleteRation = useMutation({
+    mutationFn: (id) => feedingApi.remove(id),
+    onSuccess: (res) => {
+      const removed = res?.data?.removedTasks || 0;
+      message.success(removed ? `Đã xoá khẩu phần và ${removed} việc cho ăn chưa làm của bữa đó hôm nay.` : 'Đã xoá khẩu phần.');
+      invalidate();
+    },
+    onError: (err) => message.error(err.message || 'Xoá khẩu phần thất bại.'),
   });
 
   const openModal = (record) => {
@@ -562,9 +574,21 @@ function RationList() {
       title: '',
       key: 'actions',
       render: (_, r) => (
-        <Button size="small" icon={<EditOutlined />} onClick={() => openModal(r)}>
-          Sửa
-        </Button>
+        <Space size={4}>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openModal(r)}>
+            Sửa
+          </Button>
+          <Popconfirm
+            title="Xoá khẩu phần này?"
+            description="Việc cho ăn chưa làm của bữa này hôm nay cũng được bỏ; lịch sử giữ nguyên. Ngựa không còn bữa nào thì nhân viên sẽ báo HLV."
+            okText="Xoá"
+            okButtonProps={{ danger: true }}
+            cancelText="Không"
+            onConfirm={() => deleteRation.mutate(r._id)}
+          >
+            <Button size="small" danger icon={<DeleteOutlined />} loading={deleteRation.isPending && deleteRation.variables === r._id} />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -629,7 +653,12 @@ function RationList() {
                 onChange={(v) => form.setFieldValue('timeOfDay', dayjs(DEFAULT_MEAL_TIMES[v], 'HH:mm'))}
               />
             </Form.Item>
-            <Form.Item name="timeOfDay" label="Giờ cho ăn" rules={[{ required: true }]}>
+            <Form.Item
+              name="timeOfDay"
+              label="Giờ cho ăn"
+              rules={[{ required: true }]}
+              extra={`Bữa sáng trước 11:00 · bữa trưa 11:00–15:59 · bữa chiều từ 16:00; hai bữa cách nhau ít nhất ${policy.mealMinGapHours} giờ (quy định CLB).`}
+            >
               <TimePicker format="HH:mm" minuteStep={15} className="w-full" />
             </Form.Item>
           </div>

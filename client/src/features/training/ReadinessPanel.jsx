@@ -4,9 +4,12 @@ import {
   WarningFilled,
   StopFilled,
   SafetyCertificateOutlined,
+  CoffeeOutlined,
 } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { trainingSessionApi } from './trainingApi';
+import { dailyTaskApi } from '../stable/stableApi';
+import { message } from '../../lib/antdStatic';
 
 const { Text } = Typography;
 
@@ -34,6 +37,12 @@ const OVERALL_TEXT = {
 
 function GateRow({ gate, onRequestExam }) {
   const meta = STATUS_META[gate.status] || STATUS_META.ok;
+  // The meal right before the session was missed: ask the groom to feed the horse now.
+  const makeUp = useMutation({
+    mutationFn: () => dailyTaskApi.makeUpMeal(gate.taskId),
+    onSuccess: () => message.success('Đã báo nhân viên cho ăn bù. Khi họ ghi nhận, kiểm tra lại (nhớ chờ đủ thời gian tiêu hóa).'),
+    onError: (err) => message.error(err.message || 'Không báo được.'),
+  });
   return (
     <div className={`flex gap-3 items-start px-3 py-2.5 rounded ${meta.bg}`}>
       <span style={{ color: meta.color, fontSize: 16, marginTop: 1 }}>{meta.icon}</span>
@@ -56,6 +65,19 @@ function GateRow({ gate, onRequestExam }) {
             onClick={onRequestExam}
           >
             Yêu cầu bác sĩ kiểm tra
+          </Button>
+        )}
+        {gate.action === 'make_up_meal' && gate.taskId && (
+          <Button
+            size="small"
+            type="link"
+            className="!px-0 !h-auto !text-xs"
+            icon={<CoffeeOutlined />}
+            loading={makeUp.isPending}
+            disabled={makeUp.isSuccess}
+            onClick={() => makeUp.mutate()}
+          >
+            {makeUp.isSuccess ? 'Đã báo nhân viên cho ăn bù' : 'Báo nhân viên cho ăn bù'}
           </Button>
         )}
       </div>

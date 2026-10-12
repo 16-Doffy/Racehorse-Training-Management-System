@@ -75,6 +75,7 @@ async function ensureFeedingTasks({ horseIds } = {}) {
         horse: assignment.horse,
         taskType: 'feeding',
         mealSlot: slot.mealSlot,
+        makeUpOf: null,
         scheduledDate: { $gte: start, $lt: end },
       });
       if (exists) continue;

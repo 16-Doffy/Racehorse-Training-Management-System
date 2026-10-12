@@ -18,6 +18,8 @@ export const DEFAULT_POLICY = {
   afternoonLightOnly: true,
   icingAfterMin: 15,
   bathingAfterMin: 45,
+  missedMealBlocksHardWork: true,
+  mealMinGapHours: 3,
 };
 
 /** The club's training and care policy, so every screen words the rules the same way the server applies them. */

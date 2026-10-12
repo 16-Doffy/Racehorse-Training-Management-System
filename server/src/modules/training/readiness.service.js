@@ -249,9 +249,13 @@ async function nutritionGate(horse, when, { intensity } = {}) {
   const done = (t) => t.status === 'completed' && t.completedAt && t.completedAt <= when;
   const lastEaten = [...before].reverse().find(done);
 
+  // Harder work on an empty stomach is refused by club policy (light work only warns).
+  const blockHardWork = clubPolicy.missedMealBlocksHardWork && intensity !== 'light';
+  const hardWorkNote = ' Theo quy định CLB, bài trung bình/nặng bị chặn cho tới khi ngựa được cho ăn và ghi nhận — hoặc đổi sang bài nhẹ.';
+
   if (!lastMeal) {
-    gate.status = 'caution';
-    gate.detail = 'Không có bữa ăn nào trong 24 giờ trước giờ tập — tập khi đói ngựa sẽ không đủ sức.';
+    gate.status = blockHardWork ? 'blocked' : 'caution';
+    gate.detail = `Không có bữa ăn nào trong 24 giờ trước giờ tập — tập khi đói ngựa sẽ không đủ sức.${blockHardWork ? hardWorkNote : ''}`;
     return gate;
   }
 
@@ -303,11 +307,21 @@ async function nutritionGate(horse, when, { intensity } = {}) {
     return gate;
   }
 
-  // Its time has passed and nobody marked it given.
-  gate.status = 'caution';
-  gate.detail = `${mealLabel(lastMeal)} (${formatTime(lastMeal.scheduledDate)}) — bữa ngay trước giờ tập — chưa được nhân viên đánh dấu đã cho ăn.${
-    lastEaten ? ` Lần ăn gần nhất được ghi nhận: ${formatTime(lastEaten.completedAt)}.` : ''
-  }`;
+  // Its time has passed and nobody marked it given (or the groom reported it could not be given).
+  const fastMinutes = lastEaten ? Math.round((when.getTime() - lastEaten.completedAt.getTime()) / 60000) : Infinity;
+  const hungry = fastMinutes > MAX_FAST_HOURS * 60;
+  const what = lastMeal.status === 'skipped'
+    ? `nhân viên báo không cho ăn được${lastMeal.skipReason ? ` (${lastMeal.skipReason})` : ''}`
+    : 'chưa được nhân viên đánh dấu đã cho ăn';
+  gate.status = blockHardWork && hungry ? 'blocked' : 'caution';
+  gate.detail = `${mealLabel(lastMeal)} (${formatTime(lastMeal.scheduledDate)}) — bữa ngay trước giờ tập — ${what}.${
+    lastEaten ? ` Lần ăn gần nhất được ghi nhận: ${formatTime(lastEaten.completedAt)} (${describeGap(fastMinutes)} trước giờ tập).` : ' Không có bữa nào được ghi nhận trong 24 giờ.'
+  }${gate.status === 'blocked' ? hardWorkNote : ''}`;
+  // The trainer can ask the groom to feed it now (POST /stable/tasks/:id/make-up) — a meal of today.
+  if (lastMeal.mealSlot && startOfDay(lastMeal.scheduledDate).getTime() === startOfDay(new Date()).getTime()) {
+    gate.action = 'make_up_meal';
+    gate.taskId = lastMeal._id;
+  }
   return gate;
 }
 

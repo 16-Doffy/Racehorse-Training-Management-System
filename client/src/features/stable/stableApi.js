@@ -7,6 +7,8 @@ export const dailyTaskApi = {
   update: (id, payload) => axiosClient.put(`/stable/tasks/${id}`, payload),
   remove: (id) => axiosClient.delete(`/stable/tasks/${id}`),
   complete: (id, payload) => axiosClient.patch(`/stable/tasks/${id}/complete`, payload),
+  /** Trainer/Manager: a missed meal of today is to be given now (a new feeding task for the groom). */
+  makeUpMeal: (id) => axiosClient.post(`/stable/tasks/${id}/make-up`),
   reportIncident: (id, formData) =>
     axiosClient.post(`/stable/tasks/${id}/incident`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

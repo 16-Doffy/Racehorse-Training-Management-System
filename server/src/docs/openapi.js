@@ -1294,6 +1294,19 @@ module.exports = {
         responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
+    '/stable/tasks/{id}/make-up': {
+      post: {
+        tags: ['Stable (Groom)'],
+        summary: 'Ask for a missed meal of today to be given now (Head Trainer, Manager)',
+        description:
+          'For a feeding task of today with a mealSlot that was missed (window closed unrecorded) or reported not done: creates a new feeding task ' +
+          'for the same slot, scheduled now, supplies from the ration as it stands, makeUpOf = the missed task, for the horse\'s groom (notified). ' +
+          'Once per missed meal (409 with data.makeUp after that). 409 when the meal is not missed yet, already given, of another day, or has no approved ration. ' +
+          'When the groom records it, the readiness check counts it as the meal (the digestion wait starts then).',
+        parameters: [idParam('id')],
+        responses: { 201: responses[201]({ type: 'object' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
     '/stable/tasks/{id}/not-done': {
       patch: {
         tags: ['Stable (Groom)'],
@@ -1440,12 +1453,12 @@ module.exports = {
     },
     '/feeding': {
       get: { tags: ['Feeding'], summary: 'List feeding schedules', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FeedingSchedule' } }) } },
-      post: { tags: ['Feeding'], summary: 'Create feeding schedule (Head Trainer, Manager)', description: 'items: at least one line, each { inventoryItem (a feed item in stock), amount > 0 } — a line typed as text is refused (400), since it cannot leave stock. approvedBy is stamped with the caller; a meal can only be recorded by the groom when its ration has an approver and lines (409 NO_APPROVED_RATION otherwise).', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FeedingSchedule' }), 403: responses[403] } },
+      post: { tags: ['Feeding'], summary: 'Create feeding schedule (Head Trainer, Manager)', description: 'items: at least one line, each { inventoryItem (a feed item in stock), amount > 0 } — a line typed as text is refused (400), since it cannot leave stock. timeOfDay (HH:mm) must fit the meal: morning before 11:00, noon 11:00–15:59, evening from 16:00; and be at least mealMinGapHours (club policy, default 3) from the horse\'s other rations (400). One ration per horse per meal (409). approvedBy is stamped with the caller; a meal can only be recorded by the groom when its ration has an approver and lines (409 NO_APPROVED_RATION otherwise).', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FeedingSchedule' }), 403: responses[403] } },
     },
     '/feeding/{id}': {
       get: { tags: ['Feeding'], summary: 'Get feeding schedule', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/FeedingSchedule' }), 404: responses[404] } },
-      put: { tags: ['Feeding'], summary: 'Update feeding schedule (Head Trainer, Manager)', description: 'Same item rules as create when items is sent. Saving an older ration stamps the approver and requires its lines to be tied to stock.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/FeedingSchedule' }), 404: responses[404] } },
-      delete: { tags: ['Feeding'], summary: 'Delete feeding schedule (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
+      put: { tags: ['Feeding'], summary: 'Update feeding schedule (Head Trainer, Manager)', description: 'Same item and time rules as create. Saving an older ration stamps the approver and requires its lines to be tied to stock.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/FeedingSchedule' }), 404: responses[404] } },
+      delete: { tags: ['Feeding'], summary: 'Delete feeding schedule (Head Trainer, Manager)', description: 'Today\'s meal of that slot not given yet and still open is removed with it (data.removedTasks); given or missed meals stay. The groom is notified.', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
     '/inventory': {
       get: { tags: ['Inventory'], summary: 'List inventory items', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/InventoryItem' } }) } },
@@ -1567,7 +1580,7 @@ module.exports = {
       get: {
         tags: ['Settings'],
         summary: 'The club training and care policy (any signed-in role)',
-        description: 'Club policy, not veterinary law; each value can be set per deployment by environment variable (config/clubPolicy.js): digestHardMinutes/digestMinutes (meal with grain or pellets: blocked / warning), forageDigestMinutes (hay-only meal: warning only), maxFastHours, precheckOpensBeforeMin/precheckClosesAfterMin/precheckValidHours, feverC, clearanceDays, morningTime/afternoonTime (plan defaults), afternoonLightOnly (AFTERNOON_LIGHT_ONLY; checked on plan templates, manual bookings, time changes and rebooking), icingAfterMin/bathingAfterMin. Light work (walk) is never blocked by a meal, only warned about.',
+        description: 'Club policy, not veterinary law; each value can be set per deployment by environment variable (config/clubPolicy.js): digestHardMinutes/digestMinutes (meal with grain or pellets: blocked / warning), forageDigestMinutes (hay-only meal: warning only), maxFastHours, precheckOpensBeforeMin/precheckClosesAfterMin/precheckValidHours, feverC, clearanceDays, morningTime/afternoonTime (plan defaults), missedMealBlocksHardWork (MISSED_MEAL_BLOCKS_HARD_WORK: the meal before a session missed or reported not done, or none in 24 h, and nothing eaten within maxFastHours → medium/high work blocked, light work warns; the nutrition gate then carries action make_up_meal + taskId for a meal of today), mealMinGapHours (POLICY_MEAL_MIN_GAP_HOURS, rations), afternoonLightOnly (AFTERNOON_LIGHT_ONLY; checked on plan templates, manual bookings, time changes and rebooking), icingAfterMin/bathingAfterMin. Light work (walk) is never blocked by a meal, only warned about.',
         responses: { 200: responses[200]({ type: 'object' }) },
       },
     },

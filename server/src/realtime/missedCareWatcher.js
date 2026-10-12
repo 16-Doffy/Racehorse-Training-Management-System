@@ -1,17 +1,20 @@
-const { notifyMissedDoses } = require('../modules/stable/missedCare.service');
+const { notifyMissedDoses, notifyMissedMeals } = require('../modules/stable/missedCare.service');
 
 const CHECK_INTERVAL_MS = 10 * 60 * 1000;
 
 /**
- * Every few minutes, tells the vet about doses and checks they ordered whose window closed with
- * nobody recording them (see notifyMissedDoses). Each task is reported once.
+ * Every few minutes: doses and checks the vet ordered whose window closed unrecorded go to the vet
+ * (notifyMissedDoses); meals whose window closed unrecorded go to the trainer and the groom
+ * (notifyMissedMeals). Each task is reported once.
  */
 function startMissedCareWatcher() {
   console.log(`[missed-care] started (checking every ${CHECK_INTERVAL_MS / 60000}min)`);
   const check = async () => {
     try {
-      const told = await notifyMissedDoses();
-      if (told) console.log(`[missed-care] vet told about ${told} missed dose(s)`);
+      const doses = await notifyMissedDoses();
+      if (doses) console.log(`[missed-care] vet told about ${doses} missed dose(s)`);
+      const meals = await notifyMissedMeals();
+      if (meals) console.log(`[missed-care] trainer told about ${meals} missed meal(s)`);
     } catch (err) {
       console.error('[missed-care] check failed:', err.message);
     }
