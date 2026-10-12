@@ -50,7 +50,8 @@ module.exports = [
       ['Ngựa', 'TEST Sao Mai', 'Mỗi ngựa, mỗi bữa chỉ 1 khẩu phần', 'Tạo bữa trưa lần hai cho cùng ngựa'],
       ['Bữa', 'Bữa trưa', 'Bữa sáng · Bữa trưa · Bữa tối', ''],
       ['Giờ cho ăn', 'Khoảng 2 giờ trước giờ tập định chạy', 'Groom tick được từ 60 phút trước đến 4 giờ sau giờ cho ăn', ''],
-      ['Thức ăn + lượng', 'Cỏ khô Timothy 2 kg, Cám 1.5 kg', 'Món có trong kho. Bữa chỉ có cỏ khô: chỉ cảnh báo. Bữa có cám hoặc ngũ cốc: bài nặng trong 60 phút bị chặn, 60–90 phút cảnh báo', 'Lượng lớn hơn tồn kho (Groom tick sẽ bị báo thiếu vật tư)'],
+      ['Thức ăn + lượng', 'Cỏ khô Timothy 2 kg, Cám 1.5 kg', 'Mỗi dòng phải chọn món trong kho và nhập lượng > 0; ít nhất 1 món. Bữa chỉ có cỏ khô: chỉ cảnh báo. Bữa có cám hoặc ngũ cốc: bài nặng trong 60 phút bị chặn, 60–90 phút cảnh báo', 'Bấm Lưu khi chưa chọn món (báo "Chọn món trong kho")'],
+      ['Cột Duyệt trong bảng', 'Đã duyệt — tên HLV', 'Lưu khẩu phần là duyệt. "Chưa duyệt" hoặc "Có món chưa gắn kho": Groom không ghi nhận được bữa (hoặc kho không trừ) — bấm Sửa rồi Lưu', ''],
     ],
   },
   {
@@ -147,7 +148,7 @@ module.exports = [
     rows: [
       ['Ngựa', 'TEST Sao Mai', 'Bắt buộc', ''],
       ['Nhân viên chăm sóc', 'Groom phụ trách ngựa', 'Bắt buộc', ''],
-      ['Loại công việc', 'Vệ sinh chuồng', 'Vệ sinh chuồng · Tắm rửa · Ngâm chân nước đá · Khác…', ''],
+      ['Loại công việc', 'Vệ sinh chuồng', 'Vệ sinh chuồng · Tắm rửa · Ngâm chân nước đá · Chăm sóc móng · Khác', ''],
       ['Ngày thực hiện / Giờ thực hiện', 'Hôm nay / bây giờ + 5 phút', 'Bắt buộc', ''],
       ['Ghi chú', 'Ngâm chân trước 20 phút, kiểm tra gân chân trái', 'Bắt buộc khi loại = Khác', 'Loại Khác mà bỏ trống ghi chú'],
     ],
