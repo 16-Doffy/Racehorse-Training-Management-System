@@ -2,9 +2,10 @@ import { Button, Popover, Tag, Typography, Tooltip, Empty } from 'antd';
 import { LeftOutlined, RightOutlined, PlayCircleOutlined, EditOutlined, ScheduleOutlined, SafetyCertificateOutlined, StopOutlined, CheckCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, mondayOf, actualTimeLabel, ABORT_CATEGORY_LABELS, DONE_STATUSES } from './trainingVocab';
+import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, mondayOf, DONE_STATUSES } from './trainingVocab';
 import { SESSION_STATUS_LABELS } from './sessionStatus';
 import { useClubPolicy, precheckRuleText } from './useClubPolicy';
+import SessionDetail from './SessionDetail';
 
 const { Text } = Typography;
 
@@ -22,17 +23,6 @@ const STATUS_DOT = {
 };
 const statusMeta = (status) => ({ label: SESSION_STATUS_LABELS[status] || status, dot: STATUS_DOT[status] || STATUS_DOT.scheduled });
 
-/** "800m · 58 km/h · nhịp tim ≤ 215" */
-function workout(p) {
-  if (!p) return '';
-  const parts = [];
-  if (p.distanceM) parts.push(p.reps > 1 ? `${p.reps} × ${p.distanceM}m` : `${p.distanceM}m`);
-  if (p.restMinutes) parts.push(`nghỉ ${p.restMinutes}'`);
-  if (p.targetSpeedKmh) parts.push(`${p.targetSpeedKmh} km/h`);
-  if (p.targetHeartRateMax) parts.push(`nhịp tim ≤ ${p.targetHeartRateMax}`);
-  return parts.join(' · ');
-}
-
 const slotLabel = (scheduledAt) => (dayjs(scheduledAt).hour() < 12 ? 'Sáng' : 'Chiều');
 
 function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onCancel, onEnd, onAbort, onRequestExam, starting, scheduling }) {
@@ -43,51 +33,22 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onC
   const canChangeTime = ['scheduled', 'ready', 'blocked'].includes(session.status);
   const canReschedule = session.status === 'missed' && !session.rescheduledTo;
   const rescheduled = session.status === 'missed' && Boolean(session.rescheduledTo);
-  const detail = (
-    <div className="flex w-[min(300px,calc(100vw-48px))] flex-col gap-1.5 text-sm">
-      <div className="flex flex-wrap items-center gap-1">
-        <Tag color={kind?.color || 'default'} className="!m-0">
-          {kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}
-        </Tag>
-        <Text type="secondary" className="!text-xs">
-          Dự kiến {dayjs(session.scheduledAt).format('DD/MM')} · {slotLabel(session.scheduledAt)} {dayjs(session.scheduledAt).format('HH:mm')}
-        </Text>
-      </div>
-      {actualTimeLabel(session) && <div className="text-xs">Thực tế {actualTimeLabel(session)}</div>}
-      {workout(session.prescription) && <div>{workout(session.prescription)}</div>}
-      {session.raceEntry?.raceName && (
-        <Text className="!text-xs">Chạy thử cho {session.raceEntry.raceName} ({dayjs(session.raceEntry.raceDate).format('DD/MM')})</Text>
-      )}
-      {session.coachNote && <Text type="secondary" className="!text-xs">{session.coachNote}</Text>}
-      <div className="flex items-center gap-1.5 text-xs">
-        <span className={`inline-block h-2 w-2 rounded-full ${status.dot}`} />
-        {rescheduled ? 'Đã lỡ giờ · đã xếp lại lịch' : status.label}
-        {session.status === 'in_progress' && session.metrics?.distance ? ` · đã chạy ${session.metrics.distance}m` : ''}
-      </div>
-      {session.status === 'missed' && (
-        <Text type="secondary" className="!text-xs">
-          {session.missedReason || 'Không kiểm tra sẵn sàng hoặc bắt đầu trong thời hạn của buổi tập.'}
-          {rescheduled && ' Buổi cũ được giữ lại trong lịch sử; buổi mới đã có trong lịch.'}
-        </Text>
-      )}
-      {session.status === 'cancelled' && session.cancelReason && (
-        <Text type="secondary" className="!text-xs">Lý do hủy: {session.cancelReason}</Text>
-      )}
-      {session.status === 'aborted' && (
-        <Text type="warning" className="!text-xs">
-          Dừng giữa chừng — {ABORT_CATEGORY_LABELS[session.abortCategory] || 'lý do khác'}{session.abortReason ? `: ${session.abortReason}` : ''}
-        </Text>
-      )}
-      {session.status === 'blocked' && session.blockedReason && (
-        <Text type="warning" className="!text-xs">{session.blockedReason}</Text>
-      )}
-      {canChangeTime && (
-        <Text type="secondary" className="!text-xs">
-          {precheckRuleText(policy)}
-        </Text>
-      )}
-      {session.outcome?.summary && <div className="text-xs">{session.outcome.summary}</div>}
-      <div className="mt-1 flex flex-wrap gap-2">
+  const callout = (tone, text) => <div className={`rounded-md px-2 py-1.5 text-xs ${tone}`}>{text}</div>;
+  const notes = (
+    <>
+      {session.status === 'in_progress' && session.metrics?.distance ? callout('bg-blue-50 text-blue-800', `Đang chạy · đã được ${Number(session.metrics.distance).toLocaleString('vi-VN')} m`) : null}
+      {session.status === 'missed' &&
+        callout(
+          'bg-gray-50 text-gray-600',
+          `${session.missedReason || 'Không kiểm tra sẵn sàng hoặc bắt đầu trong thời hạn của buổi tập.'}${rescheduled ? ' Buổi cũ giữ trong lịch sử; buổi mới đã có trong lịch.' : ''}`
+        )}
+      {session.status === 'cancelled' && session.cancelReason && callout('bg-red-50 text-red-700', `Lý do hủy: ${session.cancelReason}`)}
+      {session.status === 'blocked' && session.blockedReason && callout('bg-amber-50 text-amber-800', session.blockedReason)}
+      {canChangeTime && <Text type="secondary" className="!text-[11px] leading-snug">{precheckRuleText(policy)}</Text>}
+    </>
+  );
+  const actions = (
+    <div className="flex flex-wrap gap-2 border-t border-black/5 pt-2.5">
         {['scheduled', 'blocked'].includes(session.status) && (
           <Button size="small" type="primary" icon={<SafetyCertificateOutlined />} onClick={() => onPreCheck(session)}>
             {session.status === 'blocked' ? 'Kiểm tra lại' : 'Kiểm tra sẵn sàng'}
@@ -129,8 +90,8 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onC
           </Button>
         )}
       </div>
-    </div>
   );
+  const detail = <SessionDetail session={session} statusLabel={rescheduled ? 'Đã xếp lại lịch' : status.label} notes={notes} actions={actions} />;
 
   return (
     <Popover content={detail} trigger="click" placement="bottom">
