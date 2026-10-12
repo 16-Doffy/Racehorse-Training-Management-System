@@ -35,12 +35,21 @@ api.interceptors.response.use(
       await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
       onUnauthorized?.();
     }
-    return Promise.reject(
-      error.response?.data || {
+    // The API's own answer when there is one ({ success, data, message }), plus the HTTP status so a
+    // screen can tell "refused" (409: already recorded, blocked) from "no answer" (no signal).
+    const body = error.response?.data && typeof error.response.data === 'object' ? error.response.data : null;
+    return Promise.reject({
+      ...(body || {
         success: false,
-        message: error.message === 'Network Error' ? 'Không kết nối được máy chủ. Kiểm tra mạng.' : error.message,
-      }
-    );
+        message: error.response
+          ? error.message
+          : error.message === 'Network Error'
+            ? 'Không kết nối được máy chủ. Kiểm tra mạng.'
+            : error.message,
+      }),
+      status: error.response?.status,
+      isNetworkError: !error.response,
+    });
   }
 );
 

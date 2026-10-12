@@ -27,6 +27,7 @@ import {
   ChipRow,
   EmptyState,
   IconButton,
+  LoadError,
   Loading,
   Row,
   SearchInput,
@@ -37,13 +38,18 @@ import { useAuth } from '../auth/AuthContext';
 import { useInventory, useRefreshAll, useStableOverview } from '../hooks/useGroomData';
 import {
   INVENTORY_CATEGORY,
-  RESTOCK_STATUS,
+  formatDate,
   formatDateTime,
   formatStock,
-  getStockLevel,
+  isOpenRequest,
+  levelOf,
   matchesSearch,
   refId,
+  restockState,
 } from '../utils/groom';
+
+// What needs attention first: expired or empty, then running low, then nearing expiry.
+const LEVEL_RANK = { expired: 0, out: 0, low: 1, expiring: 2, ok: 3 };
 import { colors, font, radius, spacing } from '../theme';
 
 const CATEGORY_ORDER = ['feed', 'medicine', 'equipment'];
@@ -72,7 +78,7 @@ export default function SuppliesScreen() {
   const [openGroups, setOpenGroups] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  const { items, isLoading } = useInventory();
+  const { items, isLoading, isError, refetch } = useInventory();
   const { myBlocks } = useStableOverview();
   const refreshAll = useRefreshAll();
 
@@ -88,11 +94,10 @@ export default function SuppliesScreen() {
       areaItems
         .filter((i) => category === 'all' || i.category === category)
         .filter((i) => matchesSearch(`${i.name} ${i.code || ''} ${i.stableBlock || ''}`, search))
-        .map((i) => ({ ...i, level: getStockLevel(i.quantity) }))
-        .filter((i) => !lowOnly || i.level.key !== 'ok')
+        .map((i) => ({ ...i, level: levelOf(i) }))
+        .filter((i) => !lowOnly || i.level.short)
         .sort((a, b) => {
-          const rank = { critical: 0, low: 1, ok: 2 };
-          const byLevel = (rank[a.level.key] ?? 2) - (rank[b.level.key] ?? 2);
+          const byLevel = (LEVEL_RANK[a.level.key] ?? 3) - (LEVEL_RANK[b.level.key] ?? 3);
           return byLevel || a.name.localeCompare(b.name, 'vi');
         }),
     [areaItems, category, search, lowOnly]
@@ -102,14 +107,14 @@ export default function SuppliesScreen() {
     setOpenGroups((open) => (open.includes(key) ? open.filter((k) => k !== key) : [...open, key]));
 
   const sections = useMemo(() => {
-    const short = visible.filter((i) => i.level.key !== 'ok');
+    const short = visible.filter((i) => i.level.short);
     const groups = CATEGORY_ORDER.map((key) => ({
       key,
       title: INVENTORY_CATEGORY[key].label,
       icon: INVENTORY_CATEGORY[key].icon,
       color: INVENTORY_CATEGORY[key].color,
       bg: INVENTORY_CATEGORY[key].bg,
-      items: visible.filter((i) => i.category === key && i.level.key === 'ok'),
+      items: visible.filter((i) => i.category === key && !i.level.short),
     })).filter((g) => g.items.length);
     return [
       ...(short.length
@@ -131,13 +136,15 @@ export default function SuppliesScreen() {
     [items, user?._id]
   );
 
-  const latestRequestFor = (item) =>
+  // The groom's latest request still with the Manager for this item (asked, or ordered and on its way).
+  const openRequestFor = (item) =>
     (item.restockRequests || [])
-      .filter((r) => refId(r.requestedBy) === user?._id)
+      .filter((r) => refId(r.requestedBy) === user?._id && isOpenRequest(r))
       .sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt))[0];
 
-  const lowCount = areaItems.filter((i) => getStockLevel(i.quantity).key !== 'ok').length;
-  const pendingCount = myRequests.filter((r) => r.status === 'pending').length;
+  const lowCount = areaItems.filter((i) => levelOf(i).short).length;
+  // Still in the Manager's hands: waiting for a decision, or approved and waiting for the delivery.
+  const pendingCount = myRequests.filter(isOpenRequest).length;
 
   const categoryFilters = [
     { value: 'all', label: 'Tất cả', count: areaItems.length },
@@ -193,6 +200,10 @@ export default function SuppliesScreen() {
 
       {isLoading ? (
         <Loading />
+      ) : isError ? (
+        <View style={styles.content}>
+          <LoadError text="Không tải được kho vật tư" onRetry={() => refetch()} />
+        </View>
       ) : (
         <SectionList
           sections={sections}
@@ -236,7 +247,7 @@ export default function SuppliesScreen() {
           renderItem={({ item, index, section }) => (
             <ItemRow
               item={item}
-              request={latestRequestFor(item)}
+              request={openRequestFor(item)}
               last={index === section.data.length - 1}
               onRestock={() => setTarget(item)}
             />
@@ -280,14 +291,16 @@ function Toggle({ on, label, onPress, disabled, tint = colors.forest }) {
 
 /** One line of the storeroom: what it is, how much is left, and the way to ask for more. */
 function ItemRow({ item, request, onRestock, last }) {
-  const level = item.level || getStockLevel(item.quantity);
+  const level = levelOf(item);
   const config = INVENTORY_CATEGORY[item.category] || {
     label: item.category,
     icon: 'supplies',
     color: colors.textMuted,
     bg: colors.graySoft,
   };
-  const status = request && request.status === 'pending' ? RESTOCK_STATUS.pending : null;
+  // Asked for, or approved and on its way — either way it is not on the shelf yet.
+  const status = request ? restockState(request) : null;
+  const showExpiry = item.expiryDate && (level.key === 'expired' || level.key === 'expiring');
 
   return (
     <Pressable
@@ -309,8 +322,17 @@ function ItemRow({ item, request, onRestock, last }) {
             {item.code ? `${item.code} · ` : ''}
             {item.stableBlock || 'Kho chung'}
           </Text>
-          {status ? <Badge label={`Đã xin +${request.quantity} ${item.unit}`} color={status.color} bg={status.bg} /> : null}
+          {status ? (
+            <Badge
+              label={`${status.key === 'approved' ? 'Chờ hàng về' : 'Đã xin'} +${request.quantity} ${item.unit}`}
+              color={status.color}
+              bg={status.bg}
+            />
+          ) : null}
           {item.isProposed ? <Badge label="Chờ duyệt" color={colors.orange} bg={colors.orangeSoft} /> : null}
+          {showExpiry ? (
+            <Text style={[font.small, { color: level.color }]}>HSD {formatDate(item.expiryDate)}</Text>
+          ) : null}
         </Row>
       </View>
 
@@ -324,34 +346,74 @@ function ItemRow({ item, request, onRestock, last }) {
   );
 }
 
-/** Everything this groom has asked the Manager for, newest first. */
+const REQUEST_FILTERS = [
+  { value: 'open', label: 'Đang xử lý' },
+  { value: 'all', label: 'Tất cả' },
+];
+
+/**
+ * Everything this groom has asked the Manager for, newest first, with where each one stands:
+ * waiting for a decision, approved and on its way (not usable yet), received (with how much
+ * actually arrived), or rejected (with the Manager's reason).
+ */
 function RequestHistorySheet({ visible, onClose, requests, pendingCount }) {
+  const [filter, setFilter] = useState('open');
+  const awaiting = requests.filter((r) => restockState(r).key === 'approved').length;
+  const shown = filter === 'open' ? requests.filter(isOpenRequest) : requests;
+
   return (
     <Sheet visible={visible} onClose={onClose} title="Đề xuất của tôi">
-      <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
+      <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm }}>
         <Text style={font.small}>
           {requests.length === 0
             ? 'Bạn chưa gửi đề xuất nào.'
-            : `${requests.length} đề xuất · ${pendingCount} đang chờ Quản lý duyệt`}
+            : `${requests.length} đề xuất · ${pendingCount - awaiting} chờ duyệt · ${awaiting} đã duyệt, chờ hàng về`}
         </Text>
+        {requests.length > 0 ? (
+          <ChipRow
+            options={REQUEST_FILTERS.map((f) => ({ ...f, count: f.value === 'open' ? pendingCount : requests.length }))}
+            value={filter}
+            onChange={setFilter}
+            size="sm"
+          />
+        ) : null}
       </View>
       <FlatList
-        data={requests}
+        data={shown}
         keyExtractor={(r) => r._id}
         style={{ maxHeight: 440 }}
         contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.lg }}
+        ListEmptyComponent={
+          requests.length ? <EmptyState icon="supplies" text="Không có đề xuất nào đang chờ xử lý" /> : null
+        }
         renderItem={({ item: r }) => {
-          const status = RESTOCK_STATUS[r.status];
+          const status = restockState(r);
           return (
-            <Row style={styles.historyRow}>
-              <View style={{ flex: 1 }}>
+            <Row style={[styles.historyRow, { alignItems: 'flex-start' }]}>
+              <View style={{ flex: 1, gap: 2 }}>
                 <Text style={font.body}>{r.item.name}</Text>
                 <Text style={font.small}>
-                  +{r.quantity} {r.item.unit} · {formatDateTime(r.requestedAt)}
+                  Xin +{r.quantity} {r.item.unit} · {formatDateTime(r.requestedAt)}
                 </Text>
+                {r.task ? <Text style={[font.small, { color: colors.red }]}>Gửi từ một việc đang bị chặn vì thiếu vật tư</Text> : null}
                 {r.note ? <Text style={font.small}>“{r.note}”</Text> : null}
+                {status.key === 'approved' ? (
+                  <Text style={[font.small, { color: colors.blue }]}>Đã duyệt — kho chỉ tăng khi Quản lý nhận hàng về.</Text>
+                ) : null}
+                {r.status === 'received' ? (
+                  <Text style={[font.small, { color: colors.green }]}>
+                    Đã nhận {r.receivedQty ?? r.quantity} {r.item.unit}
+                    {r.receivedAt ? ` · ${formatDateTime(r.receivedAt)}` : ''}
+                    {r.receivedQty !== null && r.receivedQty !== undefined && r.receivedQty !== r.quantity ? ` (xin ${r.quantity})` : ''}
+                  </Text>
+                ) : null}
+                {r.reviewNote ? (
+                  <Text style={[font.small, { color: r.status === 'rejected' ? colors.red : colors.textMuted }]}>
+                    Quản lý: {r.reviewNote}
+                  </Text>
+                ) : null}
               </View>
-              <Badge label={status?.label || r.status} color={status?.color} bg={status?.bg} />
+              <Badge label={status.label} color={status.color} bg={status.bg} />
             </Row>
           );
         }}

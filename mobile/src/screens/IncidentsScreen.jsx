@@ -8,9 +8,10 @@ import IncidentModal from '../components/IncidentModal';
 import { useIncidents, useRefreshAll, useStableOverview, useTasks } from '../hooks/useGroomData';
 import { API_ORIGIN } from '../api/client';
 import {
+  INCIDENT_CATEGORY,
   INCIDENT_STATUS,
   SEVERITY,
-  TASK_CONFIG,
+  describeTask,
   formatDate,
   formatDateTime,
   isToday,
@@ -34,8 +35,8 @@ export default function IncidentsScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const { tasks } = useTasks();
-  const { incidents, isLoading } = useIncidents(filter === 'all' ? undefined : filter);
-  const { assignmentByHorseId } = useStableOverview();
+  const { incidents, isLoading, isError, refetch } = useIncidents(filter === 'all' ? undefined : filter);
+  const { assignmentByHorseId, myAssignments } = useStableOverview();
   const refreshAll = useRefreshAll();
 
   const visible = useMemo(
@@ -65,6 +66,15 @@ export default function IncidentsScreen() {
 
         {isLoading ? (
           <Loading />
+        ) : isError ? (
+          <Card>
+            <EmptyState
+              icon="warning"
+              text="Không tải được danh sách sự cố"
+              hint="Kiểm tra kết nối mạng rồi thử lại."
+              action={<Button title="Thử lại" icon="refresh" variant="ghost" size="sm" onPress={() => refetch()} />}
+            />
+          </Card>
         ) : visible.length === 0 ? (
           <Card>
             <EmptyState
@@ -77,7 +87,8 @@ export default function IncidentsScreen() {
             const report = task.incidentReport;
             const severity = SEVERITY[report.severity] || SEVERITY.medium;
             const state = INCIDENT_STATUS[report.status] || INCIDENT_STATUS.open;
-            const cfg = TASK_CONFIG[task.taskType] || { label: task.taskType, icon: 'note' };
+            const cfg = describeTask(task);
+            const kind = INCIDENT_CATEGORY[report.category];
             const isResolved = report.status === 'resolved';
             return (
               <Card key={task._id} style={{ borderLeftWidth: 4, borderLeftColor: severity.color, gap: spacing.sm }}>
@@ -95,6 +106,8 @@ export default function IncidentsScreen() {
 
                 <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
                   <Badge label={state.label} color={state.color} bg={state.bg} />
+                  {kind ? <Badge label={kind.label} /> : null}
+                  {report.occurredAt ? <Text style={font.small}>Xảy ra {formatDateTime(report.occurredAt)}</Text> : null}
                   {report.reportedAt ? <Text style={font.small}>Gửi lúc {formatDateTime(report.reportedAt)}</Text> : null}
                 </Row>
 
@@ -135,6 +148,7 @@ export default function IncidentsScreen() {
       <TaskPicker
         visible={picking}
         tasks={tasks}
+        myAssignments={myAssignments}
         onClose={() => setPicking(false)}
         onPick={(task) => {
           setPicking(false);
@@ -147,22 +161,45 @@ export default function IncidentsScreen() {
 }
 
 /**
- * The API stores an incident on a daily task, so a new report starts by choosing which of the
- * groom's tasks it belongs to — today's first.
+ * A new report starts with the horse — what the groom is looking at — and then the piece of work
+ * it happened during, today's first. The API stores an incident on one of the groom's daily tasks,
+ * so a horse with no task of theirs can't be reported from here.
  */
-function TaskPicker({ visible, tasks, onClose, onPick }) {
+function TaskPicker({ visible, tasks, myAssignments = [], onClose, onPick }) {
   const insets = useSafeAreaInsets();
+  const [horseId, setHorseId] = useState(null);
+
+  // The groom's horses (their stalls first), plus any horse they have work for.
+  const horses = useMemo(() => {
+    const byId = new Map();
+    myAssignments.forEach((a) => byId.set(refId(a.horse), { id: refId(a.horse), name: a.horse?.name, stall: a.stableBlock, count: 0 }));
+    tasks.forEach((t) => {
+      const id = refId(t.horse);
+      const entry = byId.get(id) || { id, name: t.horse?.name, stall: null, count: 0 };
+      entry.count += 1;
+      byId.set(id, entry);
+    });
+    return [...byId.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'));
+  }, [myAssignments, tasks]);
+
   const candidates = useMemo(
     () =>
-      [...tasks]
+      tasks
+        .filter((t) => refId(t.horse) === horseId)
         .sort((a, b) => {
           const aToday = isToday(a.scheduledDate) ? 0 : 1;
           const bToday = isToday(b.scheduledDate) ? 0 : 1;
           return aToday - bToday || new Date(b.scheduledDate) - new Date(a.scheduledDate);
         })
         .slice(0, 20),
-    [tasks]
+    [tasks, horseId]
   );
+  const horse = horses.find((h) => h.id === horseId);
+
+  const close = () => {
+    setHorseId(null);
+    onClose();
+  };
 
   return (
     <Modal
@@ -171,30 +208,63 @@ function TaskPicker({ visible, tasks, onClose, onPick }) {
       transparent
       statusBarTranslucent
       navigationBarTranslucent
-      onRequestClose={onClose}
+      onRequestClose={close}
     >
       <View style={styles.backdrop}>
         <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
           <Row style={styles.sheetHeader}>
-            <Text style={font.h2}>Chọn công việc liên quan</Text>
-            <Pressable onPress={onClose} hitSlop={10}>
+            <Row style={{ gap: spacing.sm, flex: 1 }}>
+              {horse ? (
+                <Pressable onPress={() => setHorseId(null)} hitSlop={10} accessibilityLabel="Chọn ngựa khác">
+                  <Icon name="chevronLeft" size={20} color={colors.forest} />
+                </Pressable>
+              ) : null}
+              <Text style={font.h2} numberOfLines={1}>
+                {horse ? `${horse.name} · chọn công việc` : 'Sự cố với ngựa nào?'}
+              </Text>
+            </Row>
+            <Pressable onPress={close} hitSlop={10}>
               <Text style={styles.close}>✕</Text>
             </Pressable>
           </Row>
           <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm }}>
-            {candidates.length === 0 ? (
-              <EmptyState icon="empty" text="Bạn chưa có công việc nào" hint="Sự cố cần gắn với một công việc được giao." />
+            {!horse ? (
+              horses.length === 0 ? (
+                <EmptyState icon="stall" text="Bạn chưa phụ trách ngựa nào" hint="Quản lý CLB là người xếp chuồng." />
+              ) : (
+                horses.map((h) => (
+                  <Card key={h.id} style={styles.pickRow} onPress={() => setHorseId(h.id)}>
+                    <Row style={{ gap: spacing.md }}>
+                      <HorseAvatar name={h.name} size={36} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={font.h3}>{h.name}</Text>
+                        <Text style={font.small}>
+                          {h.stall ? parseStableBlock(h.stall).stall : 'Chưa xếp chuồng'} · {h.count} công việc
+                        </Text>
+                      </View>
+                      <Icon name="chevronRight" size={16} color={colors.textFaint} />
+                    </Row>
+                  </Card>
+                ))
+              )
+            ) : candidates.length === 0 ? (
+              <EmptyState
+                icon="empty"
+                text="Bạn chưa có công việc nào với ngựa này"
+                hint="Sự cố được gắn với một công việc bạn được giao — hãy báo trực tiếp HLV/bác sĩ."
+              />
             ) : (
               candidates.map((task) => {
-                const cfg = TASK_CONFIG[task.taskType] || { label: task.taskType, icon: 'note' };
+                const cfg = describeTask(task);
                 return (
-                  <Card key={task._id} style={styles.pickRow} onPress={() => onPick(task)}>
+                  <Card key={task._id} style={styles.pickRow} onPress={() => { setHorseId(null); onPick(task); }}>
                     <Row style={{ gap: spacing.md }}>
                       <Icon name={cfg.icon} size={18} color={cfg.color} />
                       <View style={{ flex: 1 }}>
-                        <Text style={font.h3}>{task.horse?.name}</Text>
+                        <Text style={font.h3} numberOfLines={1}>{cfg.label}</Text>
                         <Text style={font.small}>
-                          {cfg.label} • {isToday(task.scheduledDate) ? 'Hôm nay' : formatDate(task.scheduledDate)}
+                          {isToday(task.scheduledDate) ? 'Hôm nay' : formatDate(task.scheduledDate)}
+                          {cfg.time ? ` · ${cfg.time}` : ''}
                         </Text>
                       </View>
                       {task.incidentReport ? <Badge label="Đã có báo cáo" color={colors.red} bg={colors.redSoft} /> : null}

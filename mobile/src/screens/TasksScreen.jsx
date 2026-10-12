@@ -19,6 +19,7 @@ import {
   FilterBar,
   FilterSheet,
   HorseAvatar,
+  LoadError,
   Loading,
   ProgressBar,
   Row,
@@ -27,37 +28,41 @@ import { useFeedings, useInventory, useRefreshAll, useStableOverview, useTasks }
 import { API_ORIGIN } from '../api/client';
 import { taskApi } from '../api/endpoints';
 import {
+  CHORE_TYPES,
   HEALTH_STATUS,
-  SEVERITY,
   TASK_CONFIG,
-  TASK_SOURCE,
-  TASK_STATUS,
   TASK_TYPE_ORDER,
-  TIMING_STATE,
+  canCompleteTask,
   describeTask,
-  describeMissing,
   formatTime,
   isSameDay,
   isToday,
   matchesSearch,
   missingSupplies,
+  newOpId,
   restockRequestFor,
   parseStableBlock,
   refId,
   startOfDay,
+  taskState,
 } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
 // Meals live on "Cho ăn" and doses on "Thuốc", where the ration and the prescription are. This
-// tab is the stable work itself, which is what a groom means by "việc chuồng".
-const CHORE_TYPES = ['cleaning', 'bathing', 'icing'];
+// tab is the stable work itself — mucking out, washing, icing and whatever else the trainer
+// assigns ("Việc khác") — which is what a groom means by "việc chuồng".
 
+// Filters on where a task stands (utils/groom.js taskState), not on the raw stored status.
 const STATUS_FILTERS = [
   { value: 'all', label: 'Tất cả' },
-  { value: 'pending', label: 'Chưa xong' },
+  { value: 'open', label: 'Chưa xong' },
+  { value: 'blocked', label: 'Bị chặn' },
   { value: 'completed', label: 'Đã xong' },
-  { value: 'skipped', label: 'Không làm được' },
+  { value: 'unable', label: 'Không làm được' },
 ];
+const matchesStatus = (state, filter) =>
+  filter === 'all' ||
+  (filter === 'open' ? state?.open : filter === 'unable' ? ['unable', 'cancelled'].includes(state?.key) : state?.key === filter);
 
 export default function TasksScreen({ segments }) {
   const [day, setDay] = useState(() => startOfDay(new Date()));
@@ -72,7 +77,7 @@ export default function TasksScreen({ segments }) {
   const [restock, setRestock] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const { tasks, isLoading } = useTasks();
+  const { tasks, isLoading, isError, refetch } = useTasks();
   const { feedings } = useFeedings();
   const { items: inventory } = useInventory();
   const { assignmentByHorseId, horseById } = useStableOverview();
@@ -80,19 +85,22 @@ export default function TasksScreen({ segments }) {
   const queryClient = useQueryClient();
 
   const acknowledge = useMutation({
-    mutationFn: (id) => taskApi.acknowledge(id),
+    mutationFn: (id) => taskApi.acknowledge(id, newOpId()),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
   });
 
+  // Stock, and whether any of it has expired, decide whether a chore can be recorded.
+  const ctx = useMemo(() => ({ inventory }), [inventory]);
   const chores = useMemo(() => tasks.filter((t) => CHORE_TYPES.includes(t.taskType)), [tasks]);
   const dayTasks = useMemo(() => chores.filter((t) => isSameDay(t.scheduledDate, day)), [chores, day]);
+  // Earlier chores still to do: mucking out a day late is still mucking out.
   const overdue = useMemo(
-    () => chores.filter((t) => t.status === 'pending' && new Date(t.scheduledDate) < startOfDay(new Date())),
-    [chores]
+    () => chores.filter((t) => new Date(t.scheduledDate) < startOfDay(new Date()) && taskState(t, ctx)?.open),
+    [chores, ctx]
   );
   const done = dayTasks.filter((t) => t.status === 'completed');
-  const pendingCount = dayTasks.filter((t) => t.status === 'pending').length;
-  const percent = dayTasks.length ? Math.round((done.length / dayTasks.length) * 100) : 0;
+  const planned = dayTasks.filter((t) => taskState(t, ctx)?.key !== 'cancelled');
+  const percent = planned.length ? Math.round((done.length / planned.length) * 100) : 0;
 
   // Counts per task type for the filter row, so the groom sees what the day is made of.
   const typeFilters = useMemo(() => {
@@ -109,7 +117,7 @@ export default function TasksScreen({ segments }) {
   }, [dayTasks]);
 
   const visible = dayTasks
-    .filter((t) => status === 'all' || t.status === status)
+    .filter((t) => matchesStatus(taskState(t, ctx), status))
     .filter((t) => type === 'all' || t.taskType === type)
     .filter((t) => {
       if (!search) return true;
@@ -144,13 +152,13 @@ export default function TasksScreen({ segments }) {
   const pendingByDay = useMemo(() => {
     const map = new Map();
     chores
-      .filter((t) => t.status === 'pending')
+      .filter((t) => taskState(t, ctx)?.open)
       .forEach((t) => {
         const key = startOfDay(t.scheduledDate).getTime();
         map.set(key, (map.get(key) || 0) + 1);
       });
     return map;
-  }, [chores]);
+  }, [chores, ctx]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -164,7 +172,7 @@ export default function TasksScreen({ segments }) {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <AppHeader
         title="Việc chuồng trại"
-        subtitle={`Vệ sinh · tắm rửa · ngâm chân — ${done.length}/${dayTasks.length} đã xong`}
+        subtitle={`Vệ sinh · tắm rửa · ngâm chân · việc khác — ${done.length}/${planned.length} đã xong`}
       />
 
       {segments}
@@ -193,7 +201,7 @@ export default function TasksScreen({ segments }) {
             <Row style={{ gap: spacing.sm, alignItems: 'flex-start' }}>
               <Icon name="clock" size={18} color={colors.orange} />
               <View style={{ flex: 1 }}>
-                <Text style={font.body}>{overdue.length} việc quá hạn chưa hoàn thành.</Text>
+                <Text style={font.body}>{overdue.length} việc từ hôm trước chưa hoàn thành — vẫn làm được.</Text>
                 <Pressable onPress={() => setDay(startOfDay(overdue[overdue.length - 1].scheduledDate))} hitSlop={6}>
                   <Text style={styles.link}>Mở ngày cũ nhất →</Text>
                 </Pressable>
@@ -204,6 +212,8 @@ export default function TasksScreen({ segments }) {
 
         {isLoading ? (
           <Loading />
+        ) : isError ? (
+          <LoadError text="Không tải được danh sách việc" onRetry={() => refetch()} />
         ) : groups.length === 0 ? (
           <Card>
             <EmptyState
@@ -243,6 +253,7 @@ export default function TasksScreen({ segments }) {
                   <TaskRow
                     key={task._id}
                     task={task}
+                    ctx={ctx}
                     schedules={schedulesFor(horseId)}
                     onOpen={() => setDetail(task)}
                     onComplete={() => setCompleting(task)}
@@ -257,6 +268,7 @@ export default function TasksScreen({ segments }) {
       {/* The list stays short; the sheet carries the detail and every action. */}
       <TaskDetailSheet
         task={detail}
+        ctx={ctx}
         schedules={detail ? schedulesFor(refId(detail.horse)) : []}
         visible={!!detail}
         onClose={() => setDetail(null)}
@@ -317,16 +329,14 @@ export default function TasksScreen({ segments }) {
  * it cannot be ticked yet, the incident, the observation — is one tap away in the detail sheet,
  * which keeps a 15-task day readable.
  */
-function TaskRow({ task, schedules, onOpen, onComplete }) {
+function TaskRow({ task, ctx, schedules, onOpen, onComplete }) {
   const info = describeTask(task, schedules);
-  const status = TASK_STATUS[task.status] || TASK_STATUS.pending;
+  const state = taskState(task, ctx);
   const isDone = task.status === 'completed';
   const isPending = task.status === 'pending';
 
-  const timing = task.timing || {};
-  const timingCfg = TIMING_STATE[timing.state];
   const missing = missingSupplies(task);
-  const canComplete = isPending && timing.canComplete !== false && missing.length === 0;
+  const canComplete = canCompleteTask(task, ctx);
   const isVetOrder = task.source === 'vet';
 
   // Two separate touch targets side by side, never nested: the row opens the detail, the round
@@ -355,11 +365,9 @@ function TaskRow({ task, schedules, onOpen, onComplete }) {
               </Row>
             ) : null}
             {isDone && task.completedAt ? <Text style={font.small}>Xong {formatTime(task.completedAt)}</Text> : null}
-            {isPending && timingCfg ? <Badge label={timingCfg.label} color={timingCfg.color} bg={timingCfg.bg} /> : null}
-            {!isDone && !isPending ? <Badge label={status.label} color={status.color} bg={status.bg} /> : null}
+            {!isDone && state ? <Badge label={state.label} color={state.color} bg={state.bg} /> : null}
             {isVetOrder ? <Badge label="Y lệnh" color={colors.red} bg={colors.redSoft} /> : null}
             {missing.length ? <Badge label="Thiếu vật tư" color={colors.red} bg={colors.redSoft} /> : null}
-            {task.dueTime ? <Badge label={task.dueTime} color={colors.forest} bg={colors.forestSoft} /> : null}
             {task.incidentReport ? <Icon name="warning" size={13} color={colors.orange} /> : null}
             {isPending && task.acknowledgedAt ? <Icon name="thumb" size={13} color={colors.green} /> : null}
           </Row>

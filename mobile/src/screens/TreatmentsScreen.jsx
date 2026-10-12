@@ -1,39 +1,40 @@
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
+import CompleteTaskModal from '../components/CompleteTaskModal';
 import NotDoneModal from '../components/NotDoneModal';
 import DoseDetailSheet from '../components/DoseDetailSheet';
 import StockCard from '../components/StockCard';
 import RestockSheet from '../components/RestockSheet';
 import HistorySheet from '../components/HistorySheet';
+import YesterdayRecap from '../components/YesterdayRecap';
 import {
   Badge,
-  Button,
   Card,
   ChipRow,
   EmptyState,
   HorseAvatar,
   IconButton,
+  LoadError,
   Loading,
   Row,
   SectionTitle,
 } from '../components/ui';
-import { taskApi } from '../api/endpoints';
 import { useInventory, useRefreshAll, useStableOverview, useTasks, useTreatments } from '../hooks/useGroomData';
 import {
-  TIMING_STATE,
+  CARE_TYPES,
   canCompleteTask,
-  findStock,
+  describeTask,
+  doseSlots,
   formatDate,
   formatTime,
   isSameDay,
   missingSupplies,
   refId,
   restockRequestFor,
-  shortageFromError,
+  taskState,
 } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
@@ -43,63 +44,65 @@ const FILTERS = [
   { value: 'locked', label: 'Đang khóa tập' },
 ];
 
-/** The note the server writes for a medication task: "Tên thuốc — Liều — Tần suất". */
-const noteFor = (medication) => [medication.name, medication.dosage, medication.frequency].filter(Boolean).join(' — ');
-
+/**
+ * The vet's orders for the day. A prescription is the vet's (read here, never changed); each time
+ * of day a medicine is given is its own dose with its own record, so giving the 08:00 dose leaves
+ * the 16:00 one open. A dose is recorded through a confirmation of horse, medicine, dose and time.
+ */
 export default function TreatmentsScreen({ navigation, segments }) {
   const [filter, setFilter] = useState('mine');
   const [openDose, setOpenDose] = useState(null);
+  const [completing, setCompleting] = useState(null);
   const [notDone, setNotDone] = useState(null);
+  const [notDoneReason, setNotDoneReason] = useState('');
   const [restock, setRestock] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const { treatments, isLoading } = useTreatments();
-  const { tasks } = useTasks();
+  const { treatments, isLoading, isError, refetch } = useTreatments();
+  const { tasks, isError: tasksFailed, refetch: refetchTasks } = useTasks();
   const { items: inventory } = useInventory();
   const { myHorseIds } = useStableOverview();
   const refreshAll = useRefreshAll();
-  const queryClient = useQueryClient();
+  const ctx = useMemo(() => ({ inventory }), [inventory]);
 
-  // The task itself is the variable, so a refusal can say which dose it was.
-  const complete = useMutation({
-    mutationFn: (task) => taskApi.complete(task._id, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
-    onError: (err, task) => {
-      const missing = shortageFromError(err);
-      if (missing.length) {
-        setRestock(restockRequestFor({ missing, task, inventory }));
-        return;
-      }
-      Alert.alert('Chưa ghi nhận được', err?.message || 'Thử lại sau.');
-    },
-  });
-
-  // Today's care tasks, indexed by the treatment and note they were created from.
+  // Today's care tasks: the doses and the watching the vet ordered.
   const todayCareTasks = useMemo(
-    () =>
-      tasks.filter(
-        (t) => t.treatment && isSameDay(t.scheduledDate, new Date()) && ['medication', 'monitoring'].includes(t.taskType)
-      ),
+    () => tasks.filter((t) => t.treatment && isSameDay(t.scheduledDate, new Date()) && CARE_TYPES.includes(t.taskType)),
     [tasks]
   );
 
   // Doses already given or missed, for the handover and for the vet's questions.
   const doseHistory = useMemo(
-    () =>
-      tasks.filter(
-        (t) => ['medication', 'monitoring'].includes(t.taskType) && (filter === 'all' || myHorseIds.has(refId(t.horse)))
-      ),
+    () => tasks.filter((t) => CARE_TYPES.includes(t.taskType) && (filter === 'all' || myHorseIds.has(refId(t.horse)))),
     [tasks, filter, myHorseIds]
   );
-
-  const taskFor = (treatmentId, note, taskType) =>
-    todayCareTasks.find((t) => refId(t.treatment) === treatmentId && t.taskType === taskType && t.note === note);
 
   const visible = treatments
     .filter((t) => t.status === 'ongoing')
     .filter((t) => (filter === 'mine' ? myHorseIds.has(refId(t.horse)) : true))
     .filter((t) => (filter === 'locked' ? t.isTrainingLocked : true));
+
+  const careTaskFor = (treatment) =>
+    todayCareTasks.find(
+      (t) => refId(t.treatment) === treatment._id && t.taskType === 'monitoring' && t.note === treatment.careInstructions
+    );
+
+  // Every care task of today shown under its prescription; any the lists above could not place
+  // (an order changed since the task was made) still appears, so no dose goes unseen.
+  const placed = new Set(
+    visible.flatMap((treatment) => [
+      ...(treatment.medications || []).flatMap((m) =>
+        doseSlots(treatment, m, todayCareTasks).map((slot) => slot.task?._id).filter(Boolean)
+      ),
+      careTaskFor(treatment)?._id,
+    ])
+  );
+  const unplaced = todayCareTasks.filter(
+    (t) => !placed.has(t._id) && (filter !== 'mine' || myHorseIds.has(refId(t.horse)))
+  );
+
+  const pendingDoses = todayCareTasks.filter((t) => taskState(t, ctx)?.open).length;
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -107,7 +110,10 @@ export default function TreatmentsScreen({ navigation, segments }) {
     setRefreshing(false);
   };
 
-  const pendingDoses = todayCareTasks.filter((t) => t.status === 'pending').length;
+  const reportNotDone = (task, reason = '') => {
+    setNotDoneReason(reason);
+    setNotDone(task);
+  };
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -127,6 +133,8 @@ export default function TreatmentsScreen({ navigation, segments }) {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
       >
+        <YesterdayRecap tasks={doseHistory} noun="liều/việc" onPress={() => setHistoryOpen(true)} />
+
         {/* The whole medicine store, not just what today's prescriptions call for. */}
         <StockCard
           title="Thuốc còn trong kho"
@@ -138,17 +146,27 @@ export default function TreatmentsScreen({ navigation, segments }) {
 
         {isLoading ? (
           <Loading />
-        ) : visible.length === 0 ? (
+        ) : isError || tasksFailed ? (
+          <LoadError
+            text={isError ? 'Không tải được toa thuốc' : 'Không tải được danh sách liều thuốc'}
+            onRetry={() => {
+              refetch();
+              refetchTasks();
+            }}
+          />
+        ) : visible.length === 0 && unplaced.length === 0 ? (
           <Card>
             <EmptyState
               icon="treatment"
               text="Không có toa thuốc nào đang áp dụng"
-              hint="Bác sĩ thú y kê toa; mỗi loại thuốc sẽ thành một việc cho uống trong ngày."
+              hint="Bác sĩ thú y kê toa; mỗi giờ dùng thuốc sẽ thành một liều cần cho dùng trong ngày."
             />
           </Card>
         ) : (
           visible.map((treatment) => {
             const medications = treatment.medications || [];
+            const mine = myHorseIds.has(refId(treatment.horse));
+            const careTask = careTaskFor(treatment);
             return (
               <Card key={treatment._id} style={styles.card}>
                 <Row style={{ gap: spacing.md }}>
@@ -170,26 +188,16 @@ export default function TreatmentsScreen({ navigation, segments }) {
                   <Text style={font.small}>Toa này không kê thuốc, chỉ có hướng dẫn chăm sóc.</Text>
                 ) : (
                   medications.map((medication, index) => {
-                    const task = taskFor(treatment._id, noteFor(medication), 'medication');
+                    const slots = doseSlots(treatment, medication, todayCareTasks, { mine });
+                    const open = (time) => setOpenDose({ medication, treatment, slots, focus: time, inventory, ctx });
                     return (
-                      <DoseRow
+                      <MedicationBlock
                         key={`${medication.name}-${index}`}
-                        title={medication.name}
-                        dosage={medication.dosage}
-                        frequency={medication.frequency}
-                        task={task}
-                        onOpen={() =>
-                          setOpenDose({
-                            title: medication.name,
-                            dosage: medication.dosage,
-                            frequency: medication.frequency,
-                            task,
-                            treatment,
-                            inventory,
-                          })
-                        }
-                        onComplete={() => complete.mutate(task)}
-                        completing={complete.isPending && complete.variables?._id === task?._id}
+                        medication={medication}
+                        slots={slots}
+                        ctx={ctx}
+                        onOpen={open}
+                        onComplete={setCompleting}
                       />
                     );
                   })
@@ -198,23 +206,13 @@ export default function TreatmentsScreen({ navigation, segments }) {
                 {treatment.careInstructions ? (
                   <>
                     <SectionTitle style={{ marginTop: spacing.lg, marginBottom: spacing.sm }}>Hướng dẫn chăm sóc</SectionTitle>
-                    <DoseRow
+                    <CareRow
                       title={treatment.careInstructions}
-                      icon="monitoring"
-                      task={taskFor(treatment._id, treatment.careInstructions, 'monitoring')}
-                      onOpen={() =>
-                        setOpenDose({
-                          title: treatment.careInstructions,
-                          task: taskFor(treatment._id, treatment.careInstructions, 'monitoring'),
-                          treatment,
-                          inventory,
-                          isCare: true,
-                        })
-                      }
-                      onComplete={() => {
-                        const task = taskFor(treatment._id, treatment.careInstructions, 'monitoring');
-                        if (task) complete.mutate(task);
-                      }}
+                      task={careTask}
+                      mine={mine}
+                      ctx={ctx}
+                      onOpen={() => setOpenDose({ isCare: true, title: treatment.careInstructions, task: careTask, treatment, inventory, ctx })}
+                      onComplete={setCompleting}
                     />
                   </>
                 ) : null}
@@ -224,30 +222,55 @@ export default function TreatmentsScreen({ navigation, segments }) {
             );
           })
         )}
+
+        {unplaced.length > 0 ? (
+          <Card style={styles.card}>
+            <SectionTitle style={{ marginBottom: spacing.sm }}>Y lệnh khác hôm nay</SectionTitle>
+            <Text style={[font.small, { marginBottom: spacing.sm }]}>
+              Việc từ y lệnh không còn khớp với toa hiện tại — mở để xem; nếu bị từ chối, bác sĩ đã đổi y lệnh.
+            </Text>
+            {unplaced.map((task) => (
+              <CareRow
+                key={task._id}
+                title={`${task.horse?.name || 'Ngựa'} · ${describeTask(task).label}`}
+                subtitle={task.note}
+                task={task}
+                mine
+                ctx={ctx}
+                onOpen={() => setOpenDose({ isCare: task.taskType !== 'medication', title: task.note, task, inventory, ctx })}
+                onComplete={setCompleting}
+              />
+            ))}
+          </Card>
+        ) : null}
       </ScrollView>
 
       <DoseDetailSheet
         dose={openDose}
         visible={!!openDose}
         onClose={() => setOpenDose(null)}
-        onAskSupply={(entry) => {
-          const task = openDose?.task;
+        onAskSupply={(entry, task) => {
           setOpenDose(null);
           setRestock(restockRequestFor({ entry, missing: missingSupplies(task), task, inventory }));
         }}
-        onComplete={() => {
-          const task = openDose?.task;
+        onComplete={(task) => {
           setOpenDose(null);
-          if (task) complete.mutate(task);
+          setCompleting(task);
         }}
-        onNotDone={() => {
-          const task = openDose?.task;
+        onNotDone={(task, reason) => {
           setOpenDose(null);
-          setNotDone(task);
+          reportNotDone(task, reason);
         }}
       />
 
-      <NotDoneModal task={notDone} visible={!!notDone} onClose={() => setNotDone(null)} />
+      <CompleteTaskModal
+        task={completing}
+        visible={!!completing}
+        onClose={() => setCompleting(null)}
+        onShortage={(missing, task) => setRestock(restockRequestFor({ missing, task, inventory }))}
+      />
+
+      <NotDoneModal task={notDone} visible={!!notDone} initialReason={notDoneReason} onClose={() => setNotDone(null)} />
 
       <RestockSheet request={restock} visible={!!restock} onClose={() => setRestock(null)} />
 
@@ -262,14 +285,110 @@ export default function TreatmentsScreen({ navigation, segments }) {
   );
 }
 
-/** One line of the prescription. The dose, the stock and the record live in the detail sheet. */
-function DoseRow({ title, dosage, frequency, task, onOpen, onComplete, completing, icon = 'medication' }) {
+/**
+ * One medicine of the prescription: its name and dose, then one line per time of day it is given
+ * today. Each line is its own dose; the round button opens the confirmation for that dose only.
+ */
+function MedicationBlock({ medication, slots, ctx, onOpen, onComplete }) {
+  const states = slots.map((slot) => taskState(slot.task, ctx));
+  const allDone = slots.length > 0 && slots.every((slot) => slot.task?.status === 'completed');
+
+  return (
+    <View style={[styles.dose, allDone && styles.doseDone]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Chi tiết ${medication.name}`}
+        onPress={() => onOpen(null)}
+        style={({ pressed }) => [styles.doseMain, pressed && { opacity: 0.7 }]}
+      >
+        <View style={[styles.doseIcon, { backgroundColor: allDone ? colors.greenSoft : colors.redSoft }]}>
+          <Icon name={allDone ? 'check' : 'medication'} size={16} color={allDone ? colors.green : colors.red} />
+        </View>
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text style={[font.h3, allDone && styles.doneText]} numberOfLines={2}>
+            {medication.name}
+          </Text>
+          <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
+            {medication.dosage ? <Text style={font.small}>Liều {medication.dosage}</Text> : null}
+            {medication.frequency ? <Text style={font.small}>· {medication.frequency}</Text> : null}
+          </Row>
+          {medication.instructions ? (
+            <Text style={[font.small, { color: colors.forestLight }]} numberOfLines={2}>
+              Dặn dò: {medication.instructions}
+            </Text>
+          ) : null}
+        </View>
+        <Icon name="chevronRight" size={16} color={colors.textFaint} />
+      </Pressable>
+
+      {slots.map((slot, index) => (
+        <DoseSlotRow
+          key={slot.time || `once-${index}`}
+          slot={slot}
+          state={states[index]}
+          ctx={ctx}
+          onOpen={() => onOpen(slot.time)}
+          onComplete={() => onComplete(slot.task)}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** One dose at one time: how it stands, and the button that opens its confirmation. */
+function DoseSlotRow({ slot, state, ctx, onOpen, onComplete }) {
+  const { task } = slot;
+  const canComplete = canCompleteTask(task, ctx);
   const done = task?.status === 'completed';
-  const skipped = task?.status === 'skipped';
-  const timing = task?.timing || {};
-  const timingCfg = TIMING_STATE[timing.state];
-  const canComplete = canCompleteTask(task);
-  const short = missingSupplies(task).length > 0;
+
+  return (
+    <Row style={styles.slot}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Liều ${slot.time || 'trong ngày'}`}
+        onPress={onOpen}
+        style={({ pressed }) => [styles.slotMain, pressed && { opacity: 0.7 }]}
+      >
+        <Badge label={slot.time || 'Trong ngày'} color={colors.forest} bg={colors.forestSoft} />
+        <View style={{ flex: 1, gap: 2 }}>
+          {done && task.completedAt ? (
+            <Text style={[font.small, { color: colors.green }]}>Đã cho dùng {formatTime(task.completedAt)}</Text>
+          ) : state ? (
+            <Badge label={state.label} color={state.color} bg={state.bg} style={{ alignSelf: 'flex-start' }} />
+          ) : null}
+          {!task ? <Text style={font.small}>{slot.reason}</Text> : null}
+          {task && state?.key === 'blocked' ? (
+            <Text style={[font.small, { color: colors.red }]} numberOfLines={2}>
+              {state.reason}
+            </Text>
+          ) : null}
+          {task?.status === 'skipped' && task.skipReason ? (
+            <Text style={[font.small, { color: colors.orange }]} numberOfLines={2}>
+              {task.skipReason}
+            </Text>
+          ) : null}
+        </View>
+      </Pressable>
+      {canComplete ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Cho dùng liều ${slot.time || 'trong ngày'}`}
+          onPress={onComplete}
+          style={({ pressed }) => [styles.quickDone, pressed && { opacity: 0.7 }]}
+          hitSlop={6}
+        >
+          <Icon name="check" size={18} color={colors.white} />
+        </Pressable>
+      ) : null}
+    </Row>
+  );
+}
+
+/** The vet's care instructions (watch the swelling, box rest): one task a day. */
+function CareRow({ title, subtitle, task, mine, ctx, onOpen, onComplete }) {
+  const state = taskState(task, ctx);
+  const done = task?.status === 'completed';
+  const canComplete = canCompleteTask(task, ctx);
 
   return (
     <Row style={[styles.dose, done && styles.doseDone]}>
@@ -279,41 +398,38 @@ function DoseRow({ title, dosage, frequency, task, onOpen, onComplete, completin
         onPress={onOpen}
         style={({ pressed }) => [styles.doseMain, pressed && { opacity: 0.7 }]}
       >
-        <View style={[styles.doseIcon, { backgroundColor: done ? colors.greenSoft : colors.redSoft }]}>
-          <Icon name={done ? 'check' : icon} size={16} color={done ? colors.green : colors.red} />
+        <View style={[styles.doseIcon, { backgroundColor: done ? colors.greenSoft : colors.purpleSoft }]}>
+          <Icon name={done ? 'check' : 'monitoring'} size={16} color={done ? colors.green : colors.purple} />
         </View>
         <View style={{ flex: 1, gap: 3 }}>
           <Text style={[font.h3, done && styles.doneText]} numberOfLines={2}>
             {title}
           </Text>
-          <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
-            {task?.dueTime ? <Text style={[font.small, { fontWeight: '700', color: colors.forest }]}>{task.dueTime}</Text> : null}
-            {dosage ? <Text style={font.small}>Liều {dosage}</Text> : null}
-            {frequency ? <Text style={font.small}>· {frequency}</Text> : null}
-          </Row>
+          {subtitle ? (
+            <Text style={font.small} numberOfLines={2}>
+              {subtitle}
+            </Text>
+          ) : null}
           <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
             {done && task?.completedAt ? (
-              <Text style={[font.small, { color: colors.green }]}>Đã cho dùng {formatTime(task.completedAt)}</Text>
-            ) : null}
-            {skipped ? <Text style={[font.small, { color: colors.orange }]}>Không thực hiện</Text> : null}
-            {!done && !skipped && timingCfg && task ? (
-              <Badge label={timingCfg.label} color={timingCfg.color} bg={timingCfg.bg} />
-            ) : null}
-            {short ? <Badge label="Thiếu thuốc trong kho" color={colors.red} bg={colors.redSoft} /> : null}
-            {!task ? <Text style={font.small}>Hôm nay chưa có việc</Text> : null}
+              <Text style={[font.small, { color: colors.green }]}>Đã làm {formatTime(task.completedAt)}</Text>
+            ) : state ? (
+              <Badge label={state.label} color={state.color} bg={state.bg} />
+            ) : (
+              <Text style={font.small}>{mine ? 'Hôm nay chưa có việc' : 'Không phải ngựa bạn phụ trách'}</Text>
+            )}
           </Row>
         </View>
       </Pressable>
-
       {canComplete ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Đã cho dùng ${title}`}
-          onPress={onComplete}
+          accessibilityLabel={`Đã làm: ${title}`}
+          onPress={() => onComplete(task)}
           style={({ pressed }) => [styles.quickDone, pressed && { opacity: 0.7 }]}
           hitSlop={6}
         >
-          {completing ? <Icon name="refresh" size={17} color={colors.white} /> : <Icon name="check" size={18} color={colors.white} />}
+          <Icon name="check" size={18} color={colors.white} />
         </Pressable>
       ) : (
         <Icon name="chevronRight" size={16} color={colors.textFaint} />
@@ -336,6 +452,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   doseMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  slot: { gap: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderSoft },
+  slotMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   quickDone: {
     width: 40,
     height: 40,
@@ -348,5 +466,4 @@ const styles = StyleSheet.create({
   doseIcon: { width: 32, height: 32, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
   doneText: { color: colors.textMuted, textDecorationLine: 'line-through' },
   notes: { ...font.small, marginTop: spacing.sm },
-  askSupply: { ...font.small, color: colors.forestLight, fontWeight: '700', marginTop: 4 },
 });

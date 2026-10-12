@@ -4,7 +4,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from './Icon';
 import { Badge, Banner, Button, Card, ChipGroup, DataRow, Row, Sheet } from './ui';
 import { inventoryApi } from '../api/endpoints';
-import { TASK_CONFIG, formatStock, getStockLevel } from '../utils/groom';
+import { useAuth } from '../auth/AuthContext';
+import { describeTask, formatStock, isOpenRequest, levelOf, refId, restockState } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
 /**
@@ -12,11 +13,15 @@ import { colors, font, radius, spacing } from '../theme';
  *
  * Opened from the storeroom, or from a meal or dose that cannot be recorded for lack of supplies —
  * in which case the request carries the task, so the Manager sees which work is blocked, and the
- * amount is pre-filled with what is short.
+ * amount is pre-filled with what is short. Nothing changes in stock until the Manager approves
+ * and then receives the delivery.
  */
 export default function RestockSheet({ request, visible, onClose }) {
+  const { user } = useAuth();
   const { item, task, missing } = request || {};
   const packed = !!(item?.packUnit && item?.packSize);
+  // A request of mine already with the Manager for this item: asking again only if more is needed.
+  const already = (item?.restockRequests || []).filter((r) => refId(r.requestedBy) === user?._id && isOpenRequest(r));
   const [mode, setMode] = useState(packed ? 'packs' : 'units');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -27,7 +32,7 @@ export default function RestockSheet({ request, visible, onClose }) {
     if (!visible || !item) return;
     const short = missing?.find((m) => String(m.inventoryItem) === String(item._id))?.short;
     setMode(packed ? 'packs' : 'units');
-    setNote(task ? `Thiếu để làm việc ${TASK_CONFIG[task.taskType]?.label || ''} cho ${task.horse?.name || 'ngựa'}.` : '');
+    setNote(task ? `Thiếu để làm việc ${describeTask(task).label.toLowerCase()} cho ${task.horse?.name || 'ngựa'}.` : '');
     if (!short) {
       setAmount('');
       return;
@@ -47,7 +52,10 @@ export default function RestockSheet({ request, visible, onClose }) {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['care-plan'] });
-      Alert.alert('Đã gửi đề xuất', task ? 'Quản lý sẽ thấy việc này đang bị chặn vì thiếu vật tư.' : 'Quản lý CLB sẽ xem xét.');
+      Alert.alert(
+        'Đã gửi đề xuất',
+        `${task ? 'Quản lý sẽ thấy việc này đang bị chặn vì thiếu vật tư. ' : ''}Theo dõi ở "Đề xuất của tôi" trong Kho; kho chỉ tăng khi Quản lý nhận hàng về.`
+      );
       close();
     },
     onError: (err) => Alert.alert('Gửi thất bại', err?.message || 'Thử lại sau.'),
@@ -68,7 +76,7 @@ export default function RestockSheet({ request, visible, onClose }) {
 
   if (!item) return <Sheet visible={visible} onClose={onClose} title="Đề xuất bổ sung" />;
 
-  const level = getStockLevel(item.quantity);
+  const level = levelOf(item);
   const converted = mode === 'packs' && packed && Number(amount) > 0 ? Number(amount) * item.packSize : null;
 
   return (
@@ -98,7 +106,7 @@ export default function RestockSheet({ request, visible, onClose }) {
               <Icon name="warning" size={16} color={colors.red} />
               <View style={{ flex: 1 }}>
                 <Text style={font.body}>
-                  Đang chặn việc {TASK_CONFIG[task.taskType]?.label?.toLowerCase() || 'chăm sóc'} cho {task.horse?.name}
+                  Đang chặn việc {describeTask(task).label.toLowerCase()} cho {task.horse?.name}
                 </Text>
                 {missing?.length ? (
                   <Text style={font.small}>
@@ -106,6 +114,19 @@ export default function RestockSheet({ request, visible, onClose }) {
                   </Text>
                 ) : null}
               </View>
+            </Row>
+          </Banner>
+        ) : null}
+
+        {already.length ? (
+          <Banner tone="info">
+            <Row style={{ gap: spacing.sm, alignItems: 'flex-start' }}>
+              <Icon name="clock" size={16} color={colors.blue} />
+              <Text style={[font.small, { flex: 1 }]}>
+                Bạn đã có đề xuất cho mặt hàng này:{' '}
+                {already.map((r) => `+${r.quantity} ${item.unit} (${restockState(r).label.toLowerCase()})`).join(', ')}. Chỉ gửi thêm
+                nếu cần nhiều hơn.
+              </Text>
             </Row>
           </Banner>
         ) : null}

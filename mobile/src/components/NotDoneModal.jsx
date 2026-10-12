@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { taskApi } from '../api/endpoints';
 import Icon from './Icon';
 import { Button, ChipGroup, Row } from './ui';
-import { TASK_CONFIG } from '../utils/groom';
+import { describeTask, newOpId } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -16,13 +16,27 @@ const PRESETS = [
   'Ngựa đang được bác sĩ khám',
   'Ngựa không có trong chuồng',
   'Thiếu vật tư',
+  'Chưa có khẩu phần được duyệt',
+  'Thuốc/vật tư đã hết hạn',
 ];
 
-/** Reports a task as not done, with the reason. The trainer (and vet, for an order) is told. */
-export default function NotDoneModal({ task, visible, onClose }) {
+/**
+ * Reports a task as not done, with the reason. The trainer (and vet, for an order) is told. The
+ * task is recorded as not done — never as completed. `initialReason` pre-fills the reason when
+ * the screen already knows it (no approved ration, an expired item).
+ */
+export default function NotDoneModal({ task, visible, onClose, initialReason }) {
   const insets = useSafeAreaInsets();
   const [reason, setReason] = useState('');
   const queryClient = useQueryClient();
+  // One id per report: a double tap or a retry after a dropped connection is recorded once.
+  const opId = useRef(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    opId.current = newOpId();
+    setReason(initialReason || '');
+  }, [visible, initialReason]);
 
   const close = () => {
     setReason('');
@@ -30,12 +44,17 @@ export default function NotDoneModal({ task, visible, onClose }) {
   };
 
   const mutation = useMutation({
-    mutationFn: (text) => taskApi.reportNotDone(task._id, text),
+    mutationFn: (text) => taskApi.reportNotDone(task._id, text, opId.current),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['incidents'] });
       close();
     },
-    onError: (err) => Alert.alert('Không gửi được', err?.message || 'Thử lại sau.'),
+    onError: (err) => {
+      // Someone (or this phone, a moment ago) already recorded it: show the list as it is now.
+      if (err?.status === 409 || err?.data?.status) queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      Alert.alert('Không gửi được', err?.message || 'Thử lại sau.');
+    },
   });
 
   const submit = () => {
@@ -47,7 +66,7 @@ export default function NotDoneModal({ task, visible, onClose }) {
     mutation.mutate(text);
   };
 
-  const cfg = TASK_CONFIG[task?.taskType];
+  const cfg = task ? describeTask(task) : null;
 
   return (
     <Modal
@@ -72,7 +91,10 @@ export default function NotDoneModal({ task, visible, onClose }) {
               <View style={styles.taskBox}>
                 <Row style={{ gap: 6 }}>
                   <Icon name={cfg?.icon || 'note'} size={15} color={cfg?.color} />
-                  <Text style={font.h3}>{cfg?.label || task.taskType}</Text>
+                  <Text style={font.h3}>
+                    {cfg?.label || task.taskType}
+                    {cfg?.time ? ` · ${cfg.time}` : ''}
+                  </Text>
                 </Row>
                 <Text style={font.small}>{task.horse?.name}</Text>
               </View>

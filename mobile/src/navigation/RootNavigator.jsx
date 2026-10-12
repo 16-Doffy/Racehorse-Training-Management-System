@@ -54,9 +54,10 @@ function TabIcon({ name, focused, badge }) {
 }
 
 function Tabs() {
-  const { pending, overdue } = useToday();
-  // One tab carries all of the day's work, so its badge is everything still open.
-  const badges = { 'Chăm sóc': [...pending, ...overdue].length };
+  const { open } = useToday();
+  // One tab carries all of the day's work, so its badge is everything still to do — not the meals
+  // and doses whose window has closed, which can no longer be done.
+  const badges = { 'Chăm sóc': open.length };
 
   return (
     <Tab.Navigator

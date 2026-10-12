@@ -5,7 +5,7 @@ import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
 import { Badge, Card, ChipRow, EmptyState, HorseAvatar, Loading, ProgressBar, Row, SearchInput } from '../components/ui';
 import { useRefreshAll, useStableOverview, useTasks, useTreatments } from '../hooks/useGroomData';
-import { HEALTH_STATUS, TRAINING_LEVEL, getUpcomingCare, isSameDay, matchesSearch, parseStableBlock, refId } from '../utils/groom';
+import { HEALTH_STATUS, TRAINING_LEVEL, getUpcomingCare, isSameDay, matchesSearch, parseStableBlock, refId, taskState } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
 const SCOPES = [
@@ -39,9 +39,11 @@ export default function StableMapScreen({ navigation }) {
       .forEach((t) => {
         const id = refId(t.horse);
         const entry = map.get(id) || { total: 0, done: 0, vet: 0 };
-        entry.total += 1;
+        const state = taskState(t);
+        // Work the trainer called off is not part of the day; a missed dose is no longer "to do".
+        if (state?.key !== 'cancelled') entry.total += 1;
         if (t.status === 'completed') entry.done += 1;
-        if (t.source === 'vet' && t.status === 'pending') entry.vet += 1;
+        if (t.source === 'vet' && state?.open) entry.vet += 1;
         map.set(id, entry);
       });
     return map;

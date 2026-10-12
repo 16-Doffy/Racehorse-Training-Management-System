@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -17,35 +17,58 @@ import Icon from './Icon';
 import { Button, ChipGroup, Row } from './ui';
 import {
   APPETITE_OPTIONS,
+  EATEN_OPTIONS,
   MANURE_OPTIONS,
-  TASK_CONFIG,
   WATER_OPTIONS,
+  describeSupplies,
   describeTask,
+  newOpId,
   shortageFromError,
 } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+// Refusals the server explains with a code (stable/dailyTask.controller.js completionCheck): the
+// message says what happened; the lists are reloaded so the screen shows the work as it is now.
+const BLOCK_TITLES = {
+  NO_APPROVED_RATION: 'Chưa có khẩu phần được duyệt',
+  PRESCRIPTION_CHANGED: 'Y lệnh đã thay đổi',
+  TREATMENT_ENDED: 'Đợt điều trị đã kết thúc',
+  EXPIRED_SUPPLY: 'Vật tư đã hết hạn',
+};
+
 /**
- * Confirms a task as done. For feeding tasks it also collects what the groom saw — appetite,
- * droppings, water — because that is what the vet and the training readiness check read. The
- * server treats the observation as optional, so other task types just confirm and close.
+ * Confirms a task as done. For a meal it also collects what the groom saw — appetite, droppings,
+ * water, and how much of the issued ration the horse actually ate — because that is what the vet
+ * and the training readiness check read. A vet's dose is given only after the groom confirms the
+ * horse, medicine, dose and time against the order. Other work just confirms and closes.
  */
 export default function CompleteTaskModal({ task, schedules = [], visible, onClose, onShortage }) {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [appetite, setAppetite] = useState('Bình thường');
+  const [eaten, setEaten] = useState(100);
   const [manure, setManure] = useState('Bình thường');
   const [water, setWater] = useState('Bình thường');
   const [note, setNote] = useState('');
+  const [checked, setChecked] = useState(false);
+  // One id per confirmation: a double tap, or a retry after the answer got lost, is applied once.
+  const opId = useRef(null);
 
   const isFeeding = task?.taskType === 'feeding';
+  const isDose = task?.source === 'vet' && task?.taskType === 'medication';
+
+  useEffect(() => {
+    if (visible) opId.current = newOpId();
+  }, [visible, task?._id]);
 
   const reset = () => {
     setAppetite('Bình thường');
+    setEaten(100);
     setManure('Bình thường');
     setWater('Bình thường');
     setNote('');
+    setChecked(false);
   };
 
   const close = () => {
@@ -53,10 +76,17 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
     onClose();
   };
 
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    queryClient.invalidateQueries({ queryKey: ['inventory-forecast'] });
+    queryClient.invalidateQueries({ queryKey: ['care-plan'] });
+  };
+
   const mutation = useMutation({
-    mutationFn: (payload) => taskApi.complete(task._id, payload),
+    mutationFn: (payload) => taskApi.complete(task._id, { ...payload, clientOpId: opId.current }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      refresh();
       close();
     },
     onError: (err) => {
@@ -65,22 +95,43 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
       if (missing.length && onShortage) {
         const blocked = task;
         close();
+        refresh();
         onShortage(missing, blocked);
         return;
       }
+      const code = err?.data?.code;
+      if (code) {
+        refresh();
+        if (code === 'PRESCRIPTION_CHANGED' || code === 'TREATMENT_ENDED') queryClient.invalidateQueries({ queryKey: ['treatments'] });
+        close();
+        Alert.alert(BLOCK_TITLES[code] || 'Không hoàn thành được', err.message);
+        return;
+      }
+      // Refused (409: outside its time, already recorded elsewhere): the list is out of date.
+      if (err?.status === 409) refresh();
       Alert.alert('Không hoàn thành được', err?.message || 'Thử lại sau.');
     },
   });
 
+  const chooseAppetite = (value) => {
+    setAppetite(value);
+    if (value === 'Bỏ ăn') setEaten(0);
+    else if (eaten === 0) setEaten(100);
+  };
+
   const submit = () => {
+    if (isDose && !checked) {
+      Alert.alert('Chưa xác nhận', 'Kiểm tra đúng ngựa, đúng thuốc, đúng liều và đúng giờ rồi đánh dấu xác nhận.');
+      return;
+    }
     const payload = isFeeding
-      ? { observation: { appetite, manure, waterIntake: water }, notes: note.trim() || undefined }
+      ? { observation: { appetite, manure, waterIntake: water }, amountEatenPercent: eaten, notes: note.trim() || undefined }
       : { notes: note.trim() || undefined };
     mutation.mutate(payload);
   };
 
   const info = task ? describeTask(task, schedules) : null;
-  const taskCfg = TASK_CONFIG[task?.taskType];
+  const issued = describeSupplies(task?.supplies);
 
   return (
     <Modal
@@ -111,7 +162,11 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
                   </Text>
                 </Row>
                 <Text style={font.small}>{task.horse?.name}</Text>
-                {task.note ? <Text style={styles.trainerNote}>{task.source === 'vet' ? 'Bác sĩ dặn' : 'HLV dặn'}: {task.note}</Text> : null}
+                {task.note && task.taskType !== 'other' ? (
+                  <Text style={styles.trainerNote}>{task.source === 'vet' ? 'Bác sĩ dặn' : 'HLV dặn'}: {task.note}</Text>
+                ) : null}
+                {/* What recording this takes out of stock — issued, which is not the same as eaten. */}
+                {issued ? <Text style={styles.issued}>Xuất kho: {issued}</Text> : null}
               </View>
             ) : null}
 
@@ -123,7 +178,11 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
                 </Text>
                 <View>
                   <Text style={styles.label}>Ăn uống</Text>
-                  <ChipGroup options={APPETITE_OPTIONS} value={appetite} onChange={setAppetite} />
+                  <ChipGroup options={APPETITE_OPTIONS} value={appetite} onChange={chooseAppetite} />
+                </View>
+                <View>
+                  <Text style={styles.label}>Ngựa ăn được (so với khẩu phần đã xuất)</Text>
+                  <ChipGroup options={EATEN_OPTIONS} value={eaten} onChange={setEaten} size="sm" />
                 </View>
                 <View>
                   <Text style={styles.label}>Phân</Text>
@@ -134,8 +193,27 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
                   <ChipGroup options={WATER_OPTIONS} value={water} onChange={setWater} />
                 </View>
               </>
+            ) : isDose ? (
+              <>
+                <Text style={styles.hint}>
+                  Chỉ cho dùng đúng như y lệnh. Không tự đổi liều hay giờ — nếu không cho dùng được, chọn "Không làm
+                  được" để bác sĩ biết.
+                </Text>
+                <Pressable
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked }}
+                  onPress={() => setChecked((v) => !v)}
+                  style={[styles.confirm, checked && styles.confirmOn]}
+                >
+                  <Icon name={checked ? 'checkCircle' : 'circle'} size={20} color={checked ? colors.green : colors.textFaint} />
+                  <Text style={[font.body, { flex: 1 }]}>
+                    Đã kiểm tra: đúng ngựa {task?.horse?.name}, đúng thuốc, đúng liều
+                    {task?.dueTime ? `, đúng giờ ${task.dueTime}` : ''}.
+                  </Text>
+                </Pressable>
+              </>
             ) : (
-              <Text style={styles.hint}>Xác nhận đã hoàn thành {taskCfg?.label?.toLowerCase() || 'công việc'} cho {task?.horse?.name}.</Text>
+              <Text style={styles.hint}>Xác nhận đã hoàn thành {info?.label?.toLowerCase() || 'công việc'} cho {task?.horse?.name}.</Text>
             )}
 
             <View>
@@ -153,7 +231,13 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
 
           <Row style={styles.footer}>
             <Button title="Huỷ" variant="subtle" style={{ flex: 1 }} onPress={close} />
-            <Button title="Hoàn thành" style={{ flex: 2 }} loading={mutation.isPending} onPress={submit} />
+            <Button
+              title={isDose ? 'Đã cho dùng' : isFeeding ? 'Đã cho ăn' : 'Hoàn thành'}
+              style={{ flex: 2 }}
+              loading={mutation.isPending}
+              disabled={mutation.isPending || (isDose && !checked)}
+              onPress={submit}
+            />
           </Row>
         </View>
       </KeyboardAvoidingView>
@@ -177,6 +261,18 @@ const styles = StyleSheet.create({
   taskBox: { backgroundColor: colors.white, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: colors.borderSoft, gap: 2 },
   taskTitle: { ...font.h3 },
   trainerNote: { ...font.small, color: colors.forestLight, marginTop: spacing.sm },
+  issued: { ...font.small, color: colors.text, marginTop: spacing.sm, fontWeight: '600' },
+  confirm: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  confirmOn: { borderColor: colors.green, backgroundColor: colors.forestSoft },
   hint: { ...font.small },
   label: { ...font.tiny, marginBottom: spacing.sm },
   textarea: {

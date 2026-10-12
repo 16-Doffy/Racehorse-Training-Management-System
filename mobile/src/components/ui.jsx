@@ -136,6 +136,23 @@ export function EmptyState({ icon = 'empty', text, hint, action }) {
   );
 }
 
+/**
+ * A list that failed to load. Says so and offers a retry — an empty list would read as "nothing to
+ * do", which is the wrong thing to tell someone about to skip a horse's dose.
+ */
+export function LoadError({ text = 'Không tải được dữ liệu', onRetry }) {
+  return (
+    <Card>
+      <EmptyState
+        icon="warning"
+        text={text}
+        hint="Kiểm tra kết nối mạng rồi thử lại."
+        action={onRetry ? <Button title="Thử lại" icon="refresh" variant="ghost" size="sm" onPress={onRetry} /> : null}
+      />
+    </Card>
+  );
+}
+
 export function Loading({ text = 'Đang tải...' }) {
   return (
     <View style={styles.empty}>

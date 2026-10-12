@@ -3,13 +3,15 @@ import { SectionList, StyleSheet, Text, View } from 'react-native';
 import Icon from './Icon';
 import { Badge, ChipRow, EmptyState, Row, Sheet } from './ui';
 import {
+  EATEN_OPTIONS,
   MEAL_CONFIG,
-  TASK_CONFIG,
-  TASK_STATUS,
   describeObservation,
+  describeSupplies,
+  describeTask,
   formatDayLabel,
   formatTime,
   startOfDay,
+  taskState,
 } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
@@ -49,7 +51,8 @@ export default function HistorySheet({ visible, onClose, title, tasks = [], empt
         key,
         title: formatDayLabel(new Date(key)),
         done: data.filter((t) => t.status === 'completed').length,
-        data: data.sort((a, b) => (a.mealSlot || '').localeCompare(b.mealSlot || '')),
+        // In the order the day went: breakfast before dinner, 08:00 before 16:00.
+        data: data.sort((a, b) => new Date(a.scheduledDate) - new Date(b.scheduledDate)),
       }));
   }, [tasks, days]);
 
@@ -90,19 +93,22 @@ export default function HistorySheet({ visible, onClose, title, tasks = [], empt
 }
 
 function HistoryRow({ task }) {
-  const status = TASK_STATUS[task.status] || TASK_STATUS.pending;
+  const state = taskState(task) || {};
   const meal = MEAL_CONFIG[task.mealSlot];
-  const kind = meal?.label || TASK_CONFIG[task.taskType]?.label;
+  const kind = meal?.label || describeTask(task).label;
   const observation = describeObservation(task.observation);
-  const missed = task.status === 'pending';
+  const eaten = EATEN_OPTIONS.find((o) => o.value === task.observation?.amountEatenPercent);
+  // Issued (left the store) and eaten are two different numbers; both are on record.
+  const issued = task.status === 'completed' ? describeSupplies(task.supplies) : '';
+  const notRecorded = task.status === 'pending';
 
   return (
     <Row style={styles.row}>
-      <View style={[styles.icon, { backgroundColor: missed ? colors.graySoft : status.bg }]}>
+      <View style={[styles.icon, { backgroundColor: notRecorded ? colors.graySoft : state.bg }]}>
         <Icon
-          name={task.status === 'completed' ? 'check' : missed ? 'clock' : 'block'}
+          name={task.status === 'completed' ? 'check' : notRecorded ? 'clock' : 'block'}
           size={15}
-          color={missed ? colors.textFaint : status.color}
+          color={notRecorded ? colors.textFaint : state.color}
         />
       </View>
 
@@ -110,19 +116,22 @@ function HistoryRow({ task }) {
         <Row style={{ gap: 6, flexWrap: 'wrap' }}>
           <Text style={font.h3}>{task.horse?.name || 'Ngựa'}</Text>
           {kind ? <Text style={font.small}>{kind}</Text> : null}
+          {task.dueTime ? <Text style={font.small}>· {task.dueTime}</Text> : null}
         </Row>
-        {task.note ? <Text style={font.small} numberOfLines={1}>{task.note}</Text> : null}
+        {task.note && task.taskType !== 'other' ? <Text style={font.small} numberOfLines={1}>{task.note}</Text> : null}
+        {issued ? <Text style={font.small}>Xuất kho: {issued}</Text> : null}
+        {eaten ? <Text style={font.small}>Ngựa ăn được: {eaten.label.toLowerCase()}</Text> : null}
         {observation ? <Text style={font.small}>{observation}</Text> : null}
-        {task.notes ? <Text style={font.small}>“{task.notes}”</Text> : null}
+        {task.observation?.behaviourNote ? <Text style={font.small}>“{task.observation.behaviourNote}”</Text> : null}
         {task.skipReason ? <Text style={[font.small, { color: colors.orange }]}>{task.skipReason}</Text> : null}
       </View>
 
       <View style={{ alignItems: 'flex-end', gap: 3 }}>
         {task.completedAt ? <Text style={styles.time}>{formatTime(task.completedAt)}</Text> : null}
         <Badge
-          label={missed ? 'Bỏ lỡ' : status.label}
-          color={missed ? colors.textMuted : status.color}
-          bg={missed ? colors.graySoft : status.bg}
+          label={state.key === 'missed' ? 'Bỏ lỡ' : state.label}
+          color={notRecorded && state.key === 'missed' ? colors.textMuted : state.color}
+          bg={notRecorded && state.key === 'missed' ? colors.graySoft : state.bg}
         />
       </View>
     </Row>

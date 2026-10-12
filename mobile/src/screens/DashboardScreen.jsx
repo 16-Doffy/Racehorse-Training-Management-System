@@ -5,23 +5,37 @@ import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
 import { Badge, Banner, Button, Card, EmptyState, HorseAvatar, IconButton, ProgressBar, Row, SectionTitle } from '../components/ui';
 import { useAuth } from '../auth/AuthContext';
-import { useFeedings, useInventory, useRefreshAll, useStableOverview, useToday } from '../hooks/useGroomData';
+import { useCarePlan, useFeedings, useInventory, useRefreshAll, useStableOverview, useToday } from '../hooks/useGroomData';
 import {
+  CARE_TYPES,
+  CHORE_TYPES,
   HEALTH_STATUS,
   MEAL_CONFIG,
-  buildFeedCoverage,
   describeDaysLeft,
   formatDayLabel,
-  getStockLevel,
   getUpcomingCare,
+  levelOf,
   nextMealSlot,
   parseStableBlock,
   refId,
 } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
-const CHORE_TYPES = ['cleaning', 'bathing', 'icing'];
-const CARE_TYPES = ['medication', 'monitoring'];
+const BLOCKER_WORDS = {
+  SHORT_OF_STOCK: 'thiếu vật tư',
+  NO_APPROVED_RATION: 'chưa có khẩu phần',
+  EXPIRED_SUPPLY: 'vật tư hết hạn',
+};
+
+/** "thiếu vật tư, chưa có khẩu phần" — the reasons behind the blocked tasks, each once. */
+function describeBlocked(tasks, stateOf) {
+  const codes = new Set(tasks.flatMap((task) => (stateOf(task)?.blockers || []).map((b) => b.code)));
+  return [...codes].map((code) => BLOCKER_WORDS[code] || code).join(', ');
+}
+
+/** Which part of the "Chăm sóc" tab a task lives on. */
+const segmentOf = (task) =>
+  task.taskType === 'feeding' ? 'feeding' : CARE_TYPES.includes(task.taskType) ? 'medication' : 'chores';
 
 /**
  * The shift at a glance: how far along the day is, what is waiting in each part of the job, and
@@ -32,21 +46,34 @@ export default function DashboardScreen({ navigation }) {
   const refreshAll = useRefreshAll();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { todayTasks, done, pending, overdue } = useToday();
+  const { todayTasks, completed, planned, open, overdue, blocked, missed, stateOf } = useToday();
   const { myAssignments, myHorseIds, myBlocks, horseById, lockedHorseIds } = useStableOverview();
   const { feedings } = useFeedings();
   const { items } = useInventory();
+  const { sheets } = useCarePlan();
 
-  const meals = pending.filter((t) => t.taskType === 'feeding');
-  const doses = pending.filter((t) => CARE_TYPES.includes(t.taskType));
-  const chores = pending.filter((t) => CHORE_TYPES.includes(t.taskType));
-  const lowStock = items.filter((i) => getStockLevel(i.quantity).key !== 'ok');
-  const percent = todayTasks.length ? Math.round((done.length / todayTasks.length) * 100) : 0;
+  // Still to do, today or carried over from an earlier day — what each tile counts.
+  const meals = open.filter((t) => t.taskType === 'feeding');
+  const doses = open.filter((t) => CARE_TYPES.includes(t.taskType));
+  const chores = open.filter((t) => CHORE_TYPES.includes(t.taskType));
+  const lowStock = items.filter((i) => levelOf(i).short);
+  const percent = planned ? Math.round((completed.length / planned) * 100) : 0;
 
-  const shortages = useMemo(
-    () => buildFeedCoverage({ feedings, horseIds: myHorseIds, inventory: items }).filter((c) => c.level === 'critical' || c.level === 'low'),
-    [feedings, myHorseIds, items]
-  );
+  // What the store can't cover for one day of this groom's horses, as the server counts it from the
+  // rations and prescriptions linked to stock (GET /stable/my-care-plan).
+  const shortages = useMemo(() => {
+    const byItem = new Map();
+    sheets.forEach((sheet) =>
+      (sheet.shortages || []).forEach((m) => {
+        const key = String(m.inventoryItem);
+        const entry = byItem.get(key) || { ...m, short: 0, horses: [] };
+        entry.short = Math.round((entry.short + (m.short || 0)) * 1000) / 1000;
+        entry.horses.push(sheet.horse?.name);
+        byItem.set(key, entry);
+      })
+    );
+    return [...byItem.values()];
+  }, [sheets]);
 
   const care = useMemo(
     () =>
@@ -81,10 +108,16 @@ export default function DashboardScreen({ navigation }) {
           <Row style={{ justifyContent: 'space-between' }}>
             <Text style={styles.heroLabel}>Tiến độ hôm nay</Text>
             <Text style={styles.heroCount}>
-              {done.length}/{todayTasks.length}
+              {completed.length}/{planned}
             </Text>
           </Row>
           <ProgressBar percent={percent} />
+          {missed.length > 0 ? (
+            <Text style={styles.heroNote}>
+              {missed.length} việc đã quá hạn ghi nhận hôm nay
+              {todayTasks.length !== planned ? ` · ${todayTasks.length - planned} việc HLV cho bỏ qua` : ''}
+            </Text>
+          ) : null}
           <Row style={{ gap: 6, marginTop: spacing.md }}>
             <Icon name={MEAL_CONFIG[meal.slot].icon} size={15} color={colors.gold} />
             <Text style={styles.heroMeal}>
@@ -101,12 +134,30 @@ export default function DashboardScreen({ navigation }) {
           <WorkTile icon="tasks" label="Việc chuồng" value={chores.length} tint={colors.green} onPress={() => navigation.navigate('Chăm sóc', { segment: 'chores', at: Date.now() })} />
         </Row>
 
+        {/* Work that can't go ahead: short of stock, no approved ration, an expired item. */}
+        {blocked.length > 0 ? (
+          <Banner tone="danger">
+            <Row style={{ gap: spacing.sm }}>
+              <Icon name="block" size={17} color={colors.red} />
+              <Text style={[font.body, { flex: 1 }]}>
+                {blocked.length} việc bị chặn — {describeBlocked(blocked, stateOf)}.
+              </Text>
+              <Pressable
+                onPress={() => navigation.navigate('Chăm sóc', { segment: segmentOf(blocked[0]), at: Date.now() })}
+                hitSlop={6}
+              >
+                <Text style={styles.link}>Xem →</Text>
+              </Pressable>
+            </Row>
+          </Banner>
+        ) : null}
+
         {overdue.length > 0 ? (
           <Banner tone="warning">
             <Row style={{ gap: spacing.sm }}>
               <Icon name="clock" size={17} color={colors.orange} />
-              <Text style={[font.body, { flex: 1 }]}>{overdue.length} việc quá hạn chưa hoàn thành.</Text>
-              <Pressable onPress={() => navigation.navigate('Chăm sóc', { segment: 'chores', at: Date.now() })} hitSlop={6}>
+              <Text style={[font.body, { flex: 1 }]}>{overdue.length} việc từ hôm trước chưa hoàn thành.</Text>
+              <Pressable onPress={() => navigation.navigate('Chăm sóc', { segment: segmentOf(overdue[0]), at: Date.now() })} hitSlop={6}>
                 <Text style={styles.link}>Xem →</Text>
               </Pressable>
             </Row>
@@ -114,10 +165,12 @@ export default function DashboardScreen({ navigation }) {
         ) : null}
 
         {shortages.length > 0 ? (
-          <Banner tone={shortages.some((s) => s.level === 'critical') ? 'danger' : 'warning'}>
+          <Banner tone="danger">
             <Row style={{ gap: spacing.sm }}>
-              <Icon name="feed" size={17} color={colors.orange} />
-              <Text style={[font.body, { flex: 1 }]}>Sắp thiếu {shortages.map((s) => s.kind).join(', ')}.</Text>
+              <Icon name="supplies" size={17} color={colors.red} />
+              <Text style={[font.body, { flex: 1 }]}>
+                Kho không đủ cho một ngày: {shortages.map((s) => `${s.name} (thiếu ${s.short} ${s.unit})`).join(', ')}.
+              </Text>
               <Pressable onPress={() => navigation.navigate('Kho')} hitSlop={6}>
                 <Text style={styles.link}>Xin thêm →</Text>
               </Pressable>
@@ -239,6 +292,7 @@ const styles = StyleSheet.create({
   heroLabel: { ...font.tiny, color: colors.gold },
   heroCount: { color: colors.white, fontWeight: '800', fontSize: 15 },
   heroMeal: { color: 'rgba(255,255,255,0.9)', fontSize: 13 },
+  heroNote: { color: 'rgba(255,255,255,0.75)', fontSize: 12 },
   link: { color: colors.forestLight, fontWeight: '700', fontSize: 13 },
   workTile: { flex: 1, padding: spacing.md, gap: 2 },
   workValue: { fontSize: 20, fontWeight: '800' },

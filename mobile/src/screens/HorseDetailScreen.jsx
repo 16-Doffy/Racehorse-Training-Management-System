@@ -18,7 +18,7 @@ import {
 import {
   HEALTH_STATUS,
   MEAL_CONFIG,
-  TASK_STATUS,
+  SESSION_STATUS,
   TRAINING_LEVEL,
   describeDaysLeft,
   describeTask,
@@ -30,8 +30,10 @@ import {
   getUpcomingCare,
   isSameDay,
   mealTimeOf,
+  rationLine,
   refId,
   restockRequestFor,
+  taskState,
 } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
@@ -100,7 +102,7 @@ export default function HorseDetailScreen({ route }) {
         ...schedules.map((s) => {
           const meal = MEAL_CONFIG[s.mealTime] || {};
           const task = todayTasks.find((t) => t.taskType === 'feeding' && t.mealSlot === s.mealTime);
-          const status = task ? TASK_STATUS[task.status] : null;
+          const state = taskState(task, { rations: feedings, inventory });
           return {
             key: `meal-${s._id}`,
             time: mealTimeOf(s.mealTime, schedules) || meal.defaultTime,
@@ -108,8 +110,11 @@ export default function HorseDetailScreen({ route }) {
             color: colors.gold,
             bg: colors.goldSoft,
             label: meal.label || 'Bữa ăn',
-            detail: (s.items || []).map((i) => `${getFeedTypeLabel(i.type).label} ${i.quantity}`).join(' · '),
-            badge: status ? { label: status.label, color: status.color, bg: status.bg } : null,
+            detail: (s.items || []).map((i) => {
+              const line = rationLine(i);
+              return `${line.label} ${line.amount}`;
+            }).join(' · '),
+            badge: state ? { label: state.label, color: state.color, bg: state.bg } : null,
           };
         }),
         ...todaySessions.map((s) => ({
@@ -120,17 +125,13 @@ export default function HorseDetailScreen({ route }) {
           bg: colors.blueSoft,
           label: s.sessionType === 'trial_run' ? 'Chạy thử' : 'Buổi tập',
           detail: s.objective || '',
-          badge: {
-            label: s.status === 'in_progress' ? 'Đang diễn ra' : s.status === 'completed' ? 'Xong' : 'Đã lên lịch',
-            color: colors.textMuted,
-            bg: colors.graySoft,
-          },
+          badge: SESSION_STATUS[s.status] || { label: s.status, color: colors.textMuted, bg: colors.graySoft },
         })),
         ...todayTasks
           .filter((t) => t.taskType !== 'feeding')
           .map((t) => {
             const info = describeTask(t, schedules);
-            const status = TASK_STATUS[t.status] || TASK_STATUS.pending;
+            const state = taskState(t, { rations: feedings, inventory });
             return {
               key: `task-${t._id}`,
               time: t.dueTime || info.time,
@@ -138,12 +139,12 @@ export default function HorseDetailScreen({ route }) {
               color: info.color,
               bg: info.bg,
               label: info.label,
-              detail: t.note || '',
-              badge: { label: status.label, color: status.color, bg: status.bg },
+              detail: t.taskType === 'other' ? '' : t.note || '',
+              badge: { label: state.label, color: state.color, bg: state.bg },
             };
           }),
       ].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99')),
-    [schedules, todayTasks, todaySessions]
+    [schedules, todayTasks, todaySessions, feedings, inventory]
   );
 
   if (isLoading) return <Loading />;

@@ -15,12 +15,15 @@ export const filesApi = {
 export const taskApi = {
   list: (params) => api.get('/stable/tasks', { params }),
   getOne: (id) => api.get(`/stable/tasks/${id}`),
-  /** payload: { observation: { appetite, manure, waterIntake }, notes } — all optional. */
+  /**
+   * payload: { observation: { appetite, manure, waterIntake }, amountEatenPercent, notes } — all
+   * optional — plus clientOpId, so a resend of the same tap is answered without being applied twice.
+   */
   complete: (id, payload) => api.patch(`/stable/tasks/${id}/complete`, payload),
   /** "I've seen this and taken it on" — lets the trainer/vet tell picked-up from untouched. */
-  acknowledge: (id) => api.patch(`/stable/tasks/${id}/acknowledge`),
+  acknowledge: (id, clientOpId) => api.patch(`/stable/tasks/${id}/acknowledge`, clientOpId ? { clientOpId } : undefined),
   /** Could not do it (horse spat the medicine out, ...); the reason goes to the trainer/vet. */
-  reportNotDone: (id, reason) => api.patch(`/stable/tasks/${id}/not-done`, { reason }),
+  reportNotDone: (id, reason, clientOpId) => api.patch(`/stable/tasks/${id}/not-done`, { reason, clientOpId }),
   reportIncident: (id, formData) =>
     api.post(`/stable/tasks/${id}/incident`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 };
@@ -51,6 +54,8 @@ export const feedingApi = {
 
 export const inventoryApi = {
   list: () => api.get('/inventory'),
+  /** Per item: daily use from rations and ongoing prescriptions, and how many days the stock lasts. */
+  forecast: () => api.get('/inventory/forecast'),
   /** payload: { quantity } or { packs }, plus an optional note and the task it is blocking. */
   requestRestock: (id, payload) => api.post(`/inventory/${id}/restock-request`, payload),
   /** Ask for something that isn't in the catalogue yet; the Manager approves it into stock. */

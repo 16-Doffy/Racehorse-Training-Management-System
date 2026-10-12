@@ -5,10 +5,8 @@ import FeedingScreen from './FeedingScreen';
 import TreatmentsScreen from './TreatmentsScreen';
 import TasksScreen from './TasksScreen';
 import { useToday } from '../hooks/useGroomData';
+import { CARE_TYPES, CHORE_TYPES } from '../utils/groom';
 import { colors, spacing } from '../theme';
-
-const CHORE_TYPES = ['cleaning', 'bathing', 'icing'];
-const CARE_TYPES = ['medication', 'monitoring'];
 
 const SEGMENTS = [
   { key: 'feeding', label: 'Cho ăn', icon: 'rations', Screen: FeedingScreen },
@@ -24,14 +22,14 @@ const SEGMENTS = [
  */
 export default function CareScreen({ navigation, route }) {
   const [active, setActive] = useState(route.params?.segment || 'feeding');
-  const { pending, overdue } = useToday();
+  // Still to do today plus what carries over; a meal or dose whose window closed is not counted.
+  const { open } = useToday();
 
   // Opening this tab from elsewhere ("3 bữa chưa cho ăn") must land on the right part of the job.
   useEffect(() => {
     if (route.params?.segment) setActive(route.params.segment);
   }, [route.params?.segment, route.params?.at]);
 
-  const open = [...pending, ...overdue];
   const counts = {
     feeding: open.filter((t) => t.taskType === 'feeding').length,
     medication: open.filter((t) => CARE_TYPES.includes(t.taskType)).length,

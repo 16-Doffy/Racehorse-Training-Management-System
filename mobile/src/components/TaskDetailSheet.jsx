@@ -4,16 +4,18 @@ import { Badge, Button, Card, DataRow, HorseAvatar, Row, Sheet } from './ui';
 import SupplyShortage from './SupplyShortage';
 import { API_ORIGIN } from '../api/client';
 import {
+  EATEN_OPTIONS,
+  INCIDENT_CATEGORY,
   SEVERITY,
   canCompleteTask,
+  describeSupplies,
   missingSupplies,
   TASK_SOURCE,
-  TASK_STATUS,
-  TIMING_STATE,
   describeTask,
   formatDate,
   formatDateTime,
   formatTime,
+  taskState,
 } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
@@ -23,21 +25,23 @@ const WATER_LABELS = { normal: 'Bình thường', high: 'Uống nhiều', low: '
 
 /**
  * Everything about one task, opened from a compact list row: who asked for it, when it may be
- * done, what was observed, and every action — so the list itself can stay short.
+ * done, what blocks it, what was observed, and every action — so the list itself can stay short.
  */
-export default function TaskDetailSheet({ task, schedules = [], visible, onClose, onComplete, onNotDone, onReport, onAcknowledge, acknowledging, onAskSupply }) {
+export default function TaskDetailSheet({ task, ctx, schedules = [], visible, onClose, onComplete, onNotDone, onReport, onAcknowledge, acknowledging, onAskSupply }) {
   if (!task) return <Sheet visible={visible} onClose={onClose} title="Chi tiết công việc" />;
 
   const info = describeTask(task, schedules);
-  const status = TASK_STATUS[task.status] || TASK_STATUS.pending;
+  const state = taskState(task, ctx);
   const timing = task.timing || {};
-  const timingCfg = TIMING_STATE[timing.state];
   const source = TASK_SOURCE[task.source];
   const isPending = task.status === 'pending';
   const missing = missingSupplies(task);
-  const canComplete = canCompleteTask(task);
+  const canComplete = canCompleteTask(task, ctx);
+  const issued = describeSupplies(task.supplies);
+  const otherBlockers = (state?.blockers || []).filter((b) => b.code !== 'SHORT_OF_STOCK');
   const observation = task.observation || {};
-  const hasObservation = observation.appetite || observation.manure || observation.waterIntake || observation.behaviourNote;
+  const eaten = EATEN_OPTIONS.find((o) => o.value === observation.amountEatenPercent);
+  const hasObservation = observation.appetite || observation.manure || observation.waterIntake || observation.behaviourNote || eaten;
 
   return (
     <Sheet visible={visible} onClose={onClose} title="Chi tiết công việc">
@@ -49,8 +53,7 @@ export default function TaskDetailSheet({ task, schedules = [], visible, onClose
           <View style={{ flex: 1 }}>
             <Text style={font.h2}>{info.label}</Text>
             <Row style={{ gap: spacing.sm, flexWrap: 'wrap', marginTop: 4 }}>
-              <Badge label={status.label} color={status.color} bg={status.bg} />
-              {isPending && timingCfg ? <Badge label={timingCfg.label} color={timingCfg.color} bg={timingCfg.bg} /> : null}
+              {state ? <Badge label={state.label} color={state.color} bg={state.bg} /> : null}
               {source && task.source !== 'system' ? <Badge label={source.label} color={source.color} bg={source.bg} /> : null}
             </Row>
           </View>
@@ -68,11 +71,22 @@ export default function TaskDetailSheet({ task, schedules = [], visible, onClose
         {/* No supplies, no meal: the groom asks the Manager instead of ticking it off. */}
         <SupplyShortage missing={missing} onAskSupply={onAskSupply} />
 
+        {otherBlockers.map((b) => (
+          <Card key={b.code} style={[styles.note, { backgroundColor: colors.redSoft, borderColor: colors.redSoft }]}>
+            <Row style={{ gap: spacing.sm, alignItems: 'flex-start' }}>
+              <Icon name="block" size={15} color={colors.red} />
+              <Text style={[font.small, { flex: 1, color: colors.red }]}>{b.message}</Text>
+            </Row>
+          </Card>
+        ))}
+
         {task.dueTime ? (
           <Card style={styles.note}>
             <Row style={{ gap: spacing.sm }}>
               <Icon name="clock" size={15} color={colors.forestLight} />
-              <Text style={[font.body, { flex: 1 }]}>Giờ dùng theo y lệnh: {task.dueTime}</Text>
+              <Text style={[font.body, { flex: 1 }]}>
+                {task.source === 'vet' ? 'Giờ theo y lệnh' : 'Giờ hẹn làm'}: {task.dueTime}
+              </Text>
             </Row>
           </Card>
         ) : null}
@@ -98,9 +112,17 @@ export default function TaskDetailSheet({ task, schedules = [], visible, onClose
             </View>
           </Row>
           {info.time ? <DataRow label="Giờ thực hiện" value={info.time} /> : null}
+          {issued ? <DataRow label={task.status === 'completed' ? 'Đã xuất kho' : 'Xuất kho khi xong'} value={issued} valueStyle={styles.wrapValue} /> : null}
           {task.acknowledgedAt ? <DataRow label="Đã nhận việc" value={formatDateTime(task.acknowledgedAt)} /> : null}
           {task.completedAt ? <DataRow label="Hoàn thành" value={formatDateTime(task.completedAt)} /> : null}
-          {task.skipReason ? <DataRow label="Không thực hiện" value={task.skipReason} valueStyle={{ color: colors.orange }} /> : null}
+          {task.recordedLate ? <DataRow label="Gửi lên" value="Muộn hơn lúc làm" valueStyle={{ color: colors.orange }} /> : null}
+          {task.status === 'skipped' ? (
+            <DataRow
+              label={state?.key === 'cancelled' ? 'HLV cho bỏ qua' : 'Không thực hiện'}
+              value={task.skipReason || '—'}
+              valueStyle={{ color: colors.orange, flex: 1, textAlign: 'right' }}
+            />
+          ) : null}
           {timing.closesAt && isPending ? <DataRow label="Hạn ghi nhận" value={formatTime(timing.closesAt)} /> : null}
         </Card>
 
@@ -108,6 +130,7 @@ export default function TaskDetailSheet({ task, schedules = [], visible, onClose
           <Card>
             <Text style={[font.tiny, { marginBottom: spacing.sm }]}>Ghi nhận khi làm</Text>
             {observation.appetite ? <DataRow label="Ăn uống" value={APPETITE_LABELS[observation.appetite]} /> : null}
+            {eaten ? <DataRow label="Ăn được" value={eaten.label} /> : null}
             {observation.manure ? <DataRow label="Phân" value={MANURE_LABELS[observation.manure]} /> : null}
             {observation.waterIntake ? <DataRow label="Uống nước" value={WATER_LABELS[observation.waterIntake]} /> : null}
             {observation.behaviourNote ? <DataRow label="Ghi chú" value={observation.behaviourNote} /> : null}
@@ -118,12 +141,12 @@ export default function TaskDetailSheet({ task, schedules = [], visible, onClose
       </ScrollView>
 
       <View style={styles.actions}>
-        {isPending && !task.acknowledgedAt && timing.state !== 'missed' ? (
+        {isPending && !task.acknowledgedAt && state?.key !== 'missed' ? (
           <Button title="Đã nhận việc" icon="thumb" variant="subtle" loading={acknowledging} onPress={onAcknowledge} />
         ) : null}
         <Row style={{ gap: spacing.sm }}>
           {canComplete ? <Button title="Hoàn thành" icon="check" style={{ flex: 2 }} onPress={onComplete} /> : null}
-          {isPending ? (
+          {isPending && state?.key !== 'missed' ? (
             <Button title="Không làm được" icon="block" variant="ghost" style={{ flex: 2 }} onPress={onNotDone} />
           ) : null}
           <Button
@@ -146,7 +169,10 @@ function IncidentCard({ report }) {
       <Row style={{ gap: spacing.sm }}>
         <Icon name="warning" size={15} color={severity.color} />
         <Badge label={severity.label} color={severity.color} bg={colors.white} />
-        {report.reportedAt ? <Text style={font.small}>{formatDateTime(report.reportedAt)}</Text> : null}
+        {INCIDENT_CATEGORY[report.category] ? <Badge label={INCIDENT_CATEGORY[report.category].label} bg={colors.white} /> : null}
+        {report.occurredAt || report.reportedAt ? (
+          <Text style={font.small}>{formatDateTime(report.occurredAt || report.reportedAt)}</Text>
+        ) : null}
       </Row>
       <Text style={[font.body, { marginTop: spacing.sm }]}>{report.description}</Text>
       {report.images?.length > 0 ? (
@@ -179,5 +205,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   thumb: { width: 64, height: 64, borderRadius: radius.sm, backgroundColor: colors.graySoft },
+  wrapValue: { flex: 1, textAlign: 'right' },
   vetReply: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.white },
 });

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import Icon from './Icon';
 import { Badge, Card, ChipRow, EmptyState, Row, SearchInput, SectionTitle, Sheet } from './ui';
-import { INVENTORY_CATEGORY, formatStock, getStockLevel, matchesSearch } from '../utils/groom';
+import { INVENTORY_CATEGORY, formatStock, levelOf, matchesSearch } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
 const FILTERS = [
@@ -26,12 +26,13 @@ export default function StockCard({ title, category, items, onOpenSupplies, empt
     () =>
       items
         .filter((item) => item.category === category)
-        .map((item) => ({ ...item, level: getStockLevel(item.quantity) }))
-        .sort((a, b) => a.quantity - b.quantity),
+        .map((item) => ({ ...item, level: levelOf(item) }))
+        // What needs asking for first, then the smallest stock.
+        .sort((a, b) => Number(b.level.short) - Number(a.level.short) || a.quantity - b.quantity),
     [items, category]
   );
 
-  const low = stock.filter((item) => item.level.key !== 'ok');
+  const low = stock.filter((item) => item.level.short);
   const preview = low.slice(0, 3);
 
   const listed = (filter === 'low' ? low : stock).filter((item) =>
@@ -119,7 +120,7 @@ export default function StockCard({ title, category, items, onOpenSupplies, empt
 }
 
 function StockRow({ item, icon, compact }) {
-  const level = item.level || getStockLevel(item.quantity);
+  const level = levelOf(item);
   return (
     <Row style={styles.row}>
       <View style={[styles.icon, { backgroundColor: level.bg }]}>
