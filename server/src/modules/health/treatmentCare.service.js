@@ -169,4 +169,6 @@ async function syncAllCareTasks() {
   return created;
 }
 
-module.exports = { syncCareTasks, syncAllCareTasks };
+// wantedTasks / isActiveToday / keyOf are read by the groom's completion check (stable/dailyTask.controller.js),
+// so a dose is judged against the prescription as it stands when it is given.
+module.exports = { syncCareTasks, syncAllCareTasks, wantedTasks, isActiveToday, keyOf };

@@ -470,6 +470,8 @@ module.exports = {
               description: { type: 'string' },
               images: { type: 'array', items: { type: 'string' }, description: 'Relative URLs under /uploads' },
               severity: { type: 'string', enum: ['low', 'medium', 'high'] },
+              category: { type: 'string', nullable: true, enum: ['refused_feed', 'illness', 'hoof_injury', 'behaviour', 'accident', 'other', null] },
+              occurredAt: { type: 'string', format: 'date-time', nullable: true, description: 'When the groom saw it; null on older reports' },
               reportedAt: { type: 'string', format: 'date-time' },
               status: {
                 type: 'string',
@@ -1311,7 +1313,13 @@ module.exports = {
           'Offline sync: performedAt (when the groom did it) is checked — not more than 2 min ahead of the server, not older than 24 h (409, record it by hand) — ' +
           'and the task window is judged at that time, not at the time of sync (a meal done outside its window → 409 with the reason; nothing is back-filled). ' +
           'completedAt = performedAt; receivedAt = server time; recordedLate when sent more than 10 min after. clientOpId makes a resend idempotent (200, nothing applied again). ' +
-          'The completion is claimed atomically before the stock moves: a second phone or a concurrent resend with another id gets 409 and the stock is taken once.',
+          'The completion is claimed atomically before the stock moves: a second phone or a concurrent resend with another id gets 409 and the stock is taken once. ' +
+          'Before a pending task is first completed it is checked against its source as it stands now (409 with data.code): ' +
+          'NO_APPROVED_RATION — a meal with no approved ration for its slot (a horse without any ration, or a slot without one); ' +
+          'TREATMENT_ENDED / PRESCRIPTION_CHANGED — a vet care order whose treatment ended or whose order no longer exists (same note and time as the care-task sync); ' +
+          'EXPIRED_SUPPLY — a supply whose expiryDate is before today (data.expired). ' +
+          'When the vet changed only the amount per dose, the current amount is what leaves stock and is written to supplies. ' +
+          'amountEatenPercent (0–100, 400 otherwise) is how much of what was issued the horse ate; appetite refused without it records 0.',
         parameters: [idParam('id')],
         requestBody: {
           required: false,
@@ -1335,24 +1343,35 @@ module.exports = {
             },
           },
         },
-        responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404] },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
     '/stable/tasks/{id}/incident': {
       post: {
         tags: ['Stable (Groom)'],
         summary: 'Report an incident with optional photo evidence (Groom)',
-        description: "Opens the report (status open) and notifies the horse's vet and trainer.",
+        description:
+          "Opens the report (status open) and notifies the horse's vet and trainer. category and occurredAt are optional: " +
+          'occurredAt may not be more than 2 min ahead of the server nor older than 7 days (400).',
         parameters: [idParam('id')],
         requestBody: {
           required: true,
           content: {
             'multipart/form-data': {
-              schema: { type: 'object', properties: { description: { type: 'string' }, severity: { type: 'string', enum: ['low', 'medium', 'high'] }, images: { type: 'array', items: { type: 'string', format: 'binary' }, description: 'Up to 5 images' } } },
+              schema: {
+                type: 'object',
+                properties: {
+                  description: { type: 'string' },
+                  severity: { type: 'string', enum: ['low', 'medium', 'high'] },
+                  category: { type: 'string', enum: ['refused_feed', 'illness', 'hoof_injury', 'behaviour', 'accident', 'other'] },
+                  occurredAt: { type: 'string', format: 'date-time', description: 'When the groom saw it; default unset (= when reported)' },
+                  images: { type: 'array', items: { type: 'string', format: 'binary' }, description: 'Up to 5 images' },
+                },
+              },
             },
           },
         },
-        responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404] },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 400: responses[400], 403: responses[403], 404: responses[404] },
       },
     },
     '/stable/my-care-plan': {

@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { Text } from '../components/Text';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
@@ -8,6 +7,9 @@ import CompleteTaskModal from '../components/CompleteTaskModal';
 import MealDetailSheet from '../components/MealDetailSheet';
 import StockCard from '../components/StockCard';
 import NotDoneModal from '../components/NotDoneModal';
+import RestockSheet from '../components/RestockSheet';
+import HistorySheet from '../components/HistorySheet';
+import YesterdayRecap from '../components/YesterdayRecap';
 import {
   Badge,
   Banner,
@@ -17,8 +19,9 @@ import {
   FilterBar,
   FilterSheet,
   HorseAvatar,
+  IconButton,
+  LoadError,
   Loading,
-  PendingBadge,
   Row,
   SectionTitle,
 } from '../components/ui';
@@ -27,20 +30,23 @@ import {
   HEALTH_STATUS,
   MEAL_CONFIG,
   MEAL_ORDER,
-  TIMING_STATE,
-  buildFeedCoverage,
-  findStock,
+  canCompleteTask,
   formatDays,
+  formatStock,
   formatTime,
-  getFeedTypeLabel,
   isSameDay,
   matchesSearch,
-  mealSlotOf,
   mealTimeOf,
+  missingSupplies,
+  restockRequestFor,
   nextMealSlot,
   parseStableBlock,
+  rationLine,
   refId,
+  taskState,
 } from '../utils/groom';
+
+const NO_RATION_REASON = 'Chưa có khẩu phần được duyệt';
 import { colors, font, radius, spacing } from '../theme';
 
 const SCOPES = [
@@ -66,7 +72,7 @@ const LEVEL_TONE = {
  * button that records the meal as given — the feeding task itself lives here rather than mixed in
  * with stable chores.
  */
-export default function FeedingScreen({ navigation }) {
+export default function FeedingScreen({ navigation, segments }) {
   const [scope, setScope] = useState('mine');
   const [mealFilter, setMealFilter] = useState('all');
   const [approval, setApproval] = useState('all');
@@ -75,22 +81,39 @@ export default function FeedingScreen({ navigation }) {
   const [openMeal, setOpenMeal] = useState(null);
   const [completing, setCompleting] = useState(null);
   const [notDone, setNotDone] = useState(null);
+  const [notDoneReason, setNotDoneReason] = useState('');
+  const [restock, setRestock] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const { feedings, isLoading } = useFeedings();
+  const { feedings, rations, isLoading, isError, refetch } = useFeedings();
   const { items: inventory } = useInventory();
-  const { tasks } = useTasks();
+  const { tasks, isError: tasksFailed, refetch: refetchTasks } = useTasks();
   const { horses, myHorseIds, assignmentByHorseId } = useStableOverview();
   const refreshAll = useRefreshAll();
+  // What decides whether a meal can be recorded: an approved ration, stock that covers it, nothing expired.
+  const ctx = useMemo(() => ({ rations, inventory }), [rations, inventory]);
 
   // Today's meals to record, indexed by horse and slot.
   const feedingTasks = useMemo(
     () => tasks.filter((t) => t.taskType === 'feeding' && isSameDay(t.scheduledDate, new Date())),
     [tasks]
   );
-  const taskFor = (horseId, slot) =>
-    feedingTasks.find((t) => refId(t.horse) === horseId && mealSlotOf(t) === slot);
-  const pendingMeals = feedingTasks.filter((t) => t.status === 'pending').length;
+  // Every meal ever recorded for the horses in scope — the handover question, not today's work.
+  const mealHistory = useMemo(
+    () => tasks.filter((t) => t.taskType === 'feeding' && (scope === 'all' || myHorseIds.has(refId(t.horse)))),
+    [tasks, scope, myHorseIds]
+  );
+
+  const taskFor = (horseId, slot) => feedingTasks.find((t) => refId(t.horse) === horseId && t.mealSlot === slot);
+  // A horse with no ration gets one "feed the horse" task with no slot; it is not breakfast.
+  const dailyTaskFor = (horseId) => feedingTasks.find((t) => refId(t.horse) === horseId && !t.mealSlot);
+  const pendingMeals = feedingTasks.filter((t) => taskState(t, ctx)?.open).length;
+
+  const reportNotDone = (task, reason = '') => {
+    setNotDoneReason(reason);
+    setNotDone(task);
+  };
 
   const rationsByHorse = useMemo(() => {
     const map = new Map();
@@ -114,14 +137,13 @@ export default function FeedingScreen({ navigation }) {
 
   const scopedSchedules = scopedHorses.flatMap((h) => rationsByHorse.get(h._id) || []);
   const approved = scopedSchedules.filter((f) => f.approvedBy).length;
-  const scopeIds = scope === 'all' ? null : myHorseIds;
 
-  // "How many days of feed do I have left" — the question a stable hand actually asks.
-  const coverage = useMemo(
-    () => buildFeedCoverage({ feedings, horseIds: scopeIds, inventory }),
-    [feedings, scopeIds, inventory]
+  // "Is there enough of what my horses eat?" — the stock items the rations in scope are linked to,
+  // where the store is low, out or expired, with how many days it lasts at the club's rate of use.
+  const usedItems = new Set(
+    scopedSchedules.flatMap((s) => (s.items || []).map((i) => refId(i.inventoryItem)).filter(Boolean)).map(String)
   );
-  const shortages = coverage.filter((c) => c.level === 'critical' || c.level === 'low');
+  const shortages = inventory.filter((item) => usedItems.has(String(item._id)) && item.level?.short);
 
   const meal = useMemo(() => nextMealSlot(scopedSchedules), [scopedSchedules]);
 
@@ -141,7 +163,10 @@ export default function FeedingScreen({ navigation }) {
       <AppHeader
         title="Cho ăn"
         subtitle={pendingMeals ? `Còn ${pendingMeals} bữa chưa ghi nhận hôm nay` : 'Đã ghi nhận hết các bữa hôm nay'}
+        right={<IconButton icon="history" label="Lịch sử cho ăn" onPress={() => setHistoryOpen(true)} />}
       />
+
+      {segments}
 
       <View style={styles.toolbar}>
         <FilterBar
@@ -172,15 +197,22 @@ export default function FeedingScreen({ navigation }) {
           </Row>
         </Card>
 
+        <YesterdayRecap tasks={mealHistory} noun="bữa" onPress={() => setHistoryOpen(true)} />
+
         {shortages.length > 0 ? (
-          <Banner tone={shortages.some((s) => s.level === 'critical') ? 'danger' : 'warning'}>
+          <Banner tone={shortages.some((s) => s.level.key !== 'low') ? 'danger' : 'warning'}>
             <Row style={{ gap: spacing.sm, alignItems: 'flex-start' }}>
-              <Icon name="warning" size={18} color={shortages.some((s) => s.level === 'critical') ? colors.red : colors.orange} />
+              <Icon name="warning" size={18} color={shortages.some((s) => s.level.key !== 'low') ? colors.red : colors.orange} />
               <View style={{ flex: 1 }}>
                 <Text style={[font.body, { fontWeight: '700' }]}>Thức ăn sắp không đủ cho ngựa</Text>
                 <Text style={font.small}>
                   {shortages
-                    .map((s) => `${s.kind}: còn ${s.stock} ${s.unit}${s.comparable && s.daysLeft !== null ? ` (~${formatDays(s.daysLeft)})` : ''}`)
+                    .map(
+                      (s) =>
+                        `${s.name}: ${s.level.key === 'expired' ? 'đã hết hạn' : `còn ${formatStock(s)}`}${
+                          s.daysLeft !== null && s.level.key !== 'expired' ? ` (${s.daysLeft < 1 ? '' : '~'}${formatDays(s.daysLeft)})` : ''
+                        }`
+                    )
                     .join(' · ')}
                 </Text>
                 <Button
@@ -189,12 +221,21 @@ export default function FeedingScreen({ navigation }) {
                   variant="danger"
                   size="sm"
                   style={{ marginTop: spacing.md, alignSelf: 'flex-start' }}
-                  onPress={() => navigation.navigate('Vật tư')}
+                  onPress={() => navigation.navigate('Kho')}
                 />
               </View>
             </Row>
           </Banner>
         ) : null}
+
+        {/* The store as it stands: every feed the club holds, not only what today's rations use. */}
+        <StockCard
+          title="Thức ăn còn trong kho"
+          category="feed"
+          items={inventory}
+          onOpenSupplies={() => navigation.navigate('Kho')}
+          emptyText="Kho chưa có mặt hàng thức ăn nào. Quản lý CLB là người tạo danh mục."
+        />
 
         <Text style={styles.summaryLine}>
           {scopedHorses.filter((h) => rationsByHorse.has(h._id)).length}/{scopedHorses.length} ngựa có khẩu phần ·{' '}
@@ -203,6 +244,14 @@ export default function FeedingScreen({ navigation }) {
 
         {isLoading ? (
           <Loading />
+        ) : isError || tasksFailed ? (
+          <LoadError
+            text={isError ? 'Không tải được khẩu phần' : 'Không tải được danh sách bữa ăn'}
+            onRetry={() => {
+              refetch();
+              refetchTasks();
+            }}
+          />
         ) : scopedHorses.length === 0 ? (
           <Card>
             <EmptyState icon="stable" text="Không tìm thấy ngựa nào" hint="Thử xoá từ khoá hoặc chọn 'Tất cả ngựa'." />
@@ -216,43 +265,36 @@ export default function FeedingScreen({ navigation }) {
               schedules={rationsByHorse.get(horse._id) || []}
               mealFilter={mealFilter}
               approval={approval}
-              inventory={inventory}
+              ctx={ctx}
               nextSlot={meal.slot}
               taskFor={taskFor}
-              onOpenMeal={(payload) => setOpenMeal({ ...payload, inventory })}
+              dailyTask={dailyTaskFor(horse._id)}
+              onOpenMeal={(payload) => setOpenMeal({ ...payload, inventory, ctx })}
               onComplete={setCompleting}
-              onNotDone={setNotDone}
+              onNotDone={reportNotDone}
             />
           ))
         )}
-
-        {/* The store as it stands, after the meals: a shortage is already called out by the banner above. */}
-        <StockCard
-          title="Thức ăn còn trong kho"
-          category="feed"
-          items={inventory}
-          onOpenSupplies={() => navigation.navigate('Vật tư')}
-          emptyText="Kho chưa có mặt hàng thức ăn nào. Quản lý CLB là người tạo danh mục."
-        />
       </ScrollView>
 
       <MealDetailSheet
         meal={openMeal}
         visible={!!openMeal}
         onClose={() => setOpenMeal(null)}
-        onAskSupply={() => {
+        onAskSupply={(entry) => {
+          const task = openMeal?.task;
           setOpenMeal(null);
-          navigation.navigate('Vật tư');
+          setRestock(restockRequestFor({ entry, missing: missingSupplies(task), task, inventory }));
         }}
         onComplete={() => {
           const task = openMeal?.task;
           setOpenMeal(null);
           setCompleting(task);
         }}
-        onNotDone={() => {
+        onNotDone={(reason) => {
           const task = openMeal?.task;
           setOpenMeal(null);
-          setNotDone(task);
+          reportNotDone(task, reason);
         }}
       />
 
@@ -261,8 +303,19 @@ export default function FeedingScreen({ navigation }) {
         schedules={completing ? feedings.filter((f) => refId(f.horse) === refId(completing.horse)) : []}
         visible={!!completing}
         onClose={() => setCompleting(null)}
+        onShortage={(missing, task) => setRestock(restockRequestFor({ missing, task, inventory }))}
       />
-      <NotDoneModal task={notDone} visible={!!notDone} onClose={() => setNotDone(null)} />
+      <NotDoneModal task={notDone} visible={!!notDone} initialReason={notDoneReason} onClose={() => setNotDone(null)} />
+
+      <RestockSheet request={restock} visible={!!restock} onClose={() => setRestock(null)} />
+
+      <HistorySheet
+        visible={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title="Lịch sử cho ăn"
+        tasks={mealHistory}
+        emptyText="Chưa có bữa nào được ghi nhận trong khoảng này"
+      />
 
       <FilterSheet
         visible={filtersOpen}
@@ -282,7 +335,11 @@ export default function FeedingScreen({ navigation }) {
   );
 }
 
-function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nextSlot, taskFor, onOpenMeal, onComplete, onNotDone }) {
+/**
+ * One horse's meals today. A meal is recorded only against an approved ration: with none, the
+ * groom can't tick it (the server refuses too) and tells the trainer instead.
+ */
+function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nextSlot, taskFor, dailyTask, ctx, onOpenMeal, onComplete, onNotDone }) {
   const health = HEALTH_STATUS[horse.healthStatus];
   const slots = mealFilter === 'all' ? MEAL_ORDER : [mealFilter];
 
@@ -303,6 +360,8 @@ function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nex
         {health ? <Badge label={health.label} color={health.color} bg={health.bg} dot /> : null}
       </Row>
 
+      {dailyTask ? <DailyFeedingRow task={dailyTask} ctx={ctx} onNotDone={onNotDone} /> : null}
+
       {slots.map((slot) => {
         const meal = MEAL_CONFIG[slot];
         const forSlot = schedules
@@ -311,9 +370,9 @@ function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nex
         const isNext = slot === nextSlot;
         const task = taskFor?.(horse._id, slot);
         const fed = task?.status === 'completed';
-        const timing = task?.timing || {};
-        const timingCfg = TIMING_STATE[timing.state];
-        const canFeed = task?.status === 'pending' && timing.canComplete !== false;
+        const state = taskState(task, ctx);
+        const canFeed = canCompleteTask(task, ctx);
+        const noRation = state?.blockers?.some((b) => b.code === 'NO_APPROVED_RATION');
         const approvedBy = forSlot.find((s) => s.approvedBy)?.approvedBy;
 
         return (
@@ -324,16 +383,10 @@ function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nex
                 <Text style={font.h3}>{meal.label}</Text>
               </Row>
               <Row style={{ gap: 6 }}>
-                {task?.pendingSync ? <PendingBadge /> : null}
                 {fed ? (
-                  // Not confirmed by the server yet: shown as the groom's record, not as done.
-                  task.pendingSync ? (
-                    <Badge label={`Cho ăn ${formatTime(task.completedAt)} · chưa gửi`} color={colors.orange} bg={colors.orangeSoft} />
-                  ) : (
-                    <Badge label={`Đã cho ăn ${formatTime(task.completedAt)}`} color={colors.green} bg={colors.greenSoft} />
-                  )
-                ) : task && timingCfg && task.status === 'pending' ? (
-                  <Badge label={timingCfg.label} color={timingCfg.color} bg={timingCfg.bg} />
+                  <Badge label={`Đã cho ăn ${formatTime(task.completedAt)}`} color={colors.green} bg={colors.greenSoft} />
+                ) : state ? (
+                  <Badge label={state.label} color={state.color} bg={state.bg} />
                 ) : null}
                 <Badge
                   label={mealTimeOf(slot, schedules) || meal.defaultTime}
@@ -355,12 +408,14 @@ function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nex
                 style={({ pressed }) => [{ marginTop: spacing.sm }, pressed && { opacity: 0.7 }]}
               >
                 {forSlot.flatMap((schedule) => schedule.items || []).map((item, index) => {
-                  const feed = getFeedTypeLabel(item.type);
+                  const line = rationLine(item);
                   return (
                     <Row key={index} style={{ gap: spacing.sm, paddingVertical: 2 }}>
-                      <Icon name={feed.icon} size={14} color={colors.forestLight} />
-                      <Text style={[font.body, { flex: 1 }]}>{feed.label}</Text>
-                      <Text style={styles.qty}>{item.quantity}</Text>
+                      <Icon name={line.icon} size={14} color={colors.forestLight} />
+                      <Text style={[font.body, { flex: 1 }]} numberOfLines={1}>
+                        {line.label}
+                      </Text>
+                      <Text style={styles.qty}>{line.amount}</Text>
                     </Row>
                   );
                 })}
@@ -378,31 +433,75 @@ function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nex
 
             {task && task.status === 'pending' ? (
               <View style={{ marginTop: spacing.sm, gap: 4 }}>
-                {timing.reason ? <Text style={[font.small, { color: colors.orange }]}>{timing.reason}</Text> : null}
-                <Row style={{ gap: spacing.sm }}>
-                  {canFeed ? (
-                    <Button title="Đã cho ăn" icon="check" size="sm" style={{ flex: 2 }} onPress={() => onComplete(task)} />
-                  ) : null}
-                  <Button
-                    title="Không cho ăn được"
-                    icon="block"
-                    variant="ghost"
-                    size="sm"
-                    style={{ flex: canFeed ? 2 : 1 }}
-                    onPress={() => onNotDone(task)}
-                  />
-                </Row>
+                {(state?.blockers?.length ? state.blockers : state?.reason ? [{ message: state.reason }] : []).map((b) => (
+                  <Text key={b.message} style={[font.small, { color: state.key === 'blocked' || state.key === 'missed' ? colors.red : colors.orange }]}>
+                    {b.message}
+                  </Text>
+                ))}
+                {state?.key !== 'missed' ? (
+                  <Row style={{ gap: spacing.sm }}>
+                    {canFeed ? (
+                      <Button title="Đã cho ăn" icon="check" size="sm" style={{ flex: 2 }} onPress={() => onComplete(task)} />
+                    ) : null}
+                    <Button
+                      title={noRation ? 'Báo HLV chưa có khẩu phần' : 'Không cho ăn được'}
+                      icon="block"
+                      variant="ghost"
+                      size="sm"
+                      style={{ flex: canFeed ? 2 : 1 }}
+                      onPress={() => onNotDone(task, noRation ? NO_RATION_REASON : '')}
+                    />
+                  </Row>
+                ) : null}
               </View>
             ) : null}
             {task?.status === 'skipped' ? (
               <Text style={[font.small, { color: colors.orange, marginTop: spacing.sm }]}>
-                Không cho ăn: {task.skipReason}
+                {state?.key === 'cancelled' ? 'HLV cho bỏ bữa này' : `Không cho ăn: ${task.skipReason}`}
               </Text>
             ) : null}
           </View>
         );
       })}
     </Card>
+  );
+}
+
+/**
+ * The single "feed the horse" task a horse without any ration gets. There is nothing approved to
+ * give, so it can't be recorded as fed; the groom tells the trainer, who sets the ration.
+ */
+function DailyFeedingRow({ task, ctx, onNotDone }) {
+  const state = taskState(task, ctx);
+  return (
+    <View style={[styles.meal, state?.key === 'blocked' && styles.mealBlocked]}>
+      <Row style={{ justifyContent: 'space-between' }}>
+        <Row style={{ gap: 6, flex: 1 }}>
+          <Icon name="rations" size={16} color={colors.forestLight} />
+          <Text style={font.h3}>Cho ăn trong ngày</Text>
+        </Row>
+        {state ? <Badge label={state.label} color={state.color} bg={state.bg} /> : null}
+      </Row>
+      {task.status === 'pending' ? (
+        <>
+          <Text style={[font.small, { marginTop: 4, color: colors.red }]}>
+            Ngựa chưa có khẩu phần được duyệt — chưa ghi nhận cho ăn được. Báo HLV lập khẩu phần.
+          </Text>
+          <Button
+            title="Báo HLV chưa có khẩu phần"
+            icon="block"
+            variant="ghost"
+            size="sm"
+            style={{ marginTop: spacing.sm }}
+            onPress={() => onNotDone(task, NO_RATION_REASON)}
+          />
+        </>
+      ) : task.status === 'skipped' ? (
+        <Text style={[font.small, { marginTop: 4, color: colors.orange }]}>
+          {state?.key === 'cancelled' ? 'HLV cho bỏ qua' : `Đã báo: ${task.skipReason}`}
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -428,6 +527,7 @@ const styles = StyleSheet.create({
   meal: { borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.sm, padding: spacing.md, backgroundColor: colors.cream },
   mealNext: { borderColor: colors.gold, backgroundColor: '#fefce8' },
   mealDone: { backgroundColor: colors.forestSoft, borderColor: colors.greenSoft },
+  mealBlocked: { borderColor: colors.redSoft, backgroundColor: '#fff7f7' },
   feedRow: { gap: 2 },
   qty: { fontWeight: '800', color: colors.text },
 });

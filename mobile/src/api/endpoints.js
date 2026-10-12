@@ -3,26 +3,37 @@ import api from './client';
 export const authApi = {
   login: (payload) => api.post('/auth/login', payload),
   me: () => api.get('/auth/me'),
+  updateProfile: (payload) => api.put('/auth/profile', payload),
+  changePassword: (payload) => api.put('/auth/change-password', payload),
+};
+
+export const filesApi = {
+  /** Shared upload (field name `files`); returns [{ id, url, name }] for an avatar or a photo. */
+  upload: (formData) => api.post('/uploads', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 };
 
 export const taskApi = {
   list: (params) => api.get('/stable/tasks', { params }),
   getOne: (id) => api.get(`/stable/tasks/${id}`),
-  /** payload: { observation: { appetite, manure, waterIntake }, notes } — all optional. */
-  complete: (id, payload, config) => api.patch(`/stable/tasks/${id}/complete`, payload, config),
+  /**
+   * payload: { observation: { appetite, manure, waterIntake }, amountEatenPercent, notes } — all
+   * optional — plus clientOpId, so a resend of the same tap is answered without being applied twice.
+   */
+  complete: (id, payload) => api.patch(`/stable/tasks/${id}/complete`, payload),
   /** "I've seen this and taken it on" — lets the trainer/vet tell picked-up from untouched. */
-  // `action` = { performedAt, clientOpId } from the outbox: when it was done, and its id for resends.
-  acknowledge: (id, config, action) => api.patch(`/stable/tasks/${id}/acknowledge`, action, config),
+  acknowledge: (id, clientOpId) => api.patch(`/stable/tasks/${id}/acknowledge`, clientOpId ? { clientOpId } : undefined),
   /** Could not do it (horse spat the medicine out, ...); the reason goes to the trainer/vet. */
-  reportNotDone: (id, reason, config, action) => api.patch(`/stable/tasks/${id}/not-done`, { reason, ...action }, config),
-  reportIncident: (id, formData, config) =>
-    api.post(`/stable/tasks/${id}/incident`, formData, { ...config, headers: { 'Content-Type': 'multipart/form-data' } }),
+  reportNotDone: (id, reason, clientOpId) => api.patch(`/stable/tasks/${id}/not-done`, { reason, clientOpId }),
+  reportIncident: (id, formData) =>
+    api.post(`/stable/tasks/${id}/incident`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 };
 
 export const stableApi = {
   assignments: () => api.get('/stable/assignments'),
   /** status: 'open' | 'unresolved' | 'acknowledged' | 'resolved' */
   incidents: (params) => api.get('/stable/incidents', { params }),
+  /** Per horse: rations and prescriptions with the stock behind them, plus what is short. */
+  carePlan: (params) => api.get('/stable/my-care-plan', { params }),
 };
 
 export const horseApi = {
@@ -43,7 +54,10 @@ export const feedingApi = {
 
 export const inventoryApi = {
   list: () => api.get('/inventory'),
-  requestRestock: (id, quantity, note) => api.post(`/inventory/${id}/restock-request`, { quantity, note }),
+  /** Per item: daily use from rations and ongoing prescriptions, and how many days the stock lasts. */
+  forecast: () => api.get('/inventory/forecast'),
+  /** payload: { quantity } or { packs }, plus an optional note and the task it is blocking. */
+  requestRestock: (id, payload) => api.post(`/inventory/${id}/restock-request`, payload),
   /** Ask for something that isn't in the catalogue yet; the Manager approves it into stock. */
   proposeItem: (payload) => api.post('/inventory/proposals', payload),
 };

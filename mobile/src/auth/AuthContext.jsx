@@ -50,7 +50,17 @@ export function AuthProvider({ children }) {
     return account;
   }, []);
 
-  const value = useMemo(() => ({ user, restoring, signIn, signOut }), [user, restoring, signIn, signOut]);
+  /** Keeps the signed-in account in step after the profile screen saves a change. */
+  const updateUser = useCallback(async (account) => {
+    if (!account) return;
+    setUser(account);
+    await AsyncStorage.setItem(USER_KEY, JSON.stringify(account));
+  }, []);
+
+  const value = useMemo(
+    () => ({ user, restoring, signIn, signOut, updateUser }),
+    [user, restoring, signIn, signOut, updateUser]
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

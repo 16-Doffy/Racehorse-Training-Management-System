@@ -1,33 +1,67 @@
 import { useState } from 'react';
-import { Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Text, TextInput } from './Text';
+import {
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useOutbox } from '../offline/OutboxContext';
-import { hapticSuccess, hapticWarning } from '../utils/haptics';
+import { taskApi } from '../api/endpoints';
 import Icon from './Icon';
-import DragSheet from './DragSheet';
-import { Badge, Button, ChipGroup, IconButton, Row } from './ui';
-import { INCIDENT_PRESETS, SEVERITY, TASK_CONFIG, formatDate } from '../utils/groom';
+import { Badge, Button, ChipGroup, Row } from './ui';
+import { INCIDENT_CATEGORY, INCIDENT_PRESETS, SEVERITY, describeTask, formatDate, formatTime } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const MAX_IMAGES = 5;
 const SEVERITY_OPTIONS = Object.entries(SEVERITY).map(([value, cfg]) => ({ value, label: cfg.label }));
+const CATEGORY_OPTIONS = Object.entries(INCIDENT_CATEGORY).map(([value, cfg]) => ({ value, label: cfg.label }));
+// When it was seen, in the steps a groom can tell without typing a time while holding a horse.
+const WHEN_OPTIONS = [
+  { value: 0, label: 'Vừa xong' },
+  { value: 15, label: '15 phút trước' },
+  { value: 30, label: '30 phút trước' },
+  { value: 60, label: '1 giờ trước' },
+  { value: 120, label: '2 giờ trước' },
+  { value: 240, label: '4 giờ trước' },
+];
+// A symptom chip already says what kind of incident it is.
+const PRESET_CATEGORY = {
+  'Ngựa bỏ ăn': 'refused_feed',
+  'Có dấu hiệu đau bụng': 'illness',
+  'Có dấu hiệu sốt': 'illness',
+  'Móng bị xước': 'hoof_injury',
+  'Đi khập khiễng': 'hoof_injury',
+  'Vết thương ngoài da': 'accident',
+};
 
 /**
- * Reports an incident on one daily task: quick symptom chips, severity, and photos taken with the
- * phone camera or picked from the gallery. The vet is notified by the server on submit.
+ * Reports an incident on one daily task: what kind, quick symptom chips, when it was seen,
+ * severity, and photos taken with the phone camera or picked from the gallery. The vet and the
+ * trainer are notified by the server on submit.
  */
 export default function IncidentModal({ task, visible, onClose }) {
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { submit: send } = useOutbox();
   const [presets, setPresets] = useState([]);
+  const [category, setCategory] = useState(null);
+  const [minutesAgo, setMinutesAgo] = useState(0);
   const [detail, setDetail] = useState('');
   const [severity, setSeverity] = useState('medium');
   const [photos, setPhotos] = useState([]);
 
   const reset = () => {
     setPresets([]);
+    setCategory(null);
+    setMinutesAgo(0);
     setDetail('');
     setSeverity('medium');
     setPhotos([]);
@@ -39,29 +73,21 @@ export default function IncidentModal({ task, visible, onClose }) {
   };
 
   const mutation = useMutation({
-    // The photos stay on the phone until the report goes out, so a report filed in a dead spot
-    // of the yard is kept and sent when there is signal.
-    mutationFn: (report) =>
-      send('incident', { taskId: task._id, ...report }, { taskId: task._id, label: 'Báo cáo sự cố', horseName: task.horse?.name }),
-    onSuccess: (res) => {
-      hapticSuccess();
-      if (!res.queued) {
-        queryClient.invalidateQueries({ queryKey: ['tasks'] });
-        queryClient.invalidateQueries({ queryKey: ['incidents'] });
-        Alert.alert('Đã gửi báo cáo', 'Bác sĩ thú y đã nhận được thông báo.');
-      } else {
-        Alert.alert('Đã lưu báo cáo', 'Chưa có mạng. Báo cáo được giữ trong máy và tự gửi khi có mạng trở lại.');
-      }
+    mutationFn: (formData) => taskApi.reportIncident(task._id, formData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      Alert.alert('Đã gửi báo cáo', 'Bác sĩ thú y đã nhận được thông báo.');
       close();
     },
-    onError: (err) => {
-      hapticWarning();
-      Alert.alert('Gửi thất bại', err?.message || 'Thử lại sau.');
-    },
+    onError: (err) => Alert.alert('Gửi thất bại', err?.message || 'Thử lại sau.'),
   });
 
-  const togglePreset = (preset) =>
+  const togglePreset = (preset) => {
     setPresets((prev) => (prev.includes(preset) ? prev.filter((p) => p !== preset) : [...prev, preset]));
+    // The first symptom picked suggests the kind; the groom can still change it.
+    if (!category && PRESET_CATEGORY[preset]) setCategory(PRESET_CATEGORY[preset]);
+  };
 
   const addPhoto = async (fromCamera) => {
     if (photos.length >= MAX_IMAGES) return;
@@ -85,22 +111,39 @@ export default function IncidentModal({ task, visible, onClose }) {
       Alert.alert('Thiếu thông tin', 'Chọn ít nhất một dấu hiệu hoặc nhập mô tả.');
       return;
     }
-    mutation.mutate({
-      description,
-      severity,
-      photos: photos.map((photo) => ({ uri: photo.uri, fileName: photo.fileName, mimeType: photo.mimeType })),
+    const formData = new FormData();
+    formData.append('description', description);
+    formData.append('severity', severity);
+    if (category) formData.append('category', category);
+    if (minutesAgo > 0) formData.append('occurredAt', new Date(Date.now() - minutesAgo * 60000).toISOString());
+    photos.forEach((photo, index) => {
+      formData.append('images', {
+        uri: photo.uri,
+        name: photo.fileName || `incident-${index}.jpg`,
+        type: photo.mimeType || 'image/jpeg',
+      });
     });
+    mutation.mutate(formData);
   };
 
-  const taskCfg = TASK_CONFIG[task?.taskType] || { label: task?.taskType, icon: 'note' };
+  const taskCfg = task ? describeTask(task) : { label: '', icon: 'note' };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={close}
+    >
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
-        <DragSheet onClose={close} style={styles.sheet} handle="overlay">
+        <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
           <Row style={styles.sheetHeader}>
             <Row style={{ gap: 8 }}><Icon name="warning" size={18} color="#dc2626" /><Text style={font.h2}>Báo cáo sự cố</Text></Row>
-            <IconButton icon="close" label="Đóng" onPress={close} />
+            <Pressable onPress={close} hitSlop={10}>
+              <Text style={styles.close}>✕</Text>
+            </Pressable>
           </Row>
 
           <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }} keyboardShouldPersistTaps="handled">
@@ -120,6 +163,18 @@ export default function IncidentModal({ task, visible, onClose }) {
             <View>
               <Text style={styles.label}>Dấu hiệu ghi nhận</Text>
               <ChipGroup options={INCIDENT_PRESETS} value={presets} onChange={togglePreset} multiple />
+            </View>
+
+            <View>
+              <Text style={styles.label}>Loại sự cố</Text>
+              <ChipGroup options={CATEGORY_OPTIONS} value={category} onChange={setCategory} size="sm" />
+            </View>
+
+            <View>
+              <Text style={styles.label}>
+                Thời điểm phát hiện{minutesAgo > 0 ? ` · khoảng ${formatTime(new Date(Date.now() - minutesAgo * 60000))}` : ''}
+              </Text>
+              <ChipGroup options={WHEN_OPTIONS} value={minutesAgo} onChange={setMinutesAgo} size="sm" />
             </View>
 
             <View>
@@ -147,7 +202,7 @@ export default function IncidentModal({ task, visible, onClose }) {
                   <Pressable key={photo.uri} onPress={() => setPhotos((prev) => prev.filter((_, i) => i !== index))}>
                     <Image source={{ uri: photo.uri }} style={styles.thumb} />
                     <View style={styles.removeBadge}>
-                      <Icon name="close" size={14} color={colors.white} />
+                      <Text style={styles.removeText}>✕</Text>
                     </View>
                   </Pressable>
                 ))}
@@ -163,7 +218,7 @@ export default function IncidentModal({ task, visible, onClose }) {
             <Button title="Huỷ" variant="subtle" style={{ flex: 1 }} onPress={close} />
             <Button title="Gửi báo cáo" variant="danger" style={{ flex: 2 }} loading={mutation.isPending} onPress={submit} />
           </Row>
-        </DragSheet>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -184,7 +239,7 @@ const styles = StyleSheet.create({
   close: { fontSize: 18, color: colors.textMuted, paddingHorizontal: spacing.sm },
   taskBox: { backgroundColor: colors.white, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: colors.borderSoft },
   taskHorse: { ...font.h3 },
-  label: { ...font.h3, fontSize: 14, marginBottom: spacing.sm },
+  label: { ...font.tiny, marginBottom: spacing.sm },
   wrapBadge: { alignSelf: 'stretch' },
   textarea: {
     borderWidth: 1,

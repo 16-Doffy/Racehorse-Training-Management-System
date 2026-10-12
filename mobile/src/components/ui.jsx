@@ -1,9 +1,7 @@
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Text, TextInput } from './Text';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Icon from './Icon';
-import DragSheet from './DragSheet';
-import { ListSkeleton } from './Skeletons';
 import { colors, font, radius, shadow, spacing } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function Card({ children, style, onPress }) {
   // A plain View ignores a function style, so only the Pressable branch may use one.
@@ -138,20 +136,30 @@ export function EmptyState({ icon = 'empty', text, hint, action }) {
   );
 }
 
-/** Without a message: grey placeholder cards where the list will be. With one: a spinner and the message. */
-export function Loading({ text }) {
-  if (!text) return <ListSkeleton />;
+/**
+ * A list that failed to load. Says so and offers a retry — an empty list would read as "nothing to
+ * do", which is the wrong thing to tell someone about to skip a horse's dose.
+ */
+export function LoadError({ text = 'Không tải được dữ liệu', onRetry }) {
+  return (
+    <Card>
+      <EmptyState
+        icon="warning"
+        text={text}
+        hint="Kiểm tra kết nối mạng rồi thử lại."
+        action={onRetry ? <Button title="Thử lại" icon="refresh" variant="ghost" size="sm" onPress={onRetry} /> : null}
+      />
+    </Card>
+  );
+}
+
+export function Loading({ text = 'Đang tải...' }) {
   return (
     <View style={styles.empty}>
       <ActivityIndicator color={colors.forest} />
       <Text style={[font.small, { marginTop: spacing.sm }]}>{text}</Text>
     </View>
   );
-}
-
-/** A task the groom did without a connection: shown as done, still on its way to the server. */
-export function PendingBadge() {
-  return <Badge label="Chờ gửi" color={colors.orange} bg={colors.orangeSoft} />;
 }
 
 export function Banner({ tone = 'warning', children, style }) {
@@ -200,6 +208,41 @@ export function ChipRow(props) {
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: spacing.lg }}>
       <ChipGroup {...props} />
     </ScrollView>
+  );
+}
+
+/**
+ * Switches between parts of one screen. Deliberately not a chip row: chips narrow a list, these
+ * change what the screen is showing.
+ */
+export function Segments({ options, value, onChange, style }) {
+  return (
+    <View style={[styles.segments, style]}>
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            onPress={() => onChange(option.value)}
+            style={[styles.segment, selected && styles.segmentOn]}
+          >
+            {option.icon ? (
+              <Icon name={option.icon} size={14} color={selected ? colors.white : colors.textMuted} />
+            ) : null}
+            <Text style={[styles.segmentText, selected && styles.segmentTextOn]} numberOfLines={1}>
+              {option.label}
+            </Text>
+            {option.count ? (
+              <View style={[styles.segmentCount, selected && styles.segmentCountOn]}>
+                <Text style={[styles.segmentCountText, selected && { color: colors.forest }]}>{option.count}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -278,18 +321,27 @@ export function ProgressBar({ percent, tint = colors.gold, track = 'rgba(255,255
 
 /** Bottom sheet used for notifications and pickers. */
 export function Sheet({ visible, title, onClose, children, footer }) {
+  const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
       <View style={styles.sheetBackdrop}>
         <Pressable style={{ flex: 1 }} accessibilityLabel="Đóng" onPress={onClose} />
-        <DragSheet onClose={onClose} style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
+          <View style={styles.sheetHandle} />
           <Row style={styles.sheetHeader}>
             <Text style={font.h2}>{title}</Text>
             <IconButton icon="close" label="Đóng" onPress={onClose} />
           </Row>
           {children}
           {footer}
-        </DragSheet>
+        </View>
       </View>
     </Modal>
   );
@@ -330,7 +382,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   badgeDot: { width: 6, height: 6, borderRadius: 3 },
-  badgeText: { fontSize: 12, fontWeight: '600' },
+  badgeText: { fontSize: 11, fontWeight: '700' },
   button: {
     minHeight: 48,
     paddingHorizontal: spacing.lg,
@@ -340,8 +392,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   buttonSm: { minHeight: 40, paddingHorizontal: spacing.md },
-  buttonText: { fontSize: 16, fontWeight: '600' },
-  buttonTextSm: { fontSize: 14 },
+  buttonText: { fontSize: 15, fontWeight: '700' },
+  buttonTextSm: { fontSize: 13 },
   iconButton: { width: 40, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
   iconButtonLight: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border },
   iconButtonDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
@@ -357,12 +409,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconBadgeText: { color: colors.white, fontSize: 11, fontWeight: '700' },
+  iconBadgeText: { color: colors.white, fontSize: 10, fontWeight: '800' },
   avatar: { alignItems: 'center', justifyContent: 'center' },
   stat: { flex: 1, minWidth: 0, padding: spacing.md, paddingTop: spacing.lg, gap: 4, overflow: 'hidden' },
   statStripe: { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
   statValueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
-  statSuffix: { fontSize: 13, color: colors.textMuted, paddingBottom: 4 },
+  statSuffix: { fontSize: 12, color: colors.textFaint, paddingBottom: 4 },
   empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xl },
   banner: { borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
   chipGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
@@ -376,9 +428,32 @@ const styles = StyleSheet.create({
   },
   chipSm: { paddingHorizontal: spacing.md, paddingVertical: 7 },
   chipActive: { backgroundColor: colors.forest, borderColor: colors.forest },
-  chipText: { fontSize: 14, color: colors.text, fontWeight: '500' },
-  chipTextSm: { fontSize: 13 },
+  chipText: { fontSize: 13, color: colors.text, fontWeight: '600' },
+  chipTextSm: { fontSize: 12 },
   chipTextActive: { color: colors.white },
+  segments: { flexDirection: 'row', gap: 4, padding: 4, borderRadius: radius.md, backgroundColor: colors.graySoft },
+  segment: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 9,
+    borderRadius: radius.sm,
+  },
+  segmentOn: { backgroundColor: colors.forest },
+  segmentText: { fontSize: 12.5, fontWeight: '700', color: colors.textMuted },
+  segmentTextOn: { color: colors.white },
+  segmentCount: {
+    minWidth: 18,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 9,
+    backgroundColor: colors.red,
+    alignItems: 'center',
+  },
+  segmentCountOn: { backgroundColor: colors.gold },
+  segmentCountText: { fontSize: 10, fontWeight: '800', color: colors.white },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -390,7 +465,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     minHeight: 44,
   },
-  searchInput: { flex: 1, fontSize: 16, color: colors.text, paddingVertical: 0 },
+  searchInput: { flex: 1, fontSize: 15, color: colors.text, paddingVertical: 0 },
   progressTrack: { overflow: 'hidden', width: '100%' },
   sheetBackdrop: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
   sheet: {
@@ -400,7 +475,15 @@ const styles = StyleSheet.create({
     maxHeight: '85%',
     paddingBottom: spacing.lg,
   },
-  sheetHeader: { justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginTop: spacing.md,
+  },
+  sheetHeader: { justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   dataRow: { justifyContent: 'space-between', paddingVertical: 6, gap: spacing.md },
 });

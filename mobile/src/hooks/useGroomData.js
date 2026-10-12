@@ -11,20 +11,14 @@ import {
   trainingApi,
 } from '../api/endpoints';
 import { useAuth } from '../auth/AuthContext';
-import { useOutbox } from '../offline/OutboxContext';
-import { applyOutbox } from '../offline/overlay';
-import { isSameDay, parseStableBlock, refId } from '../utils/groom';
+import { getStockLevel, parseStableBlock, refId, summarizeTasks } from '../utils/groom';
 
 const list = (query) => query.data?.data || [];
 
 /** The groom's own worklist — the API already filters it to the signed-in user. */
 export function useTasks() {
   const query = useQuery({ queryKey: ['tasks'], queryFn: () => taskApi.list() });
-  const { items } = useOutbox();
-  const data = query.data?.data;
-  // What was done offline already shows as done, marked "chờ gửi", until the server has it.
-  const tasks = useMemo(() => applyOutbox(data || [], items), [data, items]);
-  return { ...query, tasks };
+  return { ...query, tasks: list(query) };
 }
 
 /**
@@ -37,6 +31,18 @@ export function useIncidents(status) {
     queryFn: () => stableApi.incidents(status ? { status } : undefined),
   });
   return { ...query, incidents: list(query) };
+}
+
+/**
+ * Rations and prescriptions per horse with the stock behind each line, and what is short — the
+ * server joins ration/dose items to inventory, so the app no longer matches names itself.
+ */
+export function useCarePlan(horseId) {
+  const query = useQuery({
+    queryKey: ['care-plan', horseId || 'all'],
+    queryFn: () => stableApi.carePlan(horseId ? { horse: horseId } : undefined),
+  });
+  return { ...query, sheets: list(query) };
 }
 
 /** Everything every role did to one horse, in order. */
@@ -59,18 +65,39 @@ export function useTreatments() {
   return { ...query, treatments: list(query) };
 }
 
+/**
+ * The trainer's rations. `rations` is null until they have loaded, so a meal is never shown as
+ * "no approved ration" just because the list hasn't arrived yet.
+ */
 export function useFeedings() {
   const query = useQuery({ queryKey: ['feeding'], queryFn: () => feedingApi.list() });
-  return { ...query, feedings: list(query) };
+  return { ...query, feedings: list(query), rations: query.isSuccess ? list(query) : null };
 }
 
+/**
+ * The store, each item carrying its level (`level`) by the same rule as the Manager's low-stock
+ * warning: the minimum the Manager set, and how many days what the rations and prescriptions use
+ * lasts (GET /inventory/forecast). Without the forecast the minimum alone decides.
+ */
 export function useInventory() {
   const query = useQuery({ queryKey: ['inventory'], queryFn: () => inventoryApi.list() });
-  return { ...query, items: list(query) };
+  const forecastQuery = useQuery({ queryKey: ['inventory-forecast'], queryFn: () => inventoryApi.forecast(), retry: false });
+  const items = useMemo(() => {
+    const usage = new Map((forecastQuery.data?.data || []).map((f) => [String(f._id), f]));
+    return (query.data?.data || []).map((item) => {
+      const use = usage.get(String(item._id));
+      return { ...item, dailyUsage: use?.dailyUsage ?? null, daysLeft: use?.daysLeft ?? null, level: getStockLevel(item, use) };
+    });
+  }, [query.data, forecastQuery.data]);
+  return { ...query, items };
 }
 
+// The bell is how a groom hears that a request was approved or a delivery arrived; it checks again
+// every minute rather than only when a screen opens.
+const NOTIFICATION_POLL_MS = 60_000;
+
 export function useNotifications() {
-  const query = useQuery({ queryKey: ['notifications'], queryFn: () => notificationApi.list() });
+  const query = useQuery({ queryKey: ['notifications'], queryFn: () => notificationApi.list(), refetchInterval: NOTIFICATION_POLL_MS });
   return { ...query, notifications: list(query) };
 }
 
@@ -122,22 +149,28 @@ export function useStableOverview() {
   return { ...derived, isLoading: assignmentsQuery.isLoading || horsesQuery.isLoading };
 }
 
-/** Today's tasks, split the way the screens need them. */
+/**
+ * The worklist read the same way everywhere: today's work, what carries over, what is blocked and
+ * what was missed (utils/groom.js summarizeTasks). Every counter and badge comes from here.
+ */
 export function useToday() {
   const { tasks, isLoading, refetch } = useTasks();
+  const { rations } = useFeedings();
+  const { items: inventory } = useInventory();
   return useMemo(() => {
-    const today = tasks.filter((t) => isSameDay(t.scheduledDate, new Date()));
+    const ctx = { rations, inventory };
+    const summary = summarizeTasks(tasks, ctx);
     return {
+      ...summary,
+      ctx,
       isLoading,
       refetch,
       allTasks: tasks,
-      todayTasks: today,
-      done: today.filter((t) => t.status === 'completed'),
-      pending: today.filter((t) => t.status === 'pending'),
-      overdue: tasks.filter((t) => t.status === 'pending' && new Date(t.scheduledDate) < new Date(new Date().setHours(0, 0, 0, 0))),
+      todayTasks: summary.today,
+      done: summary.completed,
       incidents: tasks.filter((t) => t.incidentReport),
     };
-  }, [tasks, isLoading, refetch]);
+  }, [tasks, rations, inventory, isLoading, refetch]);
 }
 
 /** Refetch everything the screens show — used by pull-to-refresh. */

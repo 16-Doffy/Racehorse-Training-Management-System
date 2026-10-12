@@ -35,19 +35,20 @@ api.interceptors.response.use(
       await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
       onUnauthorized?.();
     }
-    // `isNetworkError`: the request got no answer (no signal, dropped link, timeout) as opposed to
-    // an answer saying no. The outbox keeps a write for the first and tells the groom about the second.
-    const answered = !!error.response;
-    const body = answered && error.response.data && typeof error.response.data === 'object' ? error.response.data : null;
+    // The API's own answer when there is one ({ success, data, message }), plus the HTTP status so a
+    // screen can tell "refused" (409: already recorded, blocked) from "no answer" (no signal).
+    const body = error.response?.data && typeof error.response.data === 'object' ? error.response.data : null;
     return Promise.reject({
       ...(body || {
         success: false,
-        message: answered
+        message: error.response
           ? error.message
-          : 'Không kết nối được máy chủ. Kiểm tra mạng.',
+          : error.message === 'Network Error'
+            ? 'Không kết nối được máy chủ. Kiểm tra mạng.'
+            : error.message,
       }),
       status: error.response?.status,
-      isNetworkError: !answered,
+      isNetworkError: !error.response,
     });
   }
 );

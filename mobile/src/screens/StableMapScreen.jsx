@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { Text } from '../components/Text';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
-import { Badge, Card, EmptyState, FilterBar, FilterSheet, HorseAvatar, Loading, ProgressBar, Row } from '../components/ui';
+import { Badge, Card, ChipRow, EmptyState, HorseAvatar, Loading, ProgressBar, Row, SearchInput } from '../components/ui';
 import { useRefreshAll, useStableOverview, useTasks, useTreatments } from '../hooks/useGroomData';
-import { HEALTH_STATUS, getUpcomingCare, isSameDay, matchesSearch, parseStableBlock, refId } from '../utils/groom';
+import { HEALTH_STATUS, TRAINING_LEVEL, getUpcomingCare, isSameDay, matchesSearch, parseStableBlock, refId, taskState } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
 const SCOPES = [
@@ -26,7 +25,6 @@ export default function StableMapScreen({ navigation }) {
   const [scope, setScope] = useState('mine');
   const [health, setHealth] = useState('all');
   const [search, setSearch] = useState('');
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const { assignments, myAssignments, myHorseIds, horseById, lockedHorseIds, isLoading } = useStableOverview();
@@ -41,9 +39,11 @@ export default function StableMapScreen({ navigation }) {
       .forEach((t) => {
         const id = refId(t.horse);
         const entry = map.get(id) || { total: 0, done: 0, vet: 0 };
-        entry.total += 1;
+        const state = taskState(t);
+        // Work the trainer called off is not part of the day; a missed dose is no longer "to do".
+        if (state?.key !== 'cancelled') entry.total += 1;
         if (t.status === 'completed') entry.done += 1;
-        if (t.source === 'vet' && t.status === 'pending') entry.vet += 1;
+        if (t.source === 'vet' && state?.open) entry.vet += 1;
         map.set(id, entry);
       });
     return map;
@@ -92,34 +92,18 @@ export default function StableMapScreen({ navigation }) {
       />
 
       <View style={styles.toolbar}>
-        <FilterBar
-          search={search}
-          onSearch={setSearch}
-          placeholder="Tìm ngựa, ô chuồng..."
-          activeCount={(scope !== 'mine' ? 1 : 0) + (health !== 'all' ? 1 : 0)}
-          onOpenFilters={() => setFiltersOpen(true)}
-        />
+        <SearchInput value={search} onChange={setSearch} placeholder="Tìm ngựa, ô chuồng, người phụ trách..." />
+        <ChipRow options={SCOPES} value={scope} onChange={setScope} size="sm" />
+        <ChipRow options={HEALTH_FILTERS} value={health} onChange={setHealth} size="sm" />
       </View>
-      <FilterSheet
-        visible={filtersOpen}
-        onClose={() => setFiltersOpen(false)}
-        onReset={() => {
-          setScope('mine');
-          setHealth('all');
-        }}
-        groups={[
-          { title: 'Phạm vi', options: SCOPES, value: scope, onChange: setScope },
-          { title: 'Tình trạng sức khỏe', options: HEALTH_FILTERS, value: health, onChange: setHealth },
-        ]}
-      />
 
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
       >
-        {/* A key for the colours, kept to a caption: it is reference, not content. */}
-        <View style={styles.legend}>
-          <Row style={{ flexWrap: 'wrap', columnGap: spacing.md, rowGap: 4 }}>
+        <Card style={styles.legend}>
+          <Text style={font.tiny}>Chú thích</Text>
+          <Row style={{ flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.sm }}>
             {Object.values(HEALTH_STATUS).map((s) => (
               <Row key={s.label} style={{ gap: 5 }}>
                 <View style={[styles.dot, { backgroundColor: s.color }]} />
@@ -131,7 +115,7 @@ export default function StableMapScreen({ navigation }) {
               <Text style={font.small}>Đang khóa huấn luyện</Text>
             </Row>
           </Row>
-        </View>
+        </Card>
 
         {isLoading ? (
           <Loading />
@@ -159,16 +143,17 @@ export default function StableMapScreen({ navigation }) {
                 const horse = horseById.get(horseId);
                 const status = HEALTH_STATUS[horse?.healthStatus] || HEALTH_STATUS.eligible;
                 const mine = myHorseIds.has(horseId);
-                const showMine = mine && scope === 'all';
                 const counts = todayByHorse.get(horseId);
                 const treatment = treatmentByHorse.get(horseId);
                 const care = getUpcomingCare(horse, 7)[0];
+                const clearance = horse?.trainingClearance;
+                const clearanceCfg = clearance?.restricted ? TRAINING_LEVEL[clearance.level] : null;
                 const percent = counts?.total ? Math.round((counts.done / counts.total) * 100) : 0;
 
                 return (
                   <Card
                     key={a._id}
-                    style={[styles.stall, showMine && styles.stallMine]}
+                    style={[styles.stall, mine && styles.stallMine]}
                     onPress={() => navigation.navigate('HorseDetail', { horseId, name: a.horse?.name })}
                   >
                     <Row style={{ gap: spacing.md, alignItems: 'flex-start' }}>
@@ -176,7 +161,7 @@ export default function StableMapScreen({ navigation }) {
                       <View style={{ flex: 1, gap: 3 }}>
                         <Row style={{ gap: 6, flexWrap: 'wrap' }}>
                           <Text style={font.h2}>{a.horse?.name || 'Không rõ'}</Text>
-                          {showMine ? <Badge label="Của tôi" color={colors.forest} bg={colors.goldSoft} /> : null}
+                          {mine ? <Badge label="Của tôi" color={colors.forest} bg={colors.goldSoft} /> : null}
                           {lockedHorseIds.has(horseId) ? <Icon name="lock" size={14} color={colors.red} /> : null}
                         </Row>
 
@@ -214,6 +199,9 @@ export default function StableMapScreen({ navigation }) {
                         ) : null}
 
                         <Row style={{ gap: spacing.sm, flexWrap: 'wrap', marginTop: counts ? spacing.sm : 0 }}>
+                          {clearanceCfg ? (
+                            <Badge label={clearanceCfg.label} color={clearanceCfg.color} bg={clearanceCfg.bg} />
+                          ) : null}
                           {counts?.vet ? (
                             <Badge label={`${counts.vet} y lệnh`} color={colors.red} bg={colors.redSoft} />
                           ) : null}
@@ -250,12 +238,13 @@ const styles = StyleSheet.create({
   toolbar: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
+    gap: spacing.sm,
     backgroundColor: colors.white,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderSoft,
   },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  legend: { paddingHorizontal: spacing.xs },
+  legend: { padding: spacing.md },
   dot: { width: 10, height: 10, borderRadius: 5 },
   stall: { padding: spacing.md },
   stallMine: { borderColor: colors.gold, borderWidth: 2 },
