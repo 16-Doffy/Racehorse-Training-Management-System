@@ -25,7 +25,7 @@ const routes = {
   B1: [trainer], B2: [trainer], B3: [trainer], B4: [trainer], B5: [trainer, route('Owner · Đánh giá HLV', '/owner/evaluations')], B6: [trainer], B7: [], B9: [trainer],
   C1: [trainer, races], C2: [trainer, races], C3: [races], C4: [races], C5: [vet, races], C6: [races], C7: [races],
   C8: [route('Owner · Giải', '/owner/races'), route('Owner · Tài chính', '/finance')], C9: [races, route('Manager · Tài chính', '/finance')], C10: [route('Manager · Báo cáo', '/admin/reports'), route('Manager · Nhật ký', '/admin/audit-logs')],
-  D1: [inventory], D2: [inventory], D3: [inventory], D4: [inventory],
+  D1: [inventory], D2: [inventory], D3: [inventory], D4: [],
   E1: [trainer], E2: [trainer, vet], E3: [trainer], E4: [trainer], E5: [trainer], E6: [trainer], E7: [trainer, vet], E8: [route('Vet · Phác đồ', '/veterinarian/treatments'), trainer], E9: [vet], E10: [vet, plans], E11: [trainer], E12: [], E13: [route('Manager · Ngựa', '/horses')],
 };
 const technicalExpected = {
@@ -43,7 +43,7 @@ cases.push(
   { id: 'F1', action: 'Đăng ký tài khoản mới → Manager duyệt → đăng nhập', expected: 'Trước duyệt chưa đăng nhập được; sau duyệt đúng role/trạng thái hoạt động.', routes: [route('Đăng ký', '/register'), route('Manager · Tài khoản', '/admin/users')] },
   { id: 'F2', action: 'Đăng nhập sai mật khẩu, rồi đăng nhập đúng; đăng xuất và đổi role', expected: 'Sai thông tin có lỗi rõ ràng; đăng nhập đúng về dashboard đúng role; đăng xuất không giữ quyền tài khoản cũ.', routes: [route('Đăng nhập', '/login')] },
   { id: 'F3', action: 'Owner / Groom thử mở trang quản lý nhân sự hoặc tài chính Manager', expected: 'Trang ngoài quyền bị chặn. Groom không có quyền giao việc, duyệt/nhập kho hoặc sửa y lệnh.', routes: [route('Thử trang Manager', '/admin/users')] },
-  { id: 'F4', action: 'Tài khoản HLV / Vet / Owner / Groom khác thử đọc ngựa hoặc việc không được giao', expected: 'Không thấy trong danh sách hoặc bị từ chối truy cập; không lộ lịch sử ngoài phạm vi.', routes: [owner] },
+  { id: 'F4', action: 'Tài khoản HLV / Vet / Owner / Groom khác thử đọc ngựa, việc hoặc buổi tập không được giao', expected: 'HLV/Vet/Owner không thấy ngựa ngoài phạm vi hoặc bị từ chối. Groom chỉ thấy việc và buổi tập của ngựa mình chăm (mở buổi tập ngựa khác bị 403); sơ đồ chuồng vẫn hiện tên ngựa khác trong dãy.', routes: [owner, route('HLV · Buổi tập', '/training/sessions')] },
   { id: 'F5', action: 'Groom báo sự cố kèm ảnh → Vet tiếp nhận/xử lý → Groom xem phản hồi', expected: 'Ảnh mở được; Vet/HLV nhận thông báo; trạng thái sự cố và phản hồi cập nhật, refresh vẫn còn.', routes: [vet] },
   { id: 'F6', action: 'Groom báo không làm được kèm lý do trên app; HLV xem lại ở web', expected: 'Lưu đúng skipped/lý do hoặc completed/quan sát; app và web cùng backend thấy cùng bản ghi sau tải lại.', routes: [route('HLV · Việc chăm sóc', '/stable/tasks')] },
   { id: 'F7', action: 'Mở chuông thông báo → đọc một mục → đánh dấu đã đọc → refresh', expected: 'Đếm chưa đọc thay đổi theo trạng thái thật; thông báo đúng người/role; mở chuông không tự đọc hết.' },

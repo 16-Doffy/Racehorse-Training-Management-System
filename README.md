@@ -97,7 +97,7 @@ dùng **Authorize** trong Swagger.
 
 ## Kiểm tra tự động
 
-Trang hướng dẫn test chính/phụ riêng: chạy `npm run test:guide`, mở
+Trang hướng dẫn test chính/phụ riêng: bản công khai https://claude.ai/artifact/495trt4fgGWhx1E9iJQ9RH, hoặc chạy `npm run test:guide` rồi mở
 **http://localhost:5190**. [Hướng dẫn](tools/test-flow-guide/README.md); không tích hợp
 vào web project. Có checklist, ghi chú và xuất biên bản.
 

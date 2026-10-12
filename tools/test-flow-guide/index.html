@@ -1,38 +1,310 @@
 <!doctype html>
-<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>WDP301 · Hướng dẫn test flow</title>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Sổ tay test WDP301</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Lora:wght@600;700&display=swap">
 <style>
-*{box-sizing:border-box}body{margin:0;background:#f5f6f2;color:#18342d;font:15px/1.6 system-ui,-apple-system,Segoe UI,sans-serif}button,input,select,textarea{font:inherit}button,a,select{cursor:pointer}button{border:1px solid #cfd9d0;background:white;padding:9px 15px;border-radius:8px;color:#18342d}button:hover{background:#edf4ee}a{color:#157246;text-decoration:none}a:hover{text-decoration:underline}.shell{display:grid;grid-template-columns:250px 1fr;min-height:100vh}aside{background:#14392d;color:#e7efe9;padding:30px 20px;position:sticky;top:0;height:100vh;overflow:auto}.brand{font-size:21px;font-weight:750;letter-spacing:.5px}.small{font-size:13px;color:#66796d}aside .small{color:#b9ccbf}nav{margin-top:32px;display:grid;gap:8px}nav button{text-align:left;background:transparent;border:0;color:#d8e6db;padding:12px}nav button.active{background:#2d5543;color:white}aside .foot{margin-top:32px;padding-top:20px;border-top:1px solid #476254;font-size:13px}main{padding:34px 42px;max-width:1360px;width:100%;margin:auto}h1{font-size:32px;line-height:1.25;margin:0 0 12px}h2{font-size:23px;margin:0 0 6px}h3{font-size:17px;margin:0}p{margin:8px 0 16px}.top{display:flex;align-items:start;justify-content:space-between;gap:20px}.badge{display:inline-block;border-radius:30px;padding:3px 10px;background:#e8ede3;font-size:12px;font-weight:650}.banner{background:#e9efe2;border-left:4px solid #789445;padding:15px 18px;border-radius:6px;margin:20px 0}.stats{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0}.stat{background:white;border:1px solid #dce4db;border-radius:12px;padding:14px 24px;flex:1;min-width:130px}.stat strong{display:block;font-size:26px}.progress{height:6px;background:#dee5dc;border-radius:20px;margin:16px 0}.progress div{height:100%;background:#517542;border-radius:20px}.prep{background:white;border:1px solid #dce4db;border-radius:12px;padding:20px;margin-bottom:24px}.prep summary{font-weight:700;cursor:pointer}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:15px}input,select,textarea{border:1px solid #cfd9d0;border-radius:7px;background:white;padding:8px 11px;width:100%;color:#18342d}label{font-size:13px;display:block}.tools{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0}.tools input{flex:1;min-width:210px}.tools select{width:180px}.case{background:white;border:1px solid #dce4db;border-radius:12px;padding:21px;margin-bottom:14px}.case[data-result=fail]{border-color:#dca6a2}.case[data-result=pass]{border-color:#93b69c}.casehead{display:flex;justify-content:space-between;gap:16px}.casehead .status{width:150px;flex-shrink:0}.id{color:#688161;font-size:12px;font-weight:750;letter-spacing:.7px;margin-bottom:5px}.expect{background:#f4f7f0;padding:12px 15px;border-radius:8px;margin:14px 0}.expect strong{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}.note{font-size:13px}.route{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}.empty{padding:30px;text-align:center;color:#66796d}.flowmap{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0}.flowmap span{background:#eaf0e6;border:1px solid #d2ddc9;padding:7px 10px;border-radius:7px}.warn{color:#954834}footer{margin-top:32px;font-size:12px;color:#66796d}.notice{font-size:13px;color:#954834;min-height:20px}@media(max-width:850px){.shell{display:block}aside{position:relative;height:auto;padding:16px}nav{display:flex;overflow:auto;margin-top:12px}nav button{white-space:nowrap}.foot{display:none}main{padding:23px 16px}.top{display:block}.grid{grid-template-columns:1fr}.casehead{display:block}.casehead .status{margin-top:12px}.stat{padding:10px 16px}h1{font-size:27px}}@media print{aside,.tools,.top button,.route,.prep,footer{display:none}.shell{display:block}main{padding:0}.case{break-inside:avoid}textarea{border:0}}
+/* Layout: forest sidebar with the seven test groups; the cases of one group as a working list on the right. */
+:root {
+  --bg: #f3f5f0; --surface: #ffffff; --surface-2: #edf2ea; --line: #d5dfd4;
+  --fg: #13271f; --muted: #5b6e63;
+  --forest: #022c22; --forest-fg: #e2ebe5; --forest-muted: #a6bbaf; --forest-active: #0f4636; --forest-line: #24493d;
+  --gold: #eab308; --accent: #0d5a43; --accent-soft: #e2efe7;
+  --pass: #2c7a4d; --pass-bg: #e3f2e8; --fail: #b3412c; --fail-bg: #fbe9e5; --blocked: #946200; --blocked-bg: #fbf1d6;
+  --display: 'Lora', Georgia, 'Times New Roman', serif;
+  --body: 'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b1612; --surface: #12211b; --surface-2: #192c24; --line: #284138;
+  --fg: #e3ebe6; --muted: #9bb0a4;
+  --forest: #051510; --forest-fg: #e2ebe5; --forest-muted: #98b0a3; --forest-active: #163d31; --forest-line: #1f3a31;
+  --gold: #eab308; --accent: #74cfa0; --accent-soft: #1b3a2e;
+  --pass: #6cc792; --pass-bg: #173a27; --fail: #f2917b; --fail-bg: #3d1f18; --blocked: #e6b84a; --blocked-bg: #3a2e12;
+  color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #0b1612; --surface: #12211b; --surface-2: #192c24; --line: #284138;
+  --fg: #e3ebe6; --muted: #9bb0a4;
+  --forest: #051510; --forest-fg: #e2ebe5; --forest-muted: #98b0a3; --forest-active: #163d31; --forest-line: #1f3a31;
+  --gold: #eab308; --accent: #74cfa0; --accent-soft: #1b3a2e;
+  --pass: #6cc792; --pass-bg: #173a27; --fail: #f2917b; --fail-bg: #3d1f18; --blocked: #e6b84a; --blocked-bg: #3a2e12;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 var(--body); }
+button, input, select, textarea { font: inherit; color: inherit; }
+button, select { cursor: pointer; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+button { border: 1px solid var(--line); background: var(--surface); padding: 8px 14px; border-radius: 8px; }
+button:hover { background: var(--surface-2); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 600; }
+button.danger { background: var(--fail); border-color: var(--fail); color: var(--surface); font-weight: 600; }
+input, select, textarea { border: 1px solid var(--line); border-radius: 7px; background: var(--surface); padding: 8px 11px; width: 100%; }
+label { font-size: 13px; display: block; color: var(--muted); margin-bottom: 4px; }
+.small { font-size: 13px; color: var(--muted); }
+
+.shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; }
+aside { background: var(--forest); color: var(--forest-fg); padding: 28px 18px; position: sticky; top: env(safe-area-inset-top, 0px); height: 100vh; overflow: auto; }
+.brand { font: 700 22px/1.2 var(--display); letter-spacing: .2px; }
+.brand span { color: var(--gold); }
+aside .small { color: var(--forest-muted); margin-top: 4px; }
+nav { margin-top: 26px; display: grid; gap: 4px; }
+nav button { display: flex; justify-content: space-between; gap: 10px; text-align: left; background: transparent; border: 0; color: var(--forest-fg); padding: 10px 12px; border-radius: 8px; }
+nav button:hover { background: var(--forest-active); }
+nav button.active { background: var(--forest-active); box-shadow: inset 0 0 0 1px var(--forest-line); }
+nav .count { font-size: 12px; color: var(--forest-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+nav button.active .count { color: var(--gold); }
+aside .foot { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--forest-line); font-size: 13px; color: var(--forest-muted); display: grid; gap: 8px; }
+
+main { padding: 32px 40px 48px; max-width: 1180px; width: 100%; margin: 0 auto; display: grid; gap: 22px; align-content: start; }
+.top { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.top > div { min-width: 0; }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 700 30px/1.25 var(--display); margin: 4px 0 6px; text-wrap: balance; }
+h2 { font: 700 22px/1.3 var(--display); margin: 0; text-wrap: balance; }
+h3 { font-size: 16px; font-weight: 600; margin: 0; line-height: 1.45; }
+p { margin: 0; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.flowmap { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--muted); }
+.flowmap span { background: var(--surface-2); border: 1px solid var(--line); color: var(--fg); padding: 5px 10px; border-radius: 999px; }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; display: grid; gap: 2px; }
+.stat strong { font-size: 24px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.stat span { font-size: 13px; color: var(--muted); }
+.stat.pass strong { color: var(--pass); } .stat.fail strong { color: var(--fail); } .stat.blocked strong { color: var(--blocked); }
+.progress { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+.progress div { height: 100%; width: 0; background: var(--gold); transition: width .3s; }
+.notice { font-size: 13px; color: var(--fail); }
+.notice:empty { display: none; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+.panel summary { font-weight: 600; cursor: pointer; }
+.prep-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; margin-top: 14px; }
+.prep-grid ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.fields { display: grid; gap: 12px; align-content: start; }
+
+.confirm, .report { border-color: var(--fail); display: grid; gap: 12px; }
+.report { border-color: var(--accent); }
+.report textarea { font: 13px/1.5 ui-monospace, 'Cascadia Mono', Consolas, monospace; min-height: 240px; }
+
+.group-head { display: grid; gap: 6px; }
+.banner { background: var(--accent-soft); border-radius: 8px; padding: 12px 16px; font-size: 14px; }
+.tools { display: flex; gap: 10px; flex-wrap: wrap; }
+.tools input { flex: 1 1 220px; width: auto; }
+.tools select { flex: 0 0 190px; width: auto; }
+
+#cases { display: grid; gap: 12px; }
+.case { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; gap: 12px; }
+.case[data-result="pass"] { border-color: var(--pass); }
+.case[data-result="fail"] { border-color: var(--fail); }
+.case[data-result="blocked"] { border-color: var(--blocked); }
+.casehead { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.casehead > div { min-width: 0; }
+.id { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .08em; margin-bottom: 2px; }
+.status { flex: 0 0 160px; width: 160px; font-weight: 600; }
+.status[data-v="pass"] { background: var(--pass-bg); color: var(--pass); border-color: var(--pass); }
+.status[data-v="fail"] { background: var(--fail-bg); color: var(--fail); border-color: var(--fail); }
+.status[data-v="blocked"] { background: var(--blocked-bg); color: var(--blocked); border-color: var(--blocked); }
+.route { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 14px; }
+.route:empty { display: none; }
+.expect { background: var(--surface-2); padding: 10px 14px; border-radius: 8px; }
+.expect strong { display: block; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.case textarea { font-size: 14px; }
+.empty { padding: 28px; text-align: center; color: var(--muted); }
+footer { font-size: 12px; color: var(--muted); }
+
+@media (max-width: 860px) {
+  .shell { display: block; }
+  aside { position: relative; top: 0; height: auto; padding: 16px; }
+  nav { display: flex; overflow-x: auto; margin-top: 12px; }
+  nav button { white-space: nowrap; flex: 0 0 auto; }
+  aside .foot { display: none; }
+  main { padding: 20px 16px 36px; }
+  .prep-grid { grid-template-columns: minmax(0, 1fr); }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .casehead { flex-direction: column; }
+  .status { width: 100%; flex-basis: auto; }
+  h1 { font-size: 26px; }
+}
+@media (prefers-reduced-motion: reduce) { .progress div { transition: none; } }
 </style></head><body>
-<div class="shell"><aside><div class="brand">WDP301</div><div class="small">Sổ tay test project · 11/10/2026</div><nav id="navigation"></nav><div class="foot">Chạy theo A → B → C.<br>D, E, F là flow phụ.<br>T là ca kỹ thuật.<p>Kết quả ghi ở trình duyệt này. Xuất biên bản để lưu hoặc gửi lại.</p></div></aside>
-<main><div class="top"><div><span class="badge">Hướng dẫn test riêng</span><h1>Test project theo từng flow</h1><p class="small">Biết bắt đầu ở đâu, dùng role nào và kiểm tra kết quả gì sau mỗi bước.</p></div><button id="export">↓ Xuất biên bản</button></div>
-<div class="flowmap"><span>Manager tiếp nhận</span>→<span>HLV / Vet chuẩn bị</span>→<span>Groom chăm sóc</span>→<span>HLV tập / thi đấu</span>→<span>Owner kiểm tra</span></div>
-<div class="stats" id="stats"></div><div class="progress"><div id="bar"></div></div><div id="storage-notice" class="notice" role="status"></div>
-<details class="prep" open><summary>Chuẩn bị trước khi test</summary><div class="grid"><div>
-<ol><li>Chuẩn bị 5 tài khoản đang hoạt động: Manager, HLV, Vet, Groom, Owner.</li><li>Tạo ngựa <strong>TEST Sao Mai</strong>; gán Owner / HLV / Vet / Groom, chuồng và vật tư có tồn kho.</li><li>Web và mobile trỏ cùng backend. Dùng nhiều profile hoặc đổi tài khoản ở mỗi bước.</li><li>Chọn buổi tập còn khoảng 10 phút, kiểm tra giờ/policy thật. Không đổi đồng hồ để vượt điều kiện.</li><li>Test nhánh khóa tập/archive trên ngựa khác. MongoDB cần replica set cho ghi việc/kho và tiền thưởng.</li></ol>
-<p class="small">Groom có thể dùng mobile hoặc web test tạm khi bật cờ. Offline/camera thực tế phải thử trên điện thoại.</p></div><div>
-<label for="project-url">Địa chỉ web project (để mở các màn test)</label><input id="project-url" type="url" placeholder="http://localhost:5173"><label for="session" style="margin-top:12px">Người test / phiên bản / ngựa test / môi trường</label><textarea id="session" rows="5" placeholder="Ví dụ: Duy · local · TEST Sao Mai · API local · simulator tắt"></textarea><p class="small">Chọn Đạt/Lỗi sau khi bạn thực sự thao tác. Kết quả test tự động trước đó không tự đánh dấu test tay.</p></div></div></details>
-<h2 id="group-title"></h2><p id="group-description" class="small"></p><div id="group-note" class="banner"></div>
-<div class="tools"><input id="search" type="search" aria-label="Tìm bước test" placeholder="Tìm bước, role, lỗi hoặc màn hình…"><select id="filter" aria-label="Lọc kết quả"><option value="all">Mọi kết quả</option><option value="untested">Chưa test</option><option value="pass">Đạt</option><option value="fail">Lỗi</option><option value="blocked">Chưa chạy được</option></select><button id="reset">Phiên test mới</button></div>
-<section id="cases"></section><footer>Trang độc lập với ứng dụng project. Hướng dẫn đối chiếu flow hiện tại và checklist trong repo; không tự thực hiện thao tác trên project.</footer>
-</main></div>
-<script id="flow-data" type="application/json">{"groups":[{"id":"A","title":"A · Chuẩn bị ngựa","description":"Flow chính · Manager → HLV → Groom → Vet → HLV","note":"Dùng cùng một ngựa test xuyên các bước. Khám và khẩu phần có thể chuẩn bị song song. Giải mục tiêu là tùy chọn nếu chỉ test huấn luyện."},{"id":"B","title":"B · Tập & đánh giá","description":"Flow chính · HLV → Groom → Owner","note":"Có khám và mức tập phù hợp trước khi chạy. Để test chăm sóc sau tập, chọn bài nặng và có Groom phụ trách. Nếu simulator tự kết thúc, đó là B9; B4 phải bấm kết thúc thủ công trên buổi khác."},{"id":"C","title":"C · Thi đấu & tiền thưởng","description":"Flow chính · HLV → Vet/Groom → Owner → Manager","note":"Tách hai giải test: giải tương lai cho trial/quyết định, giải ngày hôm nay cho kết quả/tiền thưởng. Không nhập kết quả giải tương lai hoặc đã rút; không đổi đồng hồ để giả một lượt thi đấu hoàn chỉnh."},{"id":"D","title":"D · Kho & offline","description":"Flow phụ · Groom (app mobile) → Manager","note":"Duyệt đề xuất chưa tăng tồn kho: chỉ Nhận hàng mới cộng kho. App Groom chạy được trên trình duyệt (npm --prefix mobile run web); các ca tắt mạng, outbox và camera nên thử trên điện thoại."},{"id":"E","title":"E · Chặn & hồi phục","description":"Flow phụ · HLV / Vet / Groom / Manager","note":"Dùng ngựa test riêng cho nhánh sốt, khóa tập và archive. Hệ thống từ chối đúng điều kiện là kết quả Đạt của ca chặn, không phải lỗi project."},{"id":"F","title":"F · Tài khoản & quyền","description":"Flow phụ · Đăng nhập / quyền / thông báo","note":"Đổi tài khoản đúng role ở mỗi bước. Kiểm tra cả màn hình và dữ liệu lưu sau refresh; cùng một ID không được giúp role ngoài phạm vi truy cập."},{"id":"T","title":"T · Retry & lỗi DB","description":"Ca kỹ thuật · API / database test riêng","note":"T1–T3 đã có regression test tự động đạt trong repo. Nếu thử lại thủ công, dùng DB riêng và công cụ API; không tạo lỗi DB trên môi trường demo chung. T4 vẫn cần kiểm tra retry sự cố."}],"cases":[{"id":"A1","action":"Manager tạo ngựa, gán Owner/HLV/Vet","expected":"Đúng người phụ trách; checklist còn thiếu chuồng/khẩu phần/khám/kế hoạch/lịch","routes":[{"label":"Manager · Ngựa","path":"/horses"}]},{"id":"A2","action":"Manager xếp chuồng và Groom","expected":"Checklist có chuồng/Groom; Groom thấy phần được giao","routes":[{"label":"Manager · Chuồng & Groom","path":"/admin/stables"}]},{"id":"A3","action":"HLV mở /stable/tasks, tab khẩu phần; tạo bữa có mặt hàng kho và giờ phù hợp hôm nay","expected":"Có khẩu phần và việc cho ăn cho Groom; tạo bữa trùng bị từ chối","routes":[{"label":"HLV · Khẩu phần","path":"/stable/tasks"}]},{"id":"A4","action":"Groom ghi nhận bữa trong khung giờ","expected":"Lưu giờ hoàn thành; mặt hàng trừ đúng lượng; refresh vẫn thấy kết quả","routes":[]},{"id":"A5","action":"HLV gửi yêu cầu khám; Vet mở yêu cầu và lập hồ sơ, chọn kết luận/mức vận động phù hợp","expected":"Có hồ sơ khám, yêu cầu được xử lý theo flow; checklist nhận lần khám","routes":[{"label":"HLV · Ngựa","path":"/horses"},{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"}]},{"id":"A6","action":"HLV đăng ký giải tương lai, cự ly 1600 m, trường đua/mặt sân","expected":"Lượt registered, chưa confirmed; sai ngày/cự ly bị từ chối","routes":[{"label":"HLV · Giải đua","path":"/races"}]},{"id":"A7","action":"HLV bấm Lập kế hoạch trên dòng giải, hoàn thành wizard","expected":"Ngựa/giải được điền sẵn, kế hoạch active; chưa sinh buổi cụ thể","routes":[{"label":"HLV · Giải đua","path":"/races"},{"label":"HLV · Kế hoạch","path":"/training/plans"}]},{"id":"A8","action":"HLV bấm Sinh lịch tuần đầu tiên","expected":"Có các buổi scheduled theo tuần; không xếp giờ đã qua/ngày đua/slot trùng","routes":[{"label":"HLV · Kế hoạch","path":"/training/plans"}]},{"id":"A9","action":"HLV sinh lại cùng tuần, thử tạo kế hoạch active thứ hai cho cùng ngựa","expected":"Không sinh trùng slot; không cho hai kế hoạch active","routes":[{"label":"HLV · Kế hoạch","path":"/training/plans"}]},{"id":"A10","action":"Owner mở ngựa test và Trainer/Vet mở danh sách","expected":"Owner/HLV/Vet thấy theo phạm vi; tài khoản ngoài phạm vi không đọc được ngựa","routes":[{"label":"Owner · Ngựa của tôi","path":"/horses"}]},{"id":"B1","action":"HLV chọn buổi mới xếp, chưa bấm Bắt đầu","expected":"Scheduled, chưa có giờ bắt đầu thật; chưa chạy cảm biến","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"B2","action":"HLV Kiểm tra sẵn sàng, xác nhận đã kiểm tra; xử lý cảnh báo/lý do nếu có","expected":"Đủ điều kiện → ready; lưu kết quả kiểm tra","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"B3","action":"HLV Bắt đầu","expected":"In progress; giờ bắt đầu do server ghi; board realtime có số khi simulator bật","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"B4","action":"HLV Kết thúc trước simulator tự xong","expected":"Completed; giữ số đo, giờ kết thúc thật, kết quả đối chiếu mục tiêu","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"B5","action":"HLV Đánh giá ngay / Đánh giá, nhập điểm/nhận xét/link video","expected":"Evaluated; Owner thấy nhận xét và link nếu có","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"},{"label":"Owner · Đánh giá HLV","path":"/owner/evaluations"}]},{"id":"B6","action":"HLV sửa đánh giá","expected":"Nội dung mới hiển thị; audit ghi thay đổi","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"B7","action":"Groom mở Việc sau buổi nặng","expected":"Có ngâm/chườm chân + tắm, giờ theo policy sau kết thúc; làm trong khung được phép","routes":[]},{"id":"B8","action":"Lặp lại end bằng API hoặc yêu cầu đồng thời trên DB test","expected":"Chỉ một lần hoàn thành và sinh chăm sóc; lần còn lại bị từ chối","routes":[]},{"id":"B9","action":"Chạy buổi khác, để simulator tự hoàn thành","expected":"Completed tự động; giờ thật tách thời gian vận động mô phỏng","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"C1","action":"HLV tạo trial tay, chọn giải tương lai của ngựa; hoặc sinh tuần có ngày đua −8","expected":"Trial gắn đúng raceEntry; trước ngày đua; cự ly theo giải","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"},{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C2","action":"HLV pre-check, start, end, đánh giá trial","expected":"Có số đo/outcome; dòng giải hiển thị trial gắn đúng lượt","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"},{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C3","action":"HLV Quyết định dự giải: tham gia, chọn bằng chứng và lý do nếu cần","expected":"Confirmed, lưu người/thời điểm/trial/lý do; Owner nhận thông báo","routes":[{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C4","action":"Trên lượt khác chưa có trial, xác nhận không lý do rồi có lý do ngoại lệ","expected":"Thiếu lý do bị từ chối; ngoại lệ có lý do chỉ được chấp nhận khi y tế cho phép","routes":[{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C5","action":"Vet/Groom ghi thay đổi sức khỏe/sự cố sau confirmed","expected":"ReviewNeeded hiển thị; HLV được báo, không tự coi là quyết định rút","routes":[{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"},{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C6","action":"HLV rút lượt cần xem lại và ghi lý do","expected":"Withdrawn, lưu quyết định; không nhập kết quả cho lượt đã rút","routes":[{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C7","action":"HLV nhập kết quả cho fixture ngày hôm nay, có thưởng","expected":"Completed; thành tích ngựa cập nhật; có khoản race_prize liên kết","routes":[{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C8","action":"Owner mở Lịch Cuộc Đua, Đánh giá HLV, tài chính và thẻ tóm tắt ngựa","expected":"Bản ghi chi tiết đúng; tiền thưởng vào thu; chỉ thấy ngựa mình","routes":[{"label":"Owner · Giải","path":"/owner/races"},{"label":"Owner · Tài chính","path":"/finance"}]},{"id":"C9","action":"HLV sửa tiền thưởng qua kết quả, Manager thử sửa/xóa khoản liên kết ở Finance","expected":"Sửa kết quả cập nhật khoản liên kết; sửa/xóa trực tiếp bị 409","routes":[{"label":"HLV · Giải đua","path":"/races"},{"label":"Manager · Tài chính","path":"/finance"}]},{"id":"C10","action":"Manager xem báo cáo, nhật ký và tải CSV","expected":"Có dữ liệu tương ứng; CSV mở tiếng Việt; không coi định giá/KPI giả Owner là kết quả test","routes":[{"label":"Manager · Báo cáo","path":"/admin/reports"},{"label":"Manager · Nhật ký","path":"/admin/audit-logs"}]},{"id":"D1","action":"Groom đề xuất bổ sung vật tư, Manager duyệt","expected":"Đề xuất approved/chờ hàng; tồn kho chưa tăng","routes":[{"label":"Manager · Vật tư","path":"/inventory"}]},{"id":"D2","action":"Manager Nhận hàng trên đề xuất","expected":"Tăng đúng lượng; đề xuất received, lưu người/giờ/lượng nhận","routes":[{"label":"Manager · Vật tư","path":"/inventory"}]},{"id":"D3","action":"Gửi lại receive cùng requestId, kể cả hai yêu cầu đồng thời","expected":"Chỉ nhận một lần; lần lặp bị từ chối","routes":[{"label":"Manager · Vật tư","path":"/inventory"}]},{"id":"D4","action":"Groom mở việc đã tải, tắt mạng, hoàn thành trong khung giờ","expected":"Hiện chờ đồng bộ; outbox giữ thao tác và giờ bấm","routes":[{"label":"Manager · Vật tư","path":"/inventory"}]},{"id":"D5","action":"Đóng/mở app khi còn offline rồi bật mạng","expected":"Hàng đợi còn; đồng bộ, server giữ giờ thực hiện, trừ kho một lần","routes":[]},{"id":"D6","action":"Gửi lại complete cùng clientOpId; thử record muộn trên DB test","expected":"Không áp dụng lại; receivedAt tách performedAt; quá 10 phút ghi recordedLate","routes":[]},{"id":"D7","action":"Offline not-done kèm lý do, rồi đồng bộ","expected":"Server ghi không làm được và lý do; không coi đã thực hiện","routes":[]},{"id":"D8","action":"Offline báo sự cố có ảnh rồi bật mạng, kiểm tra trên thiết bị","expected":"Ảnh gửi/đọc được hoặc lỗi rõ ràng; ca này chưa được unit outbox chứng minh","routes":[]},{"id":"E1","action":"Pre-check ngoài cửa hoặc chưa xác nhận trực tiếp kiểm tra ngựa","expected":"Từ chối, không chuyển ready","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E2","action":"Nhập thân nhiệt từ ngưỡng sốt trong pre-check","expected":"Blocked, lưu thân nhiệt, gửi yêu cầu khám ưu tiên cao","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"},{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"}]},{"id":"E3","action":"Bài không nhẹ sát bữa thức ăn tinh dưới mốc cứng","expected":"Blocked; ghi lý do không bỏ qua được chặn cứng","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E4","action":"Pre-check có cảnh báo vàng; thử không lý do rồi có lý do","expected":"Thiếu lý do bị từ chối; có lý do xử lý theo điều kiện thật","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E5","action":"Ready rồi đổi giờ","expected":"Scheduled, pre-check cũ mất hiệu lực; phải kiểm tra lại","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E6","action":"Không pre-check/start kịp, đợi watcher; bấm Xếp lại","expected":"Missed; tạo buổi scheduled mới, giữ bản ghi cũ","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E7","action":"Đang chạy, Dừng giữa chừng nhóm health/injury","expected":"Aborted, giữ metrics/lý do; yêu cầu khám; không đánh giá như completed","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"},{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"}]},{"id":"E8","action":"Vet khóa tập khi có booking và run đang chạy","expected":"Booking thuộc diện bị hủy → cancelled; run → aborted, giữ số đo","routes":[{"label":"Vet · Phác đồ","path":"/veterinarian/treatments"},{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E9","action":"Kết thúc điều trị đang hạn chế, chưa khám trở lại","expected":"Clearance vẫn hạn chế/chờ đánh giá; không tự cho tập lại","routes":[{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"}]},{"id":"E10","action":"Vet khám trở lại, nâng clearedLevel; HLV xem/sinh lịch phù hợp","expected":"Clearance mới áp dụng cùng hạn chế khác; booking đã hủy không tự phục hồi","routes":[{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"},{"label":"HLV · Kế hoạch","path":"/training/plans"}]},{"id":"E11","action":"Policy chiều bật, thử trial chiều và walk/canter chiều","expected":"Trial bị từ chối, bài cho phép được xét tiếp các điều kiện khác","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E12","action":"Thiếu kho khi Groom tick liều/bữa; thử liều đã quá khung giờ","expected":"Từ chối, có lý do; không hoàn thành giả hoặc âm kho","routes":[]},{"id":"E13","action":"Manager ngừng quản lý ngựa có việc/run/giải mở","expected":"Đóng phần đang mở, giữ lịch sử; Trainer/Vet không còn danh sách làm việc","routes":[{"label":"Manager · Ngựa","path":"/horses"}]},{"id":"E14","action":"Gửi performedAt quá 24 giờ hoặc tương lai quá 2 phút","expected":"Từ chối metadata thời gian; hiện lỗi đồng bộ để xử lý","routes":[]},{"id":"T1","action":"Hai request ghi kết quả/tiền thưởng lần đầu đồng thời: số FinancialRecord và liên kết cuối","expected":"Chỉ một khoản thưởng liên kết raceEntry, một thành tích và một thông báo cho cùng kết quả; không nhân tiền thưởng.","routes":[]},{"id":"T2","action":"Lỗi sau claim completed, khi trừ kho hoặc gửi cảnh báo: task và kho còn nhất quán không","expected":"Lỗi DB rollback cả công việc và kho; retry không trừ hai lần. Lỗi thông báo sau commit vẫn trả thành công cho thao tác đã lưu.","routes":[]},{"id":"T3","action":"Hai giải cùng tên: sửa kết quả có mất/trùng thành tích không","expected":"Thành tích liên kết theo raceEntry; hai lượt cùng tên giữ riêng. Sửa một lượt không làm mất thành tích lượt kia.","routes":[]},{"id":"T4","action":"Mất phản hồi khi gửi incident: gửi lại có tạo thông báo/ảnh lặp không","expected":"Ghi nhận ảnh/thông báo có lặp hoặc không; API incident hiện không cam kết idempotency tương đương complete/not-done.","routes":[]},{"id":"F1","action":"Đăng ký tài khoản mới → Manager duyệt → đăng nhập","expected":"Trước duyệt chưa đăng nhập được; sau duyệt đúng role/trạng thái hoạt động.","routes":[{"label":"Đăng ký","path":"/register"},{"label":"Manager · Tài khoản","path":"/admin/users"}]},{"id":"F2","action":"Đăng nhập sai mật khẩu, rồi đăng nhập đúng; đăng xuất và đổi role","expected":"Sai thông tin có lỗi rõ ràng; đăng nhập đúng về dashboard đúng role; đăng xuất không giữ quyền tài khoản cũ.","routes":[{"label":"Đăng nhập","path":"/login"}]},{"id":"F3","action":"Owner / Groom thử mở trang quản lý nhân sự hoặc tài chính Manager","expected":"Trang ngoài quyền bị chặn. Groom không có quyền giao việc, duyệt/nhập kho hoặc sửa y lệnh.","routes":[{"label":"Thử trang Manager","path":"/admin/users"}]},{"id":"F4","action":"Tài khoản HLV / Vet / Owner / Groom khác thử đọc ngựa hoặc việc không được giao","expected":"Không thấy trong danh sách hoặc bị từ chối truy cập; không lộ lịch sử ngoài phạm vi.","routes":[{"label":"Owner · Ngựa của tôi","path":"/horses"}]},{"id":"F5","action":"Groom báo sự cố kèm ảnh → Vet tiếp nhận/xử lý → Groom xem phản hồi","expected":"Ảnh mở được; Vet/HLV nhận thông báo; trạng thái sự cố và phản hồi cập nhật, refresh vẫn còn.","routes":[{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"}]},{"id":"F6","action":"Groom báo không làm được kèm lý do trên app; HLV xem lại ở web","expected":"Lưu đúng skipped/lý do hoặc completed/quan sát; app và web cùng backend thấy cùng bản ghi sau tải lại.","routes":[{"label":"HLV · Việc chăm sóc","path":"/stable/tasks"}]},{"id":"F7","action":"Mở chuông thông báo → đọc một mục → đánh dấu đã đọc → refresh","expected":"Đếm chưa đọc thay đổi theo trạng thái thật; thông báo đúng người/role; mở chuông không tự đọc hết."},{"id":"F8","action":"Tài khoản Groom đăng nhập web quản lý","expected":"Chỉ thấy hướng dẫn mở app mobile (điện thoại hoặc npm --prefix mobile run web); không có màn hình Groom trên web.","routes":[{"label":"Groom · Trang chủ","path":"/"}]}]}</script>
+<div class="shell">
+<aside>
+  <div class="brand">WDP301 <span>·</span> Test</div>
+  <div class="small">Sổ tay test theo flow · cập nhật 12/10/2026</div>
+  <nav id="navigation" aria-label="Nhóm bước test"></nav>
+  <div class="foot">
+    <span>Chạy theo A → B → C. D, E, F là flow phụ; T là ca kỹ thuật.</span>
+    <span>Kết quả và ghi chú lưu riêng trong trình duyệt này. Mở "Biên bản" để sao chép và gửi lại.</span>
+  </div>
+</aside>
+<main>
+  <div class="top">
+    <div>
+      <div class="eyebrow">Racehorse TMS · test tay</div>
+      <h1>Test project theo từng flow</h1>
+      <p class="small">Mỗi bước ghi rõ dùng role nào, mở màn hình nào và cần thấy kết quả gì.</p>
+    </div>
+    <div class="actions"><button id="export" class="primary" type="button">Biên bản</button><button id="reset" type="button">Phiên test mới</button></div>
+  </div>
+
+  <div class="flowmap"><span>Manager tiếp nhận</span>→<span>HLV · Vet chuẩn bị</span>→<span>Groom chăm sóc (app)</span>→<span>HLV tập · thi đấu</span>→<span>Owner kiểm tra</span></div>
+
+  <section id="confirm" class="panel confirm" hidden aria-live="polite">
+    <strong>Xóa toàn bộ kết quả và ghi chú đang lưu trong trình duyệt này?</strong>
+    <p class="small">Muốn giữ bản cũ thì mở "Biên bản" và sao chép trước.</p>
+    <div class="actions"><button id="confirm-yes" class="danger" type="button">Xóa và bắt đầu lại</button><button id="confirm-no" type="button">Giữ lại</button></div>
+  </section>
+
+  <section id="report" class="panel report" hidden>
+    <strong>Biên bản test (Markdown)</strong>
+    <textarea id="report-text" readonly aria-label="Nội dung biên bản"></textarea>
+    <div class="actions"><button id="report-copy" class="primary" type="button">Sao chép</button><button id="report-close" type="button">Đóng</button><span id="report-msg" class="small" role="status"></span></div>
+  </section>
+
+  <div class="stats" id="stats"></div>
+  <div class="progress" aria-hidden="true"><div id="bar"></div></div>
+  <div id="storage-notice" class="notice" role="status"></div>
+
+  <details class="panel" open>
+    <summary>Chuẩn bị trước khi test</summary>
+    <div class="prep-grid">
+      <ol>
+        <li>Chuẩn bị 5 tài khoản đang hoạt động: Manager, HLV, Vet, Groom, Owner.</li>
+        <li>Tạo ngựa <strong>TEST Sao Mai</strong>; gán Owner, HLV, Vet, Groom, chuồng và vật tư có tồn kho.</li>
+        <li>Web quản lý và app Groom trỏ cùng backend. Dùng nhiều profile trình duyệt hoặc đổi tài khoản ở mỗi bước.</li>
+        <li>Groom dùng app mobile: điện thoại (Expo Go) hoặc trình duyệt (<code>npm --prefix mobile run web</code>). Offline và camera nên thử trên điện thoại.</li>
+        <li>Chọn buổi tập còn khoảng 10 phút, theo giờ và quy định CLB thật. Không đổi đồng hồ để vượt điều kiện.</li>
+        <li>Nhánh khóa tập và ngừng quản lý: dùng một ngựa khác.</li>
+      </ol>
+      <div class="fields">
+        <div><label for="project-url">Địa chỉ web quản lý (để mở nhanh từng màn hình)</label><input id="project-url" type="url" placeholder="http://localhost:5173"><p class="small">localhost:5173 khi chạy web trên máy, hoặc link Vercel của nhóm.</p></div>
+        <div><label for="session">Người test · phiên bản · ngựa test · môi trường</label><textarea id="session" rows="4" placeholder="Ví dụ: Duy · main 7aacd14 · TEST Sao Mai · backend Render"></textarea></div>
+        <p class="small">Chỉ chọn Đạt / Lỗi sau khi đã thực sự thao tác. Test tự động không thay cho test tay.</p>
+      </div>
+    </div>
+  </details>
+
+  <div class="group-head"><h2 id="group-title"></h2><p id="group-description" class="small"></p></div>
+  <div id="group-note" class="banner"></div>
+  <div class="tools"><input id="search" type="search" aria-label="Tìm bước test" placeholder="Tìm bước, role, lỗi hoặc màn hình…"><select id="filter" aria-label="Lọc theo kết quả"><option value="all">Mọi kết quả</option><option value="untested">Chưa test</option><option value="pass">Đạt</option><option value="fail">Lỗi</option><option value="blocked">Chưa chạy được</option></select></div>
+  <section id="cases"></section>
+  <footer>Trang độc lập với ứng dụng: chỉ hướng dẫn và ghi kết quả, không tự thao tác trên project. Nguồn: docs/TEST_CHECKLIST.md và tools/test-flow-guide/build.cjs trong repo.</footer>
+</main>
+</div>
+<script id="flow-data" type="application/json">{"groups":[{"id":"A","title":"A · Chuẩn bị ngựa","description":"Flow chính · Manager → HLV → Groom → Vet → HLV","note":"Dùng cùng một ngựa test xuyên các bước. Khám và khẩu phần có thể chuẩn bị song song. Giải mục tiêu là tùy chọn nếu chỉ test huấn luyện."},{"id":"B","title":"B · Tập & đánh giá","description":"Flow chính · HLV → Groom → Owner","note":"Có khám và mức tập phù hợp trước khi chạy. Để test chăm sóc sau tập, chọn bài nặng và có Groom phụ trách. Nếu simulator tự kết thúc, đó là B9; B4 phải bấm kết thúc thủ công trên buổi khác."},{"id":"C","title":"C · Thi đấu & tiền thưởng","description":"Flow chính · HLV → Vet/Groom → Owner → Manager","note":"Tách hai giải test: giải tương lai cho trial/quyết định, giải ngày hôm nay cho kết quả/tiền thưởng. Không nhập kết quả giải tương lai hoặc đã rút; không đổi đồng hồ để giả một lượt thi đấu hoàn chỉnh."},{"id":"D","title":"D · Kho & offline","description":"Flow phụ · Groom (app mobile) → Manager","note":"Duyệt đề xuất chưa tăng tồn kho: chỉ Nhận hàng mới cộng kho. App Groom chạy được trên trình duyệt (npm --prefix mobile run web); các ca tắt mạng, outbox và camera nên thử trên điện thoại."},{"id":"E","title":"E · Chặn & hồi phục","description":"Flow phụ · HLV / Vet / Groom / Manager","note":"Dùng ngựa test riêng cho nhánh sốt, khóa tập và archive. Hệ thống từ chối đúng điều kiện là kết quả Đạt của ca chặn, không phải lỗi project."},{"id":"F","title":"F · Tài khoản & quyền","description":"Flow phụ · Đăng nhập / quyền / thông báo","note":"Đổi tài khoản đúng role ở mỗi bước. Kiểm tra cả màn hình và dữ liệu lưu sau refresh; cùng một ID không được giúp role ngoài phạm vi truy cập."},{"id":"T","title":"T · Retry & lỗi DB","description":"Ca kỹ thuật · API / database test riêng","note":"T1–T3 đã có regression test tự động đạt trong repo. Nếu thử lại thủ công, dùng DB riêng và công cụ API; không tạo lỗi DB trên môi trường demo chung. T4 vẫn cần kiểm tra retry sự cố."}],"cases":[{"id":"A1","action":"Manager tạo ngựa, gán Owner/HLV/Vet","expected":"Đúng người phụ trách; checklist còn thiếu chuồng/khẩu phần/khám/kế hoạch/lịch","routes":[{"label":"Manager · Ngựa","path":"/horses"}]},{"id":"A2","action":"Manager xếp chuồng và Groom","expected":"Checklist có chuồng/Groom; Groom thấy phần được giao","routes":[{"label":"Manager · Chuồng & Groom","path":"/admin/stables"}]},{"id":"A3","action":"HLV mở /stable/tasks, tab khẩu phần; tạo bữa có mặt hàng kho và giờ phù hợp hôm nay","expected":"Có khẩu phần và việc cho ăn cho Groom; tạo bữa trùng bị từ chối","routes":[{"label":"HLV · Khẩu phần","path":"/stable/tasks"}]},{"id":"A4","action":"Groom ghi nhận bữa trong khung giờ","expected":"Lưu giờ hoàn thành; mặt hàng trừ đúng lượng; refresh vẫn thấy kết quả","routes":[]},{"id":"A5","action":"HLV gửi yêu cầu khám; Vet mở yêu cầu và lập hồ sơ, chọn kết luận/mức vận động phù hợp","expected":"Có hồ sơ khám, yêu cầu được xử lý theo flow; checklist nhận lần khám","routes":[{"label":"HLV · Ngựa","path":"/horses"},{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"}]},{"id":"A6","action":"HLV đăng ký giải tương lai, cự ly 1600 m, trường đua/mặt sân","expected":"Lượt registered, chưa confirmed; sai ngày/cự ly bị từ chối","routes":[{"label":"HLV · Giải đua","path":"/races"}]},{"id":"A7","action":"HLV bấm Lập kế hoạch trên dòng giải, hoàn thành wizard","expected":"Ngựa/giải được điền sẵn, kế hoạch active; chưa sinh buổi cụ thể","routes":[{"label":"HLV · Giải đua","path":"/races"},{"label":"HLV · Kế hoạch","path":"/training/plans"}]},{"id":"A8","action":"HLV bấm Sinh lịch tuần đầu tiên","expected":"Có các buổi scheduled theo tuần; không xếp giờ đã qua/ngày đua/slot trùng","routes":[{"label":"HLV · Kế hoạch","path":"/training/plans"}]},{"id":"A9","action":"HLV sinh lại cùng tuần, thử tạo kế hoạch active thứ hai cho cùng ngựa","expected":"Không sinh trùng slot; không cho hai kế hoạch active","routes":[{"label":"HLV · Kế hoạch","path":"/training/plans"}]},{"id":"A10","action":"Owner mở ngựa test và Trainer/Vet mở danh sách","expected":"Owner/HLV/Vet thấy theo phạm vi; tài khoản ngoài phạm vi không đọc được ngựa","routes":[{"label":"Owner · Ngựa của tôi","path":"/horses"}]},{"id":"B1","action":"HLV chọn buổi mới xếp, chưa bấm Bắt đầu","expected":"Scheduled, chưa có giờ bắt đầu thật; chưa chạy cảm biến","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"B2","action":"HLV Kiểm tra sẵn sàng, xác nhận đã kiểm tra; xử lý cảnh báo/lý do nếu có","expected":"Đủ điều kiện → ready; lưu kết quả kiểm tra","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"B3","action":"HLV Bắt đầu","expected":"In progress; giờ bắt đầu do server ghi; board realtime có số khi simulator bật","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"B4","action":"HLV Kết thúc trước simulator tự xong","expected":"Completed; giữ số đo, giờ kết thúc thật, kết quả đối chiếu mục tiêu","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"B5","action":"HLV Đánh giá ngay / Đánh giá, nhập điểm/nhận xét/link video","expected":"Evaluated; Owner thấy nhận xét và link nếu có","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"},{"label":"Owner · Đánh giá HLV","path":"/owner/evaluations"}]},{"id":"B6","action":"HLV sửa đánh giá","expected":"Nội dung mới hiển thị; audit ghi thay đổi","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"B7","action":"Groom mở Việc sau buổi nặng","expected":"Có ngâm/chườm chân + tắm, giờ theo policy sau kết thúc; làm trong khung được phép","routes":[]},{"id":"B8","action":"Lặp lại end bằng API hoặc yêu cầu đồng thời trên DB test","expected":"Chỉ một lần hoàn thành và sinh chăm sóc; lần còn lại bị từ chối","routes":[]},{"id":"B9","action":"Chạy buổi khác, để simulator tự hoàn thành","expected":"Completed tự động; giờ thật tách thời gian vận động mô phỏng","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"C1","action":"HLV tạo trial tay, chọn giải tương lai của ngựa; hoặc sinh tuần có ngày đua −8","expected":"Trial gắn đúng raceEntry; trước ngày đua; cự ly theo giải","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"},{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C2","action":"HLV pre-check, start, end, đánh giá trial","expected":"Có số đo/outcome; dòng giải hiển thị trial gắn đúng lượt","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"},{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C3","action":"HLV Quyết định dự giải: tham gia, chọn bằng chứng và lý do nếu cần","expected":"Confirmed, lưu người/thời điểm/trial/lý do; Owner nhận thông báo","routes":[{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C4","action":"Trên lượt khác chưa có trial, xác nhận không lý do rồi có lý do ngoại lệ","expected":"Thiếu lý do bị từ chối; ngoại lệ có lý do chỉ được chấp nhận khi y tế cho phép","routes":[{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C5","action":"Vet/Groom ghi thay đổi sức khỏe/sự cố sau confirmed","expected":"ReviewNeeded hiển thị; HLV được báo, không tự coi là quyết định rút","routes":[{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"},{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C6","action":"HLV rút lượt cần xem lại và ghi lý do","expected":"Withdrawn, lưu quyết định; không nhập kết quả cho lượt đã rút","routes":[{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C7","action":"HLV nhập kết quả cho fixture ngày hôm nay, có thưởng","expected":"Completed; thành tích ngựa cập nhật; có khoản race_prize liên kết","routes":[{"label":"HLV · Giải đua","path":"/races"}]},{"id":"C8","action":"Owner mở Lịch Cuộc Đua, Đánh giá HLV, tài chính và thẻ tóm tắt ngựa","expected":"Bản ghi chi tiết đúng; tiền thưởng vào thu; chỉ thấy ngựa mình","routes":[{"label":"Owner · Giải","path":"/owner/races"},{"label":"Owner · Tài chính","path":"/finance"}]},{"id":"C9","action":"HLV sửa tiền thưởng qua kết quả, Manager thử sửa/xóa khoản liên kết ở Finance","expected":"Sửa kết quả cập nhật khoản liên kết; sửa/xóa trực tiếp bị 409","routes":[{"label":"HLV · Giải đua","path":"/races"},{"label":"Manager · Tài chính","path":"/finance"}]},{"id":"C10","action":"Manager xem báo cáo, nhật ký và tải CSV","expected":"Có dữ liệu tương ứng; CSV mở tiếng Việt; không coi định giá/KPI giả Owner là kết quả test","routes":[{"label":"Manager · Báo cáo","path":"/admin/reports"},{"label":"Manager · Nhật ký","path":"/admin/audit-logs"}]},{"id":"D1","action":"Groom đề xuất bổ sung vật tư, Manager duyệt","expected":"Đề xuất approved/chờ hàng; tồn kho chưa tăng","routes":[{"label":"Manager · Vật tư","path":"/inventory"}]},{"id":"D2","action":"Manager Nhận hàng trên đề xuất","expected":"Tăng đúng lượng; đề xuất received, lưu người/giờ/lượng nhận","routes":[{"label":"Manager · Vật tư","path":"/inventory"}]},{"id":"D3","action":"Gửi lại receive cùng requestId, kể cả hai yêu cầu đồng thời","expected":"Chỉ nhận một lần; lần lặp bị từ chối","routes":[{"label":"Manager · Vật tư","path":"/inventory"}]},{"id":"D4","action":"Groom mở việc đã tải, tắt mạng, hoàn thành trong khung giờ","expected":"Hiện chờ đồng bộ; outbox giữ thao tác và giờ bấm","routes":[]},{"id":"D5","action":"Đóng/mở app khi còn offline rồi bật mạng","expected":"Hàng đợi còn; đồng bộ, server giữ giờ thực hiện, trừ kho một lần","routes":[]},{"id":"D6","action":"Gửi lại complete cùng clientOpId; thử record muộn trên DB test","expected":"Không áp dụng lại; receivedAt tách performedAt; quá 10 phút ghi recordedLate","routes":[]},{"id":"D7","action":"Offline not-done kèm lý do, rồi đồng bộ","expected":"Server ghi không làm được và lý do; không coi đã thực hiện","routes":[]},{"id":"D8","action":"Offline báo sự cố có ảnh rồi bật mạng, kiểm tra trên thiết bị","expected":"Ảnh gửi/đọc được hoặc lỗi rõ ràng; ca này chưa được unit outbox chứng minh","routes":[]},{"id":"E1","action":"Pre-check ngoài cửa hoặc chưa xác nhận trực tiếp kiểm tra ngựa","expected":"Từ chối, không chuyển ready","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E2","action":"Nhập thân nhiệt từ ngưỡng sốt trong pre-check","expected":"Blocked, lưu thân nhiệt, gửi yêu cầu khám ưu tiên cao","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"},{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"}]},{"id":"E3","action":"Bài không nhẹ sát bữa thức ăn tinh dưới mốc cứng","expected":"Blocked; ghi lý do không bỏ qua được chặn cứng","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E4","action":"Pre-check có cảnh báo vàng; thử không lý do rồi có lý do","expected":"Thiếu lý do bị từ chối; có lý do xử lý theo điều kiện thật","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E5","action":"Ready rồi đổi giờ","expected":"Scheduled, pre-check cũ mất hiệu lực; phải kiểm tra lại","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E6","action":"Không pre-check/start kịp, đợi watcher; bấm Xếp lại","expected":"Missed; tạo buổi scheduled mới, giữ bản ghi cũ","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E7","action":"Đang chạy, Dừng giữa chừng nhóm health/injury","expected":"Aborted, giữ metrics/lý do; yêu cầu khám; không đánh giá như completed","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"},{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"}]},{"id":"E8","action":"Vet khóa tập khi có booking và run đang chạy","expected":"Booking thuộc diện bị hủy → cancelled; run → aborted, giữ số đo","routes":[{"label":"Vet · Phác đồ","path":"/veterinarian/treatments"},{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E9","action":"Kết thúc điều trị đang hạn chế, chưa khám trở lại","expected":"Clearance vẫn hạn chế/chờ đánh giá; không tự cho tập lại","routes":[{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"}]},{"id":"E10","action":"Vet khám trở lại, nâng clearedLevel; HLV xem/sinh lịch phù hợp","expected":"Clearance mới áp dụng cùng hạn chế khác; booking đã hủy không tự phục hồi","routes":[{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"},{"label":"HLV · Kế hoạch","path":"/training/plans"}]},{"id":"E11","action":"Policy chiều bật, thử trial chiều và walk/canter chiều","expected":"Trial bị từ chối, bài cho phép được xét tiếp các điều kiện khác","routes":[{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"E12","action":"Thiếu kho khi Groom tick liều/bữa; thử liều đã quá khung giờ","expected":"Từ chối, có lý do; không hoàn thành giả hoặc âm kho","routes":[]},{"id":"E13","action":"Manager ngừng quản lý ngựa có việc/run/giải mở","expected":"Đóng phần đang mở, giữ lịch sử; Trainer/Vet không còn danh sách làm việc","routes":[{"label":"Manager · Ngựa","path":"/horses"}]},{"id":"E14","action":"Gửi performedAt quá 24 giờ hoặc tương lai quá 2 phút","expected":"Từ chối metadata thời gian; hiện lỗi đồng bộ để xử lý","routes":[]},{"id":"T1","action":"Hai request ghi kết quả/tiền thưởng lần đầu đồng thời: số FinancialRecord và liên kết cuối","expected":"Chỉ một khoản thưởng liên kết raceEntry, một thành tích và một thông báo cho cùng kết quả; không nhân tiền thưởng.","routes":[]},{"id":"T2","action":"Lỗi sau claim completed, khi trừ kho hoặc gửi cảnh báo: task và kho còn nhất quán không","expected":"Lỗi DB rollback cả công việc và kho; retry không trừ hai lần. Lỗi thông báo sau commit vẫn trả thành công cho thao tác đã lưu.","routes":[]},{"id":"T3","action":"Hai giải cùng tên: sửa kết quả có mất/trùng thành tích không","expected":"Thành tích liên kết theo raceEntry; hai lượt cùng tên giữ riêng. Sửa một lượt không làm mất thành tích lượt kia.","routes":[]},{"id":"T4","action":"Mất phản hồi khi gửi incident: gửi lại có tạo thông báo/ảnh lặp không","expected":"Ghi nhận ảnh/thông báo có lặp hoặc không; API incident hiện không cam kết idempotency tương đương complete/not-done.","routes":[]},{"id":"F1","action":"Đăng ký tài khoản mới → Manager duyệt → đăng nhập","expected":"Trước duyệt chưa đăng nhập được; sau duyệt đúng role/trạng thái hoạt động.","routes":[{"label":"Đăng ký","path":"/register"},{"label":"Manager · Tài khoản","path":"/admin/users"}]},{"id":"F2","action":"Đăng nhập sai mật khẩu, rồi đăng nhập đúng; đăng xuất và đổi role","expected":"Sai thông tin có lỗi rõ ràng; đăng nhập đúng về dashboard đúng role; đăng xuất không giữ quyền tài khoản cũ.","routes":[{"label":"Đăng nhập","path":"/login"}]},{"id":"F3","action":"Owner / Groom thử mở trang quản lý nhân sự hoặc tài chính Manager","expected":"Trang ngoài quyền bị chặn. Groom không có quyền giao việc, duyệt/nhập kho hoặc sửa y lệnh.","routes":[{"label":"Thử trang Manager","path":"/admin/users"}]},{"id":"F4","action":"Tài khoản HLV / Vet / Owner / Groom khác thử đọc ngựa, việc hoặc buổi tập không được giao","expected":"HLV/Vet/Owner không thấy ngựa ngoài phạm vi hoặc bị từ chối. Groom chỉ thấy việc và buổi tập của ngựa mình chăm (mở buổi tập ngựa khác bị 403); sơ đồ chuồng vẫn hiện tên ngựa khác trong dãy.","routes":[{"label":"Owner · Ngựa của tôi","path":"/horses"},{"label":"HLV · Buổi tập","path":"/training/sessions"}]},{"id":"F5","action":"Groom báo sự cố kèm ảnh → Vet tiếp nhận/xử lý → Groom xem phản hồi","expected":"Ảnh mở được; Vet/HLV nhận thông báo; trạng thái sự cố và phản hồi cập nhật, refresh vẫn còn.","routes":[{"label":"Vet · Sức khỏe ngựa","path":"/veterinarian/horses"}]},{"id":"F6","action":"Groom báo không làm được kèm lý do trên app; HLV xem lại ở web","expected":"Lưu đúng skipped/lý do hoặc completed/quan sát; app và web cùng backend thấy cùng bản ghi sau tải lại.","routes":[{"label":"HLV · Việc chăm sóc","path":"/stable/tasks"}]},{"id":"F7","action":"Mở chuông thông báo → đọc một mục → đánh dấu đã đọc → refresh","expected":"Đếm chưa đọc thay đổi theo trạng thái thật; thông báo đúng người/role; mở chuông không tự đọc hết."},{"id":"F8","action":"Tài khoản Groom đăng nhập web quản lý","expected":"Chỉ thấy hướng dẫn mở app mobile (điện thoại hoặc npm --prefix mobile run web); không có màn hình Groom trên web.","routes":[{"label":"Groom · Trang chủ","path":"/"}]}]}</script>
 <script>
-const DATA=JSON.parse(document.getElementById('flow-data').textContent);
-const KEY='wdp301-manual-flow-guide-v1';
-const LABELS={untested:'Chưa test',pass:'Đạt',fail:'Lỗi',blocked:'Chưa chạy được'};
-let saved={};try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');if(!saved||typeof saved!=='object'||Array.isArray(saved))saved={};}catch{saved={};}
-let group='A';let records=saved.records&&typeof saved.records==='object'?saved.records:{};
-const byId=id=>document.getElementById(id);
-function persist(){try{localStorage.setItem(KEY,JSON.stringify({records,projectUrl:byId('project-url').value,session:byId('session').value}));byId('storage-notice').textContent='';}catch{byId('storage-notice').textContent='Trình duyệt không lưu được tiến độ. Hãy xuất biên bản trước khi đóng trang.';}}
-function result(id){return Object.hasOwn(LABELS,records[id]?.status)?records[id].status:'untested';}
-function node(tag,text,cls){const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el;}
-function summary(){const counts={untested:0,pass:0,fail:0,blocked:0};DATA.cases.forEach(c=>counts[result(c.id)]++);byId('stats').replaceChildren();for(const [key,label]of Object.entries(LABELS)){const el=node('div',undefined,'stat');el.append(node('strong',String(counts[key])),node('span',label));byId('stats').append(el);}byId('bar').style.width=(100*(DATA.cases.length-counts.untested)/DATA.cases.length)+'%';}
-function links(c,parent){let base;try{base=new URL(byId('project-url').value);if(!['http:','https:'].includes(base.protocol))return;}catch{return;}for(const route of c.routes||[]){const a=node('a',route.label+' ↗');a.href=new URL(route.path,base.origin).href;a.target='_blank';a.rel='noopener noreferrer';parent.append(a);}}
-function render(){summary();const selected=DATA.groups.find(g=>g.id===group);byId('group-title').textContent=selected.title;byId('group-description').textContent=selected.description;byId('group-note').textContent=selected.note;byId('navigation').replaceChildren();for(const g of DATA.groups){const total=DATA.cases.filter(c=>c.id.startsWith(g.id));const done=total.filter(c=>result(c.id)!=='untested').length;const btn=node('button',g.title+' · '+done+'/'+total.length,group===g.id?'active':'');btn.addEventListener('click',()=>{group=g.id;byId('search').value='';byId('filter').value='all';render();byId('group-title').scrollIntoView({block:'start',behavior:'smooth'});});byId('navigation').append(btn);}
-const search=byId('search').value.toLocaleLowerCase('vi');const filter=byId('filter').value;const cases=DATA.cases.filter(c=>c.id.startsWith(group)&&(filter==='all'||result(c.id)===filter)&&[c.id,c.action,c.expected].join(' ').toLocaleLowerCase('vi').includes(search));byId('cases').replaceChildren();
-for(const c of cases){const card=node('article',undefined,'case');card.dataset.result=result(c.id);const head=node('div',undefined,'casehead');const title=node('div');title.append(node('div',c.id,'id'),node('h3',c.action));const select=node('select',undefined,'status');select.setAttribute('aria-label','Kết quả '+c.id);for(const [value,label]of Object.entries(LABELS)){const option=node('option',label);option.value=value;select.append(option);}select.value=result(c.id);select.addEventListener('change',()=>{records[c.id]={...(records[c.id]||{}),status:select.value};persist();render();});head.append(title,select);card.append(head);const route=node('div',undefined,'route');links(c,route);card.append(route);const expected=node('div',undefined,'expect');expected.append(node('strong','Kết quả cần kiểm tra'),node('div',c.expected));card.append(expected);const label=node('label','Ghi chú / lỗi / ID bản ghi');const note=node('textarea',undefined,'note');note.rows=2;note.placeholder='Ghi điều đã thấy, lỗi hoặc ID để đối chiếu…';note.value=typeof records[c.id]?.note==='string'?records[c.id].note:'';note.setAttribute('aria-label','Ghi chú '+c.id);note.addEventListener('input',()=>{records[c.id]={...(records[c.id]||{}),note:note.value};persist();});card.append(label,note);byId('cases').append(card);}if(!cases.length)byId('cases').append(node('div','Không có bước phù hợp bộ lọc.','empty'));}
-byId('project-url').value=typeof saved.projectUrl==='string'?saved.projectUrl:'http://localhost:5173';byId('session').value=typeof saved.session==='string'?saved.session:'';
-byId('project-url').addEventListener('change',()=>{persist();render();});byId('session').addEventListener('input',persist);byId('search').addEventListener('input',render);byId('filter').addEventListener('change',render);
-byId('reset').addEventListener('click',()=>{if(!confirm('Xóa các kết quả/ghi chú đang lưu và bắt đầu phiên mới? Hãy xuất biên bản nếu cần giữ bản cũ.'))return;records={};byId('session').value='';persist();render();});
-byId('export').addEventListener('click',()=>{const lines=['# Biên bản test WDP301','',new Date().toLocaleString('vi-VN'),'','Project: '+byId('project-url').value,byId('session').value,''];for(const g of DATA.groups){lines.push('## '+g.title,'');for(const c of DATA.cases.filter(c=>c.id.startsWith(g.id))){lines.push('### '+c.id+' · '+LABELS[result(c.id)],c.action,'Mong đợi: '+c.expected,'Ghi chú: '+(records[c.id]?.note||'Chưa ghi'),'');}}const url=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/markdown;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='wdp301-test-'+new Date().toISOString().slice(0,10)+'.md';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});render();
+const DATA = JSON.parse(document.getElementById('flow-data').textContent);
+const KEY = 'wdp301-manual-flow-guide-v1';
+const LABELS = { untested: 'Chưa test', pass: 'Đạt', fail: 'Lỗi', blocked: 'Chưa chạy được' };
+const byId = (id) => document.getElementById(id);
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); if (!saved || typeof saved !== 'object' || Array.isArray(saved)) saved = {}; } catch { saved = {}; }
+let group = DATA.groups[0]?.id || 'A';
+let records = saved.records && typeof saved.records === 'object' ? saved.records : {};
+
+function persist() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ records, projectUrl: byId('project-url').value, session: byId('session').value }));
+    byId('storage-notice').textContent = '';
+  } catch {
+    byId('storage-notice').textContent = 'Trình duyệt không lưu được tiến độ. Mở "Biên bản" và sao chép trước khi đóng trang.';
+  }
+}
+const result = (id) => (Object.hasOwn(LABELS, records[id]?.status) ? records[id].status : 'untested');
+function node(tag, text, cls) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (cls) el.className = cls; return el; }
+
+function summary() {
+  const counts = { untested: 0, pass: 0, fail: 0, blocked: 0 };
+  DATA.cases.forEach((c) => counts[result(c.id)]++);
+  byId('stats').replaceChildren(...Object.entries(LABELS).map(([key, label]) => { const el = node('div', undefined, 'stat ' + key); el.append(node('strong', String(counts[key])), node('span', label)); return el; }));
+  byId('bar').style.width = (DATA.cases.length ? (100 * (DATA.cases.length - counts.untested)) / DATA.cases.length : 0) + '%';
+}
+function links(c, parent) {
+  let base;
+  try { base = new URL(byId('project-url').value); if (!['http:', 'https:'].includes(base.protocol)) return; } catch { return; }
+  for (const route of c.routes || []) { const a = node('a', route.label + ' ↗'); a.href = new URL(route.path, base.origin).href; a.target = '_blank'; a.rel = 'noopener noreferrer'; parent.append(a); }
+}
+function render() {
+  summary();
+  const selected = DATA.groups.find((g) => g.id === group) || DATA.groups[0];
+  if (!selected) return;
+  byId('group-title').textContent = selected.title;
+  byId('group-description').textContent = selected.description;
+  byId('group-note').textContent = selected.note;
+  byId('navigation').replaceChildren(...DATA.groups.map((g) => {
+    const total = DATA.cases.filter((c) => c.id.startsWith(g.id));
+    const done = total.filter((c) => result(c.id) !== 'untested').length;
+    const btn = node('button', undefined, group === g.id ? 'active' : '');
+    btn.type = 'button';
+    btn.append(node('span', g.title), node('span', done + '/' + total.length, 'count'));
+    btn.addEventListener('click', () => { group = g.id; byId('search').value = ''; byId('filter').value = 'all'; render(); byId('group-title').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); });
+    return btn;
+  }));
+  const search = byId('search').value.toLocaleLowerCase('vi');
+  const filter = byId('filter').value;
+  const cases = DATA.cases.filter((c) => c.id.startsWith(group) && (filter === 'all' || result(c.id) === filter) && [c.id, c.action, c.expected].join(' ').toLocaleLowerCase('vi').includes(search));
+  byId('cases').replaceChildren();
+  for (const c of cases) {
+    const card = node('article', undefined, 'case');
+    card.dataset.result = result(c.id);
+    const head = node('div', undefined, 'casehead');
+    const title = node('div');
+    title.append(node('div', c.id, 'id'), node('h3', c.action));
+    const select = node('select', undefined, 'status');
+    select.id = 'status-' + c.id;
+    select.setAttribute('aria-label', 'Kết quả ' + c.id);
+    for (const [value, label] of Object.entries(LABELS)) { const option = node('option', label); option.value = value; select.append(option); }
+    select.value = result(c.id);
+    select.dataset.v = select.value;
+    select.addEventListener('change', () => { records[c.id] = { ...(records[c.id] || {}), status: select.value }; persist(); render(); });
+    head.append(title, select);
+    const route = node('div', undefined, 'route');
+    links(c, route);
+    const expected = node('div', undefined, 'expect');
+    expected.append(node('strong', 'Kết quả cần thấy'), node('div', c.expected));
+    const note = node('textarea');
+    note.id = 'note-' + c.id;
+    note.rows = 2;
+    note.placeholder = 'Ghi điều đã thấy, lỗi hoặc ID bản ghi để đối chiếu…';
+    note.value = typeof records[c.id]?.note === 'string' ? records[c.id].note : '';
+    note.setAttribute('aria-label', 'Ghi chú ' + c.id);
+    note.addEventListener('input', () => { records[c.id] = { ...(records[c.id] || {}), note: note.value }; persist(); });
+    card.append(head, route, expected, note);
+    byId('cases').append(card);
+  }
+  if (!cases.length) byId('cases').append(node('div', 'Không có bước nào khớp bộ lọc.', 'empty'));
+}
+function reportText() {
+  const lines = ['# Biên bản test WDP301', '', new Date().toLocaleString('vi-VN'), '', 'Web: ' + byId('project-url').value, byId('session').value, ''];
+  for (const g of DATA.groups) {
+    lines.push('## ' + g.title, '');
+    for (const c of DATA.cases.filter((x) => x.id.startsWith(g.id))) lines.push('### ' + c.id + ' · ' + LABELS[result(c.id)], c.action, 'Mong đợi: ' + c.expected, 'Ghi chú: ' + (records[c.id]?.note || 'Chưa ghi'), '');
+  }
+  return lines.join('\n');
+}
+
+byId('project-url').value = typeof saved.projectUrl === 'string' ? saved.projectUrl : 'http://localhost:5173';
+byId('session').value = typeof saved.session === 'string' ? saved.session : '';
+byId('project-url').addEventListener('change', () => { persist(); render(); });
+byId('session').addEventListener('input', persist);
+byId('search').addEventListener('input', render);
+byId('filter').addEventListener('change', render);
+// Confirmation and the report stay inside the page: no browser dialogs or downloads needed.
+byId('reset').addEventListener('click', () => { byId('report').hidden = true; byId('confirm').hidden = false; byId('confirm-no').focus(); });
+byId('confirm-no').addEventListener('click', () => { byId('confirm').hidden = true; });
+byId('confirm-yes').addEventListener('click', () => { records = {}; byId('session').value = ''; persist(); byId('confirm').hidden = true; render(); });
+byId('export').addEventListener('click', () => { byId('confirm').hidden = true; byId('report-text').value = reportText(); byId('report-msg').textContent = ''; byId('report').hidden = false; byId('report-text').scrollIntoView({ block: 'nearest' }); });
+byId('report-close').addEventListener('click', () => { byId('report').hidden = true; });
+byId('report-copy').addEventListener('click', () => {
+  const text = byId('report-text');
+  const selectAll = () => { text.focus(); text.select(); byId('report-msg').textContent = 'Đã chọn toàn bộ, nhấn Ctrl+C để sao chép.'; };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text.value).then(() => { byId('report-msg').textContent = 'Đã sao chép biên bản.'; }, selectAll);
+  else selectAll();
+});
+render();
 </script></body></html>
