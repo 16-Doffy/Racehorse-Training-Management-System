@@ -4,8 +4,7 @@ Cập nhật 11/10/2026 theo cấu hình trong repo `654ae43`.
 URL được ghi ở đây là cấu hình dự án, chưa xác minh trạng thái deploy trong phiên này.
 Flow và test: [CURRENT_FLOW.md](docs/CURRENT_FLOW.md), [TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md).
 
-Groom có [giao diện web test tạm](docs/GROOM_WEB_TESTING.md). Production mặc định
-tắt; không đặt `VITE_ENABLE_GROOM_WEB=true` cho bản demo mentor nếu chỉ muốn dùng mobile.
+Groom chỉ có trên app `mobile/` (điện thoại hoặc trình duyệt qua Expo web, mục 4).
 
 ## 1. Chọn môi trường trước khi chạy
 
@@ -80,8 +79,13 @@ Mobile cài dependencies riêng, không thuộc npm workspaces root:
 
 ```powershell
 npm --prefix mobile install
-npm --prefix mobile start
+npm --prefix mobile start      # quét QR bằng Expo Go
+npm --prefix mobile run web    # hoặc mở trên trình duyệt: http://localhost:5173
 ```
+
+Bản trình duyệt dùng cổng 5173 vì backend chung đang cho phép origin này (CORS). Web quản lý cũng dùng
+cổng 5173 nên chạy lần lượt; muốn chạy cùng lúc thì thêm origin mới (ví dụ `http://localhost:8081`) vào
+`CLIENT_URL` trên Render rồi chạy Expo web ở cổng đó.
 
 App mặc định dùng Render. Muốn test local, tạo `mobile/.env`:
 

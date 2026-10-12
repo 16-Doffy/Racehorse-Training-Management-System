@@ -81,9 +81,8 @@ việc thủ công kèm giờ; loại **Khác** cần nội dung.
 
 **Groom — Cho ăn / Việc / Thêm → Thuốc & y lệnh.**
 
-Để test trên máy tính có giao diện web tạm, cùng tài khoản/API với mobile:
-[GROOM_WEB_TESTING.md](GROOM_WEB_TESTING.md). Khi production mặc định tắt giao diện
-này; demo mentor vẫn dùng mobile.
+Test trên máy tính: `npm --prefix mobile run web` mở chính app này trên trình duyệt,
+cùng tài khoản/API. Web quản lý không có màn hình Groom.
 
 - Xem việc theo ngày/ngựa; thực hiện rồi ghi nhận, có thể kèm quan sát ăn uống,
   nước uống, phân và ghi chú.

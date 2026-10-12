@@ -13,8 +13,7 @@ lý do override được ghi rõ trong fixture cho ngựa chưa có lịch sử 
 | Backend unit | 77 đạt, 0 lỗi; 2 integration suite bỏ qua khi không có URI | `scratch/server-final.log` |
 | Mobile outbox | 19/19 đạt | `scratch/mobile-final.log`; logic hàng đợi, không phải UI điện thoại |
 | API + consistency | 17/17 đạt, không bỏ qua | `scratch/integration-final.log`; 15 ca con + 2 suite cha |
-| Chromium UI (cập nhật web Groom) | 11/11 đạt | `scratch/groom-ui-final.log`; web thật kết nối API/DB thật |
-| Tắt web Groom | 1/1 đạt | `scratch/groom-disabled.log`; trở lại hướng dẫn mobile, không mở route tạm |
+| Chromium UI | 8/8 đạt (12/10, sau khi gỡ web Groom) | 7 ca web các role + Groom đăng nhập web chỉ thấy hướng dẫn mở app; web thật kết nối API/DB thật |
 | Client lint | Exit 0, còn cảnh báo | `scratch/groom-lint.log` |
 | Client build | Thành công | `scratch/groom-build.log`; có cảnh báo bundle lớn |
 
@@ -62,7 +61,7 @@ không trừ thêm), tiếp nhận, không làm được kèm lý do, đọc kh�
 cố kèm PNG và đọc lại file GridFS, đọc phản hồi của Vet, đề xuất bổ sung/vật tư mới,
 chặn truy cập trang Manager. Kiểm tra cờ tắt đưa Groom về hướng dẫn mobile và ẩn
 route test. Mobile source/dependencies không thay đổi trong phần phát triển này.
-Xem [GROOM_WEB_TESTING.md](GROOM_WEB_TESTING.md) để bật/tắt và gỡ sau khi test.
+12/10: đã gỡ web Groom tạm; Groom dùng app mobile (điện thoại hoặc `npm --prefix mobile run web`).
 
 ## Còn cần test tay
 

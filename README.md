@@ -28,8 +28,8 @@ docs/     Flow hiện tại và checklist kiểm thử
 
 ## Chạy web và backend local
 
-Giao diện web test tạm cho Groom được bật trong dev, tắt mặc định khi build:
-[GROOM_WEB_TESTING.md](docs/GROOM_WEB_TESTING.md). Mobile vẫn là bản demo mentor.
+Groom chỉ dùng app `mobile/`; tài khoản Groom đăng nhập web chỉ thấy hướng dẫn mở app.
+Không cần Android Studio: `npm --prefix mobile run web` mở chính app Groom trên trình duyệt (cổng 5173, trùng cổng web quản lý nên chạy lần lượt). Camera và chế độ ngoại tuyến vẫn nên thử trên điện thoại.
 
 Dùng Node.js **22.12+** và npm; Vite hiện tại yêu cầu Node `^20.19.0 || >=22.12.0`.
 Cần MongoDB local nếu chạy backend local. Nếu chỉ chạy web với backend chung,

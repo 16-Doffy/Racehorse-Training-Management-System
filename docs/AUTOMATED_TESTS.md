@@ -40,7 +40,6 @@ npm run test:mobile
 npm run test:integration
 npx playwright install chromium
 npm run test:ui
-node server/scripts/testUi.js --groom-disabled
 npm run lint -w client
 npm run build
 ```
@@ -62,8 +61,8 @@ nếu cần lưu browser vào thư mục có quyền ghi.
 - Consistency regression: gửi đồng thời, rollback khi DB lỗi, cạnh tranh tồn kho,
   giải trùng tên và chỉnh/xóa/tạo lại tiền thưởng.
 - Chromium: đăng nhập các role, danh sách ngựa/kho/lịch/giải và chặn route sai role;
-  Groom web ghi việc/quan sát, không làm được, sự cố/ảnh, đề xuất kho và đọc y lệnh.
-  Lệnh `--groom-disabled` kiểm tra tắt giao diện tạm và trả lại hướng dẫn mobile.
+  Groom đăng nhập web chỉ thấy hướng dẫn dùng app mobile. Thao tác Groom (việc, kho, sự cố)
+  được kiểm ở test API/consistency.
 - Mobile: logic outbox và API Groom. Chưa thay thế kiểm tra Expo trên điện thoại,
   ảnh/camera, mạng chập chờn thực tế hoặc mọi form web trong checklist.
 

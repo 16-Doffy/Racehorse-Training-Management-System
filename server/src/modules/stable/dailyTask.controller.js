@@ -345,7 +345,10 @@ const completeTask = asyncHandler(async (req, res) => {
       task.$session(null);
       return { task, replayed: true, consumed: [] };
     }
-    if (task.status === 'skipped') throw operationError(409, 'Công việc này đã được bỏ qua.');
+    // A meal the trainer called off (e.g. fasting before a race) must not be recorded as eaten.
+    if (task.status === 'skipped') {
+      throw operationError(409, task.skipReason ? 'Công việc này đã được ghi nhận là không thực hiện được.' : 'Công việc này đã được HLV cho bỏ qua.');
+    }
     let consumed = [];
     if (task.status !== 'completed') {
       const timing = taskTiming(task, action.performedAt);
@@ -358,7 +361,11 @@ const completeTask = asyncHandler(async (req, res) => {
       // Lock this task before deducting stock; every write rolls back together on failure.
       await task.save({ session });
       const stock = await consumeSupplies(task.supplies, { session });
-      if (!stock.ok) throw operationError(409, 'Thiếu vật tư — hãy gửi đề xuất bổ sung cho Quản lý.', { missing: stock.missing });
+      if (!stock.ok) {
+        // The groom sees which item and how much is missing, and asks the Manager for it (restock request).
+        const list = stock.missing.map((m) => `${m.name} (cần ${m.needed} ${m.unit}, còn ${m.available} ${m.unit})`).join('; ');
+        throw operationError(409, `Thiếu vật tư: ${list} — hãy gửi đề xuất bổ sung cho Quản lý.`, { missing: stock.missing });
+      }
       consumed = stock.consumed;
     }
     if (observation) {

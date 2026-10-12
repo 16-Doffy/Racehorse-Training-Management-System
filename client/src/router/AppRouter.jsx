@@ -37,8 +37,6 @@ import OwnerEvaluationsPage from '../features/horses/OwnerEvaluationsPage';
 import OwnerRacesPage from '../features/horses/OwnerRacesPage';
 import OwnerStablePage from '../features/horses/OwnerStablePage';
 import { ROLES } from '../constants/roles';
-import { GROOM_WEB_ENABLED } from '../features/groomWeb/config';
-import GroomWebPage from '../features/groomWeb/GroomWebPage';
 
 const ALL_ROLES = Object.values(ROLES);
 
@@ -87,9 +85,7 @@ export default function AppRouter() {
             <Route path="/health/treatments" element={<TreatmentPlanForm />} />
           </Route>
 
-          {GROOM_WEB_ENABLED && <Route element={<ProtectedRoute allowedRoles={[ROLES.GROOM]} />}>
-            <Route path="/groom/:section" element={<GroomWebPage />} />
-          </Route>}
+          {/* Groom / Stable Hand has no web screens: that role runs in the Expo app under /mobile. */}
 
           {/* Club Manager core flow. */}
           <Route element={<ProtectedRoute allowedRoles={[ROLES.MANAGER]} />}>

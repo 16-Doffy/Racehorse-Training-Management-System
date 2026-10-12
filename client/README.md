@@ -1,8 +1,8 @@
 # Web — Racehorse TMS
 
 React + Vite + Ant Design + Tailwind, dùng cho Manager, Head Trainer, Vet và Owner.
-Groom dùng app `mobile/` khi demo. Có [web test tạm](../docs/GROOM_WEB_TESTING.md)
-mặc định bật trong dev, tắt trong production; không thay đổi mobile.
+Groom dùng app `mobile/` (điện thoại, hoặc trình duyệt qua `npm --prefix mobile run web`); tài khoản Groom
+đăng nhập web này chỉ thấy hướng dẫn mở app.
 
 ## Chạy
 
@@ -26,7 +26,7 @@ sau khi đổi env. Mặc định web ở `http://localhost:5173`.
 | HLV | `/horses`, `/training/plans`, `/training/sessions`, `/stable/tasks`, `/races` |
 | Vet | `/veterinarian`, `/veterinarian/horses`, `/veterinarian/injuries`, `/veterinarian/treatments`, `/veterinarian/prescriptions`, `/veterinarian/inventory`, `/veterinarian/schedules` |
 | Owner | `/horses`, `/owner/health`, `/owner/training`, `/owner/stable`, `/owner/races`, `/owner/evaluations`, `/finance` |
-| Groom (web test tạm) | `/groom/tasks`, `/groom/care`, `/groom/incidents`, `/groom/supplies` khi bật cờ |
+| Groom | Không có màn hình web: `/` hiện hướng dẫn mở app `mobile/` |
 
 `/` hiển thị Tổng quan theo role; `/profile` là hồ sơ chung.
 Route và menu hiện tại nằm ở `src/router/AppRouter.jsx`, `src/layouts/menuConfig/index.jsx`.
