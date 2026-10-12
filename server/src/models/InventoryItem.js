@@ -7,7 +7,14 @@ const CODE_PREFIX = { feed: 'TA', medicine: 'YT', equipment: 'DC' };
 const restockRequestSchema = new mongoose.Schema({
   requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   quantity: { type: Number, required: true }, // in the item's unit (a pack request is converted)
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  // pending → approved (ordered, waiting for the delivery) → received (counted into stock), or rejected.
+  status: { type: String, enum: ['pending', 'approved', 'received', 'rejected'], default: 'pending' },
+  // Approved under the current flow: stock goes up only when the delivery is received. Requests approved
+  // before (no flag) already added their quantity when approved and must never be received again.
+  awaitingDelivery: { type: Boolean, default: false },
+  receivedAt: { type: Date, default: null },
+  receivedQty: { type: Number, default: null },
+  receivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   requestedAt: { type: Date, default: Date.now },
   note: { type: String, trim: true }, // why it is needed / for which horse
   reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

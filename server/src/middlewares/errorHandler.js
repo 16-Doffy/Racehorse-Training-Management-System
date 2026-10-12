@@ -3,7 +3,10 @@ const { fail } = require('../utils/apiResponse');
 /** Central error handler: normalizes Mongoose/validation errors into the standard API response shape. */
 // eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
-  console.error('[error]', err);
+  // A refusal thrown on purpose (statusCode below 500, e.g. a 409 from inside a transaction) is an
+  // answer, not a failure: one line is enough. Anything else gets its stack.
+  if (err.statusCode && err.statusCode < 500) console.warn(`[${err.statusCode}] ${req.method} ${req.originalUrl}: ${err.message}`);
+  else console.error('[error]', err);
 
   if (err.name === 'ValidationError') {
     const message = Object.values(err.errors).map((e) => e.message).join('; ');
@@ -26,7 +29,7 @@ function errorHandler(err, req, res, next) {
   }
 
   const status = err.statusCode || 500;
-  return fail(res, err.message || 'Internal server error.', status);
+  return fail(res, err.message || 'Internal server error.', status, err.data);
 }
 
 function notFound(req, res) {

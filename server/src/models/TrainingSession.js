@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+const { SESSION_STATUS, ABORT_CATEGORIES } = require('../constants/training');
+
 const trainingSessionSchema = new mongoose.Schema(
   {
     trainingPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingPlan', required: true },
@@ -8,6 +10,16 @@ const trainingSessionSchema = new mongoose.Schema(
     // Distinguishes a normal training rep from an official timed trial run (used to pick which
     // horse gets entered for an upcoming race) — same lifecycle/metrics, different intent.
     sessionType: { type: String, enum: ['training', 'trial_run'], default: 'training' },
+    // The kind of work (constants/training.js SESSION_KINDS): walk, canter, hill, breeze, trial.
+    // It sets objective / intensity / sessionType and the default workout; older sessions have none.
+    kind: { type: String, enum: ['walk', 'canter', 'hill', 'breeze', 'trial'] },
+    // Set when a week is generated from the plan, so generating again doesn't book the day twice.
+    generated: { type: Boolean, default: false },
+    // A trial run is run for one race entry: the evidence the trainer weighs when deciding the horse goes.
+    raceEntry: { type: mongoose.Schema.Types.ObjectId, ref: 'RaceEntry', default: null },
+    startedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // who pressed "Bắt đầu"
+    // A missed session booked again: the new booking it was moved to.
+    rescheduledTo: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingSession', default: null },
     // What the session is FOR. sessionType only says "normal rep vs. timed trial"; this says what
     // the horse is meant to gain from the work, which is what decides distance, pace and recovery.
     objective: {
@@ -31,9 +43,25 @@ const trainingSessionSchema = new mongoose.Schema(
     scheduledAt: { type: Date, required: true },
     status: {
       type: String,
-      enum: ['scheduled', 'in_progress', 'completed', 'cancelled'],
-      default: 'scheduled',
+      enum: Object.values(SESSION_STATUS),
+      default: SESSION_STATUS.SCHEDULED,
     },
+    // What actually happened, as opposed to the booking above (scheduledAt, prescription). Written
+    // only by the server when the session is started, ended or stopped; never accepted from a client,
+    // and never used to overwrite a planned value.
+    actualStartAt: { type: Date, default: null },
+    actualEndAt: { type: Date, default: null },
+    actualDurationSec: { type: Number, default: null },
+    // Work covered on the sensor simulator's compressed clock (each 5 s tick stands for 30 s of work).
+    // Kept apart from the real clock above, which is when the server started and closed the run.
+    simulatedWorkSec: { type: Number, default: null },
+    endedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // null: closed by the sensor feed
+    evaluatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    abortReason: { type: String },
+    abortCategory: { type: String, enum: ABORT_CATEGORIES },
+    blockedReason: { type: String },
+    cancelReason: { type: String },
+    evaluatedAt: { type: Date, default: null },
     metrics: {
       avgHeartRate: { type: Number },
       maxHeartRate: { type: Number },
@@ -64,6 +92,11 @@ const trainingSessionSchema = new mongoose.Schema(
       ],
       overrideReason: { type: String },
       overriddenBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      // Filed with the pre-check: who confirmed they looked at the horse, and what they noted.
+      confirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      bodyTempC: { type: Number },
+      trackCondition: { type: String, trim: true },
+      weather: { type: String, trim: true },
     },
     // Actual vs. prescribed, computed when the trainer files the evaluation.
     outcome: {

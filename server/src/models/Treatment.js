@@ -15,6 +15,8 @@ const medicationSchema = new mongoose.Schema(
     startDate: { type: Date },
     endDate: { type: Date },
     instructions: { type: String },
+    prescribedAt: { type: Date, default: Date.now },
+    status: { type: String, enum: ['ongoing', 'completed', 'cancelled'], default: 'ongoing' },
   },
   { _id: false }
 );
@@ -38,6 +40,10 @@ const treatmentSchema = new mongoose.Schema(
     startDate: { type: Date, default: Date.now },
     endDate: { type: Date },
     status: { type: String, enum: ['ongoing', 'completed'], default: 'ongoing' },
+    // Set when the treatment ended while it still restricted training: the level the horse stays at until
+    // a vet assesses it for a return to training (a HealthRecord with clearedLevel). Ending a treatment is
+    // not the same as being cleared to train again.
+    returnLevel: { type: String, enum: ['none', 'light', 'moderate', 'high', null], default: null },
   },
   { timestamps: true }
 );

@@ -12,7 +12,12 @@
     "dev:server": "npm run dev -w server",
     "dev:client": "npm run dev -w client",
     "seed": "npm run seed -w server",
-    "build": "npm run build -w client"
+    "build": "npm run build -w client",
+    "test:server": "npm run test -w server",
+    "test:mobile": "npm --prefix mobile test",
+    "test:integration": "npm run test:integration -w server",
+    "test:ui": "node server/scripts/testUi.js",
+    "test:guide": "node tools/test-flow-guide/serve.cjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

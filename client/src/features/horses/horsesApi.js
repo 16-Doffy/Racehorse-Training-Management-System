@@ -9,4 +9,9 @@ export const horsesApi = {
   /** Stop managing a horse whose records must be kept: { reason }. Manager only. */
   archive: (id, payload) => axiosClient.patch(`/horses/${id}/archive`, payload),
   unarchive: (id) => axiosClient.patch(`/horses/${id}/unarchive`),
+  /** Every horse in scope: where it stands from arrival to training and its next step. */
+  checklists: () => axiosClient.get('/horses/checklist'),
+  /** Owner: each of their horses at a glance — health, next session, last result, races, money. */
+  ownerSummary: () => axiosClient.get('/horses/owner-summary'),
+  checklist: (id) => axiosClient.get(`/horses/${id}/checklist`),
 };

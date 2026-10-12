@@ -43,6 +43,7 @@ import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
 import { trainingSessionApi } from '../training/trainingApi';
 import { ROLES } from '../../constants/roles';
 import dayjs from 'dayjs';
+import { SESSION_STATUS_LABELS, SESSION_BADGE_STATUS } from '../training/sessionStatus';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -213,9 +214,7 @@ export default function HorseDetailPage() {
       dataIndex: 'status',
       key: 'status',
       render: (s) => {
-        const colors = { scheduled: 'default', in_progress: 'processing', completed: 'success', cancelled: 'error' };
-        const labels = { scheduled: 'Đã lên lịch', in_progress: 'Đang diễn ra', completed: 'Hoàn thành', cancelled: 'Đã huỷ' };
-        return <Badge status={colors[s]} text={labels[s] || s} />;
+        return <Badge status={SESSION_BADGE_STATUS[s]} text={SESSION_STATUS_LABELS[s] || s} />;
       },
     },
     {

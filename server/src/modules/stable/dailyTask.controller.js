@@ -2,6 +2,7 @@ const DailyTask = require('../../models/DailyTask');
 const Horse = require('../../models/Horse');
 const User = require('../../models/User');
 const asyncHandler = require('../../utils/asyncHandler');
+const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { ROLES } = require('../../constants/roles');
 const { notifyHorseStaff, pushNotification } = require('../alerts/notification.service');
@@ -9,19 +10,21 @@ const { logAction } = require('../audit/audit.service');
 const { announceIncidentUpdate } = require('./incident.service');
 const { taskTiming, dayBounds } = require('../../utils/taskTiming');
 const { saveFile } = require('../../utils/fileStore');
-const { withSupplyStatus, consumeSupplies, stockMap, shortagesFrom } = require('../inventory/stock.service');
+const { withSupplyStatus, consumeSupplies, recordConsumption, stockMap, shortagesFrom } = require('../inventory/stock.service');
 const StableAssignment = require('../../models/StableAssignment');
 const FeedingSchedule = require('../../models/FeedingSchedule');
 const Treatment = require('../../models/Treatment');
 const { clearanceMap, levelOf } = require('../health/trainingClearance');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
+const { runTransaction, operationError, afterCommit } = require('../../utils/transaction');
 
-const TASK_FIELDS = ['horse', 'assignedTo', 'taskType', 'mealSlot', 'scheduledDate', 'note'];
+const TASK_FIELDS = ['horse', 'assignedTo', 'taskType', 'mealSlot', 'scheduledDate', 'dueTime', 'note'];
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // What a trainer or manager may hand out by hand. Medication and monitoring are the vet's care
 // orders: they come from a treatment, not from this form.
-const MANUAL_TASK_TYPES = ['feeding', 'cleaning', 'bathing', 'icing'];
+const MANUAL_TASK_TYPES = ['feeding', 'cleaning', 'bathing', 'icing', 'other'];
 const TASK_LABELS = {
   feeding: 'cho ăn',
   cleaning: 'vệ sinh chuồng',
@@ -29,7 +32,29 @@ const TASK_LABELS = {
   icing: 'ngâm chân nước đá',
   medication: 'cho dùng thuốc',
   monitoring: 'theo dõi theo y lệnh',
+  other: 'việc khác',
 };
+
+/**
+ * When a hand-given job is due. A meal has its slot's time; every other job needs a time of day
+ * ("HH:mm"), stored on the task and in scheduledDate, so the groom knows when and the board can
+ * tell on time from overdue. Mutates `body`; returns an error message or null.
+ */
+function applyDueTime(body, { required }) {
+  if (body.taskType === 'feeding') {
+    delete body.dueTime;
+    return null;
+  }
+  if (body.dueTime === undefined || body.dueTime === null || body.dueTime === '') {
+    return required ? 'Chọn giờ thực hiện công việc.' : null;
+  }
+  if (!TIME_PATTERN.test(body.dueTime)) return 'Giờ thực hiện không đúng dạng HH:mm.';
+  const at = new Date(body.scheduledDate || Date.now());
+  const [h, m] = body.dueTime.split(':').map(Number);
+  at.setHours(h, m, 0, 0);
+  body.scheduledDate = at;
+  return null;
+}
 const VET_ORDER_MESSAGE = 'Đây là y lệnh của bác sĩ — chỉ bác sĩ thay đổi được qua phác đồ điều trị.';
 
 /**
@@ -38,12 +63,13 @@ const VET_ORDER_MESSAGE = 'Đây là y lệnh của bác sĩ — chỉ bác sĩ 
  * open (see utils/taskTiming.js): at 23:00 there is no breakfast left to schedule for today.
  * Returns an error message, or null when the date is fine.
  */
-function scheduleProblem({ taskType, mealSlot, scheduledDate }) {
+function scheduleProblem({ taskType, mealSlot, scheduledDate, dueTime }) {
   if (!scheduledDate) return null;
   const when = new Date(scheduledDate);
   if (Number.isNaN(when.getTime())) return 'Ngày thực hiện không hợp lệ.';
   if (when < dayBounds(new Date()).start) return 'Không giao việc cho ngày đã qua.';
-  const timing = taskTiming({ status: 'pending', taskType, mealSlot, scheduledDate: when });
+  if (dueTime && when < new Date()) return `Giờ thực hiện ${dueTime} hôm nay đã qua — chọn giờ muộn hơn.`;
+  const timing = taskTiming({ status: 'pending', taskType, mealSlot, scheduledDate: when, dueTime });
   if (timing.state === 'missed') {
     const by = timing.closesAt ? ` (hạn ${timing.closesAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})` : '';
     return `Khung giờ của việc này hôm nay đã qua${by} — không tạo hay dời vào đó được nữa.`;
@@ -134,14 +160,21 @@ const createTask = asyncHandler(async (req, res) => {
     return fail(res, 'Loại công việc không hợp lệ. Việc dùng thuốc/theo dõi do bác sĩ chỉ định qua phác đồ điều trị.', 400);
   }
 
-  const problem = scheduleProblem({ ...body, scheduledDate: body.scheduledDate || new Date() });
+  if (body.taskType === 'other' && !String(body.note || '').trim()) {
+    return fail(res, 'Việc "Khác" cần ghi rõ nội dung công việc.', 400);
+  }
+  body.scheduledDate = body.scheduledDate || new Date();
+  const timeProblem = applyDueTime(body, { required: true });
+  if (timeProblem) return fail(res, timeProblem, 400);
+  const problem = scheduleProblem(body);
   if (problem) return fail(res, problem, 400);
 
   const task = await DailyTask.create({ ...body, source: 'trainer' });
   await tellGroom(
     task,
     req.user,
-    ({ who, horse, what }) => `📋 ${who} giao việc mới: ${what} cho ${horse}${task.note ? ` — ${task.note}` : '.'}`
+    ({ who, horse, what }) =>
+      `📋 ${who} giao việc mới: ${what} cho ${horse}${task.dueTime ? ` lúc ${task.dueTime}` : ''}${task.note ? ` — ${task.note}` : '.'}`
   );
   return created(res, task, 'Daily task created.');
 });
@@ -159,11 +192,25 @@ const updateTask = asyncHandler(async (req, res) => {
   if (!timing.canChange) return fail(res, `Không sửa được nữa: ${timing.reason}`, 409);
 
   const changes = pick(req.body, TASK_FIELDS);
-  if (changes.scheduledDate || changes.taskType || changes.mealSlot) {
+  const taskType = changes.taskType || task.taskType;
+  if (taskType === 'other' && changes.note !== undefined && !String(changes.note || '').trim()) {
+    return fail(res, 'Việc "Khác" cần ghi rõ nội dung công việc.', 400);
+  }
+  if (changes.scheduledDate || changes.taskType || changes.mealSlot || changes.dueTime) {
+    // A new date keeps the task's time of day unless a new time is given.
+    const timed = { taskType, scheduledDate: changes.scheduledDate || task.scheduledDate, dueTime: changes.dueTime ?? task.dueTime };
+    const timeProblem = applyDueTime(timed, { required: false });
+    if (timeProblem) return fail(res, timeProblem, 400);
+    if (timed.dueTime && taskType !== 'feeding') {
+      changes.scheduledDate = timed.scheduledDate;
+      changes.dueTime = timed.dueTime;
+    }
+    if (taskType === 'feeding') changes.dueTime = null;
     const problem = scheduleProblem({
-      taskType: changes.taskType || task.taskType,
+      taskType,
       mealSlot: changes.mealSlot !== undefined ? changes.mealSlot : task.mealSlot,
       scheduledDate: changes.scheduledDate || task.scheduledDate,
+      dueTime: changes.dueTime === null ? undefined : changes.dueTime ?? task.dueTime,
     });
     if (problem) return fail(res, problem, 400);
   }
@@ -260,58 +307,85 @@ function warningSigns(o) {
 // It matters because the groom is the only person who sees the horse eat, drink and pass
 // droppings. That is what the training readiness check reads to decide whether the horse is fit
 // to be worked (see modules/training/readiness.service.js).
+// A record sent this long after the work was done counts as synced late (shown as such, never hidden).
+const SYNC_LATE_MINUTES = 10;
+// How far ahead of the server the groom's clock may be, and how old an action may still be sent.
+const CLOCK_SKEW_MINUTES = 2;
+const MAX_OFFLINE_HOURS = 24;
+
+/**
+ * When the work was done and which app action this is, from the request: `performedAt` (the phone's
+ * time of the tap, sent by the offline outbox) and `clientOpId`. Without them: now, no id. Returns
+ * { performedAt, opId, late } or { error, status }.
+ */
+function readAction(body = {}) {
+  const now = Date.now();
+  const opId = typeof body.clientOpId === 'string' && body.clientOpId.trim() ? body.clientOpId.trim().slice(0, 64) : null;
+  if (body.performedAt === undefined || body.performedAt === null || body.performedAt === '') return { performedAt: new Date(now), opId, late: false };
+  const at = new Date(body.performedAt);
+  if (Number.isNaN(at.getTime())) return { error: 'Giờ thực hiện không hợp lệ.', status: 400 };
+  if (at.getTime() > now + CLOCK_SKEW_MINUTES * 60000) return { error: 'Giờ thực hiện ở tương lai — kiểm tra lại đồng hồ điện thoại.', status: 400 };
+  if (at.getTime() < now - MAX_OFFLINE_HOURS * 3600000) {
+    return { error: `Thao tác được làm cách đây hơn ${MAX_OFFLINE_HOURS} giờ — không ghi nhận tự động; hãy báo HLV/Quản lý để ghi tay.`, status: 409 };
+  }
+  return { performedAt: at, opId, late: now - at.getTime() > SYNC_LATE_MINUTES * 60000 };
+}
+
 const completeTask = asyncHandler(async (req, res) => {
-  const task = await loadTask(req, res);
-  if (!task) return undefined;
-
-  // A meal the trainer called off (e.g. fasting before a race) must not be recorded as eaten.
-  if (task.status === 'skipped') {
-    return fail(res, task.skipReason ? 'Công việc này đã được ghi nhận là không thực hiện được.' : 'Công việc này đã được HLV cho bỏ qua.', 409);
-  }
-
-  // The first completion time is when the horse actually ate; completing again (e.g. to add an
-  // observation afterwards) must not move it, or the readiness board would see a meal that never
-  // happened.
-  if (task.status !== 'completed') {
-    // Only within the task's window on the real clock: breakfast ticked at 23:00 would record a
-    // meal eaten at 23:00, and yesterday's dose can't be given today (utils/taskTiming.js).
-    const timing = taskTiming(task);
-    if (!timing.canComplete) return fail(res, timing.reason, 409, { timing });
-    // A meal or a dose takes its supplies out of stock; without them it can't be recorded as given.
-    // The groom asks the Manager for more instead (restock request, which can name this task).
-    const stock = await consumeSupplies(task.supplies, { actor: req.user, task });
-    if (!stock.ok) {
-      const list = stock.missing.map((m) => `${m.name} (cần ${m.needed} ${m.unit}, còn ${m.available} ${m.unit})`).join('; ');
-      return fail(res, `Thiếu vật tư: ${list} — hãy gửi đề xuất bổ sung cho Quản lý.`, 409, { missing: stock.missing });
-    }
-    task.status = 'completed';
-    task.completedAt = new Date();
-    if (!task.acknowledgedAt) task.acknowledgedAt = task.completedAt;
-  }
-
+  const loaded = await loadTask(req, res);
+  if (!loaded) return undefined;
+  const action = readAction(req.body);
+  if (action.error) return fail(res, action.error, action.status);
+  if (action.opId && loaded.opIds?.includes(action.opId)) return ok(res, loaded, 'Already recorded.');
   const observation = readObservation(req.body);
-  if (observation) {
-    const previous = task.observation?.toObject ? task.observation.toObject() : task.observation || {};
-    task.observation = { ...previous, ...Object.fromEntries(Object.entries(observation).filter(([, v]) => v !== undefined)), recordedAt: new Date() };
-  }
-  await task.save();
-
-  // Refusing feed or abnormal droppings are among the earliest signs something is wrong, and
-  // should not wait for someone to notice a row in a list.
+  const result = await runTransaction(async (session) => {
+    let task = await DailyTask.findOne({ _id: loaded._id, assignedTo: req.user._id }).session(session);
+    if (!task) throw operationError(409, 'Task assignment has changed.');
+    if (action.opId && task.opIds?.includes(action.opId)) {
+      task.$session(null);
+      return { task, replayed: true, consumed: [] };
+    }
+    // A meal the trainer called off (e.g. fasting before a race) must not be recorded as eaten.
+    if (task.status === 'skipped') {
+      throw operationError(409, task.skipReason ? 'Công việc này đã được ghi nhận là không thực hiện được.' : 'Công việc này đã được HLV cho bỏ qua.');
+    }
+    let consumed = [];
+    if (task.status !== 'completed') {
+      const timing = taskTiming(task, action.performedAt);
+      if (!timing.canComplete) throw operationError(409, timing.reason, { timing, performedAt: action.performedAt });
+      task.status = 'completed';
+      task.completedAt = action.performedAt;
+      task.receivedAt = new Date();
+      task.recordedLate = action.late;
+      if (!task.acknowledgedAt) task.acknowledgedAt = action.performedAt;
+      // Lock this task before deducting stock; every write rolls back together on failure.
+      await task.save({ session });
+      const stock = await consumeSupplies(task.supplies, { session });
+      if (!stock.ok) {
+        // The groom sees which item and how much is missing, and asks the Manager for it (restock request).
+        const list = stock.missing.map((m) => `${m.name} (cần ${m.needed} ${m.unit}, còn ${m.available} ${m.unit})`).join('; ');
+        throw operationError(409, `Thiếu vật tư: ${list} — hãy gửi đề xuất bổ sung cho Quản lý.`, { missing: stock.missing });
+      }
+      consumed = stock.consumed;
+    }
+    if (observation) {
+      const previous = task.observation?.toObject ? task.observation.toObject() : task.observation || {};
+      task.observation = { ...previous, ...Object.fromEntries(Object.entries(observation).filter(([, v]) => v !== undefined)), recordedAt: action.performedAt };
+    }
+    if (action.opId && !task.opIds?.includes(action.opId)) task.opIds = [...(task.opIds || []), action.opId].slice(-20);
+    await task.save({ session });
+    task.$session(null);
+    return { task, consumed, replayed: false };
+  });
+  if (result.replayed) return ok(res, result.task, 'Already recorded.');
+  await afterCommit('task-stock', () => recordConsumption(result.consumed, { actor: req.user, task: result.task }));
   const signs = observation ? warningSigns(observation) : [];
-  if (signs.length) {
-    const horse = await Horse.findById(task.horse).select('name');
-    const note = observation.behaviourNote ? `: ${observation.behaviourNote}` : '.';
-    await notifyHorseStaff({
-      staff: 'vet',
-      horse: task.horse,
-      type: 'incident_report',
-      severity: 'warning',
-      message: `⚠️ ${horse?.name || 'Ngựa'} có dấu hiệu bất thường (${signs.join(', ')})${note}`,
-    });
-  }
-
-  return ok(res, task, 'Task marked as completed.');
+  if (signs.length) await afterCommit('task-observation', async () => {
+    const horse = await Horse.findById(result.task.horse).select('name');
+    await notifyHorseStaff({ staff: 'vet', horse: result.task.horse, type: 'incident_report', severity: 'warning',
+      message: (horse?.name || 'Ngựa') + ' có dấu hiệu bất thường (' + signs.join(', ') + ')' + (observation.behaviourNote ? ': ' + observation.behaviourNote : '.') });
+  });
+  return ok(res, result.task, 'Task marked as completed.');
 });
 
 // Groom-reported incident, with optional photo evidence uploaded via multipart/form-data.
@@ -340,6 +414,7 @@ const reportIncident = asyncHandler(async (req, res) => {
   };
   await notifyHorseStaff({ ...alert, staff: 'vet' });
   await notifyHorseStaff({ ...alert, staff: 'trainer' });
+  await flagConfirmedEntries(task.horse, `sự cố được báo: ${description.trim()}`);
 
   return ok(res, task, 'Incident reported.');
 });
@@ -432,10 +507,14 @@ const myCarePlan = asyncHandler(async (req, res) => {
 const acknowledgeTask = asyncHandler(async (req, res) => {
   const task = await loadTask(req, res);
   if (!task) return undefined;
+  const action = readAction(req.body);
+  if (action.error) return fail(res, action.error, action.status);
+  if (action.opId && task.opIds?.includes(action.opId)) return ok(res, task, 'Already recorded.');
   if (task.status !== 'pending') return fail(res, 'Công việc này đã được ghi nhận xong.', 409);
-  if (taskTiming(task).state === 'missed') return fail(res, taskTiming(task).reason, 409);
+  if (taskTiming(task, action.performedAt).state === 'missed') return fail(res, taskTiming(task, action.performedAt).reason, 409);
   if (!task.acknowledgedAt) {
-    task.acknowledgedAt = new Date();
+    task.acknowledgedAt = action.performedAt;
+    if (action.opId) task.opIds = [...(task.opIds || []), action.opId].slice(-20);
     await task.save();
   }
   return ok(res, task, 'Task acknowledged.');
@@ -452,10 +531,16 @@ const reportNotDone = asyncHandler(async (req, res) => {
   if (!task) return undefined;
   const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
   if (!reason) return fail(res, 'Hãy ghi rõ vì sao không thực hiện được.', 400);
-  if (task.status !== 'pending') return fail(res, 'Công việc này đã được ghi nhận rồi.', 409);
+  const action = readAction(req.body);
+  if (action.error) return fail(res, action.error, action.status);
+  if (action.opId && task.opIds?.includes(action.opId)) return ok(res, task, 'Already recorded.');
+  if (task.status !== 'pending') {
+    return fail(res, 'Công việc này đã được ghi nhận rồi.', 409, { status: task.status, completedAt: task.completedAt || null });
+  }
 
-  Object.assign(task, { status: 'skipped', skipReason: reason, skippedBy: req.user._id });
-  if (!task.acknowledgedAt) task.acknowledgedAt = new Date();
+  Object.assign(task, { status: 'skipped', skipReason: reason, skippedBy: req.user._id, receivedAt: new Date(), recordedLate: action.late });
+  if (!task.acknowledgedAt) task.acknowledgedAt = action.performedAt;
+  if (action.opId) task.opIds = [...(task.opIds || []), action.opId].slice(-20);
   await task.save();
 
   const horse = await Horse.findById(task.horse).select('name');

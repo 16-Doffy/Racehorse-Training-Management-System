@@ -9,22 +9,48 @@ const SCOPE_FIELD_BY_ROLE = {
 
 const FORBIDDEN_HORSE_MESSAGE = 'Forbidden: this horse is not assigned to you.';
 
+// Staff stop seeing a horse the club no longer manages (sold, retired, dead): its plans, exams and
+// care leave their working screens. The owner keeps its history — the costs and records are theirs.
+const HIDES_ARCHIVED = new Set([ROLES.HEAD_TRAINER, ROLES.VETERINARIAN]);
+const scopeQuery = (user, field) => ({ [field]: user._id, ...(HIDES_ARCHIVED.has(user.role) ? { isArchived: { $ne: true } } : {}) });
+
 /**
  * Returns the set of horse ids a user is allowed to see/act on, or `null` when the role has no
  * such restriction (Manager sees everything; Groom is scoped separately via DailyTask.assignedTo,
  * not through this horse-level mechanism).
  *
- * Owner/Head Trainer/Veterinarian see ONLY the horses assigned to them — strictly. An unassigned
+ * Owner/Head Trainer/Veterinarian see ONLY the horses assigned to them — strictly (trainer and vet
+ * only while the club still manages the horse). An unassigned
  * horse is deliberately visible to nobody but the Manager: the Manager is the one who decides who
  * handles which horse, and a horse quietly showing up on every trainer's screen until someone
  * remembers to assign it would make the assignment step look like it does nothing. Manager's
  * dashboard surfaces unassigned horses so they can't be forgotten instead.
  */
 async function getScopedHorseIds(user) {
+  if (user.role === ROLES.VETERINARIAN) {
+    const ExamRequest = require('../models/ExamRequest');
+    const HealthRecord = require('../models/HealthRecord');
+    const [assignedHorses, pendingRequests, examinedHorses, unassignedHorses] = await Promise.all([
+      Horse.find({ assignedVet: user._id }).select('_id'),
+      ExamRequest.find({ status: 'pending' }).select('horse'),
+      HealthRecord.find({ examinedBy: user._id }).select('horse'),
+      Horse.find({ $or: [{ assignedVet: null }, { assignedVet: { $exists: false } }] }).select('_id'),
+    ]);
+    const idSet = new Set([
+      ...assignedHorses.map((h) => String(h._id)),
+      ...pendingRequests.filter((r) => r.horse).map((r) => String(r.horse)),
+      ...examinedHorses.filter((r) => r.horse).map((r) => String(r.horse)),
+      ...unassignedHorses.map((h) => String(h._id)),
+    ]);
+    // Requests and records outlive the horse, so a retired horse would come back in through them.
+    const active = await Horse.find({ _id: { $in: Array.from(idSet) }, isArchived: { $ne: true } }).select('_id');
+    return active.map((h) => h._id);
+  }
+
   const field = SCOPE_FIELD_BY_ROLE[user.role];
   if (!field) return null;
 
-  const horses = await Horse.find({ [field]: user._id }).select('_id');
+  const horses = await Horse.find(scopeQuery(user, field)).select('_id');
   return horses.map((h) => h._id);
 }
 
@@ -52,9 +78,33 @@ async function horseFilter(user, requestedHorse) {
  */
 async function canAccessHorse(user, horseId) {
   if (!horseId) return false;
+  if (user.role === ROLES.MANAGER) return true;
+  if (user.role === ROLES.VETERINARIAN) {
+    // A retired horse is out of scope however the vet was linked to it.
+    if (!(await Horse.exists({ _id: horseId, isArchived: { $ne: true } }))) return false;
+    // 1. Assigned directly to this vet
+    const isAssigned = await Horse.exists({ _id: horseId, assignedVet: user._id });
+    if (isAssigned) return true;
+    // 2. Has been examined by this vet
+    const HealthRecord = require('../models/HealthRecord');
+    const hasExamined = await HealthRecord.exists({ horse: horseId, examinedBy: user._id });
+    if (hasExamined) return true;
+    // 3. Has an open exam request
+    const ExamRequest = require('../models/ExamRequest');
+    const hasPendingExam = await ExamRequest.exists({ horse: horseId, status: 'pending' });
+    if (hasPendingExam) return true;
+    // 4. Or horse has no vet assigned yet
+    const isUnassigned = await Horse.exists({
+      _id: horseId,
+      $or: [{ assignedVet: null }, { assignedVet: { $exists: false } }],
+    });
+    if (isUnassigned) return true;
+    return false;
+  }
+
   const field = SCOPE_FIELD_BY_ROLE[user.role];
   if (!field) return true;
-  return Boolean(await Horse.exists({ _id: horseId, [field]: user._id }));
+  return Boolean(await Horse.exists({ _id: horseId, ...scopeQuery(user, field) }));
 }
 
 module.exports = { getScopedHorseIds, isHorseInScope, horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE };

@@ -20,6 +20,10 @@ export default function MedicalExaminationForm() {
   const [successMessage, setSuccessMessage] = useState(null);
 
   const [horses, setHorses] = useState([]);
+  const [existingAttachments, setExistingAttachments] = useState([]);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState(null);
+
   const [formData, setFormData] = useState({
     horse: horseId || '',
     date: formatDateForInput(new Date()),
@@ -29,6 +33,8 @@ export default function MedicalExaminationForm() {
     weightKg: '',
     diagnosis: '',
     resultStatus: 'eligible',
+    // Return-to-training assessment: how hard the horse may work from now on ('' = this exam says nothing about it).
+    clearedLevel: '',
     symptoms: '',
     notes: '',
   });
@@ -40,13 +46,25 @@ export default function MedicalExaminationForm() {
       setLoading(true);
       try {
         const horsesRes = await veterinarianApi.getHorses();
-        setHorses(horsesRes.data || []);
+        let loadedHorses = horsesRes.data || [];
 
         if (isEditMode) {
           const recRes = await veterinarianApi.getHealthRecordById(id);
           const rec = recRes.data;
+          setExistingAttachments(rec.attachments || []);
+          const recHorseId = rec.horse?._id || rec.horse || '';
+          if (recHorseId && !loadedHorses.some((h) => h._id === recHorseId)) {
+            if (rec.horse && typeof rec.horse === 'object' && rec.horse.name) {
+              loadedHorses = [rec.horse, ...loadedHorses];
+            } else {
+              try {
+                const singleHorseRes = await veterinarianApi.getHorseById(recHorseId);
+                if (singleHorseRes?.data) loadedHorses = [singleHorseRes.data, ...loadedHorses];
+              } catch (_) {}
+            }
+          }
           setFormData({
-            horse: rec.horse?._id || rec.horse || '',
+            horse: recHorseId,
             date: formatDateForInput(rec.date || rec.createdAt),
             temperatureC: rec.vitalSigns?.temperatureC || '',
             heartRate: rec.vitalSigns?.heartRate || '',
@@ -54,11 +72,23 @@ export default function MedicalExaminationForm() {
             weightKg: rec.horse?.weightKg || '',
             diagnosis: rec.diagnosis || '',
             resultStatus: rec.resultStatus || 'eligible',
+            clearedLevel: rec.clearedLevel || '',
             symptoms: '',
             notes: rec.notes || '',
           });
         } else if (horseId) {
-          const targetHorse = horsesRes.data?.find((h) => h._id === horseId);
+          let targetHorse = loadedHorses.find((h) => h._id === horseId);
+          if (!targetHorse) {
+            try {
+              const singleHorseRes = await veterinarianApi.getHorseById(horseId);
+              if (singleHorseRes?.data) {
+                targetHorse = singleHorseRes.data;
+                loadedHorses = [targetHorse, ...loadedHorses];
+              }
+            } catch (e) {
+              console.warn('Could not fetch single horse by ID:', e);
+            }
+          }
           if (targetHorse) {
             setFormData((prev) => ({
               ...prev,
@@ -68,6 +98,7 @@ export default function MedicalExaminationForm() {
             }));
           }
         }
+        setHorses(loadedHorses);
       } catch (err) {
         setError(err?.message || 'Không thể tải thông tin hồ sơ khám.');
       } finally {
@@ -77,6 +108,57 @@ export default function MedicalExaminationForm() {
 
     fetchData();
   }, [horseId, id, isEditMode]);
+
+  const handleFileChange = (e) => {
+    if (e.target.files) {
+      const filesArray = Array.from(e.target.files);
+      const totalCount = existingAttachments.length + selectedFiles.length + filesArray.length;
+      if (totalCount > 10) {
+        setError('Mỗi phiếu khám tối đa 10 tệp đính kèm.');
+        return;
+      }
+
+      for (const file of filesArray) {
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        const isImage = file.type.startsWith('image/');
+
+        if (!isImage && !isPdf) {
+          setError(`Tệp "${file.name}" không được hỗ trợ. Chỉ chấp nhận ảnh hoặc tài liệu PDF.`);
+          return;
+        }
+
+        if (isImage && file.size > 5 * 1024 * 1024) {
+          setError(`Ảnh "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} MB) vượt quá giới hạn 5 MB.`);
+          return;
+        }
+
+        if (isPdf && file.size > 10 * 1024 * 1024) {
+          setError(`Tệp PDF "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} MB) vượt quá giới hạn 10 MB.`);
+          return;
+        }
+      }
+
+      setError(null);
+      setSelectedFiles((prev) => [...prev, ...filesArray]);
+    }
+  };
+
+  const handleRemoveSelectedFile = (index) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDeleteExistingAttachment = async (attachmentId) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa tệp đính kèm này?')) return;
+    setDeletingAttachmentId(attachmentId);
+    try {
+      await veterinarianApi.deleteRecordAttachment(id, attachmentId);
+      setExistingAttachments((prev) => prev.filter((att) => att._id !== attachmentId));
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || 'Lỗi khi xóa tệp đính kèm.');
+    } finally {
+      setDeletingAttachmentId(null);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -112,6 +194,7 @@ export default function MedicalExaminationForm() {
       date: examDate,
       diagnosis: formData.diagnosis.trim(),
       resultStatus: formData.resultStatus,
+      clearedLevel: formData.clearedLevel || null,
       vitalSigns: {
         temperatureC: formData.temperatureC ? Number(formData.temperatureC) : undefined,
         heartRate: formData.heartRate ? Number(formData.heartRate) : undefined,
@@ -123,19 +206,32 @@ export default function MedicalExaminationForm() {
     };
 
     try {
+      let savedRecordId = id;
       if (isEditMode) {
         await veterinarianApi.updateHealthRecord(id, payload);
-        setSuccessMessage('Cập nhật hồ sơ khám bệnh thành công!');
       } else {
-        await veterinarianApi.createHealthRecord(payload);
-        setSuccessMessage('Lập hồ sơ khám bệnh mới và cập nhật trạng thái sức khỏe thành công!');
+        const createRes = await veterinarianApi.createHealthRecord(payload);
+        savedRecordId = createRes.data?._id;
       }
+
+      // Upload selected files if any (POST /health/records/:id/attachments)
+      if (selectedFiles.length > 0 && savedRecordId) {
+        const formDataUpload = new FormData();
+        selectedFiles.forEach((f) => formDataUpload.append('files', f));
+        await veterinarianApi.uploadRecordAttachments(savedRecordId, formDataUpload);
+      }
+
+      setSuccessMessage(
+        isEditMode
+          ? 'Cập nhật hồ sơ khám bệnh và tệp đính kèm thành công!'
+          : 'Lập hồ sơ khám bệnh mới và tải tệp đính kèm thành công!'
+      );
 
       setTimeout(() => {
         navigate(`/veterinarian/horses/${formData.horse}`);
       }, 1200);
     } catch (err) {
-      setError(err?.message || 'Lỗi khi lưu hồ sơ khám bệnh.');
+      setError(err?.response?.data?.message || err?.message || 'Lỗi khi lưu hồ sơ khám bệnh.');
       setSubmitting(false);
     }
   };
@@ -201,6 +297,11 @@ export default function MedicalExaminationForm() {
                       </option>
                     ))}
                   </Form.Select>
+                  {horseId && formData.horse === horseId && (
+                    <Form.Text className="text-primary small mt-1 d-block fw-medium">
+                      <i className="bi bi-info-circle me-1"></i> Đang lập hồ sơ khám cho chiến mã theo yêu cầu khám bệnh.
+                    </Form.Text>
+                  )}
                   <Form.Control.Feedback type="invalid">Vui lòng chọn chiến mã.</Form.Control.Feedback>
                 </Form.Group>
               </Col>
@@ -347,6 +448,26 @@ export default function MedicalExaminationForm() {
                 </Form.Group>
               </Col>
 
+              <Col xs={12} md={6}>
+                <Form.Group>
+                  <Form.Label className="fw-semibold">Mức vận động được phép (đánh giá trở lại tập)</Form.Label>
+                  <Form.Select
+                    value={formData.clearedLevel}
+                    onChange={(e) => setFormData({ ...formData, clearedLevel: e.target.value })}
+                    disabled={submitting}
+                  >
+                    <option value="">— Lần khám này không đánh giá mức tập —</option>
+                    <option value="none">🛑 Chưa được tập</option>
+                    <option value="light">🩹 Chỉ tập nhẹ</option>
+                    <option value="moderate">🟡 Tập tối đa cường độ vừa</option>
+                    <option value="high">🟢 Tập bình thường</option>
+                  </Form.Select>
+                  <Form.Text className="text-muted">
+                    Kết thúc điều trị chưa có nghĩa là được tập lại: ngựa giữ mức hạn chế cho tới khi bác sĩ chọn mức ở đây. Mức này áp dụng cho tới lần đánh giá sau.
+                  </Form.Text>
+                </Form.Group>
+              </Col>
+
               <Col xs={12}>
                 <Form.Group>
                   <Form.Label className="fw-semibold">Ghi chú & Chỉ định thêm của Bác sĩ</Form.Label>
@@ -361,6 +482,105 @@ export default function MedicalExaminationForm() {
                 </Form.Group>
               </Col>
             </Row>
+
+            {/* Attachments Section (POST /health/records/:id/attachments) */}
+            <div className="mb-4 p-3 bg-light rounded border">
+              <div className="d-flex justify-content-between align-items-center mb-2">
+                <Form.Label className="fw-bold text-dark mb-0">
+                  <i className="bi bi-paperclip me-1 text-primary"></i>
+                  Tài Liệu Y Tế & Hình Ảnh Đính Kèm (Ảnh X-Quang, Kết Quả Xét Nghiệm, Đơn Thuốc Scan)
+                </Form.Label>
+                <span className="small text-muted">Tối đa 10 tệp (Ảnh tối đa 5MB, PDF tối đa 10MB)</span>
+              </div>
+
+              {/* Existing Attachments (if editing) */}
+              {existingAttachments.length > 0 && (
+                <div className="mb-3">
+                  <span className="small fw-bold text-muted d-block mb-1">Tệp đã đính kèm hiện tại:</span>
+                  <div className="d-flex flex-wrap gap-2">
+                    {existingAttachments.map((att) => (
+                      <div key={att._id} className="p-2 bg-white rounded border d-flex align-items-center gap-2">
+                        {att.contentType?.startsWith('image/') ? (
+                          <img
+                            src={att.url}
+                            alt={att.name}
+                            style={{ width: '32px', height: '32px', objectFit: 'cover' }}
+                            className="rounded"
+                          />
+                        ) : (
+                          <i className="bi bi-file-earmark-pdf fs-4 text-danger"></i>
+                        )}
+                        <div className="small">
+                          <a
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-decoration-none fw-semibold"
+                          >
+                            {att.name}
+                          </a>
+                          <div className="text-muted" style={{ fontSize: '11px' }}>
+                            {att.size ? `${Math.round(att.size / 1024)} KB` : ''}
+                          </div>
+                        </div>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="text-danger p-0 ms-1 border-0"
+                          onClick={() => handleDeleteExistingAttachment(att._id)}
+                          disabled={deletingAttachmentId === att._id}
+                          title="Xóa tệp này"
+                        >
+                          {deletingAttachmentId === att._id ? (
+                            <Spinner size="sm" animation="border" />
+                          ) : (
+                            <i className="bi bi-trash"></i>
+                          )}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* File Input */}
+              <Form.Group>
+                <Form.Control
+                  type="file"
+                  multiple
+                  accept="image/*,application/pdf"
+                  onChange={handleFileChange}
+                  disabled={submitting}
+                />
+                <Form.Text className="text-muted">
+                  Hỗ trợ hình ảnh (.jpg, .png - tối đa 5MB) và tài liệu PDF (tối đa 10MB). Tối đa 10 tệp/phiếu khám.
+                </Form.Text>
+              </Form.Group>
+
+              {/* Staged files for upload */}
+              {selectedFiles.length > 0 && (
+                <div className="mt-2">
+                  <span className="small fw-semibold text-primary d-block mb-1">
+                    Tệp mới chuẩn bị tải lên ({selectedFiles.length}):
+                  </span>
+                  <div className="d-flex flex-wrap gap-2">
+                    {selectedFiles.map((file, idx) => (
+                      <span key={idx} className="badge bg-white text-dark border p-2 d-flex align-items-center gap-2">
+                        <i className="bi bi-file-earmark-arrow-up text-primary"></i>
+                        <span>
+                          {file.name} ({Math.round(file.size / 1024)} KB)
+                        </span>
+                        <i
+                          className="bi bi-x-circle text-danger cursor-pointer ms-1"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => handleRemoveSelectedFile(idx)}
+                        ></i>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Actions */}
             <div className="d-flex justify-content-end gap-2 pt-3 border-top">

@@ -34,6 +34,11 @@ export default function GroomMobileNotice() {
             <li>Mở Expo Go và quét mã QR hiện trong cửa sổ terminal.</li>
             <li>Đăng nhập bằng chính tài khoản Nhân viên Chăm sóc của bạn.</li>
           </ol>
+          <Text type="secondary" className="block mt-3 text-sm">
+            Không có điện thoại? Chạy <code>npm run web</code> trong thư mục <code>mobile/</code> để mở chính ứng dụng đó
+            trên trình duyệt (http://localhost:5173 — tắt bản web này trước nếu đang chạy cùng cổng). Camera và chế độ
+            ngoại tuyến vẫn nên thử trên điện thoại.
+          </Text>
         </div>
       </div>
     </div>

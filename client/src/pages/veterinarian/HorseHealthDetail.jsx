@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Container, Row, Col, Card, Tabs, Tab, Button, Badge, Alert, Table, Dropdown } from 'react-bootstrap';
+import { Container, Row, Col, Card, Tabs, Tab, Button, Badge, Alert, Table, Dropdown, Modal, Form, Spinner } from 'react-bootstrap';
 import { useParams, useNavigate } from 'react-router-dom';
 import veterinarianApi from '../../api/veterinarianApi';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -28,6 +28,14 @@ export default function HorseHealthDetail() {
 
   // Training lock modal state
   const [showLockModal, setShowLockModal] = useState(false);
+
+  // Recovery clearance modal state
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryNote, setRecoveryNote] = useState(
+    'Khám tái khám: Chiến mã đã hoàn toàn hồi phục sức khỏe sau điều trị, đủ điều kiện tham gia huấn luyện và thi đấu.'
+  );
+  const [completeOngoingTreatment, setCompleteOngoingTreatment] = useState(true);
+  const [recovering, setRecovering] = useState(false);
 
   const fetchHorseDetails = useCallback(async () => {
     if (!id) return;
@@ -81,10 +89,62 @@ export default function HorseHealthDetail() {
 
   const latestRecord = records[0];
   const activeTreatment = treatments.find((t) => t.isTrainingLocked || t.status === 'ongoing');
-  const isTrainingLocked = activeTreatment?.isTrainingLocked || false;
+  const trainingLevel = activeTreatment?.trainingLevel || (activeTreatment?.isTrainingLocked ? 'none' : 'high');
+  const isTrainingLocked = trainingLevel === 'none' || activeTreatment?.isTrainingLocked || false;
   const activeInjuries = injuries.filter((i) => i.recoveryStatus !== 'recovered');
 
+  const TRAINING_LEVEL_LABELS = {
+    none: { label: 'Khóa tập hoàn toàn', variant: 'danger', icon: 'bi-slash-circle-fill' },
+    light: { label: 'Tập nhẹ (Đi dạo)', variant: 'warning', icon: 'bi-person-walking' },
+    moderate: { label: 'Tập vừa (Nước kiệu)', variant: 'info', icon: 'bi-speedometer2' },
+    high: { label: 'Bình thường (Đầy đủ)', variant: 'success', icon: 'bi-check-circle-fill' },
+  };
+
   const defaultPhoto = 'https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=800&q=80';
+
+  const handleConfirmRecovery = async (e) => {
+    e?.preventDefault();
+    if (!horse?._id) return;
+    setRecovering(true);
+    try {
+      // 1. Create health record with eligible status
+      await veterinarianApi.createHealthRecord({
+        horse: horse._id,
+        diagnosis: recoveryNote.trim() || 'Khám tái khám: Chiến mã đã hoàn toàn bình phục sau điều trị, đủ điều kiện thi đấu.',
+        resultStatus: 'eligible',
+      });
+
+      // 2. Complete ongoing treatment if selected
+      if (completeOngoingTreatment && activeTreatment?._id) {
+        await veterinarianApi.updateTreatment(activeTreatment._id, {
+          status: 'completed',
+          trainingLevel: 'high',
+          isTrainingLocked: false,
+        });
+      }
+
+      setShowRecoveryModal(false);
+      await fetchHorseDetails();
+    } catch (err) {
+      alert(err?.message || 'Có lỗi khi cập nhật trạng thái bình phục.');
+    } finally {
+      setRecovering(false);
+    }
+  };
+
+  const handleCompleteTreatment = async (treatmentId) => {
+    if (!window.confirm('Xác nhận đánh dấu hoàn thành đợt điều trị này?')) return;
+    try {
+      await veterinarianApi.updateTreatment(treatmentId, {
+        status: 'completed',
+        trainingLevel: 'high',
+        isTrainingLocked: false,
+      });
+      await fetchHorseDetails();
+    } catch (err) {
+      alert(err?.message || 'Không thể cập nhật đợt điều trị.');
+    }
+  };
 
   return (
     <Container fluid className="p-0">
@@ -133,12 +193,12 @@ export default function HorseHealthDetail() {
           </Button>
 
           <Button
-            variant={isTrainingLocked ? 'danger' : 'outline-danger'}
+            variant={isTrainingLocked ? 'danger' : 'outline-primary'}
             size="sm"
             onClick={() => setShowLockModal(true)}
           >
-            <i className={`bi ${isTrainingLocked ? 'bi-lock-fill' : 'bi-unlock'} me-1`}></i>
-            {isTrainingLocked ? 'Mở Khóa Tập' : 'Khóa Huấn Luyện'}
+            <i className={`bi ${TRAINING_LEVEL_LABELS[trainingLevel]?.icon || 'bi-speedometer2'} me-1`}></i>
+            Chỉ Định Mức Tập ({TRAINING_LEVEL_LABELS[trainingLevel]?.label || 'Bình thường'})
           </Button>
         </div>
       </div>
@@ -168,12 +228,16 @@ export default function HorseHealthDetail() {
                   </div>
                 </div>
 
-                <div className="d-flex gap-2">
+                <div className="d-flex flex-wrap gap-2 align-items-center">
                   <HealthStatusBadge status={horse.healthStatus} className="fs-6 px-3 py-2" />
 
-                  {isTrainingLocked && (
-                    <Badge bg="danger" className="fs-6 px-3 py-2 d-flex align-items-center">
-                      <i className="bi bi-lock-fill me-1"></i> 🔴 KHÓA HUẤN LUYỆN
+                  {activeTreatment && (
+                    <Badge
+                      bg={TRAINING_LEVEL_LABELS[trainingLevel]?.variant || 'secondary'}
+                      className="fs-6 px-3 py-2 d-flex align-items-center shadow-sm"
+                    >
+                      <i className={`bi ${TRAINING_LEVEL_LABELS[trainingLevel]?.icon || 'bi-speedometer'} me-1`}></i>
+                      Mức tập: {TRAINING_LEVEL_LABELS[trainingLevel]?.label || trainingLevel}
                     </Badge>
                   )}
                 </div>
@@ -457,8 +521,13 @@ export default function HorseHealthDetail() {
                               {tr.medications?.length > 0 ? (
                                 <ul className="list-unstyled mb-0 small">
                                   {tr.medications.map((m, idx) => (
-                                    <li key={idx}>
+                                    <li key={idx} className="mb-1">
                                       💊 <strong>{m.name}</strong>: {m.dosage} ({m.frequency || 'theo chỉ dẫn'})
+                                      {m.startDate && m.endDate && (
+                                        <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                          📅 Từ {formatDate(m.startDate)} đến {formatDate(m.endDate)}
+                                        </div>
+                                      )}
                                     </li>
                                   ))}
                                 </ul>
@@ -479,6 +548,18 @@ export default function HorseHealthDetail() {
                               <Badge bg={st.bg} pill>
                                 {st.label}
                               </Badge>
+                              {tr.status === 'ongoing' && (
+                                <Button
+                                  variant="outline-success"
+                                  size="sm"
+                                  className="ms-2 py-0 px-2 fw-semibold"
+                                  style={{ fontSize: '0.72rem' }}
+                                  onClick={() => handleCompleteTreatment(tr._id)}
+                                  title="Đánh dấu đã hoàn thành đợt điều trị"
+                                >
+                                  <i className="bi bi-check-lg me-1"></i>Xong
+                                </Button>
+                              )}
                             </td>
                             <td className="small text-muted">
                               {tr.endDate ? `Đến ${formatDate(tr.endDate)}` : 'Đang tiến hành'}
@@ -517,6 +598,7 @@ export default function HorseHealthDetail() {
           fetchHorseDetails();
         }}
       />
+
     </Container>
   );
 }

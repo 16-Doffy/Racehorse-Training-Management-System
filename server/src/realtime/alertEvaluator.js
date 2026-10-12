@@ -1,7 +1,7 @@
 const Horse = require('../models/Horse');
 const TrainingSession = require('../models/TrainingSession');
 const { notifyHorseStaff } = require('../modules/alerts/notification.service');
-const { OBJECTIVE_LABELS } = require('../constants/training');
+const { OBJECTIVE_LABELS, SESSION_KINDS } = require('../constants/training');
 
 // Club-wide safety ceiling, used when the session didn't prescribe its own limits.
 const THRESHOLDS = {
@@ -27,12 +27,16 @@ const lastAlertedAt = new Map();
  */
 async function evaluateMetrics({ horseId, sessionId, heartRate, speed }) {
   const session = sessionId
-    ? await TrainingSession.findById(sessionId).select('objective prescription')
+    ? await TrainingSession.findById(sessionId).select('objective prescription kind')
     : null;
 
+  // The heart-rate ceiling is the workout's own; the speed target is a pace to reach, not a limit,
+  // so speed is only flagged well past it (or past the club ceiling, whichever is higher).
+  const kindDefaults = SESSION_KINDS[session?.kind]?.prescription || {};
+  const targetSpeed = session?.prescription?.targetSpeedKmh ?? kindDefaults.targetSpeedKmh;
   const limits = {
-    maxHeartRate: session?.prescription?.targetHeartRateMax ?? THRESHOLDS.maxHeartRate,
-    maxSpeed: session?.prescription?.targetSpeedKmh ?? THRESHOLDS.maxSpeed,
+    maxHeartRate: session?.prescription?.targetHeartRateMax ?? kindDefaults.targetHeartRateMax ?? THRESHOLDS.maxHeartRate,
+    maxSpeed: Math.max(THRESHOLDS.maxSpeed, targetSpeed ? Math.round(targetSpeed * 1.2) : 0),
   };
 
   const exceeded = [];

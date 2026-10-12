@@ -20,6 +20,8 @@ const FeedingSchedule = require('../src/models/FeedingSchedule');
 const InventoryItem = require('../src/models/InventoryItem');
 const Notification = require('../src/models/Notification');
 const { syncCareTasks } = require('../src/modules/health/treatmentCare.service');
+const { generatePlanWeek, mondayOf } = require('../src/modules/training/trainingPlan.service');
+const { suggestPhases } = require('../src/constants/training');
 const { INVENTORY_ITEMS } = require('./data/inventoryItems');
 
 const DEMO_PASSWORD = '123456';
@@ -125,18 +127,31 @@ async function run() {
     )
   );
 
+  // Thunder Bolt is ten weeks into a twelve-week cycle aimed at a race in about three weeks: the
+  // phases are counted back from race day the way the plan form proposes them.
+  const cycleStart = mondayOf(new Date(Date.now() - 9 * 7 * 86400000));
+  const autumnCup = await RaceEntry.create({
+    horse: horses[0]._id,
+    registeredBy: trainer._id,
+    raceName: 'Cúp Mùa Thu',
+    raceDate: new Date(cycleStart.getTime() + 12 * 7 * 86400000 + 5 * 86400000), // Saturday of week 13
+    distance: 1200,
+    status: 'registered',
+  });
   const plan = await TrainingPlan.create({
     horse: horses[0]._id,
     createdBy: trainer._id,
     phase: 'speed',
     distanceTarget: 1200,
-    weeklyVolumeKm: 28,
+    weeklyVolumeKm: 15,
     intensity: 'high',
     surface: 'dirt',
-    startDate: new Date(),
+    startDate: cycleStart,
+    phases: suggestPhases(cycleStart, autumnCup.raceDate).map((p) => ({ ...p, distanceTarget: 1200, surface: 'dirt' })),
+    targetRace: autumnCup._id,
     status: 'active',
-    goal: 'Đạt 1200m dưới 70 giây, sẵn sàng cho giải Spring Derby.',
-    notes: 'Focus on final-furlong acceleration ahead of the Spring Derby.',
+    goal: 'Đạt 1200m dưới 72 giây, sẵn sàng cho Cúp Mùa Thu.',
+    notes: 'Tập trung tăng tốc ở 200m cuối.',
   });
 
   await TrainingSession.create([
@@ -173,16 +188,20 @@ async function run() {
 
   // A second, lighter plan covering the rest of the roster so the Head Trainer dashboard's
   // fitness chart has more than one horse's worth of data to plot.
+  // Silver Arrow: a cycle without a race yet, one week into base work.
+  const baseStart = mondayOf(new Date(Date.now() - 7 * 86400000));
   const basePlan = await TrainingPlan.create({
     horse: horses[1]._id,
     createdBy: trainer._id,
     phase: 'base_building',
-    distanceTarget: 800,
-    weeklyVolumeKm: 18,
+    distanceTarget: 1600,
+    weeklyVolumeKm: 14,
     intensity: 'moderate',
     surface: 'turf',
-    startDate: new Date(),
+    startDate: baseStart,
+    phases: suggestPhases(baseStart).map((p) => ({ ...p, distanceTarget: 1600, surface: 'turf' })),
     status: 'active',
+    goal: 'Xây nền sức bền cho cự ly 1600m.',
   });
 
   await TrainingSession.create([
@@ -329,7 +348,15 @@ async function run() {
   await DailyTask.deleteMany({ treatment: course._id, status: 'pending' });
   await syncCareTasks(course);
 
-  console.log(`[seed] created ${horses.length} horses, 2 training plans, 4 sessions, 1 health record.`);
+  // This week's sessions from both cycles, as the trainer's "Sinh lịch tuần" button would book them.
+  let generated = 0;
+  for (const p of [plan, basePlan]) {
+    await p.populate([{ path: 'horse', select: 'name' }, { path: 'targetRace', select: 'raceName raceDate distance status' }]);
+    const week = await generatePlanWeek({ plan: p, weekStart: new Date(), actor: trainer, notify: false });
+    generated += week.created?.length || 0;
+  }
+
+  console.log(`[seed] created ${horses.length} horses, 2 training plans, ${4 + generated} sessions, 1 health record.`);
   console.log(`[seed] groom data: ${tasks.length} daily tasks, ${horses.length * 3} feeding schedules, ${INVENTORY_ITEMS.length} inventory items.`);
   console.log('[seed] done.');
   await mongoose.disconnect();

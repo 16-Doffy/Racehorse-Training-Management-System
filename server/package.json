@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "test": "node --test",
+    "test:integration": "node scripts/testIntegration.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

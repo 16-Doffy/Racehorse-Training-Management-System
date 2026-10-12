@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Table,
   Button,
@@ -18,18 +18,37 @@ import {
   Tooltip,
   Space,
 } from 'antd';
-import { message } from '../../lib/antdStatic';
-import { PlusOutlined, EditOutlined, CloseCircleOutlined, AimOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { message, notification } from '../../lib/antdStatic';
+import {
+  PlusOutlined,
+  EditOutlined,
+  CloseCircleOutlined,
+  AimOutlined,
+  PlayCircleOutlined,
+  CalendarOutlined,
+  UnorderedListOutlined,
+  SafetyCertificateOutlined,
+  StopOutlined,
+  CheckCircleOutlined,
+  PauseCircleOutlined,
+} from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { trainingSessionApi, trainingPlanApi } from './trainingApi';
 import { horsesApi } from '../horses/horsesApi';
+import { raceApi } from '../race/raceApi';
 import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
 import { useLockedHorseIds, useHorseClearances } from './useLockedHorses';
 import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } from '../../constants/health';
 import ReadinessPanel from './ReadinessPanel';
+import PreCheckModal from './PreCheckModal';
+import LiveSessionMonitor from './LiveSessionMonitor';
+import { useClubPolicy, precheckRuleText, afternoonProblem } from './useClubPolicy';
+import { SESSION_STATUS_LABELS as STATUS_LABELS, SESSION_STATUS_COLORS as STATUS_COLORS } from './sessionStatus';
 import SessionOutcome from './SessionOutcome';
 import confirmReadinessOverride, { needsOverride } from './confirmReadinessOverride';
+import WeekCalendar from './WeekCalendar';
 import {
   OBJECTIVE_LABELS,
   OBJECTIVE_DESCRIPTIONS,
@@ -39,23 +58,27 @@ import {
   PHASE_LABELS,
   objectiveOptions,
   intensityOptions,
+  SESSION_KINDS,
+  kindOptions,
+  KIND_SPEED_RANGES,
+  PRESCRIPTION_LIMITS,
+  METRIC_LIMITS,
+  sessionTimeLabel,
+  mondayOf,
+  actualTimeLabel,
+  TRAINER_ABORT_OPTIONS,
+  DONE_STATUSES,
 } from './trainingVocab';
 
 const { Title, Text } = Typography;
 
-const STATUS_LABELS = {
-  scheduled: 'Đã lên lịch',
-  in_progress: 'Đang diễn ra',
-  completed: 'Đã hoàn thành',
-  cancelled: 'Đã hủy',
-};
-const STATUS_COLORS = { scheduled: 'default', in_progress: 'processing', completed: 'success', cancelled: 'error' };
-// Mirrors the server's allowed transitions (trainingSession.controller.js). Starting a session goes
-// through the "Bắt đầu" button, which rechecks readiness, so it isn't offered here.
-const NEXT_STATUSES = { scheduled: ['completed', 'cancelled'], in_progress: ['completed', 'cancelled'], completed: [], cancelled: [] };
-const statusOptionsFor = (current) =>
-  [current, ...(NEXT_STATUSES[current] || [])].map((value) => ({ value, label: STATUS_LABELS[value] }));
 const SESSION_TYPE_LABELS = { training: 'Buổi tập thường', trial_run: 'Lượt chạy thử' };
+const futureTimeRule = {
+  validator: (_, value) =>
+    !value || value.isAfter(dayjs())
+      ? Promise.resolve()
+      : Promise.reject(new Error('Chọn giờ bắt đầu ở tương lai.')),
+};
 
 /** Renders the prescribed workout as a sentence a reader can follow without knowing the schema. */
 function describePrescription(p) {
@@ -74,11 +97,23 @@ export default function TrainingSessionPage() {
   const [evalOpen, setEvalOpen] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
   const [typeFilter, setTypeFilter] = useState('all');
+  // The week view is how a trainer reads training: what each horse does each day.
+  const [view, setView] = useState('week');
+  const [weekStart, setWeekStart] = useState(() => mondayOf(dayjs()));
   const [createForm] = Form.useForm();
   const [evalForm] = Form.useForm();
-  const evalStatus = Form.useWatch('status', evalForm);
+  const [endSession, setEndSession] = useState(null);
+  const [endForm] = Form.useForm();
+  const [abortSession, setAbortSession] = useState(null);
+  const [abortForm] = Form.useForm();
+  const draftKind = Form.useWatch('kind', createForm);
   const [examForm] = Form.useForm();
   const [examOpen, setExamOpen] = useState(false);
+  const [preCheckSession, setPreCheckSession] = useState(null);
+  const [scheduleSession, setScheduleSession] = useState(null);
+  const [scheduleForm] = Form.useForm();
+  const [cancelSession, setCancelSession] = useState(null);
+  const [cancelForm] = Form.useForm();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const planFilter = searchParams.get('plan');
@@ -100,9 +135,26 @@ export default function TrainingSessionPage() {
         ...(planFilter ? { trainingPlan: planFilter } : {}),
         ...(horseFilter ? { horse: horseFilter } : {}),
       }),
+    // A running session fills in from the sensor feed and closes itself: keep the board current.
+    refetchInterval: (query) => {
+      const sessions = query.state.data?.data || [];
+      if (sessions.some((x) => x.status === 'in_progress')) return 5000;
+      return sessions.some((x) => ['scheduled', 'ready', 'blocked'].includes(x.status)) ? 30000 : false;
+    },
   });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
+  const { data: racesData } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
+  const draftSessionType = Form.useWatch('sessionType', createForm);
+  const draftIsTrial = draftKind === 'trial' || draftSessionType === 'trial_run';
+  // A trial is run for one of the horse's entries still to come.
+  const trialRaceOptions = (racesData?.data || [])
+    .filter((r) => String(r.horse?._id || r.horse) === String(draft.horse) && ['registered', 'confirmed'].includes(r.status) && dayjs(r.raceDate).isAfter(dayjs()))
+    .map((r) => ({ value: r._id, label: `${r.raceName} — ${dayjs(r.raceDate).format('DD/MM/YYYY')}${r.distance ? ` · ${r.distance}m` : ''}` }));
+  const firstWeek = searchParams.get('first') === '1';
+  const policy = useClubPolicy();
+  const draftAt = Form.useWatch('scheduledAt', createForm);
+  const draftSlotProblem = afternoonProblem(policy, draftKind, draftAt);
 
   const filteredPlan = planFilter ? (plansData?.data || []).find((p) => p._id === planFilter) : null;
   const filteredHorse = horseFilter ? (horsesData?.data || []).find((h) => h._id === horseFilter) : null;
@@ -164,10 +216,15 @@ export default function TrainingSessionPage() {
   const startMutation = useMutation({
     mutationFn: ({ id, overrideReason }) => trainingSessionApi.start(id, overrideReason ? { overrideReason } : {}),
     onSuccess: () => {
-      message.success('Buổi tập đã bắt đầu.');
+      message.success('Buổi tập đã bắt đầu — số liệu cảm biến hiện ở đầu trang.');
       invalidate();
+      // The live board sits above the calendar and the list: bring it into view.
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     },
     onError: (err, variables) => {
+      // A refusal usually means the session is no longer in the state the table shows (held back by
+      // a lock, pre-check too old): show it as it is now.
+      if (err?.status === 409) invalidate();
       if (needsOverride(err)) {
         confirmReadinessOverride({
           readiness: err.data.readiness,
@@ -190,6 +247,138 @@ export default function TrainingSessionPage() {
       setEvalOpen(false);
     },
     onError: (err) => message.error(err.message || 'Ghi nhận thất bại.'),
+  });
+
+  const openEvaluation = (record) => {
+    setActiveSession(record);
+    evalForm.setFieldsValue({
+      trainerComment: record.trainerComment,
+      videoUrl: record.videoUrl,
+      performanceRating: record.performanceRating,
+    });
+    setEvalOpen(true);
+  };
+
+  // Ending a run (the work is done) leads straight to its evaluation.
+  const endMutation = useMutation({
+    mutationFn: ({ id, metrics }) => trainingSessionApi.end(id, metrics ? { metrics } : {}),
+    onSuccess: (res) => {
+      const done = res?.data;
+      message.success(done?.outcome?.summary ? `Đã kết thúc buổi tập. ${done.outcome.summary}` : 'Đã kết thúc buổi tập.');
+      invalidate();
+      setEndSession(null);
+      endForm.resetFields();
+      if (done) openEvaluation({ ...done, horse: endSession?.horse || done.horse });
+    },
+    onError: (err) => {
+      if (err?.status === 409) invalidate();
+      message.error(err.message || 'Không kết thúc được buổi tập.');
+    },
+  });
+
+  const abortMutation = useMutation({
+    mutationFn: ({ id, category, reason }) => trainingSessionApi.abort(id, { category, reason }),
+    onSuccess: () => {
+      message.success('Đã dừng buổi tập. Số liệu đến lúc dừng được giữ lại.');
+      invalidate();
+      setAbortSession(null);
+      abortForm.resetFields();
+    },
+    onError: (err) => {
+      if (err?.status === 409) invalidate();
+      message.error(err.message || 'Không dừng được buổi tập.');
+    },
+  });
+
+  // The sensor feed finished a run: offer its evaluation straight away.
+  const offerEvaluation = useCallback(
+    async (sessionId) => {
+      const res = await trainingSessionApi.getOne(sessionId).catch(() => null);
+      const done = res?.data;
+      if (!done || done.status !== 'completed') return;
+      const key = `done-${sessionId}`;
+      notification.success({
+        key,
+        title: `${done.horse?.name || 'Ngựa'} đã xong buổi tập`,
+        description: done.outcome?.summary || 'Buổi tập đã hoàn thành.',
+        // Bottom right, and it goes by itself: the page's own actions are top right.
+        placement: 'bottomRight',
+        duration: 15,
+        actions: (
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => {
+              notification.destroy(key);
+              openEvaluation(done);
+            }}
+          >
+            Đánh giá ngay
+          </Button>
+        ),
+      });
+    },
+    // openEvaluation only sets state on this page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  // A session held back by a medical gate: ask the vet straight from it.
+  const requestExamFor = (session) => {
+    setDraft((current) => ({ ...current, horse: session.horse?._id || session.horse }));
+    examForm.setFieldsValue({ priority: 'high', reason: `Buổi tập ${sessionTimeLabel(session.scheduledAt)} bị chặn: ${session.blockedReason || 'chưa đủ điều kiện'}` });
+    setExamOpen(true);
+  };
+
+  const cancelMutation = useMutation({
+    mutationFn: ({ id, cancelReason }) => trainingSessionApi.update(id, { status: 'cancelled', cancelReason }),
+    onSuccess: () => {
+      message.success('Đã hủy buổi tập. Buổi được giữ trong lịch sử.');
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+      setCancelSession(null);
+      cancelForm.resetFields();
+    },
+    onError: (err) => {
+      if (err?.status === 409) invalidate();
+      message.error(err.message || 'Không hủy được buổi tập.');
+    },
+  });
+
+  const openSchedule = (record) => {
+    setScheduleSession(record);
+    scheduleForm.setFieldsValue({ scheduledAt: dayjs().add(1, 'hour').startOf('minute') });
+  };
+
+  const scheduleMutation = useMutation({
+    mutationFn: ({ session, scheduledAt }) =>
+      session.status === 'missed'
+        ? trainingSessionApi.reschedule(session._id, { scheduledAt })
+        : trainingSessionApi.update(session._id, { scheduledAt }),
+    onSuccess: (res, { session, scheduledAt }) => {
+      message.success(session.status === 'missed' ? 'Đã xếp lại buổi tập. Buổi lỡ giờ được giữ trong lịch sử.' : 'Đã đổi giờ. Hãy kiểm tra sẵn sàng lại trước khi bắt đầu.');
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+      setWeekStart(mondayOf(dayjs(res.data?.scheduledAt || scheduledAt)));
+      setScheduleSession(null);
+      scheduleForm.resetFields();
+    },
+    onError: (err) => {
+      if (err?.status === 409) invalidate();
+      message.error(err.message || 'Không đổi được giờ tập.');
+    },
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: ({ plan, start }) => trainingPlanApi.generateWeek(plan._id, { weekStart: start.toISOString() }),
+    onSuccess: (res, { plan }) => {
+      const { created = [], skipped = [] } = res.data || {};
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+      const extra = skipped.length ? ` Không xếp: ${skipped.map((x) => x.reason).join(' ')}` : '';
+      message.success(`Đã xếp ${created.length} buổi tập cho ${plan.horse?.name}.${extra}`, skipped.length ? 6 : 3);
+    },
+    onError: (err) => message.error(err.message || 'Không sinh được lịch tuần.'),
   });
 
   const examMutation = useMutation({
@@ -229,6 +418,11 @@ export default function TrainingSessionPage() {
       key: 'objective',
       render: (_, r) => (
         <div className="min-w-[220px] max-w-[300px] whitespace-normal">
+          {r.kind && (
+            <Tag color={SESSION_KINDS[r.kind]?.color} className="!mr-1">
+              {SESSION_KINDS[r.kind]?.label}
+            </Tag>
+          )}
           <Tooltip title={OBJECTIVE_DESCRIPTIONS[r.objective]}>
             <Tag color={OBJECTIVE_COLORS[r.objective] || 'default'} className="!mr-1">
               {OBJECTIVE_LABELS[r.objective] || '—'}
@@ -250,7 +444,31 @@ export default function TrainingSessionPage() {
       title: 'Thời gian',
       dataIndex: 'scheduledAt',
       key: 'scheduledAt',
-      render: (d) => new Date(d).toLocaleString('vi-VN'),
+      // The booked time and, once it has run, the real one: they are different facts.
+      render: (d, r) => (
+        <div className="whitespace-nowrap tabular-nums text-sm">
+          <div>
+            <Text type="secondary" className="!text-xs">
+              Dự kiến{' '}
+            </Text>
+            {sessionTimeLabel(d)}
+          </div>
+          {actualTimeLabel(r) ? (
+            <div>
+              <Text type="secondary" className="!text-xs">
+                Thực tế{' '}
+              </Text>
+              {actualTimeLabel(r)}
+            </div>
+          ) : (
+            ['completed', 'evaluated'].includes(r.status) && (
+              <Text type="secondary" className="!text-xs">
+                Không ghi giờ thực tế (nhập tay)
+              </Text>
+            )
+          )}
+        </div>
+      ),
     },
     {
       title: 'Trạng thái',
@@ -258,7 +476,18 @@ export default function TrainingSessionPage() {
       key: 'status',
       render: (s, r) => (
         <div>
-          <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s] || s}</Tag>
+          {s === 'blocked' && r.blockedReason ? (
+            <Tooltip title={r.blockedReason}>
+              <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s]}</Tag>
+            </Tooltip>
+          ) : (
+            <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s] || s}</Tag>
+          )}
+          {s === 'missed' && (
+            <Text type="secondary" className="block !text-xs">
+              {r.rescheduledTo ? 'Đã xếp lại lịch' : 'Chưa kiểm tra hoặc bắt đầu kịp; hãy xếp lại lịch.'}
+            </Text>
+          )}
           {r.readiness?.overrideReason && (
             <Tooltip title={`Đã ghi đè cảnh báo: ${r.readiness.overrideReason}`}>
               <Tag color="orange" className="!mt-1">
@@ -280,8 +509,18 @@ export default function TrainingSessionPage() {
       // Pinned so Start/Evaluate stay reachable without scrolling the wide table sideways.
       fixed: 'right',
       render: (_, record) => (
-        <Space size={4}>
-          {record.status === 'scheduled' && (
+        <Space size={4} wrap>
+          {record.status === 'blocked' && (
+            <Button size="small" icon={<SafetyCertificateOutlined />} onClick={() => requestExamFor(record)}>
+              Yêu cầu bác sĩ khám
+            </Button>
+          )}
+          {['scheduled', 'blocked'].includes(record.status) && (
+            <Button size="small" type="primary" icon={<SafetyCertificateOutlined />} onClick={() => setPreCheckSession(record)}>
+              {record.status === 'blocked' ? 'Kiểm tra lại' : 'Kiểm tra sẵn sàng'}
+            </Button>
+          )}
+          {record.status === 'ready' && (
             <Button
               size="small"
               type="primary"
@@ -292,36 +531,53 @@ export default function TrainingSessionPage() {
               Bắt đầu
             </Button>
           )}
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => {
-              setActiveSession(record);
-              evalForm.setFieldsValue({
-                trainerComment: record.trainerComment,
-                videoUrl: record.videoUrl,
-                performanceRating: record.performanceRating,
-                status: record.status,
-                metrics: {
-                  avgHeartRate: record.metrics?.avgHeartRate,
-                  maxSpeed: record.metrics?.maxSpeed,
-                  distance: record.metrics?.distance,
-                },
-              });
-              setEvalOpen(true);
-            }}
-          >
-            Đánh giá
-          </Button>
+          {(['scheduled', 'ready', 'blocked'].includes(record.status) || (record.status === 'missed' && !record.rescheduledTo)) && (
+            <Button size="small" icon={<CalendarOutlined />} onClick={() => openSchedule(record)}>
+              {record.status === 'missed' ? 'Xếp lại lịch' : 'Đổi giờ'}
+            </Button>
+          )}
+          {record.status === 'in_progress' && (
+            <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => setEndSession(record)}>
+              Kết thúc
+            </Button>
+          )}
+          {record.status === 'in_progress' && (
+            <Button size="small" danger icon={<PauseCircleOutlined />} onClick={() => setAbortSession(record)}>
+              Dừng giữa chừng
+            </Button>
+          )}
+          {DONE_STATUSES.includes(record.status) && (
+            <Button size="small" type={record.status === 'completed' ? 'primary' : 'default'} icon={<EditOutlined />} onClick={() => openEvaluation(record)}>
+              {record.status === 'completed' ? 'Đánh giá' : 'Sửa đánh giá'}
+            </Button>
+          )}
+          {['scheduled', 'ready', 'blocked'].includes(record.status) && (
+            <Button size="small" danger icon={<StopOutlined />} onClick={() => setCancelSession(record)}>
+              Hủy buổi
+            </Button>
+          )}
         </Space>
       ),
     },
   ];
 
   const activePrescription = activeSession?.prescription;
+  const preCheckModal = (
+    <PreCheckModal
+      session={preCheckSession}
+      open={Boolean(preCheckSession)}
+      onClose={() => setPreCheckSession(null)}
+      onDone={invalidate}
+      onRequestExam={() => {
+        setDraft((current) => ({ ...current, horse: preCheckSession?.horse?._id }));
+        setExamOpen(true);
+      }}
+    />
+  );
 
   return (
     <div>
+      {preCheckModal}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
         <div>
           <Title level={3} className="!mb-0">
@@ -336,6 +592,14 @@ export default function TrainingSessionPage() {
           Tạo buổi tập
         </Button>
       </div>
+
+      <Alert
+        className="!mb-4"
+        type="info"
+        showIcon
+        title="Xếp lịch → Kiểm tra sẵn sàng → Bắt đầu → Kết thúc → Đánh giá"
+        description={`Xếp lịch chưa chạy cảm biến. ${precheckRuleText(policy)} Không kiểm tra hoặc bắt đầu kịp thì buổi chuyển sang Lỡ giờ và có thể xếp lại. Buổi đang chạy thì Kết thúc hoặc Dừng giữa chừng (giữ số liệu).${policy.afternoonLightOnly ? ' Buổi chiều chỉ tập nhẹ.' : ''}`}
+      />
 
       {filteredPlan && (
         <Tag
@@ -360,18 +624,74 @@ export default function TrainingSessionPage() {
         </Tag>
       )}
 
-      <Segmented
-        className="mb-4"
-        value={typeFilter}
-        onChange={setTypeFilter}
-        options={[
-          { value: 'all', label: 'Tất cả' },
-          { value: 'training', label: SESSION_TYPE_LABELS.training },
-          { value: 'trial_run', label: SESSION_TYPE_LABELS.trial_run },
-        ]}
-      />
+      {firstWeek && filteredPlan && !(sessionsData?.data || []).length && (
+        <Alert
+          className="!mb-4"
+          type="info"
+          showIcon
+          title={`Kế hoạch của ${filteredPlan.horse?.name || 'ngựa'} chưa có buổi tập nào`}
+          description="Lập kế hoạch chỉ đặt ra giai đoạn và lịch tuần mẫu. Sinh lịch cho tuần đầu tiên để có các buổi tập cụ thể; người chăm sóc được báo lịch ngay."
+          action={
+            <Button
+              type="primary"
+              loading={generateMutation.isPending}
+              onClick={() => {
+                const start = dayjs(filteredPlan.phases?.[0]?.startDate || filteredPlan.startDate || undefined);
+                const week = mondayOf(start.isBefore(dayjs()) ? dayjs() : start);
+                setWeekStart(week);
+                generateMutation.mutate({ plan: filteredPlan, start: week.toDate() });
+              }}
+            >
+              Sinh lịch tuần đầu tiên
+            </Button>
+          }
+        />
+      )}
+      <LiveSessionMonitor sessions={sessionsData?.data || []} onSessionCompleted={offerEvaluation} />
+
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Segmented
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'week', label: 'Lịch tuần', icon: <CalendarOutlined /> },
+            { value: 'list', label: 'Danh sách', icon: <UnorderedListOutlined /> },
+          ]}
+        />
+        <Segmented
+          value={typeFilter}
+          onChange={setTypeFilter}
+          options={[
+            { value: 'all', label: 'Tất cả' },
+            { value: 'training', label: SESSION_TYPE_LABELS.training },
+            { value: 'trial_run', label: SESSION_TYPE_LABELS.trial_run },
+          ]}
+        />
+      </div>
+
+      {view === 'week' && (
+        <WeekCalendar
+          weekStart={weekStart}
+          onWeekChange={(w) => setWeekStart(w || mondayOf(dayjs()))}
+          sessions={sessionsData?.data || []}
+          plans={(plansData?.data || []).filter((p) => (!planFilter || p._id === planFilter) && (!horseFilter || String(p.horse?._id) === horseFilter))}
+          onGenerate={(plan, start) => generateMutation.mutate({ plan, start })}
+          generatingPlanId={generateMutation.isPending ? generateMutation.variables?.plan._id : null}
+          onStart={(session) => startMutation.mutate({ id: session._id })}
+          onPreCheck={setPreCheckSession}
+          startingId={startMutation.isPending ? startMutation.variables?.id : null}
+          onEvaluate={openEvaluation}
+          onSchedule={openSchedule}
+          onCancel={setCancelSession}
+          onEnd={setEndSession}
+          onAbort={setAbortSession}
+          onRequestExam={requestExamFor}
+          schedulingId={scheduleMutation.isPending ? scheduleMutation.variables?.session._id : null}
+        />
+      )}
 
       <Table
+        className={view === 'week' ? 'hidden' : ''}
         rowKey="_id"
         columns={columns}
         dataSource={sessionsData?.data}
@@ -426,11 +746,31 @@ export default function TrainingSessionPage() {
           layout="vertical"
           onFinish={(values) => submitCreate(values)}
           onValuesChange={(changed, all) => {
+            // Picking a kind of work fills in what it normally means; every field stays editable.
+            if (changed.kind && SESSION_KINDS[changed.kind]) {
+              const k = SESSION_KINDS[changed.kind];
+              createForm.setFieldsValue({ objective: k.objective, intensity: k.intensity, sessionType: k.sessionType, prescription: { ...k.prescription } });
+              all = { ...all, objective: k.objective, intensity: k.intensity, sessionType: k.sessionType };
+            }
+            // A horse follows one plan at a time: file the session under it.
+            if (changed.horse) {
+              const plan = (plansData?.data || []).find((p) => String(p.horse?._id) === String(changed.horse) && p.status === 'active');
+              createForm.setFieldValue('trainingPlan', plan?._id);
+              // A trial defaults to the race the plan prepares for.
+              createForm.setFieldValue('raceEntry', plan?.targetRace?._id || plan?.targetRace || undefined);
+            }
+            // A trial is run over its race's distance.
+            const isTrialNow = (changed.kind || all.kind) === 'trial' || all.sessionType === 'trial_run';
+            if (isTrialNow && (changed.raceEntry || changed.kind || changed.horse)) {
+              const raceId = changed.raceEntry || createForm.getFieldValue('raceEntry');
+              const r = (racesData?.data || []).find((x) => String(x._id) === String(raceId));
+              if (r?.distance) createForm.setFieldValue(['prescription', 'distanceM'], r.distance);
+            }
             // A recovering horse can't be booked above the vet's level: pull the intensity down to
             // the highest one allowed as soon as the horse is picked.
             let intensity = all.intensity;
-            if (changed.horse) {
-              const c = clearances.get(String(changed.horse));
+            if (changed.horse || changed.kind) {
+              const c = clearances.get(String(all.horse));
               if (c?.restricted && !intensityAllowed(c, intensity)) {
                 const allowed = Object.keys(INTENSITY_RANK).filter((i) => INTENSITY_RANK[i] <= LEVEL_RANK[c.level]);
                 if (allowed.length) {
@@ -455,22 +795,52 @@ export default function TrainingSessionPage() {
             <Col xs={24} lg={15}>
               <Row gutter={16}>
                 <Col xs={24} md={12}>
-                  <Form.Item name="trainingPlan" label="Thuộc kế hoạch" rules={[{ required: true }]}>
-                    <Select
-                      placeholder="Chọn kế hoạch huấn luyện"
-                      options={(plansData?.data || []).map((p) => ({
-                        value: p._id,
-                        label: `${p.horse?.name} — ${PHASE_LABELS[p.phase] || p.phase}`,
-                      }))}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
                   <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>
                     <Select placeholder="Chọn ngựa" options={horseOptions} />
                   </Form.Item>
                 </Col>
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="trainingPlan"
+                    label="Thuộc kế hoạch"
+                    rules={[{ required: true, message: 'Ngựa này chưa có kế hoạch đang chạy — hãy lập kế hoạch trước' }]}
+                  >
+                    <Select
+                      placeholder="Tự chọn theo ngựa"
+                      options={(plansData?.data || [])
+                        .filter((p) => ['active', 'draft'].includes(p.status) && (!draft.horse || String(p.horse?._id) === String(draft.horse)))
+                        .map((p) => ({
+                          value: p._id,
+                          label: `${p.horse?.name} — ${p.goal || PHASE_LABELS[p.phase] || p.phase}`,
+                        }))}
+                    />
+                  </Form.Item>
+                </Col>
               </Row>
+
+              <Form.Item
+                name="kind"
+                label="Loại buổi tập"
+                extra={SESSION_KINDS[draftKind]?.hint || 'Chọn loại buổi để điền sẵn bài tập theo thông số thường dùng.'}
+              >
+                <Select
+                  placeholder="Phi chậm, phi nhanh, tập dốc…"
+                  options={kindOptions.map((o) => ({ value: o.value, label: o.label }))}
+                />
+              </Form.Item>
+
+              {draftIsTrial && (
+                <Form.Item
+                  name="raceEntry"
+                  label="Chạy thử cho giải"
+                  rules={[{ required: true, message: 'Chọn giải mà buổi chạy thử này chuẩn bị' }]}
+                  extra={trialRaceOptions.length ? 'Kết quả chạy thử hiện trên trang Đăng ký giải, cạnh đúng giải này.' : 'Ngựa chưa có giải sắp tới — đăng ký giải trước khi chạy thử.'}
+                >
+                  <Select placeholder="Chọn giải" options={trialRaceOptions} />
+                </Form.Item>
+              )}
+
+              {draftSlotProblem && <Alert className="!mb-3" type="error" showIcon title={draftSlotProblem} />}
 
               <Form.Item
                 name="objective"
@@ -512,13 +882,18 @@ export default function TrainingSessionPage() {
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8}>
-                  <Form.Item name="sessionType" label="Loại buổi tập" initialValue="training">
+                  <Form.Item name="sessionType" label="Hình thức" initialValue="training">
                     <Select options={Object.entries(SESSION_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8}>
-                  <Form.Item name="scheduledAt" label="Thời gian" rules={[{ required: true }]}>
-                    <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" />
+                  <Form.Item
+                    name="scheduledAt"
+                    label="Giờ bắt đầu dự kiến"
+                    rules={[{ required: true, message: 'Chọn ngày giờ dự kiến bắt đầu' }, futureTimeRule]}
+                    extra="Giờ thực tế được ghi khi bấm Bắt đầu."
+                  >
+                    <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
                   </Form.Item>
                 </Col>
               </Row>
@@ -534,47 +909,46 @@ export default function TrainingSessionPage() {
               <Row gutter={16}>
                 <Col xs={12} md={8}>
                   <Form.Item name={['prescription', 'distanceM']} label="Cự ly (m)">
-                    <InputNumber min={100} step={100} className="w-full" placeholder="1200" />
+                    <InputNumber min={PRESCRIPTION_LIMITS.distanceM[0]} max={PRESCRIPTION_LIMITS.distanceM[1]} step={100} className="w-full" placeholder="1200" />
                   </Form.Item>
                 </Col>
                 <Col xs={12} md={8}>
                   <Form.Item name={['prescription', 'reps']} label="Số hiệp">
-                    <InputNumber min={1} className="w-full" placeholder="3" />
+                    <InputNumber min={PRESCRIPTION_LIMITS.reps[0]} max={PRESCRIPTION_LIMITS.reps[1]} className="w-full" placeholder="3" />
                   </Form.Item>
                 </Col>
                 <Col xs={12} md={8}>
                   <Form.Item name={['prescription', 'restMinutes']} label="Nghỉ giữa hiệp (phút)">
-                    <InputNumber min={0} className="w-full" placeholder="8" />
+                    <InputNumber min={PRESCRIPTION_LIMITS.restMinutes[0]} max={PRESCRIPTION_LIMITS.restMinutes[1]} className="w-full" placeholder="8" />
                   </Form.Item>
                 </Col>
                 <Col xs={12} md={8}>
-                  <Form.Item name={['prescription', 'targetSpeedKmh']} label="Tốc độ mục tiêu (km/h)">
-                    <InputNumber min={10} max={90} className="w-full" placeholder="62" />
+                  <Form.Item
+                    name={['prescription', 'targetSpeedKmh']}
+                    label="Tốc độ mục tiêu (km/h)"
+                    extra={KIND_SPEED_RANGES[draftKind] ? `${SESSION_KINDS[draftKind].label}: ${KIND_SPEED_RANGES[draftKind][0]}–${KIND_SPEED_RANGES[draftKind][1]} km/h` : null}
+                  >
+                    <InputNumber min={PRESCRIPTION_LIMITS.targetSpeedKmh[0]} max={PRESCRIPTION_LIMITS.targetSpeedKmh[1]} className="w-full" placeholder="35" />
                   </Form.Item>
                 </Col>
                 <Col xs={12} md={8}>
                   <Form.Item name={['prescription', 'targetHeartRateMax']} label="Nhịp tim tối đa (bpm)">
-                    <InputNumber min={60} max={240} className="w-full" placeholder="180" />
+                    <InputNumber min={PRESCRIPTION_LIMITS.targetHeartRateMax[0]} max={PRESCRIPTION_LIMITS.targetHeartRateMax[1]} className="w-full" placeholder="170" />
                   </Form.Item>
                 </Col>
                 <Col xs={12} md={8}>
-                  <Form.Item name={['prescription', 'durationMinutes']} label="Thời lượng (phút)">
-                    <InputNumber min={5} className="w-full" placeholder="45" />
+                  <Form.Item
+                    name={['prescription', 'durationMinutes']}
+                    label="Thời lượng dự kiến (phút)"
+                    extra="Cho bài tính theo thời gian (đi bộ). Bài phi kết thúc khi đủ cự ly."
+                  >
+                    <InputNumber min={PRESCRIPTION_LIMITS.durationMinutes[0]} max={PRESCRIPTION_LIMITS.durationMinutes[1]} className="w-full" placeholder="45" />
                   </Form.Item>
                 </Col>
               </Row>
 
               <Form.Item name="coachNote" label="Dặn dò trước buổi tập">
                 <Input.TextArea rows={2} placeholder="VD: Giữ nhịp đều 2 hiệp đầu, bung sức hiệp cuối. Chú ý chân trước phải." />
-              </Form.Item>
-
-              <Form.Item name="status" label="Trạng thái" initialValue="scheduled">
-                <Select
-                  options={[
-                    { value: 'scheduled', label: 'Đã lên lịch' },
-                    { value: 'in_progress', label: 'Đang diễn ra (bật cảm biến thể lực mô phỏng)' },
-                  ]}
-                />
               </Form.Item>
             </Col>
             <Col xs={24} lg={9}>
@@ -588,8 +962,8 @@ export default function TrainingSessionPage() {
                   onRequestExam={() => setExamOpen(true)}
                 />
                 <Text type="secondary" className="!text-xs block mt-2">
-                  Mỗi dòng do một người khác nắm giữ. Chỉ khóa y tế của bác sĩ mới chặn hẳn buổi
-                  tập; các cảnh báo còn lại bạn vẫn có thể bỏ qua nhưng phải ghi lý do.
+                  Mỗi dòng do một người khác nắm giữ. Khóa y tế của bác sĩ, sốt, hoặc ngựa vừa ăn bữa có thức ăn tinh chưa
+                  đủ {policy.digestHardMinutes} phút (theo quy định CLB) sẽ chặn hẳn buổi tập; các cảnh báo còn lại bạn vẫn có thể bỏ qua nhưng phải ghi lý do.
                 </Text>
               </div>
             </Col>
@@ -598,7 +972,7 @@ export default function TrainingSessionPage() {
       </Modal>
 
       <Modal
-        title={`Đánh giá buổi tập — ${activeSession?.horse?.name || ''}`}
+        title={`${activeSession?.status === 'evaluated' ? 'Sửa đánh giá' : 'Đánh giá buổi tập'} — ${activeSession?.horse?.name || ''}`}
         open={evalOpen}
         okText="Lưu đánh giá"
         cancelText="Hủy"
@@ -617,6 +991,10 @@ export default function TrainingSessionPage() {
             description={
               <div className="text-xs">
                 {describePrescription(activePrescription) || 'Buổi tập này không đặt mục tiêu cụ thể.'}
+                <div className="mt-1">
+                  Dự kiến {sessionTimeLabel(activeSession.scheduledAt)}
+                  {actualTimeLabel(activeSession) ? ` · Thực tế ${actualTimeLabel(activeSession)}` : ' · Chưa chạy (chưa bấm Bắt đầu)'}
+                </div>
                 {activeSession.coachNote && <div className="mt-1">Dặn dò: {activeSession.coachNote}</div>}
               </div>
             }
@@ -627,56 +1005,19 @@ export default function TrainingSessionPage() {
           layout="vertical"
           onFinish={(values) =>
             // An emptied field must reach the server as '' so the link is cleared, not ignored.
-            evalMutation.mutate({ id: activeSession._id, payload: { ...values, videoUrl: values.videoUrl || '' } })
+            evalMutation.mutate({ id: activeSession._id, payload: { ...values, videoUrl: values.videoUrl || '', trainerComment: values.trainerComment || '' } })
           }
         >
-          <Form.Item name="status" label="Trạng thái">
-            <Select options={statusOptionsFor(activeSession?.status)} />
-          </Form.Item>
-
-          <Divider titlePlacement="left" className="!my-2 !text-sm">
-            Chỉ số thực tế
-          </Divider>
-          <Text type="secondary" className="!text-xs block mb-2">
-            Buổi tập có bật cảm biến sẽ tự điền. Buổi tập không bật thì nhập tay ở đây để hệ thống
-            đối chiếu được với mục tiêu.
-          </Text>
-          <Row gutter={16}>
-            <Col xs={8}>
-              <Form.Item
-                name={['metrics', 'avgHeartRate']}
-                label="Nhịp tim TB (bpm)"
-                extra={activePrescription?.targetHeartRateMax ? `Mục tiêu ≤ ${activePrescription.targetHeartRateMax}` : null}
-              >
-                <InputNumber min={30} max={280} className="w-full" />
-              </Form.Item>
-            </Col>
-            <Col xs={8}>
-              <Form.Item
-                name={['metrics', 'maxSpeed']}
-                label="Tốc độ tối đa (km/h)"
-                extra={activePrescription?.targetSpeedKmh ? `Mục tiêu ≥ ${activePrescription.targetSpeedKmh}` : null}
-              >
-                <InputNumber min={0} max={100} className="w-full" />
-              </Form.Item>
-            </Col>
-            <Col xs={8}>
-              <Form.Item
-                name={['metrics', 'distance']}
-                label="Cự ly chạy (m)"
-                extra={activePrescription?.distanceM ? `Mục tiêu ≥ ${activePrescription.distanceM}` : null}
-              >
-                <InputNumber min={0} step={100} className="w-full" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item
-            name="performanceRating"
-            label="Điểm phong độ (1 = kém, 10 = xuất sắc)"
-            extra={evalStatus !== 'completed' ? 'Chấm điểm khi chuyển buổi tập sang "Đã hoàn thành".' : null}
-          >
-            <InputNumber min={1} max={10} className="w-full" placeholder="VD: 8" disabled={evalStatus !== 'completed'} />
+          {activeSession && (
+            <div className="mb-3">
+              <Text strong className="!text-sm block mb-1">
+                Kết quả đo được
+              </Text>
+              <SessionOutcome session={activeSession} />
+            </div>
+          )}
+          <Form.Item name="performanceRating" label="Điểm phong độ (1 = kém, 10 = xuất sắc)" rules={[{ required: true, message: 'Chấm điểm phong độ' }]}>
+            <InputNumber min={1} max={10} precision={0} className="w-full" placeholder="VD: 8" />
           </Form.Item>
           <Form.Item
             name="trainerComment"
@@ -693,22 +1034,138 @@ export default function TrainingSessionPage() {
           >
             <Input placeholder="https://..." allowClear />
           </Form.Item>
-          {/* Mirrors the server rule in trainingSession.controller.js createPostSessionCare. */}
-          {(activeSession?.intensity === 'high' || activeSession?.objective === 'race_simulation') &&
-          activeSession?.status !== 'completed' ? (
-            <Alert
-              type="warning"
-              showIcon
-              title="Đây là buổi tập nặng"
-              description="Khi chuyển sang 'Đã hoàn thành', hệ thống sẽ tự giao việc ngâm chân và tắm cho nhân viên chăm sóc phụ trách, đồng thời báo kết quả cho chủ sở hữu. Nếu nhịp tim trung bình vượt mục tiêu từ 10%, bác sĩ sẽ nhận được yêu cầu khám."
-            />
-          ) : activeSession?.status !== 'completed' ? (
-            <Alert
-              type="info"
-              showIcon
-              title="Khi hoàn thành, chủ sở hữu sẽ nhận được thông báo kết quả buổi tập."
-            />
-          ) : null}
+          {activeSession?.status === 'evaluated' && (
+            <Alert type="info" showIcon title="Buổi này đã được đánh giá. Lưu lại sẽ sửa đánh giá; giá trị cũ được giữ trong nhật ký hệ thống." />
+          )}
+        </Form>
+      </Modal>
+
+      <Modal
+        title={scheduleSession?.status === 'missed' ? 'Xếp lại buổi tập đã lỡ giờ' : 'Đổi giờ buổi tập'}
+        open={Boolean(scheduleSession)}
+        onCancel={() => setScheduleSession(null)}
+        onOk={() => scheduleForm.submit()}
+        okText="Lưu giờ tập mới"
+        cancelText="Hủy"
+        confirmLoading={scheduleMutation.isPending}
+        destroyOnHidden
+      >
+        <Text className="block mb-3">
+          {scheduleSession?.horse?.name} · Dự kiến cũ {scheduleSession ? sessionTimeLabel(scheduleSession.scheduledAt) : ''}
+        </Text>
+        <Alert
+          className="!mb-3"
+          type="info"
+          showIcon
+          title={scheduleSession?.status === 'missed' ? 'Buổi cũ được giữ làm lịch sử; hệ thống tạo buổi mới với cùng bài tập.' : 'Đổi giờ sẽ đưa buổi về Đã lên lịch. Bạn cần kiểm tra sẵn sàng lại.'}
+        />
+        <Form
+          form={scheduleForm}
+          layout="vertical"
+          onFinish={(values) => scheduleMutation.mutate({ session: scheduleSession, scheduledAt: values.scheduledAt.toISOString() })}
+        >
+          <Form.Item name="scheduledAt" label="Giờ bắt đầu dự kiến mới" rules={[{ required: true, message: 'Chọn ngày giờ mới' }, futureTimeRule]}>
+            <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Kết thúc buổi tập — ${endSession?.horse?.name || ''}`}
+        open={Boolean(endSession)}
+        onCancel={() => setEndSession(null)}
+        onOk={() => endForm.submit()}
+        okText="Kết thúc buổi tập"
+        cancelText="Đóng"
+        confirmLoading={endMutation.isPending}
+        destroyOnHidden
+      >
+        {endSession && (
+          <Form
+            form={endForm}
+            layout="vertical"
+            onFinish={(values) => {
+              const typed = Object.fromEntries(Object.entries(values.metrics || {}).filter(([, v]) => v !== undefined && v !== null));
+              endMutation.mutate({ id: endSession._id, metrics: Object.keys(typed).length ? typed : undefined });
+            }}
+          >
+            <Text className="block mb-2">
+              Kết thúc ngay bây giờ: giờ kết thúc thực tế là lúc bấm, số liệu được đối chiếu với mục tiêu, buổi nặng sẽ giao việc chăm sóc sau tập cho nhân viên.
+            </Text>
+            {endSession.metrics?.sampleCount ? (
+              <SessionOutcome session={endSession} />
+            ) : (
+              <>
+                <Alert className="!mb-3" type="info" showIcon title="Buổi này chưa có số liệu cảm biến. Nhập số đo tay nếu có (không bắt buộc)." />
+                <Row gutter={12}>
+                  <Col xs={8}>
+                    <Form.Item name={['metrics', 'distance']} label="Cự ly (m)">
+                      <InputNumber min={METRIC_LIMITS.distance[0]} max={METRIC_LIMITS.distance[1]} step={100} className="w-full" />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={8}>
+                    <Form.Item name={['metrics', 'maxSpeed']} label="Tốc độ tối đa">
+                      <InputNumber min={METRIC_LIMITS.maxSpeed[0]} max={METRIC_LIMITS.maxSpeed[1]} className="w-full" />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={8}>
+                    <Form.Item name={['metrics', 'avgHeartRate']} label="Nhịp tim TB">
+                      <InputNumber min={METRIC_LIMITS.avgHeartRate[0]} max={METRIC_LIMITS.avgHeartRate[1]} className="w-full" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </>
+            )}
+          </Form>
+        )}
+      </Modal>
+
+      <Modal
+        title={`Dừng giữa chừng — ${abortSession?.horse?.name || ''}`}
+        open={Boolean(abortSession)}
+        onCancel={() => setAbortSession(null)}
+        onOk={() => abortForm.submit()}
+        okText="Dừng buổi tập"
+        okButtonProps={{ danger: true }}
+        cancelText="Đóng"
+        confirmLoading={abortMutation.isPending}
+        destroyOnHidden
+      >
+        <Text className="block mb-3">
+          Số liệu đo được đến lúc dừng và giờ dừng thực tế được giữ lại. Chọn "Sức khỏe" hoặc "Nghi chấn thương" thì bác sĩ nhận yêu cầu khám ưu tiên cao.
+        </Text>
+        <Form form={abortForm} layout="vertical" onFinish={(values) => abortMutation.mutate({ id: abortSession._id, ...values })}>
+          <Form.Item name="category" label="Nhóm nguyên nhân" rules={[{ required: true, message: 'Chọn nhóm nguyên nhân' }]}>
+            <Select options={TRAINER_ABORT_OPTIONS} placeholder="Chọn nhóm nguyên nhân" />
+          </Form.Item>
+          <Form.Item name="reason" label="Lý do" rules={[{ required: true, whitespace: true, message: 'Ghi lý do dừng' }]}>
+            <Input.TextArea rows={2} placeholder="VD: Ngựa khập khiễng chân trước trái sau 300 m." />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Hủy buổi tập"
+        open={Boolean(cancelSession)}
+        onCancel={() => setCancelSession(null)}
+        onOk={() => cancelForm.submit()}
+        okText="Hủy buổi tập"
+        okButtonProps={{ danger: true }}
+        cancelText="Đóng"
+        confirmLoading={cancelMutation.isPending}
+        destroyOnHidden
+      >
+        <Text className="block mb-3">
+          {cancelSession?.horse?.name} · {cancelSession ? sessionTimeLabel(cancelSession.scheduledAt) : ''}
+        </Text>
+        <Form
+          form={cancelForm}
+          layout="vertical"
+          onFinish={(values) => cancelMutation.mutate({ id: cancelSession._id, cancelReason: values.cancelReason })}
+        >
+          <Form.Item name="cancelReason" label="Lý do hủy" rules={[{ required: true, whitespace: true, message: 'Ghi lý do để giữ trong lịch sử' }]}>
+            <Input.TextArea rows={2} placeholder="VD: Trời mưa lớn, sân trơn." />
+          </Form.Item>
         </Form>
       </Modal>
 

@@ -26,6 +26,9 @@ export const TYPE_LABELS = {
   task_assigned: 'Công việc chăm sóc',
   care_order: 'Y lệnh của bác sĩ',
   session_scheduled: 'Buổi tập sắp tới',
+  race_result: 'Kết quả giải đua',
+  race_decision: 'Quyết định dự giải',
+  race_review: 'Cần xem lại quyết định dự giải',
   incident_update: 'Cập nhật sự cố',
   system: 'Thông báo hệ thống',
 };

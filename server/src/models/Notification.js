@@ -28,6 +28,8 @@ const notificationSchema = new mongoose.Schema(
         'horse_assigned',
         'session_completed',
         'race_result', // to the owner: placing and prize money of their horse's race
+        'race_decision', // to the owner: the trainer confirmed or withdrew their horse from a race
+        'race_review', // to the trainer: the horse's health changed after it was confirmed for a race
         'readiness_override',
         'training_unlocked',
         // To the groom: work handed to them, a vet's care order, a session coming up for their horse.

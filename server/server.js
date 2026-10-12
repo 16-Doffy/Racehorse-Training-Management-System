@@ -6,6 +6,7 @@ const { initSocket } = require('./src/realtime/socketServer');
 const { startSensorSimulator } = require('./src/realtime/sensorSimulator');
 const { startCareScheduler } = require('./src/realtime/careScheduler');
 const { startDailyTaskGenerator } = require('./src/realtime/dailyTaskGenerator');
+const { startMissedSessionWatcher } = require('./src/realtime/missedSessionWatcher');
 
 async function start() {
   await connectDB();
@@ -23,6 +24,7 @@ async function start() {
     // Real features, not tied to the fake-sensor demo flag: always on.
     startCareScheduler();
     startDailyTaskGenerator();
+    startMissedSessionWatcher();
   });
 }
 

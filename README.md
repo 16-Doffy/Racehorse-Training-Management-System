@@ -1,92 +1,117 @@
 # Racehorse Training & Management System
 
-Hệ thống Quản lý Huấn luyện Ngựa đua — monorepo React (Vite + Ant Design + Tailwind) và
-Node.js/Express + MongoDB, hỗ trợ 5 vai trò: Head Trainer, Veterinarian, Groom/Stable Hand,
-Horse Owner, Club Manager.
+Hệ thống quản lý huấn luyện ngựa đua cho 5 vai trò: Club Manager, Head Trainer,
+Veterinarian, Groom/Stable Hand và Horse Owner.
+
+**Đối chiếu code `654ae43` và thay đổi local, cập nhật 11/10/2026.** Mô tả flow hiện có không đồng
+nghĩa với việc mọi bước đã được người dùng test trên bản deploy.
+
+## Đọc tài liệu theo thứ tự
+
+1. [Flow hiện tại](docs/CURRENT_FLOW.md): ai làm, ở màn hình nào, thao tác gì,
+   hệ thống thay đổi gì và vì sao bước tiếp theo có thể bị chặn.
+2. [Checklist kiểm thử](docs/TEST_CHECKLIST.md): đi xuyên vai trò và đối chiếu kết
+   quả mong đợi. Các ca test tay đang để chưa xác nhận.
+3. [Hiện trạng API và phần chưa triển khai](API_REQUIREMENTS_PHASE2.md): thay thế
+   danh sách đề xuất Phase 2 cũ.
+4. [Cấu hình và deploy](DEPLOYMENT.md): backend chung, frontend, mobile, lưu file
+   và chính sách CLB.
 
 ## Cấu trúc
 
-```
-WDP301/
-├── client/   # React + Vite + Ant Design + Tailwind (4 vai trò chạy trên web)
-├── mobile/   # React Native + Expo — ứng dụng riêng cho Nhân viên Chăm sóc (Groom)
-└── server/   # Node + Express + MongoDB (Mongoose) + Socket.io — dùng chung cho cả web và mobile
-```
-
-Xem chi tiết kiến trúc, data model và phạm vi triển khai từng giai đoạn tại kế hoạch đã lưu
-trong quá trình phát triển (data model, API structure, realtime alerts, core flow theo role).
-
-**Muốn cả team dùng chung 1 database/backend thay vì mỗi người chạy Mongo/server local riêng?**
-Xem [DEPLOYMENT.md](DEPLOYMENT.md) (MongoDB Atlas + Render, có `render.yaml` deploy sẵn).
-
-## Yêu cầu môi trường
-
-- Node.js 18+ (đã test với Node 22)
-- MongoDB đang chạy tại `mongodb://127.0.0.1:27017` (Windows service `MongoDB` hoặc Docker)
-
-## Cài đặt & chạy
-
-```bash
-npm install                # cài dependencies cho cả root, client, server (npm workspaces)
-cp server/.env.example server/.env
-cp client/.env.example client/.env
-
-npm run seed                # tạo 5 tài khoản demo + dữ liệu mẫu
-npm run dev                 # chạy song song server (:5000) và client (:5173)
+```text
+client/   React + Vite + Ant Design + Tailwind: Manager, Trainer, Vet, Owner
+mobile/   React Native + Expo: Groom
+server/   Node.js + Express + MongoDB/Mongoose + Socket.io: API dùng chung
+docs/     Flow hiện tại và checklist kiểm thử
 ```
 
-Mở http://localhost:5173
+## Chạy web và backend local
 
-## Tài liệu API (Swagger)
+Groom chỉ dùng app `mobile/`; tài khoản Groom đăng nhập web chỉ thấy hướng dẫn mở app.
+Không cần Android Studio: `npm --prefix mobile run web` mở chính app Groom trên trình duyệt (cổng 5173, trùng cổng web quản lý nên chạy lần lượt). Camera và chế độ ngoại tuyến vẫn nên thử trên điện thoại.
 
-- Local: http://localhost:5000/api-docs
-- Bản deploy dùng chung: https://racehorse-tms-server.onrender.com/api-docs
+Dùng Node.js **22.12+** và npm; Vite hiện tại yêu cầu Node `^20.19.0 || >=22.12.0`.
+Cần MongoDB local nếu chạy backend local. Nếu chỉ chạy web với backend chung,
+làm theo [DEPLOYMENT.md](DEPLOYMENT.md).
 
-Toàn bộ endpoint (auth, horses, training, health, stable, feeding, inventory, races, finance,
-notifications, audit-logs) đều liệt kê ở đây kèm request/response mẫu — dùng nút **Authorize**
-trên Swagger UI (dán JWT lấy từ `POST /auth/login`) để gọi thử trực tiếp các API cần đăng nhập.
+Từ thư mục gốc, trên PowerShell:
 
-## Tài khoản demo (mật khẩu chung: `123456`)
+```powershell
+npm install
+Copy-Item server/.env.example server/.env
+Copy-Item client/.env.example client/.env
+npm run dev
+```
+
+- Web: `http://localhost:5173`.
+- API: `http://localhost:5000/api/v1`.
+- Swagger: `http://localhost:5000/api-docs`.
+- Kiểm tra kết nối: `http://localhost:5000/api/v1/health-check`.
+
+Nếu máy không nhận `npm`, trên máy Duy có thể dùng
+`& 'D:\npm-global\npm.cmd' install` và các lệnh tương ứng.
+
+### Dữ liệu demo local
+
+`npm run seed` tạo lại dữ liệu demo và **xóa dữ liệu ở nhiều collection** trong
+database mà `MONGO_URI` đang trỏ tới. Chỉ chạy khi chủ động muốn đặt lại database
+test riêng; không đưa seed vào quy trình deploy hoặc chạy trên database chung.
+
+Sau seed local, mật khẩu các tài khoản dưới đây là `123456`:
 
 | Vai trò | Email |
 |---|---|
 | Club Manager | manager@demo.com |
 | Head Trainer | trainer@demo.com |
 | Veterinarian | vet@demo.com |
-| Groom / Stable Hand | groom@demo.com |
+| Groom | groom@demo.com |
 | Horse Owner | owner@demo.com |
 
-## Trạng thái triển khai
+Tài khoản trên backend chung do Manager quản lý; không suy ra trạng thái tài khoản
+đang hoạt động từ bảng demo này. Đăng ký mới tạo tài khoản chờ duyệt, chưa đăng nhập được.
 
-Đây là bản **full scaffold**: kiến trúc, xác thực JWT + RBAC, toàn bộ data model và API cho cả
-5 vai trò đã sẵn sàng. Mỗi role có **1 luồng nghiệp vụ cốt lõi chạy đầy đủ end-to-end**:
+## Luồng chính
 
-| Role | Core flow đã hoàn thiện |
-|---|---|
-| Club Manager | Quản lý tài khoản & phân quyền (RBAC) — `/admin/users` |
-| Head Trainer | Giáo án + Buổi tập + đánh giá phong độ — `/training/plans`, `/training/sessions` |
-| Veterinarian | Hồ sơ khám bệnh + Điều trị + **Khóa huấn luyện khẩn cấp** — `/health/records`, `/health/treatments` |
-| Groom | **Chạy trên ứng dụng di động** (`mobile/`): tổng quan ca làm, sơ đồ chuồng + chi tiết từng ngựa, việc hàng ngày (ghi nhận ăn uống khi hoàn thành), khẩu phần ăn theo bữa, báo cáo sự cố kèm ảnh chụp, vật tư khu vực + đề xuất bổ sung. Trên web, tài khoản groom chỉ thấy thông báo chuyển sang dùng app. |
-| Horse Owner | Hồ sơ/pedigree/thành tích ngựa — `/horses` |
+Manager tiếp nhận và phân công → Trainer lập khẩu phần → Vet khám → Trainer lập
+kế hoạch và sinh lịch → Groom thực hiện chăm sóc → Trainer pre-check, bắt đầu,
+kết thúc và đánh giá → Groom chăm sóc sau tập.
 
-Các module còn lại (khẩu phần ăn, vật tư, đăng ký giải đua, báo cáo tài chính, sơ đồ chấn thương
-3D...) đã có API/data model đầy đủ, giao diện chi tiết sẽ hoàn thiện ở giai đoạn kế tiếp.
+Nếu hướng tới thi đấu: đăng ký giải → lập kế hoạch hướng tới giải → chạy thử gắn
+với giải → HLV quyết định tham gia/rút → nhập kết quả và tiền thưởng → theo dõi hồi phục.
+Đăng ký giải là tùy chọn; ngựa có thể huấn luyện mà không có giải mục tiêu.
 
-### Realtime alert demo
+Lập kế hoạch chưa tạo buổi tập; sinh lịch chưa chạy cảm biến.
+Xem trạng thái và điều kiện ở [CURRENT_FLOW.md](docs/CURRENT_FLOW.md).
 
-`ENABLE_SENSOR_SIMULATOR=true` (mặc định trong `.env.example`) sẽ mô phỏng dữ liệu nhịp
-tim/vận tốc mỗi 5 giây cho các buổi tập ở trạng thái `in_progress`. Khi vượt ngưỡng, hệ thống
-tạo Notification và đẩy realtime qua Socket.io tới Head Trainer / chủ sở hữu ngựa đó — thử tạo
-một buổi tập với trạng thái "Đang diễn ra" ở `/training/sessions` để xem cảnh báo xuất hiện.
+## API
 
-## Kiểm thử đã xác minh
+Backend chung được cấu hình trong dự án: `https://racehorse-tms-server.onrender.com`.
+Swagger: `https://racehorse-tms-server.onrender.com/api-docs`.
+Phiên cập nhật tài liệu này chưa xác minh phiên bản đang chạy trên Render.
 
-- `npm run build` (client) build thành công, không lỗi biên dịch.
-- Server khởi động, kết nối MongoDB, seed dữ liệu mẫu thành công.
-- Đăng nhập + RBAC: gọi API sai vai trò trả về 403 chính xác.
-- Luồng khóa huấn luyện: Veterinarian khóa ngựa → Head Trainer tạo buổi tập cho ngựa đó bị chặn
-  với lỗi 409 rõ ràng.
+Mọi endpoint trong hướng dẫn dùng tiền tố `/api/v1`. Swagger được viết tay ở
+`server/src/docs/openapi.js`; khi đổi nghiệp vụ, đối chiếu route/controller và
+cập nhật cả Swagger lẫn flow. Đăng nhập qua `POST /auth/login`, lấy token rồi
+dùng **Authorize** trong Swagger.
 
-Việc kiểm thử giao diện trực quan (mở trình duyệt, click qua từng màn hình) chưa được tự động
-hoá trong môi trường này — khuyến nghị chạy `npm run dev` và kiểm tra thủ công theo từng tài
-khoản demo ở trên.
+## Kiểm tra tự động
+
+Trang hướng dẫn test chính/phụ riêng: bản công khai https://claude.ai/artifact/495trt4fgGWhx1E9iJQ9RH, hoặc chạy `npm run test:guide` rồi mở
+**http://localhost:5190**. [Hướng dẫn](tools/test-flow-guide/README.md); không tích hợp
+vào web project. Có checklist, ghi chú và xuất biên bản.
+
+Hướng dẫn môi trường DB test, lệnh API/UI và CI: [AUTOMATED_TESTS.md](docs/AUTOMATED_TESTS.md).
+Kết quả đã chạy: [TEST_REPORT.md](docs/TEST_REPORT.md).
+MongoDB cần replica set cho transaction của công việc/kho và kết quả/tiền thưởng.
+
+```powershell
+npm test -w server
+npm --prefix mobile test
+npm run lint -w client
+npm run build -w client
+```
+
+Test API và Chromium đã có trong repo; dùng DB riêng, không seed dữ liệu chung.
+Kết quả tự động không thay thế việc test Expo trên điện thoại và toàn bộ các form
+trong checklist. Trạng thái bản deploy chưa được xác minh trong phiên này.

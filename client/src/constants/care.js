@@ -22,6 +22,7 @@ export const TASK_TYPE_LABELS = {
   icing: 'Ngâm chân nước đá',
   medication: 'Cho dùng thuốc',
   monitoring: 'Theo dõi theo y lệnh',
+  other: 'Khác',
 };
 
 // The real-clock window every task carries (task.timing.state, computed by the server):
@@ -31,7 +32,7 @@ export const TASK_TIMING_META = {
   late: { label: 'Trễ hạn', color: 'orange' },
   missed: { label: 'Đã lỡ', color: 'red' },
 };
-export const ASSIGNABLE_TASK_TYPES = ['cleaning', 'bathing', 'icing']; // meals come from rations
+export const ASSIGNABLE_TASK_TYPES = ['cleaning', 'bathing', 'icing', 'other']; // meals come from rations
 
 // Where a task came from (DailyTask.source).
 export const TASK_SOURCE_META = {

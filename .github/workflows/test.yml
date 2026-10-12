@@ -1,0 +1,45 @@
+name: Test
+on:
+  push:
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TZ: Asia/Ho_Chi_Minh
+      TEST_MONGO_URI: mongodb://127.0.0.1:27018/?replicaSet=wdp301Test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start isolated MongoDB replica set
+        run: |
+          docker run -d --name wdp301-test-mongo -p 27018:27018 mongo:8.0 mongod --port 27018 --replSet wdp301Test --bind_ip_all
+          for i in $(seq 1 30); do
+            if docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'db.adminCommand({ping:1}).ok' >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'rs.initiate({_id:"wdp301Test",members:[{_id:0,host:"127.0.0.1:27018"}]})'
+          for i in $(seq 1 30); do
+            if docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Backend unit tests
+        run: env -u TEST_MONGO_URI npm run test:server
+      - run: npm run test:mobile
+      - run: npm run test:integration
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
+      - run: npm run lint -w client
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-failure
+          path: scratch/playwright-results
+          if-no-files-found: ignore

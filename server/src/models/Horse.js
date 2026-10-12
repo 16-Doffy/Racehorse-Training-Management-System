@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 
 const achievementSchema = new mongoose.Schema(
   {
+    // Stable identity of this horse's race entry; names can repeat between editions.
+    raceEntry: { type: mongoose.Schema.Types.ObjectId, ref: 'RaceEntry', default: null },
     race: { type: String, required: true },
     result: { type: String, required: true }, // e.g. "1st", "2nd", "DNF"
     date: { type: Date, required: true },

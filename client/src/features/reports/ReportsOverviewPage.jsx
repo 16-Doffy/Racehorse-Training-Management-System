@@ -4,6 +4,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, Respons
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { reportsApi } from './reportsApi';
+import { SESSION_STATUS_LABELS, SESSION_STATUS_COLORS } from '../training/sessionStatus';
+import { categoryLabel } from '../finance/financeLabels';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -16,19 +18,6 @@ const HUE_REVENUE = '#eb6834';
 const GRID_COLOR = '#e1e0d9';
 const AXIS_COLOR = '#898781';
 const INK_SECONDARY = '#52514e';
-
-const SESSION_STATUS_LABELS = {
-  scheduled: 'Đã lên lịch',
-  in_progress: 'Đang diễn ra',
-  completed: 'Đã hoàn thành',
-  cancelled: 'Đã hủy',
-};
-const SESSION_STATUS_COLORS = {
-  scheduled: 'default',
-  in_progress: 'processing',
-  completed: 'success',
-  cancelled: 'error',
-};
 
 const RACE_STATUS_LABELS = {
   registered: 'Đã đăng ký',
@@ -122,7 +111,7 @@ function CategoryBreakdownChart({ title, rows, hue, total }) {
     );
   }
 
-  const sorted = [...rows].sort((a, b) => b.total - a.total);
+  const sorted = [...rows].map((r) => ({ ...r, category: categoryLabel(r.category) })).sort((a, b) => b.total - a.total);
 
   return (
     <Card title={title} className="h-full">
@@ -425,12 +414,12 @@ export default function ReportsOverviewPage() {
           dataSource={[
             ...(cost?.byCategory || []).map((c) => ({
               group: 'Chi phí',
-              label: c.category,
+              label: categoryLabel(c.category),
               value: formatVnd(c.total),
             })),
             ...(revenue?.byCategory || []).map((c) => ({
               group: 'Doanh thu',
-              label: c.category,
+              label: categoryLabel(c.category),
               value: formatVnd(c.total),
             })),
             ...Object.entries(training?.sessionsByStatus || {}).map(([s, count]) => ({

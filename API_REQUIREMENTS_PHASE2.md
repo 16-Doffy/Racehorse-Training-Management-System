@@ -1,47 +1,81 @@
-# DANH SÁCH YÊU CẦU API BỔ SUNG (PHASE 2)
-Dự án: Racehorse Training Management System
+# Hiện trạng API và phần chưa triển khai
 
-Dưới đây là danh sách tổng hợp toàn bộ các API cần phát triển thêm cho Phase 2 để hoàn thiện 100% các luồng nghiệp vụ thực tế.
+Cập nhật 11/10/2026, đối chiếu code `654ae43` cùng thay đổi local. Giữ tên file để liên kết cũ vẫn
+mở được; danh sách đề xuất Phase 2 đã được thay bằng hiện trạng.
+**Có endpoint trong code chưa có nghĩa đã test E2E.**
 
-## 1. Nhóm Xác thực & Hồ sơ người dùng (Auth & Profile)
-- [ ] `POST /auth/forgot-password`: Yêu cầu cấp lại mật khẩu (Gửi email chứa token).
-- [ ] `POST /auth/reset-password`: Đổi mật khẩu dựa trên token khôi phục.
-- [ ] `PUT /auth/change-password`: Đổi mật khẩu cho tài khoản đang đăng nhập.
-- [ ] `PUT /auth/profile`: Cập nhật thông tin cá nhân (Số điện thoại, địa chỉ, ảnh đại diện).
-- [ ] `POST /auth/logout`: Đăng xuất (xóa/đưa token vào blacklist).
-- [ ] `PATCH /users/{id}/notification-preferences`: Bật/tắt tùy chọn nhận thông báo của từng người dùng.
+- Quy trình: [Flow hiện tại](docs/CURRENT_FLOW.md).
+- Kiểm chứng giao diện: [Checklist kiểm thử](docs/TEST_CHECKLIST.md).
+- Request/response: Swagger `/api-docs`, nguồn `server/src/docs/openapi.js`.
+- Mọi đường dẫn dưới đây có tiền tố `/api/v1`.
 
-## 2. Nhóm Quản lý File & Tài liệu (Media Upload)
-- [ ] `POST /upload/image`: API dùng chung để upload file ảnh lên hệ thống (S3/Cloudinary) và trả về đường link ảnh (URL).
-- [ ] `POST /horses/{id}/documents`: Tải lên tài liệu pháp lý của ngựa (Giấy khai sinh, Hộ chiếu, Giấy chứng nhận giống).
-- [ ] `POST /health/records/{id}/attachments`: Tải lên tài liệu y tế đính kèm (Ảnh X-Quang, kết quả xét nghiệm, đơn thuốc scan).
+## API hiện có phục vụ flow
 
-## 3. Nhóm Giải đua & Nài ngựa (Races & Jockeys)
-- [ ] `POST /races/{id}/register`: HLV / Chủ ngựa đăng ký một con ngựa cụ thể tham gia giải đua.
-- [ ] `PATCH /races/{id}/results`: Cập nhật kết quả chung cuộc của giải đua (Thứ hạng ngựa, thời gian chạy, tiền thưởng).
-- [ ] `GET /jockeys`: Lấy danh sách Nài ngựa (Jockeys) trong hệ thống.
-- [ ] `GET /jockeys/{id}/performance`: Xem lịch sử và thống kê thành tích của một nài ngựa.
+| Nhóm | Endpoint chính | Người thao tác / hành vi |
+|---|---|---|
+| Tài khoản | `POST /auth/register`, `POST /auth/login`, `GET /auth/me` | Đăng ký chờ Manager duyệt; đăng nhập trả JWT |
+| Hồ sơ | `PUT /auth/profile`, `PUT /auth/change-password` | Người đang đăng nhập cập nhật hồ sơ/đổi mật khẩu |
+| Nhân sự | `/users`, `PATCH /users/:id/approval` | Manager quản lý và duyệt tài khoản; quyền đọc tùy role |
+| Ngựa | `/horses`, `GET /horses/:id/lineage`, `GET /horses/:id/timeline` | Manager quản lý; role khác đọc theo phạm vi |
+| Tiếp nhận | `GET /horses/checklist`, `GET /horses/:id/checklist` | Tính checklist và bước tiếp theo từ hồ sơ thật |
+| Chủ ngựa | `GET /horses/owner-summary` | Owner xem tóm tắt ngựa thuộc mình |
+| Ngừng quản lý | `PATCH /horses/:id/archive`, `PATCH /horses/:id/unarchive` | Manager lưu lịch sử, đưa ngựa ra/vào quản lý |
+| Chuồng | `/stable/assignments` | Manager/Trainer phân chuồng và Groom |
+| Khẩu phần | `/feeding` | Trainer/Manager lập khẩu phần, liên kết kho, đồng bộ việc cho ăn |
+| Khám | `/health/records`, `/health/exam-requests`, `GET /health/clearances` | Trainer/Manager yêu cầu khám; Vet lập hồ sơ và mức vận động |
+| Điều trị | `/health/treatments`, `POST /health/treatments/:id/lock-training`, `GET /health/care-orders` | Vet kê điều trị/y lệnh, hạn chế tập; xem tiến độ |
+| Chấn thương | `/health/injury-markers` | Vet lưu vị trí và thông tin chấn thương |
+| Kế hoạch | `/training/plans`, `GET /training/plans/suggest`, `POST /training/plans/:id/generate-week` | Trainer lập chu kỳ, sinh buổi theo tuần |
+| Buổi tập | `/training/sessions`, `GET /training/sessions/readiness` | Lịch tập và điều kiện sẵn sàng |
+| Chạy buổi tập | `POST /training/sessions/:id/pre-check`, `/start`, `/end`, `/abort` | Endpoint riêng cho kiểm tra, bắt đầu, kết thúc, dừng giữa chừng |
+| Đánh giá/xếp lại | `PATCH /training/sessions/:id/evaluation`, `POST /training/sessions/:id/reschedule` | Đánh giá buổi đã chạy; xếp lại `missed` bằng buổi mới |
+| Chăm sóc | `/stable/tasks`, `GET /stable/my-care-plan` | Trainer/Manager giao việc; Groom xem phần được giao |
+| Groom thực hiện | `PATCH /stable/tasks/:id/complete`, `/acknowledge`, `/not-done` | Ghi nhận việc/tiếp nhận/không làm được; metadata offline |
+| Sự cố | `POST /stable/tasks/:id/incident`, `GET /stable/incidents`, `PATCH /stable/incidents/:id` | Groom báo; Vet tiếp nhận và xử lý |
+| Kho | `/inventory`, `GET /inventory/forecast` | Manager quản lý; dự báo mức sử dụng |
+| Đề xuất kho | `POST /inventory/proposals`, `POST /inventory/:id/restock-request`, `PATCH /inventory/:id/restock-requests/:reqId` | Groom/Trainer/Vet đề xuất; Manager duyệt/từ chối |
+| Nhận hàng | `POST /inventory/:id/receive` | Manager nhập hàng; có `requestId` thì chống nhận lại đề xuất |
+| Giải | `/races`, `GET /races/:id/trials`, `POST /races/:id/decision`, `PATCH /races/:id/results` | Trainer đăng ký/quyết định; Trainer hoặc Manager ghi kết quả qua API |
+| Tài chính | `/finance`, `GET /finance/mine`, `GET /finance/mine/summary` | Manager ghi thu/chi; Owner đọc sổ và tổng hợp tháng/quý |
+| Báo cáo | `GET /reports/overview`, `/reports/training-chart`, `/reports/finance-chart` | Báo cáo Manager; biểu đồ tập theo phạm vi người dùng |
+| Xuất dữ liệu | `GET /export/finance`, `GET /export/horses` | Manager tải CSV; chưa phải PDF hoặc `.xlsx` |
+| File | `POST /uploads`, `GET /files/:id`, `POST /health/records/:id/attachments` | Ảnh/PDF lưu GridFS; đọc file qua URL có chữ ký |
+| Thông báo/nhật ký | `/notifications`, `/audit-logs` | Thông báo trong app và nhật ký thao tác |
+| Chính sách | `GET /settings/policy` | Đọc policy từ cấu hình server; chưa có màn chỉnh policy |
 
-## 4. Nhóm Quản lý Ngựa chuyên sâu (Advanced Horse Data)
-- [ ] `GET /horses/{id}/lineage`: Lấy dữ liệu cây gia phả của ngựa (Ngựa cha - Sire, Ngựa mẹ - Dam, các thế hệ trước).
-- [ ] `POST /horses/{id}/transfer-ownership`: Chuyển nhượng quyền sở hữu ngựa cho một Owner khác.
-- [ ] `PATCH /horses/{id}/retire`: Chuyển trạng thái ngựa sang "Nghỉ hưu" (Không thi đấu, không tập luyện).
+Trong bảng, `/start`, `/end`, `/abort` là hậu tố của `/training/sessions/:id`;
+`/acknowledge`, `/not-done` là hậu tố của `/stable/tasks/:id`; các đường dẫn biểu
+đồ đều thuộc `/reports`. `/nhóm` biểu thị nhóm route, không cam kết mọi role có CRUD.
 
-## 5. Nhóm Thống kê Biểu đồ (Analytics Dashboards)
-- [ ] `GET /reports/owner/training-chart`: API trả về mảng dữ liệu (time-series) tiến độ tập luyện của ngựa theo từng tháng (Dùng để vẽ Bar Chart ở Dashboard Chủ ngựa).
-- [ ] `GET /reports/finance-chart`: API trả về dữ liệu tổng hợp dòng tiền Thu/Chi theo từng tháng/quý (Dùng để vẽ biểu đồ tài chính).
-- [ ] `GET /search?q={keyword}`: Tìm kiếm toàn cầu (Global Search) quét qua toàn bộ dữ liệu Ngựa, User, Giải đua để trả về kết quả nhanh.
+## Đề xuất cũ đã có cách thực hiện khác
 
-## 6. Nhóm Xuất dữ liệu & Hóa đơn (Export & Invoicing)
-- [ ] `POST /finance/invoices/generate`: Chốt sổ và tự động tạo Hóa đơn (Invoice) tổng hợp chi phí cuối tháng cho các Chủ ngựa.
-- [ ] `GET /export/finance`: Xuất sổ sách báo cáo tài chính ra file Excel (`.csv`) hoặc PDF.
-- [ ] `GET /export/horses`: Xuất danh sách tổng hợp tất cả các ngựa ra file Excel.
+| Đề xuất cũ | Cách hiện tại |
+|---|---|
+| `/races/:id/register` | `POST /races` tạo lượt đăng ký của một ngựa; chưa có thực thể giải chung tách riêng |
+| `/horses/:id/transfer-ownership` | Manager đổi `owner` qua `PUT /horses/:id`, backend ghi nhận chuyển chủ |
+| `/horses/:id/retire` | Archive với lý do; chưa có vòng đời nghỉ hưu riêng |
+| `/reports/owner/training-chart` | `GET /reports/training-chart` có phạm vi theo người dùng |
+| Upload Cloudinary/S3 | Hiện lưu MongoDB GridFS, không phụ thuộc đĩa Render |
+| Readiness tính mỗi rạng sáng | Tính theo ngữ cảnh khi kiểm tra/xếp/bắt đầu buổi, không phải cờ tính một lần/ngày |
+| Trừ kho lúc kê đơn | Trừ vật tư liên kết khi Groom hoàn thành việc/liều thuốc |
 
-## 7. Nhóm Hệ thống & Thông báo đẩy (System & Notifications)
-- [ ] `GET /settings` & `PUT /settings`: Quản lý các cấu hình lõi của hệ thống (Loại tiền tệ, Sức chứa tối đa của chuồng trại).
-- [ ] `POST /users/device-tokens`: Lưu lại token thiết bị (FCM Token) để server có thể bắn Push Notification ra màn hình điện thoại/trình duyệt.
+## Chưa triển khai, không thuộc flow đang hướng dẫn
 
-## 8. Nhóm Tự động hóa ngầm (Backend Cronjobs / Triggers)
-*(Phần này FE không cần gọi API nhưng BE phải tự viết logic ngầm)*
-- [ ] **Auto-Deduct Inventory:** Tự động trừ số lượng thức ăn/thuốc trong bảng `Inventory` khi Groom hoàn thành một `DailyTask` (Cho ăn/Tiêm thuốc).
-- [ ] **Readiness Calculator:** Cronjob chạy mỗi rạng sáng để tự động tính toán và cập nhật trạng thái "Sẵn sàng tập luyện" cho từng chú ngựa (Dựa vào chỉ số y tế, nhịp tim hôm trước, dinh dưỡng).
+- Quên mật khẩu và đặt lại bằng email/token khôi phục.
+- Logout thu hồi JWT phía server; client hiện xóa phiên/token ở phía mình.
+- Tùy chọn nhận thông báo, device token và push notification khi app đóng.
+- Module nài ngựa (`jockeys`), tìm kiếm toàn hệ thống.
+- Hóa đơn tự động cuối tháng, xuất PDF/`.xlsx`.
+- API quản lý giấy tờ pháp lý riêng của ngựa.
+- `PUT /settings` để sửa cấu hình trong ứng dụng.
+- Upload video riêng: hiện nhận `videoUrl` là liên kết; uploader nhận ảnh/PDF.
+
+## Giới hạn cần kiểm chứng
+
+- Dashboard Owner còn biểu đồ/KPI/định giá giả; thẻ tóm tắt từng ngựa dùng API thật.
+- Ghi kết quả/tiền thưởng/thành tích và hoàn thành việc/trừ kho đã dùng transaction,
+  có regression test concurrent/retry/lỗi giữa chừng trong repo. Cần MongoDB replica set.
+- API integration, Chromium và CI đã được bổ sung; xem [TEST_REPORT.md](docs/TEST_REPORT.md)
+  và [AUTOMATED_TESTS.md](docs/AUTOMATED_TESTS.md). Chưa test mọi form/điện thoại/deploy.
+
+Đây là hiện trạng và điểm cần test, không phải cam kết phát triển mọi đề xuất.

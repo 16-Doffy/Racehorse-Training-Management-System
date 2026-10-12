@@ -11,6 +11,7 @@ import { horsesApi } from './horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { ROLES } from '../../constants/roles';
 import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constants/health';
+import HorseNextStep from './HorseNextStep';
 
 const { Title } = Typography;
 
@@ -22,6 +23,8 @@ export default function HorseListPage() {
   // (POST/PUT /horses is Manager-only on the server); every other role sees the same read-only
   // roster they always had.
   const isManager = user?.role === ROLES.MANAGER;
+  // The Manager and the trainer run a horse from arrival to training: they see its next step.
+  const showsNextStep = [ROLES.MANAGER, ROLES.HEAD_TRAINER].includes(user?.role);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
@@ -30,6 +33,8 @@ export default function HorseListPage() {
 
   const { data, isLoading } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const horses = data?.data || [];
+  const { data: checklistData } = useQuery({ queryKey: ['horses', 'checklist'], queryFn: () => horsesApi.checklists(), enabled: showsNextStep });
+  const checklistByHorse = new Map((checklistData?.data || []).map((c) => [String(c.horse._id), c]));
 
   // Manager: horses the club no longer manages, kept for their records.
   const [view, setView] = useState('active');
@@ -177,6 +182,15 @@ export default function HorseListPage() {
       },
     },
   ];
+
+  if (showsNextStep && view === 'active') {
+    columns.push({
+      title: 'Bước tiếp theo',
+      key: 'nextStep',
+      width: 220,
+      render: (_, h) => <HorseNextStep checklist={checklistByHorse.get(String(h._id))} />,
+    });
+  }
 
   // Who's responsible matters to the Manager (they assign it) — other roles already only see the
   // horses assigned to them, so the columns would just repeat their own name on every row.

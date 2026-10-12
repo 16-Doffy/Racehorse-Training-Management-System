@@ -64,11 +64,8 @@ export default function OwnerRacesPage() {
   const totalRaces = displayedRaces.length;
   const upcomingRaces = displayedRaces.filter(r => r.status === 'registered' || r.status === 'confirmed').length;
   
-  // Very naive "win" detection: checks if result text contains "1", "nhất", "win"
   const winCount = displayedRaces.filter(r => 
-    r.status === 'completed' && 
-    r.result && 
-    (r.result.toLowerCase().includes('nhất') || r.result.includes('1') || r.result.toLowerCase().includes('win'))
+    r.status === 'completed' && r.position === 1
   ).length;
 
   const columns = [
@@ -103,18 +100,28 @@ export default function OwnerRacesPage() {
       render: (s) => <span className={`text-xs px-2 py-0.5 rounded border font-medium ${STATUS_COLORS[s] || 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[s] || s}</span>,
     },
     {
-      title: 'Kết quả chung cuộc',
-      dataIndex: 'result',
-      key: 'result',
-      render: (v) => {
-        if (!v) return <span className="text-gray-400 font-medium">—</span>;
-        
-        const isWin = v.toLowerCase().includes('nhất') || v.includes('1') || v.toLowerCase().includes('win');
-        if (isWin) {
-          return <span className="font-bold text-yellow-600 flex items-center gap-1"><TrophyOutlined /> {v}</span>;
-        }
-        return <span className="font-semibold text-gray-700">{v}</span>;
+      title: 'Thứ hạng',
+      dataIndex: 'position',
+      key: 'position',
+      render: (pos) => {
+        if (!pos) return <span className="text-gray-400 font-medium">—</span>;
+        if (pos === 1) return <span className="font-bold text-yellow-600 flex items-center gap-1"><TrophyOutlined /> Hạng 1</span>;
+        if (pos === 2) return <span className="font-bold text-gray-500">Hạng 2</span>;
+        if (pos === 3) return <span className="font-bold text-orange-600">Hạng 3</span>;
+        return <span className="font-semibold text-gray-700">Hạng {pos}</span>;
       },
+    },
+    {
+      title: 'Thời gian',
+      dataIndex: 'finishTime',
+      key: 'finishTime',
+      render: (t) => t ? <span className="font-medium text-gray-600">{t} giây</span> : <span className="text-gray-400">—</span>,
+    },
+    {
+      title: 'Tiền thưởng',
+      dataIndex: 'prizeMoney',
+      key: 'prizeMoney',
+      render: (p) => p ? <span className="font-semibold text-emerald-600">${p.toLocaleString()}</span> : <span className="text-gray-400">—</span>,
     },
   ];
 

@@ -12,9 +12,14 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { ROLES } = require('../../constants/roles');
+const { SESSION_OPEN_STATUSES, SESSION_STATUS } = require('../../constants/training');
+const { closeRun } = require('../training/trainingSession.service');
 const { getScopedHorseIds, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { pushNotification } = require('../alerts/notification.service');
 const { clearanceMap } = require('../health/trainingClearance');
+const { closeLeftoversFor } = require('./archive.service');
+const { checklistFor } = require('./checklist.service');
+const { ownerSummary } = require('./ownerSummary.service');
 
 /** Adds the vet's current training level (lock / recovery / clear) to each horse. */
 async function withClearance(horses) {
@@ -65,6 +70,29 @@ const listHorses = asyncHandler(async (req, res) => {
   filter.isArchived = req.query.archived === 'true' && req.user.role === ROLES.MANAGER ? true : { $ne: true };
   const horses = await Horse.find(filter).populate(populatePedigree).sort({ name: 1 });
   return ok(res, await withClearance(horses), 'Horses fetched.');
+});
+
+// Where each horse in scope stands from arrival to training, and what comes next (checklist.service.js).
+const listChecklists = asyncHandler(async (req, res) => {
+  const scopedIds = await getScopedHorseIds(req.user);
+  const filter = scopedIds ? { _id: { $in: scopedIds } } : {};
+  filter.isArchived = { $ne: true };
+  const horses = await Horse.find(filter).populate('owner assignedTrainer assignedVet', 'name').select('name owner assignedTrainer assignedVet healthStatus').sort({ name: 1 });
+  return ok(res, await checklistFor(horses), 'Checklists computed.');
+});
+
+// The owner's horses at a glance (ownerSummary.service.js). Archived horses are left out.
+const listOwnerSummary = asyncHandler(async (req, res) => {
+  const horses = await Horse.find({ owner: req.user._id, isArchived: { $ne: true } }).select('name healthStatus').sort({ name: 1 });
+  return ok(res, await ownerSummary(horses), 'Owner summary computed.');
+});
+
+const getChecklist = asyncHandler(async (req, res) => {
+  if (!(await canAccessHorse(req.user, req.params.id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+  const horse = await Horse.findById(req.params.id).populate('owner assignedTrainer assignedVet', 'name').select('name owner assignedTrainer assignedVet healthStatus');
+  if (!horse) return fail(res, 'Horse not found.', 404);
+  const [checklist] = await checklistFor([horse]);
+  return ok(res, checklist, 'Checklist computed.');
 });
 
 const getHorse = asyncHandler(async (req, res) => {
@@ -228,22 +256,36 @@ const archiveHorse = asyncHandler(async (req, res) => {
   const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
   if (!reason) return fail(res, 'Hãy ghi lý do ngừng quản lý (VD: đã bán, nghỉ hưu).', 400);
 
+  // A run in progress stops as aborted (it ran: keep what was measured); bookings are called off.
+  const running = await TrainingSession.find({ horse: horse._id, status: SESSION_STATUS.IN_PROGRESS }).select('_id');
+  for (const s of running) {
+    // eslint-disable-next-line no-await-in-loop
+    await closeRun(s._id, { to: SESSION_STATUS.ABORTED, user: req.user, abortCategory: 'horse_left', abortReason: reason });
+  }
   const [sessions, races, plans] = await Promise.all([
-    TrainingSession.updateMany({ horse: horse._id, status: { $in: ['scheduled', 'in_progress'] } }, { status: 'cancelled' }),
+    TrainingSession.updateMany(
+      { horse: horse._id, status: { $in: SESSION_OPEN_STATUSES.filter((st) => st !== SESSION_STATUS.IN_PROGRESS) } },
+      { status: 'cancelled', cancelReason: `Ngựa ngừng quản lý: ${reason}` }
+    ),
     RaceEntry.updateMany({ horse: horse._id, status: { $in: ['registered', 'confirmed'] }, raceDate: { $gte: new Date() } }, { status: 'withdrawn' }),
     TrainingPlan.updateMany({ horse: horse._id, status: { $in: ['draft', 'active'] } }, { status: 'cancelled' }),
     StableAssignment.deleteMany({ horse: horse._id }),
-    DailyTask.deleteMany({ horse: horse._id, status: 'pending' }),
+    // Keep observations and incident reports as history when the work is called off.
+    DailyTask.updateMany(
+      { horse: horse._id, status: 'pending' },
+      { status: 'skipped', skipReason: `Ngựa đã ngừng quản lý: ${reason}`, skippedBy: req.user._id }
+    ),
   ]);
   Object.assign(horse, { isArchived: true, archivedAt: new Date(), archivedReason: reason });
   await horse.save();
+  const closed = await closeLeftoversFor(horse, reason);
 
   await logAction({
     actorId: req.user._id,
     action: 'horse.archive',
     targetModel: 'Horse',
     targetId: horse._id,
-    metadata: { reason, cancelledSessions: sessions.modifiedCount, withdrawnRaces: races.modifiedCount, cancelledPlans: plans.modifiedCount },
+    metadata: { reason, cancelledSessions: sessions.modifiedCount, withdrawnRaces: races.modifiedCount, cancelledPlans: plans.modifiedCount, ...closed },
   });
   const message = `📁 Ngựa "${horse.name}" đã ngừng quản lý tại câu lạc bộ: ${reason}.`;
   for (const userId of [horse.owner, horse.assignedTrainer, horse.assignedVet].filter(Boolean)) {
@@ -253,7 +295,7 @@ const archiveHorse = asyncHandler(async (req, res) => {
   return ok(
     res,
     horse,
-    `Đã ngừng quản lý ${horse.name}: hủy ${sessions.modifiedCount} buổi tập, rút ${races.modifiedCount} giải, đóng ${plans.modifiedCount} kế hoạch, gỡ chuồng.`
+    `Đã ngừng quản lý ${horse.name}: hủy ${sessions.modifiedCount} buổi tập, rút ${races.modifiedCount} giải, đóng ${plans.modifiedCount} kế hoạch, ${closed.exams} yêu cầu khám, ${closed.treatments} phác đồ, ${closed.incidents} sự cố; gỡ chuồng.`
   );
 });
 
@@ -268,4 +310,4 @@ const unarchiveHorse = asyncHandler(async (req, res) => {
   return ok(res, horse, `${horse.name} đã được quản lý trở lại — hãy xếp chuồng và người chăm sóc.`);
 });
 
-module.exports = { listHorses, getHorse, createHorse, updateHorse, deleteHorse, updateCareSchedule, archiveHorse, unarchiveHorse };
+module.exports = { listHorses, listChecklists, getChecklist, listOwnerSummary, getHorse, createHorse, updateHorse, deleteHorse, updateCareSchedule, archiveHorse, unarchiveHorse };

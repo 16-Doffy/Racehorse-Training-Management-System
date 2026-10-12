@@ -17,6 +17,7 @@ import dayjs from 'dayjs';
 import { horsesApi } from '../../features/horses/horsesApi';
 import { trainingSessionApi } from '../../features/training/trainingApi';
 import { financeApi } from '../../features/finance/financeApi';
+import OwnerHorseSummary from './OwnerHorseSummary';
 
 const { Text } = Typography;
 
@@ -97,7 +98,7 @@ export default function OwnerDashboard() {
   const eligibleHorses = horses.filter(h => h.healthStatus === 'eligible').length;
   const eligibleRate = horses.length > 0 ? (eligibleHorses / horses.length) * 100 : 28.4;
   
-  const upcomingSessions = allSessions.filter(s => s.status === 'scheduled' || s.status === 'in_progress');
+  const upcomingSessions = allSessions.filter(s => ['scheduled', 'ready', 'blocked', 'in_progress'].includes(s.status));
 
   // Top Card Component
   const StatCard = ({ title, value, change, isPositive, prevText }) => (
@@ -209,6 +210,9 @@ export default function OwnerDashboard() {
           Theo dõi chất lượng huấn luyện, cơ hội thi đấu và tỷ lệ thành công qua các chu kỳ.
         </p>
       </div>
+
+      {/* Each horse at a glance: health, next session, last result, races, money */}
+      <OwnerHorseSummary />
 
       {/* 4 Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

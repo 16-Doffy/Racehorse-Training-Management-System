@@ -6,6 +6,9 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const RaceEntry = require('../../models/RaceEntry');
+const { SESSION_LOCK_CANCELS } = require('../../constants/training');
+const { closeRun } = require('../training/trainingSession.service');
+const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const DailyTask = require('../../models/DailyTask');
 const User = require('../../models/User');
 const { dayBounds } = require('../../utils/taskTiming');
@@ -15,7 +18,7 @@ const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../
 const pick = require('../../utils/pick');
 const { syncHorseHealthStatus } = require('./injuryMarker.controller');
 const InventoryItem = require('../../models/InventoryItem');
-const { LEVELS, LEVEL_RANK, INTENSITY_RANK, levelOf, getTrainingClearance } = require('./trainingClearance');
+const { LEVELS, LEVEL_RANK, INTENSITY_RANK, levelOf, getTrainingClearance, LEVEL_LABELS } = require('./trainingClearance');
 const { withSupplyStatus } = require('../inventory/stock.service');
 
 const TREATMENT_FIELDS = ['healthRecord', 'horse', 'medications', 'careInstructions', 'isTrainingLocked', 'trainingLevel', 'lockReason', 'startDate', 'endDate', 'status'];
@@ -31,7 +34,7 @@ const listTreatments = asyncHandler(async (req, res) => {
   const treatments = await Treatment.find(filter)
     .populate('horse', 'name healthStatus')
     .populate('prescribedBy', 'name')
-    .sort({ createdAt: -1 });
+    .sort({ updatedAt: -1, createdAt: -1 });
   return ok(res, treatments, 'Treatments fetched.');
 });
 
@@ -55,25 +58,40 @@ const getTreatment = asyncHandler(async (req, res) => {
   return ok(res, treatment, 'Treatment fetched.');
 });
 
-// Cancels any not-yet-run session for a horse the moment it goes under a training lock — without
-// this, a session the Head Trainer scheduled *before* the lock existed just sits there as
-// "scheduled"/"in_progress" and nothing stops it from actually being run or evaluated.
-async function cancelPendingSessionsForLock(horseId, actorId, level = 'none') {
-  // Under a lock every booked session goes; while recovering, only those above the allowed level.
+// The moment a horse goes under a training lock (or a lower recovery level): bookings that never ran
+// are cancelled, and a session running right now is stopped as aborted for a medical reason — it ran,
+// so what was measured and when it stopped stay on record. Returns { cancelled, aborted }.
+async function cancelPendingSessionsForLock(horseId, actor, level = 'none', lockReason = '') {
+  // Under a lock every session goes; while recovering, only those above the allowed level.
   const above = Object.keys(INTENSITY_RANK).filter((i) => INTENSITY_RANK[i] > LEVEL_RANK[level]);
-  const filter = { horse: horseId, status: { $in: ['scheduled', 'in_progress'] } };
-  if (level !== 'none') filter.intensity = { $in: above };
-  const result = await TrainingSession.updateMany(filter, { status: 'cancelled' });
+  const scope = { horse: horseId };
+  if (level !== 'none') scope.intensity = { $in: above };
+  const result = await TrainingSession.updateMany(
+    { ...scope, status: { $in: SESSION_LOCK_CANCELS } },
+    { status: 'cancelled', cancelReason: `Bác sĩ ${level === 'none' ? 'khóa tập' : 'hạn chế mức tập'}${lockReason ? `: ${lockReason}` : ''}` }
+  );
   if (result.modifiedCount > 0) {
     await logAction({
-      actorId,
+      actorId: actor._id,
       action: 'trainingSession.auto_cancelled_by_lock',
       targetModel: 'Horse',
       targetId: horseId,
       metadata: { count: result.modifiedCount },
     });
   }
-  return result.modifiedCount;
+  const running = await TrainingSession.find({ ...scope, status: 'in_progress' }).select('_id');
+  let aborted = 0;
+  for (const s of running) {
+    // eslint-disable-next-line no-await-in-loop
+    const closed = await closeRun(s._id, {
+      to: 'aborted',
+      user: actor,
+      abortCategory: 'medical_lock',
+      abortReason: lockReason || (level === 'none' ? 'Bác sĩ khóa tập' : 'Bác sĩ hạ mức tập cho phép'),
+    });
+    if (closed) aborted += 1;
+  }
+  return { cancelled: result.modifiedCount, aborted };
 }
 
 /**
@@ -200,6 +218,8 @@ async function normalizeMedications(list) {
       startDate,
       endDate,
       instructions: String(m.instructions || '').trim() || undefined,
+      prescribedAt: m.prescribedAt ? new Date(m.prescribedAt) : new Date(),
+      status: m.status || 'ongoing',
     });
   }
   return { medications: out };
@@ -258,11 +278,15 @@ async function onTrainingLevelChanged(treatment, { previousLevel, actor }) {
   const room = [`horse:${treatment.horse}`];
 
   if (lowered) {
-    const cancelled = await cancelPendingSessionsForLock(treatment.horse, actor._id, clearance.level);
-    const cancelNote = cancelled > 0 ? ` Đã tự động hủy ${cancelled} buổi tập đã lên lịch trước đó.` : '';
+    const { cancelled, aborted } = await cancelPendingSessionsForLock(treatment.horse, actor, clearance.level, treatment.lockReason);
+    const cancelNote = [
+      cancelled > 0 ? ` Đã tự động hủy ${cancelled} buổi tập đã lên lịch trước đó.` : '',
+      aborted > 0 ? ` Đã dừng ${aborted} buổi đang tập (giữ số liệu đến lúc dừng).` : '',
+    ].join('');
     // A race the horse is entered for is the trainer's decision to withdraw, not something to do
     // silently — but they need to be reminded it exists.
     const raceNote = await upcomingRaceNote(treatment.horse);
+    await flagConfirmedEntries(treatment.horse, clearance.level === 'none' ? `bác sĩ khóa tập${treatment.lockReason ? ` — ${treatment.lockReason}` : ''}` : `bác sĩ chỉ cho ${clearance.label}`);
 
     if (clearance.level === 'none') {
       await notifyHorseStaff({
@@ -353,9 +377,13 @@ const createTreatment = asyncHandler(async (req, res) => {
   if (String(record.horse) !== String(body.horse)) return fail(res, 'Hồ sơ khám không thuộc ngựa này.', 400);
 
   const treatment = await Treatment.create({ ...body, prescribedBy: req.user._id });
+  // Stock is not touched here: each dose becomes a groom task carrying its supplies, and the stock
+  // goes down when that dose is recorded as given (blocked while the stock is short).
+
   await logAction({ actorId: req.user._id, action: 'treatment.create', targetModel: 'Treatment', targetId: treatment._id });
   await onTrainingLevelChanged(treatment, { previousLevel: 'high', actor: req.user });
   await sendCareOrders(treatment, req.user, { isNew: true });
+  await syncHorseHealthStatus(treatment.horse);
 
   return created(res, treatment, 'Treatment created.');
 });
@@ -372,16 +400,39 @@ const updateTreatment = asyncHandler(async (req, res) => {
     if (error) return fail(res, error, 400);
     changes.medications = medications;
   }
+  // Ending a treatment that still restricted training does not clear the horse: it stays at that level
+  // until a vet assesses it for a return to training (HealthRecord.clearedLevel).
+  const endedRestricted = changes.status && changes.status !== 'ongoing' && treatment.status === 'ongoing' && previousLevel !== 'high';
+  if (changes.status && changes.status !== 'ongoing') {
+    changes.isTrainingLocked = false;
+    changes.trainingLevel = 'high';
+    if (endedRestricted) {
+      changes.returnLevel = previousLevel;
+      if (!changes.endDate) changes.endDate = new Date();
+    }
+  }
   const levelError = applyTrainingLevel(changes, treatment);
   if (levelError) return fail(res, levelError, 400);
   Object.assign(treatment, changes);
+
   await treatment.save();
 
   await logAction({ actorId: req.user._id, action: 'treatment.update', targetModel: 'Treatment', targetId: treatment._id });
-  // Completing a treatment ends its restriction too: the horse counts as recovered from it.
-  await onTrainingLevelChanged(treatment, { previousLevel, actor: req.user });
+  if (endedRestricted) {
+    await notifyHorseStaff({
+      staff: 'trainer',
+      horse: treatment.horse,
+      type: 'training_restricted',
+      severity: 'info',
+      message: `🩺 Đã kết thúc điều trị cho ngựa, nhưng chưa được tập lại: chờ bác sĩ đánh giá trở lại tập (đang giữ mức "${LEVEL_LABELS[previousLevel]}").`,
+    });
+    await logAction({ actorId: req.user._id, action: 'treatment.ended_awaiting_return', targetModel: 'Treatment', targetId: treatment._id, metadata: { level: previousLevel } });
+  } else {
+    await onTrainingLevelChanged(treatment, { previousLevel, actor: req.user });
+  }
   // Also removes the care tasks still pending when the treatment has just been completed.
   await sendCareOrders(treatment, req.user);
+  await syncHorseHealthStatus(treatment.horse);
   return ok(res, treatment, 'Treatment updated.');
 });
 
@@ -403,6 +454,7 @@ const setTrainingLock = asyncHandler(async (req, res) => {
   await treatment.save();
 
   await onTrainingLevelChanged(treatment, { previousLevel, actor: req.user });
+  await syncHorseHealthStatus(treatment.horse);
   return ok(res, treatment, treatment.isTrainingLocked ? 'Training lock issued.' : 'Training level updated.');
 });
 
@@ -467,4 +519,5 @@ const listCareOrders = asyncHandler(async (req, res) => {
   return ok(res, rows, 'Care orders fetched.');
 });
 
-module.exports = { listTreatments, getTreatment, createTreatment, updateTreatment, setTrainingLock, listCareOrders };
+module.exports = {
+  cancelPendingSessionsForLock, listTreatments, getTreatment, createTreatment, updateTreatment, setTrainingLock, listCareOrders };
