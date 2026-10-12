@@ -98,6 +98,7 @@ export default function DashboardScreen({ navigation }) {
         title={user?.name || 'Nhân viên chăm sóc'}
         subtitle={`${myAssignments.length} chiến mã${myBlocks.length ? ` · ${myBlocks.join(', ')}` : ''}`}
         right={<IconButton icon="person" label="Hồ sơ của tôi" onPress={() => navigation.navigate('Profile')} />}
+        bell
       />
 
       <ScrollView

@@ -15,34 +15,41 @@ const TONE = {
 };
 
 /**
- * Screen header: title on the left, the notification bell on the right. Notifications live
- * behind the bell instead of taking a block on the dashboard, so every screen can reach them.
+ * Screen header: title on the left, the screen's own actions on the right. The notification bell
+ * is shown only where `bell` is set — the dashboard, the screen a groom opens first — so the work
+ * screens keep their header for their own actions.
  */
-export default function AppHeader({ title, subtitle, eyebrow, right }) {
+export default function AppHeader({ title, subtitle, eyebrow, right, bell = false }) {
+  return (
+    <View style={styles.header}>
+      <View style={{ flex: 1 }}>
+        {eyebrow ? <Text style={font.tiny}>{eyebrow}</Text> : null}
+        <Text style={font.h1} numberOfLines={1}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text style={font.small} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      <Row style={{ gap: spacing.sm }}>
+        {right}
+        {bell ? <NotificationBell /> : null}
+      </Row>
+    </View>
+  );
+}
+
+/** The bell with its unread count, and the list behind it. Notifications are fetched only here. */
+function NotificationBell() {
   const [open, setOpen] = useState(false);
   const { notifications } = useNotifications();
   const unread = notifications.filter((n) => !n.isRead).length;
 
   return (
     <>
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          {eyebrow ? <Text style={font.tiny}>{eyebrow}</Text> : null}
-          <Text style={font.h1} numberOfLines={1}>
-            {title}
-          </Text>
-          {subtitle ? (
-            <Text style={font.small} numberOfLines={2}>
-              {subtitle}
-            </Text>
-          ) : null}
-        </View>
-        <Row style={{ gap: spacing.sm }}>
-          {right}
-          <IconButton icon={unread ? 'bellActive' : 'bell'} label="Thông báo" badge={unread} onPress={() => setOpen(true)} />
-        </Row>
-      </View>
-
+      <IconButton icon={unread ? 'bellActive' : 'bell'} label="Thông báo" badge={unread} onPress={() => setOpen(true)} />
       <NotificationSheet visible={open} onClose={() => setOpen(false)} notifications={notifications} unread={unread} />
     </>
   );
