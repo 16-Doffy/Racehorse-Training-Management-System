@@ -923,7 +923,8 @@ module.exports = {
       get: {
         tags: ['Training (Head Trainer)'],
         summary: 'List training sessions',
-        parameters: [horseQueryParam, { name: 'trainingPlan', in: 'query', schema: { type: 'string' } }, { name: 'status', in: 'query', schema: { type: 'string' } }, { name: 'sessionType', in: 'query', schema: { type: 'string', enum: ['training', 'trial_run'] } }],
+        description: 'Scoped per role like the horses: a Groom gets only the sessions of horses whose stall assignment names them as caretaker (GET /training/sessions/{id} of another horse → 403). from/to filter scheduledAt (ISO 8601, to excluded); an invalid date → 400.',
+        parameters: [horseQueryParam, { name: 'trainingPlan', in: 'query', schema: { type: 'string' } }, { name: 'status', in: 'query', schema: { type: 'string' } }, { name: 'sessionType', in: 'query', schema: { type: 'string', enum: ['training', 'trial_run'] } }, { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } }, { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' }, description: 'Excluded' }],
         responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/TrainingSession' } }) },
       },
       post: {

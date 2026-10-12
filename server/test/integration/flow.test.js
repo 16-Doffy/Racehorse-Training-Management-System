@@ -127,4 +127,23 @@ test('real MongoDB + HTTP flow across Manager, Trainer, Vet, Groom and Owner', {
     await api('trainer', 'GET', `/horses/${fixture.horse._id}`, undefined, 403);
     assert.ok(await api('owner', 'GET', `/horses/${fixture.horse._id}`));
   });
+  await t.test('F: a groom sees the sessions of their own horses only; from/to on the booked time', async () => {
+    const otherGroom = await models.User.create({ name: 'TEST other groom', email: 'other-groom@integration.test', passwordHash: 'not-used', role: 'groom' });
+    const theirHorse = await api('manager', 'POST', '/horses', { name: 'TEST Other Stall', breed: 'Thoroughbred', owner: users.owner.id, assignedTrainer: users.trainer.id, assignedVet: users.vet.id }, 201);
+    await api('manager', 'POST', '/stable/assignments', { horse: theirHorse._id, stableBlock: 'TEST Block B', assignedCaretaker: String(otherGroom._id) }, 201);
+    await api('vet', 'POST', '/health/records', { horse: theirHorse._id, diagnosis: 'Test assessment', resultStatus: 'eligible', clearedLevel: 'high' }, 201);
+    const theirs = await book(ctx, theirHorse, await planFor(ctx, theirHorse));
+    const mine = await book(ctx, horse, plan, { scheduledAt: future(30) });
+    const list = await api('groom', 'GET', '/training/sessions');
+    assert.ok(list.length > 0 && list.every((s) => String(s.horse._id) === String(horse._id)), 'only the horses this groom looks after');
+    assert.deepEqual(await api('groom', 'GET', `/training/sessions?horse=${theirHorse._id}`), []);
+    await api('groom', 'GET', `/training/sessions/${theirs._id}`, undefined, 403);
+    assert.equal((await api('groom', 'GET', `/training/sessions/${mine._id}`))._id, mine._id);
+    assert.ok((await api('trainer', 'GET', '/training/sessions')).some((s) => s._id === theirs._id), 'the trainer still sees both horses');
+    const from = encodeURIComponent(new Date(Date.now() + 25 * 60000).toISOString());
+    const to = encodeURIComponent(new Date(Date.now() + 35 * 60000).toISOString());
+    assert.deepEqual((await api('groom', 'GET', `/training/sessions?from=${from}&to=${to}`)).map((s) => s._id), [mine._id]);
+    await api('groom', 'GET', '/training/sessions?from=not-a-date', undefined, 400);
+    await api('groom', 'GET', `/training/sessions?from=${to}&to=${from}`, undefined, 400);
+  });
 });

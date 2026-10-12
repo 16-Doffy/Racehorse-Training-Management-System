@@ -3,6 +3,7 @@ const TrainingPlan = require('../../models/TrainingPlan');
 const Horse = require('../../models/Horse');
 const RaceEntry = require('../../models/RaceEntry');
 const ExamRequest = require('../../models/ExamRequest');
+const StableAssignment = require('../../models/StableAssignment');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
@@ -75,6 +76,16 @@ function applyKind(body) {
   return null;
 }
 
+/**
+ * The horses a groom looks after (their stall assignments). A groom sees the sessions of these
+ * horses only — to have them ready in time — not the whole club's training. The groom's other
+ * screens (the stable map) still list every horse, so this stays local to sessions.
+ */
+async function caretakerHorseIds(userId) {
+  return (await StableAssignment.find({ assignedCaretaker: userId }).select('horse')).map((a) => a.horse);
+}
+const includesId = (ids, id) => ids.some((x) => String(x) === String(id));
+
 /** Loads a session the caller may act on, or sends the appropriate error and returns null. */
 async function loadSession(req, res) {
   const session = await TrainingSession.findById(req.params.id);
@@ -82,7 +93,9 @@ async function loadSession(req, res) {
     fail(res, 'Training session not found.', 404);
     return null;
   }
-  if (!(await canAccessHorse(req.user, session.horse))) {
+  const allowed =
+    req.user.role === ROLES.GROOM ? includesId(await caretakerHorseIds(req.user._id), session.horse) : await canAccessHorse(req.user, session.horse);
+  if (!allowed) {
     fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
     return null;
   }
@@ -194,11 +207,28 @@ async function applyStatusChange(session, next, { cancelReason }) {
 const listSessions = asyncHandler(async (req, res) => {
   const { trainingPlan, status, sessionType } = req.query;
   const filter = {};
-  const horse = await horseFilter(req.user, req.query.horse);
-  if (horse !== undefined) filter.horse = horse;
+  if (req.user.role === ROLES.GROOM) {
+    // An out-of-scope ?horse= gives an empty list, as horseFilter does for the other roles.
+    const mine = await caretakerHorseIds(req.user._id);
+    const wanted = req.query.horse;
+    filter.horse = wanted ? (includesId(mine, wanted) ? wanted : { $in: [] }) : { $in: mine };
+  } else {
+    const horse = await horseFilter(req.user, req.query.horse);
+    if (horse !== undefined) filter.horse = horse;
+  }
   if (trainingPlan) filter.trainingPlan = trainingPlan;
   if (status) filter.status = status;
   if (sessionType) filter.sessionType = sessionType;
+  // ?from=&to= on the booked time (ISO 8601, `to` excluded), e.g. one day for the groom's schedule.
+  const range = {};
+  for (const [key, op] of [['from', '$gte'], ['to', '$lt']]) {
+    if (req.query[key] === undefined || req.query[key] === '') continue;
+    const at = new Date(req.query[key]);
+    if (Number.isNaN(at.getTime())) return fail(res, `Tham số "${key}" không phải ngày giờ hợp lệ (ISO 8601).`, 400);
+    range[op] = at;
+  }
+  if (range.$gte && range.$lt && range.$gte >= range.$lt) return fail(res, '"from" phải trước "to".', 400);
+  if (Object.keys(range).length) filter.scheduledAt = range;
 
   const sessions = await TrainingSession.find(filter)
     .populate('horse', 'name healthStatus')
