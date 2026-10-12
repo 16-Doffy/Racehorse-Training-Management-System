@@ -531,7 +531,7 @@ export default function InventoryPage() {
           </Title>
           <Text type="secondary" className="text-sm">
             Danh mục kho theo từng loại. Khẩu phần và đơn thuốc lấy vật tư từ đây; mỗi bữa ăn hay liều thuốc nhân viên làm xong, kho
-            tự trừ. Nhân viên, HLV, bác sĩ đề xuất bổ sung — bạn duyệt là kho được cộng thêm.
+            tự trừ. Nhân viên, HLV, bác sĩ đề xuất bổ sung: bạn duyệt là đặt hàng; khi hàng về, bấm "Nhận hàng" thì kho mới tăng.
           </Text>
         </div>
         <Space wrap>
