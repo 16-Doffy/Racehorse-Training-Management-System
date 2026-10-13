@@ -38,6 +38,15 @@ test('real MongoDB + HTTP flow across Manager, Trainer, Vet, Groom and Owner', {
     assert.ok(count > 0);
     await api('trainer', 'POST', `/training/plans/${plan._id}/generate-week`, { weekStart: day(1).toISOString() }, 201);
     assert.equal(await models.TrainingSession.countDocuments({ trainingPlan: plan._id }), count);
+    // A trial is the race's rehearsal, never a weekly session: refused in a week template, and left
+    // out when a plan saved before that rule is generated.
+    const phase = { key: 'base_building', weeks: 3, distanceTarget: 1600, weeklyVolumeKm: 20, intensity: 'moderate', surface: 'dirt' };
+    const refused = await raw('trainer', 'PUT', `/training/plans/${plan._id}`, { phases: [{ ...phase, week: [{ day: day(1).getDay(), kind: 'trial' }] }] });
+    assert.equal(refused.status, 400);
+    assert.match(refused.body.message, /Chạy thử/);
+    await models.TrainingPlan.updateOne({ _id: plan._id }, { $set: { 'phases.0.week': [{ day: day(8).getDay(), slot: 'morning', kind: 'trial' }, { day: day(9).getDay(), slot: 'morning', kind: 'walk' }] } });
+    await api('trainer', 'POST', `/training/plans/${plan._id}/generate-week`, { weekStart: day(8).toISOString() }, 201);
+    assert.equal(await models.TrainingSession.countDocuments({ trainingPlan: plan._id, kind: 'trial' }), 0);
   });
   await t.test('B: pre-check, start, concurrent end, evaluation and post-work care', async () => {
     const session = await book(ctx, horse, plan, { kind: 'breeze' });

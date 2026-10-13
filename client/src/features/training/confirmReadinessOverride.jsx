@@ -1,5 +1,5 @@
 import { Typography, Input } from 'antd';
-import { message, modal } from '../../lib/antdStatic';
+import { modal } from '../../lib/antdStatic';
 
 const { Text } = Typography;
 
@@ -8,17 +8,20 @@ const { Text } = Typography;
  * trainer for the reason they are going ahead anyway. Used both when booking a session and when
  * starting one — the same decision, taken at two moments.
  *
- * `onConfirm(reason)` is called only once a non-empty reason has been entered.
+ * `onConfirm(reason)` is called only once a non-empty reason has been entered: the confirm button
+ * stays disabled until then.
  */
 export default function confirmReadinessOverride({ readiness, okText, onConfirm }) {
   const gates = (readiness?.gates || []).filter((g) => g.status === 'caution');
-  const inputId = `readiness-override-${Date.now()}`;
+  let reason = '';
+  let dialog = null;
 
-  modal.confirm({
+  dialog = modal.confirm({
     title: 'Có cảnh báo cần bạn xác nhận',
     width: 560,
     okText,
     cancelText: 'Để tôi xem lại',
+    okButtonProps: { disabled: true },
     content: (
       <div>
         <div className="flex flex-col gap-2 my-3">
@@ -36,22 +39,18 @@ export default function confirmReadinessOverride({ readiness, okText, onConfirm 
           nhận được thông báo.
         </Text>
         <Input.TextArea
-          id={inputId}
           rows={2}
+          aria-label="Lý do"
+          onChange={(e) => {
+            reason = e.target.value.trim();
+            dialog?.update({ okButtonProps: { disabled: !reason } });
+          }}
           className="!mt-2"
           placeholder="VD: Ngựa sẽ được cho ăn trước giờ tập, tôi trực tiếp giám sát."
         />
       </div>
     ),
-    onOk: () => {
-      const reason = document.getElementById(inputId)?.value?.trim();
-      if (!reason) {
-        message.warning('Vui lòng nhập lý do trước khi tiếp tục.');
-        return Promise.reject(new Error('missing reason'));
-      }
-      onConfirm(reason);
-      return undefined;
-    },
+    onOk: () => onConfirm(reason),
   });
 }
 

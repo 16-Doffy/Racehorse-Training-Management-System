@@ -40,6 +40,7 @@ function mondayOf(d) {
  *
  * - Each day takes the template of the phase it falls in; days without one are rest days.
  * - About a week before the plan's race, that day becomes a timed trial over the race distance.
+ *   That is the only trial: one in a week template (plans saved before this was refused) is left out.
  * - Days already booked, already past, outside the plan or on race day are skipped.
  * - The vet's word is final: a locked or injured horse gets nothing, a recovering horse gets lighter
  *   work in place of what its clearance doesn't allow.
@@ -88,7 +89,7 @@ async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify 
       continue;
     }
     const phase = phases[currentPhaseIndex(phases, day)];
-    let entries = (phase.week || []).filter((d) => d.day === day.getDay());
+    let entries = (phase.week || []).filter((d) => d.day === day.getDay() && d.kind !== 'trial');
     // About a week before the race: a timed trial over its distance in the morning, nothing else.
     if (t === trialDay) entries = [{ day: day.getDay(), slot: 'morning', kind: 'trial', distanceM: race.distance || plan.distanceTarget }];
 
@@ -156,4 +157,4 @@ async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify 
   return { weekStart, created: createdSessions, skipped };
 }
 
-module.exports = { generatePlanWeek, mondayOf, startOfDay, ddmm, DAY_MS };
+module.exports = { generatePlanWeek, mondayOf, startOfDay, ddmm, DAY_MS, TRIAL_DAYS_BEFORE_RACE };

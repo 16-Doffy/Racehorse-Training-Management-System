@@ -345,10 +345,21 @@ export default function TrainingSessionPage() {
     },
   });
 
+  // An hour from now, unless that falls in the afternoon for work the club keeps to the morning:
+  // then the next morning at the club's session time.
+  const suggestedTime = (record) => {
+    const soon = dayjs().add(1, 'hour').startOf('minute');
+    if (!afternoonProblem(policy, record.kind, soon)) return soon;
+    const [h, m] = (policy.morningTime || '07:30').split(':').map(Number);
+    const morning = soon.hour(h).minute(m).second(0);
+    return morning.isAfter(dayjs()) ? morning : morning.add(1, 'day');
+  };
   const openSchedule = (record) => {
     setScheduleSession(record);
-    scheduleForm.setFieldsValue({ scheduledAt: dayjs().add(1, 'hour').startOf('minute') });
+    scheduleForm.setFieldsValue({ scheduledAt: suggestedTime(record) });
   };
+  const scheduleAt = Form.useWatch('scheduledAt', scheduleForm);
+  const scheduleSlotProblem = afternoonProblem(policy, scheduleSession?.kind, scheduleAt);
 
   const scheduleMutation = useMutation({
     mutationFn: ({ session, scheduledAt }) =>
@@ -1059,6 +1070,7 @@ export default function TrainingSessionPage() {
           showIcon
           title={scheduleSession?.status === 'missed' ? 'Buổi cũ được giữ làm lịch sử; hệ thống tạo buổi mới với cùng bài tập.' : 'Đổi giờ sẽ đưa buổi về Đã lên lịch. Bạn cần kiểm tra sẵn sàng lại.'}
         />
+        {scheduleSlotProblem && <Alert className="!mb-3" type="error" showIcon title={scheduleSlotProblem} />}
         <Form
           form={scheduleForm}
           layout="vertical"

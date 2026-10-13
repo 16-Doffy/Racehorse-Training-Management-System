@@ -9,7 +9,7 @@ const { logAction } = require('../audit/audit.service');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
 const { getMedicalBlock } = require('./readiness.service');
-const { generatePlanWeek, startOfDay, ddmm, DAY_MS } = require('./trainingPlan.service');
+const { generatePlanWeek, startOfDay, ddmm, DAY_MS, TRIAL_DAYS_BEFORE_RACE } = require('./trainingPlan.service');
 const {
   PHASE_LABELS,
   SESSION_KINDS,
@@ -76,6 +76,10 @@ function normalizePhases(list) {
       if (seen.has(`${day}|${slot}`)) return { error: `${label}: mỗi buổi (sáng/chiều) trong ngày chỉ xếp một bài tập.` };
       seen.add(`${day}|${slot}`);
       if (!SESSION_KINDS[d.kind]) return { error: `${label}: loại buổi tập không hợp lệ.` };
+      // The trial is the race's rehearsal: once, over the race distance, booked by the week generator.
+      if (d.kind === 'trial') {
+        return { error: `${label}: không xếp "Chạy thử" vào lịch tuần mẫu — hệ thống tự xếp một buổi chạy thử đủ cự ly giải ${TRIAL_DAYS_BEFORE_RACE} ngày trước ngày đua.` };
+      }
       if (slot === 'afternoon' && clubPolicy.afternoonLightOnly && !AFTERNOON_KINDS.includes(d.kind)) {
         return { error: `${label}: theo quy định CLB, buổi chiều chỉ tập nhẹ (đi bộ hoặc phi chậm) — bài nặng để buổi sáng.` };
       }

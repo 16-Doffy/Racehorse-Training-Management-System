@@ -27,6 +27,8 @@ const SLOTS = [
   { slot: 'afternoon', label: 'Chiều' },
 ];
 const REST = 'rest';
+// The trial is the race's rehearsal, booked once before race day — never a weekly session.
+const TEMPLATE_KINDS = Object.keys(SESSION_KINDS).filter((k) => k !== 'trial');
 const nextMonday = () => {
   const d = dayjs().startOf('day');
   return d.add(((8 - d.day()) % 7) || 7, 'day');
@@ -376,7 +378,9 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
           <Text type="secondary" className="!text-sm block mb-3">
             Mỗi giai đoạn có một tuần mẫu: buổi sáng lúc {basics?.sessionTime} là buổi tập chính; buổi chiều lúc {basics?.afternoonTime} chỉ
             đi bộ hoặc phi chậm, để trống là nghỉ.
-            {race ? ' Hệ thống tự đặt một buổi chạy thử đủ cự ly giải vào buổi sáng 8 ngày trước ngày đua.' : ''}
+            {race
+              ? ' Chạy thử không có trong tuần mẫu: hệ thống tự đặt một buổi chạy thử đủ cự ly giải vào buổi sáng 8 ngày trước ngày đua.'
+              : ' Chạy thử chỉ có khi kế hoạch hướng tới một giải: hệ thống tự đặt 8 ngày trước ngày đua.'}
           </Text>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -406,7 +410,7 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
                       <td className="py-1 pr-2 text-xs text-gray-500">{label}</td>
                       {WEEK_DAYS.map((w) => {
                         const d = p.week.find((x) => x.day === w.day && slotOf(x) === slot);
-                        const kinds = slot === 'afternoon' && policy.afternoonLightOnly ? AFTERNOON_KINDS : Object.keys(SESSION_KINDS);
+                        const kinds = slot === 'afternoon' && policy.afternoonLightOnly ? AFTERNOON_KINDS : TEMPLATE_KINDS;
                         return (
                           <td key={w.day} className="py-1 pr-1">
                             <Select
