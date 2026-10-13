@@ -318,6 +318,16 @@ test('a reason given less than two hours ago for the same warning stands: start 
   assert.equal(calls.pushed.length, 0, 'the Manager was told at the pre-check');
 });
 
+test('the same warning with other numbers (an early start) is still the warning that was accepted', async () => {
+  gates = [gate('medical', 'ok'), gate('nutrition', 'caution', 'Bữa chiều cho ăn lúc 16:40, mới 8 phút trước giờ tập — buổi nhẹ vẫn tập được.')];
+  const session = readySession({
+    readiness: { checkedAt: new Date(Date.now() - 10 * MIN), overrideReason: 'Bài đi bộ nhẹ', gates: [gate('nutrition', 'caution', 'Bữa chiều cho ăn lúc 16:40, mới 24 phút trước giờ tập — buổi nhẹ vẫn tập được.')] },
+  });
+  const res = await call(controller.startSession, {});
+  assert.equal(res.code, 200);
+  assert.equal(session.readiness.overrideReason, 'Bài đi bộ nhẹ');
+});
+
 test('a new or different warning needs a new reason, and an old reason expires', async () => {
   gates = [gate('medical', 'ok'), gate('vet_clearance', 'caution', 'Chưa khám trong 14 ngày.')];
   let session = readySession({

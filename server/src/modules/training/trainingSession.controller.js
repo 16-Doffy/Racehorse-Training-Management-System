@@ -159,9 +159,10 @@ async function checkReadiness(horseId, context, overrideReason, standing) {
 function standingOverride(snapshot, readiness) {
   if (!snapshot?.overrideReason || !snapshot.checkedAt) return undefined;
   if (Date.now() - new Date(snapshot.checkedAt).getTime() > PRECHECK_VALID_HOURS * 60 * 60 * 1000) return undefined;
-  // The same warning, word for word: "no meal in 24 hours" accepted at booking does not cover "ate
-  // 75 minutes ago" found at the pre-check.
-  const said = (g) => `${g.key}|${g.detail || ''}`;
+  // The same warning, worded the same apart from its numbers: "ate 24 minutes before the session"
+  // at booking and "ate 8 minutes before" at an early start are the same meal, while "no meal in 24
+  // hours" accepted at booking does not cover "ate 75 minutes ago" found at the pre-check.
+  const said = (g) => `${g.key}|${(g.detail || '').replace(/\d+(?:[.,:h]\d+)*/g, '#')}`;
   const accepted = (snapshot.gates || []).filter((g) => g.status === 'caution').map(said);
   const now = cautionGates(readiness).map(said);
   return now.length > 0 && now.every((warning) => accepted.includes(warning)) ? snapshot.overrideReason : undefined;

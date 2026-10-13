@@ -164,7 +164,15 @@ export default function HorseListPage() {
       title: 'Trạng thái sức khỏe',
       dataIndex: 'healthStatus',
       key: 'healthStatus',
-      render: (status) => <Tag color={HEALTH_COLORS[status]}>{HEALTH_LABELS[status] || status}</Tag>,
+      // A horse nobody has examined yet starts as "eligible" in the record; say what is true instead.
+      render: (status, h) =>
+        checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === 'health')?.done === false ? (
+          <Tooltip title="Bác sĩ chưa khám tiếp nhận ngựa này — bài nặng và chạy thử cần giấy khám.">
+            <Tag>Chưa khám</Tag>
+          </Tooltip>
+        ) : (
+          <Tag color={HEALTH_COLORS[status]}>{HEALTH_LABELS[status] || status}</Tag>
+        ),
     },
     {
       title: 'Tập luyện',

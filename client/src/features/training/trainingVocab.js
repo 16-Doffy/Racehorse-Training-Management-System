@@ -255,6 +255,20 @@ export function planWarnings(phases, { startDate, raceDate, distance } = {}) {
     } else if (inPhase.key !== 'peak') {
       out.push({ level: 'warning', text: `Ngày đua rơi vào giai đoạn ${PHASE_LABELS[inPhase.key]} — thường đua ở cuối giai đoạn Giảm tải.` });
     }
+    // The taper is the days before the race. Race day early in the taper block leaves almost none
+    // before it, and the rest of that block's taper work falls after the race.
+    if (inPhase?.key === 'peak') {
+      const midnight = (d) => new Date(d).setHours(0, 0, 0, 0);
+      const before = Math.round((midnight(race) - midnight(inPhase.start)) / DAY_MS);
+      if (before < 3) {
+        const days = Math.round((midnight(race) - midnight(startDate)) / DAY_MS);
+        const aligned = new Date(midnight(startDate) + ((days + 1) % 7) * DAY_MS);
+        out.push({
+          level: 'warning',
+          text: `Ngày đua ${ddmmOf(race)} là ngày thứ ${before + 1} của giai đoạn Giảm tải — chỉ còn ${before} ngày giảm tải trước giải, phần còn lại rơi sau ngày đua. Bắt đầu kế hoạch từ ${ddmmOf(aligned)} để giai đoạn Giảm tải kết thúc đúng ngày đua.`,
+        });
+      }
+    }
     if (daysLeft < 14) out.push({ level: 'warning', text: `Chỉ còn ${daysLeft} ngày tới giải — không đủ thời gian xây thể lực, chỉ nên giữ phong độ.` });
   }
   if (buildUpWeeks > 0 && buildUpWeeks < 6) {
