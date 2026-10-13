@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Button, Popover, Tag, Typography, Tooltip, Empty } from 'antd';
 import { LeftOutlined, RightOutlined, PlayCircleOutlined, EditOutlined, ScheduleOutlined, SafetyCertificateOutlined, StopOutlined, CheckCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
@@ -27,6 +28,8 @@ const slotLabel = (scheduledAt) => (dayjs(scheduledAt).hour() < 12 ? 'Sáng' : '
 
 function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onCancel, onEnd, onAbort, onRequestExam, starting, scheduling }) {
   const policy = useClubPolicy();
+  // Controlled so an action closes it: the dialog it opens must not sit under the card's details.
+  const [open, setOpen] = useState(false);
   const kind = SESSION_KINDS[session.kind];
   const status = statusMeta(session.status);
   const met = session.outcome?.met;
@@ -48,7 +51,7 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onC
     </>
   );
   const actions = (
-    <div className="flex flex-wrap gap-2 border-t border-black/5 pt-2.5">
+    <div className="flex flex-wrap gap-2 border-t border-black/5 pt-2.5" onClickCapture={() => setOpen(false)}>
         {['scheduled', 'blocked'].includes(session.status) && (
           <Button size="small" type="primary" icon={<SafetyCertificateOutlined />} onClick={() => onPreCheck(session)}>
             {session.status === 'blocked' ? 'Kiểm tra lại' : 'Kiểm tra sẵn sàng'}
@@ -94,7 +97,7 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onC
   const detail = <SessionDetail session={session} statusLabel={rescheduled ? 'Đã xếp lại lịch' : status.label} notes={notes} actions={actions} />;
 
   return (
-    <Popover content={detail} trigger="click" placement="bottom">
+    <Popover content={detail} trigger="click" placement="bottom" open={open} onOpenChange={setOpen}>
       <button
         type="button"
         aria-label={`${kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}, ${slotLabel(session.scheduledAt)} ${dayjs(session.scheduledAt).format('HH:mm')}, ${rescheduled ? 'Đã xếp lại lịch' : status.label}`}
