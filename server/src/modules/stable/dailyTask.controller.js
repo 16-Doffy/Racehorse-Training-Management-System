@@ -124,6 +124,15 @@ const listTasks = asyncHandler(async (req, res) => {
     .populate('horse', 'name')
     .populate('assignedTo', 'name')
     .sort({ scheduledDate: -1 });
+  // A make-up meal stands in for the meal it makes up for, so it goes just before it: a screen that
+  // shows one task per meal (the groom app) then shows the one still to do. Its time alone does not
+  // say so — a meal reported "can't feed" before its hour is scheduled later than its make-up.
+  const order = new Map(tasks.map((t, i) => [String(t._id), i]));
+  const place = (t) => {
+    const own = order.get(String(t._id));
+    return t.makeUpOf && order.has(String(t.makeUpOf)) ? Math.min(own, order.get(String(t.makeUpOf)) - 0.5) : own;
+  };
+  tasks.sort((a, b) => place(a) - place(b));
   // Pending tasks that use up stock say whether the stock covers them right now.
   return ok(res, await withSupplyStatus(tasks), 'Daily tasks fetched.');
 });

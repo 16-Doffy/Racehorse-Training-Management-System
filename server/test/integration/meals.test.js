@@ -69,6 +69,12 @@ test('meals: ration times, missed meals, hard work on an empty stomach, make-up,
     assert.equal(makeUp.supplies[0].amount, 2, 'from the ration as it stands');
     assert.ok(await models.Notification.exists({ recipientUser: users.groom.id, message: /yêu cầu cho ăn bù bữa sáng/ }));
     assert.equal((await raw('trainer', 'POST', `/stable/tasks/${skipped._id}/make-up`)).status, 409, 'once per missed meal');
+    // A meal reported "can't feed" before its hour is scheduled after its make-up; the groom's list
+    // still puts the make-up first, so the app (one task per meal) shows the one still to do.
+    await models.DailyTask.updateOne({ _id: skipped._id }, { $set: { scheduledDate: new Date(Date.now() + 60 * 60000) } });
+    const list = (await api('groom', 'GET', `/stable/tasks?horse=${horse._id}`)).map((task) => String(task._id));
+    assert.ok(list.indexOf(String(makeUp._id)) < list.indexOf(String(skipped._id)), 'make-up listed before the meal it replaces');
+    await models.DailyTask.updateOne({ _id: skipped._id }, { $set: { scheduledDate: today } });
     await api('groom', 'PATCH', `/stable/tasks/${makeUp._id}/complete`, { clientOpId: 'make-up-1' });
     const after = (await computeReadiness(horse._id, { scheduledAt: at, intensity: 'high' })).gates.find((g) => g.key === 'nutrition');
     assert.doesNotMatch(after.detail, /không cho ăn được/, 'the make-up counts as the meal');
