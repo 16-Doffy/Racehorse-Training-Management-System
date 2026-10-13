@@ -24,7 +24,8 @@ import TrainingLockModal from '../../components/veterinarian/TrainingLockModal';
 import IncidentManagementModal from '../../components/veterinarian/IncidentManagementModal';
 import { formatDate } from '../../utils/formatDate';
 import { INJURY_SEVERITY_CONFIG } from '../../utils/healthStatus';
-import { INCIDENT_STATUS_META, INCIDENT_SEVERITY_META, incidentStatusOf } from '../../constants/care';
+import { INCIDENT_STATUS_META, INCIDENT_SEVERITY_META, INCIDENT_CATEGORY_META, incidentStatusOf } from '../../constants/care';
+import CareOrdersCard from '../../features/dashboard/CareOrdersCard';
 import veterinarianApi from '../../api/veterinarianApi';
 
 const STATUS_COLORS = {
@@ -504,6 +505,11 @@ export default function VeterinarianDashboard() {
         </Col>
       </Row>
 
+      {/* Today's Care Orders & Doses - Realtime tracking */}
+      <div className="mb-4">
+        <CareOrdersCard />
+      </div>
+
       {/* Groom Reported Incidents Section */}
       <Card className="border-0 shadow-sm mb-4 bg-white border-start border-danger border-4">
         <Card.Header className="bg-white py-3 d-flex justify-content-between align-items-center">
@@ -529,7 +535,7 @@ export default function VeterinarianDashboard() {
                 <tr>
                   <th>Chiến mã</th>
                   <th>Nhân viên báo (Groom)</th>
-                  <th>Công việc</th>
+                  <th>Loại sự cố</th>
                   <th>Mức độ</th>
                   <th>Mô tả sự cố</th>
                   <th>Thời gian</th>
@@ -542,6 +548,7 @@ export default function VeterinarianDashboard() {
                   const ir = task.incidentReport;
                   const st = incidentStatusOf(ir);
                   const sevMeta = INCIDENT_SEVERITY_META[ir?.severity] || { label: ir?.severity || 'Nhẹ', color: 'gold' };
+                  const catMeta = INCIDENT_CATEGORY_META[ir?.category] || { label: ir?.category || 'Chưa phân loại', bg: 'secondary' };
                   return (
                     <tr key={task._id} className={st === 'open' ? 'table-danger-subtle' : ''}>
                       <td className="fw-bold text-primary">
@@ -551,13 +558,22 @@ export default function VeterinarianDashboard() {
                         <i className="bi bi-person me-1 text-muted"></i>
                         {task.assignedTo?.name || 'Nhân viên chăm sóc'}
                       </td>
-                      <td className="small">{task.taskType}</td>
+                      <td>
+                        <Badge bg={catMeta.bg || 'secondary'}>
+                          {catMeta.label}
+                        </Badge>
+                        {task.taskType && (
+                          <small className="text-muted d-block" style={{ fontSize: '11px' }}>
+                            {task.taskType}
+                          </small>
+                        )}
+                      </td>
                       <td>
                         <Badge bg={sevMeta.color === 'red' ? 'danger' : sevMeta.color === 'orange' ? 'warning' : 'info'}>
                           {sevMeta.label}
                         </Badge>
                       </td>
-                      <td className="small" style={{ maxWidth: '320px' }}>
+                      <td className="small" style={{ maxWidth: '300px' }}>
                         <div className="text-truncate" title={ir?.description}>
                           {ir?.description || '-'}
                         </div>
@@ -572,8 +588,15 @@ export default function VeterinarianDashboard() {
                           </div>
                         )}
                       </td>
-                      <td className="small text-muted">
-                        {formatDate(ir?.reportedAt || task.updatedAt)}
+                      <td className="small">
+                        {ir?.occurredAt && (
+                          <div className="fw-semibold text-danger" title="Thời điểm phát hiện sự cố">
+                            <i className="bi bi-clock-history me-1"></i>Xảy ra: {formatDate(ir.occurredAt)}
+                          </div>
+                        )}
+                        <div className="text-muted" title="Thời điểm nhân viên gửi báo cáo">
+                          <i className="bi bi-send me-1"></i>Báo: {formatDate(ir?.reportedAt || task.updatedAt)}
+                        </div>
                       </td>
                       <td>
                         <Badge bg={st === 'resolved' ? 'success' : st === 'acknowledged' ? 'warning' : 'danger'}>

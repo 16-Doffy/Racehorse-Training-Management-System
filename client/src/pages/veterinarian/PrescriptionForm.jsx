@@ -6,11 +6,13 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorAlert from '../../components/common/ErrorAlert';
 import EmptyState from '../../components/common/EmptyState';
 import { formatDate, formatDateForInput } from '../../utils/formatDate';
+import { MEDICATION_ROUTE_OPTIONS, MEDICATION_ROUTE_LABELS } from '../../constants/care';
 
 const createEmptyMedication = () => ({
   inventoryItem: '',
   name: '',
   dosage: '',
+  route: 'oral',
   amount: '',
   unit: '',
   timeSlots: {
@@ -257,6 +259,7 @@ export default function PrescriptionForm() {
         const itemObj = {
           name: m.name.trim(),
           dosage: m.dosage.trim(),
+          route: m.route || 'oral',
           timeSlots: slots,
           times: timesList.length > 0 ? timesList : undefined,
           specificTimes: effectiveSpecificTimes,
@@ -444,6 +447,7 @@ export default function PrescriptionForm() {
         horseId: horse?._id || horse,
         medicine: m.name,
         dosage: m.dosage,
+        route: m.route || null,
         frequency: m.frequency,
         timeSlots: slots,
         specificTimes: timesDisplay,
@@ -643,9 +647,9 @@ export default function PrescriptionForm() {
                         </Form.Select>
                       </Form.Group>
 
-                      {/* Medicine Name, Amount per dose & Dosage */}
+                      {/* Medicine Name, Amount per dose, Dosage & Route */}
                       <Row className="g-2 mb-2">
-                        <Col xs={12} md={med.inventoryItem ? 5 : 7}>
+                        <Col xs={12} md={med.inventoryItem ? 4 : 5}>
                           <Form.Group>
                             <Form.Label className="small fw-semibold mb-1 text-nowrap d-block" style={{ minHeight: '22px' }}>
                               Tên thuốc / Dược phẩm <span className="text-danger">*</span>
@@ -711,7 +715,7 @@ export default function PrescriptionForm() {
                           </Col>
                         )}
 
-                        <Col xs={12} md={med.inventoryItem ? 4 : 5}>
+                        <Col xs={12} md={med.inventoryItem ? 2 : 4}>
                           <Form.Group>
                             <Form.Label className="small fw-semibold mb-1 text-nowrap d-block" style={{ minHeight: '22px' }}>
                               Liều lượng <span className="text-danger">*</span>
@@ -725,6 +729,26 @@ export default function PrescriptionForm() {
                               required
                               disabled={submitting}
                             />
+                          </Form.Group>
+                        </Col>
+
+                        <Col xs={12} md={3}>
+                          <Form.Group>
+                            <Form.Label className="small fw-semibold mb-1 text-nowrap d-block" style={{ minHeight: '22px' }}>
+                              Đường dùng <span className="text-danger">*</span>
+                            </Form.Label>
+                            <Form.Select
+                              size="sm"
+                              value={med.route || 'oral'}
+                              onChange={(e) => handleMedChange(index, 'route', e.target.value)}
+                              disabled={submitting}
+                            >
+                              {MEDICATION_ROUTE_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </Form.Select>
                           </Form.Group>
                         </Col>
                       </Row>
@@ -783,14 +807,14 @@ export default function PrescriptionForm() {
                             <div className="small fw-semibold text-muted mb-2">
                               <i className="bi bi-clock me-1 text-primary"></i> Chọn giờ uống cho từng buổi:
                             </div>
-                            <div className="d-flex flex-wrap gap-3">
+                            <div className="d-flex flex-wrap gap-x-4 gap-y-2 align-items-center">
                               {med.timeSlots.morning && (
-                                <div className="d-flex align-items-center gap-1">
-                                  <span className="small fw-semibold text-warning-emphasis">🌅 Sáng:</span>
+                                <div className="d-flex align-items-center gap-2">
+                                  <span className="small fw-semibold text-warning-emphasis text-nowrap">🌅 Sáng:</span>
                                   <Form.Control
                                     type="time"
                                     size="sm"
-                                    style={{ width: '110px' }}
+                                    style={{ width: '145px', minWidth: '140px' }}
                                     value={med.slotTimes?.morning || '08:00'}
                                     onChange={(e) => handleSlotTimeChange(index, 'morning', e.target.value)}
                                     disabled={submitting}
@@ -798,12 +822,12 @@ export default function PrescriptionForm() {
                                 </div>
                               )}
                               {med.timeSlots.noon && (
-                                <div className="d-flex align-items-center gap-1">
-                                  <span className="small fw-semibold text-info">☀️ Trưa:</span>
+                                <div className="d-flex align-items-center gap-2">
+                                  <span className="small fw-semibold text-info text-nowrap">☀️ Trưa:</span>
                                   <Form.Control
                                     type="time"
                                     size="sm"
-                                    style={{ width: '110px' }}
+                                    style={{ width: '145px', minWidth: '140px' }}
                                     value={med.slotTimes?.noon || '12:00'}
                                     onChange={(e) => handleSlotTimeChange(index, 'noon', e.target.value)}
                                     disabled={submitting}
@@ -811,12 +835,12 @@ export default function PrescriptionForm() {
                                 </div>
                               )}
                               {med.timeSlots.afternoon && (
-                                <div className="d-flex align-items-center gap-1">
-                                  <span className="small fw-semibold text-primary">🌇 Chiều:</span>
+                                <div className="d-flex align-items-center gap-2">
+                                  <span className="small fw-semibold text-primary text-nowrap">🌇 Chiều:</span>
                                   <Form.Control
                                     type="time"
                                     size="sm"
-                                    style={{ width: '110px' }}
+                                    style={{ width: '145px', minWidth: '140px' }}
                                     value={med.slotTimes?.afternoon || '16:00'}
                                     onChange={(e) => handleSlotTimeChange(index, 'afternoon', e.target.value)}
                                     disabled={submitting}
@@ -824,12 +848,12 @@ export default function PrescriptionForm() {
                                 </div>
                               )}
                               {med.timeSlots.evening && (
-                                <div className="d-flex align-items-center gap-1">
-                                  <span className="small fw-semibold text-dark">🌙 Tối:</span>
+                                <div className="d-flex align-items-center gap-2">
+                                  <span className="small fw-semibold text-dark text-nowrap">🌙 Tối:</span>
                                   <Form.Control
                                     type="time"
                                     size="sm"
-                                    style={{ width: '110px' }}
+                                    style={{ width: '145px', minWidth: '140px' }}
                                     value={med.slotTimes?.evening || '20:00'}
                                     onChange={(e) => handleSlotTimeChange(index, 'evening', e.target.value)}
                                     disabled={submitting}
@@ -992,7 +1016,14 @@ export default function PrescriptionForm() {
                           </td>
                           <td>
                             <div className="fw-semibold text-dark">💊 {p.medicine}</div>
-                            <div className="small text-muted">Liều: <strong>{p.dosage}</strong></div>
+                            <div className="small text-muted">
+                              Liều: <strong>{p.dosage}</strong>
+                              {p.route && (
+                                <Badge bg="light" text="dark" className="border ms-2">
+                                  {MEDICATION_ROUTE_LABELS[p.route] || p.route}
+                                </Badge>
+                              )}
+                            </div>
                             {p.instructions && (
                               <div className="small text-secondary fst-italic">📝 {p.instructions}</div>
                             )}

@@ -3,7 +3,7 @@ import { Modal, Button, Form, Alert, Badge, Row, Col, Spinner, Image } from 'rea
 import { useNavigate } from 'react-router-dom';
 import veterinarianApi from '../../api/veterinarianApi';
 import { formatDate } from '../../utils/formatDate';
-import { INCIDENT_STATUS_META, INCIDENT_SEVERITY_META, incidentStatusOf } from '../../constants/care';
+import { INCIDENT_STATUS_META, INCIDENT_SEVERITY_META, INCIDENT_CATEGORY_META, incidentStatusOf } from '../../constants/care';
 
 export default function IncidentManagementModal({
   show,
@@ -75,14 +75,26 @@ export default function IncidentManagementModal({
                   <span className="text-muted small">Công việc phát sinh:</span>{' '}
                   <span className="fw-semibold">{task.taskType}</span>
                 </div>
+                <div>
+                  <span className="text-muted small">Loại sự cố:</span>{' '}
+                  <Badge bg={INCIDENT_CATEGORY_META[incident.category]?.bg || 'secondary'} className="ms-1">
+                    {INCIDENT_CATEGORY_META[incident.category]?.label || incident.category || 'Chưa phân loại'}
+                  </Badge>
+                </div>
               </Col>
               <Col xs={12} md={6}>
                 <div>
                   <span className="text-muted small">Nhân viên báo cáo (Groom):</span>{' '}
                   <span className="fw-semibold">{task.assignedTo?.name || 'Nhân viên chăm sóc'}</span>
                 </div>
+                {incident.occurredAt && (
+                  <div>
+                    <span className="text-muted small">Thời điểm phát hiện:</span>{' '}
+                    <strong className="text-danger">{formatDate(incident.occurredAt)}</strong>
+                  </div>
+                )}
                 <div>
-                  <span className="text-muted small">Thời gian báo:</span>{' '}
+                  <span className="text-muted small">Thời gian gửi báo cáo:</span>{' '}
                   <span>{formatDate(incident.reportedAt || task.updatedAt)}</span>
                 </div>
               </Col>

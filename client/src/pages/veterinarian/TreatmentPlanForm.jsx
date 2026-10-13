@@ -5,6 +5,7 @@ import veterinarianApi from '../../api/veterinarianApi';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorAlert from '../../components/common/ErrorAlert';
 import { formatDateForInput } from '../../utils/formatDate';
+import { MEDICATION_ROUTE_OPTIONS } from '../../constants/care';
 
 export default function TreatmentPlanForm() {
   const [searchParams] = useSearchParams();
@@ -39,6 +40,7 @@ export default function TreatmentPlanForm() {
         unit: '',
         name: '',
         dosage: '',
+        route: 'oral',
         frequency: '',
         timeSlots: { morning: true, noon: false, afternoon: true, evening: false },
         slotTimes: { morning: '08:00', noon: '12:00', afternoon: '16:00', evening: '20:00' },
@@ -89,6 +91,7 @@ export default function TreatmentPlanForm() {
                     unit: m.inventoryItem?.unit || '',
                     name: m.name,
                     dosage: m.dosage,
+                    route: m.route || 'oral',
                     frequency: m.frequency || '',
                     timeSlots: {
                       morning: (m.timeSlots || []).includes('morning'),
@@ -113,6 +116,7 @@ export default function TreatmentPlanForm() {
                     unit: '',
                     name: '',
                     dosage: '',
+                    route: 'oral',
                     frequency: '',
                     timeSlots: { morning: true, noon: false, afternoon: true, evening: false },
                     slotTimes: { morning: '08:00', noon: '12:00', afternoon: '16:00', evening: '20:00' },
@@ -143,6 +147,7 @@ export default function TreatmentPlanForm() {
         {
           name: '',
           dosage: '',
+          route: 'oral',
           frequency: '',
           timeSlots: { morning: true, noon: false, afternoon: true, evening: false },
           slotTimes: { morning: '08:00', noon: '12:00', afternoon: '16:00', evening: '20:00' },
@@ -282,6 +287,7 @@ export default function TreatmentPlanForm() {
         const medItem = {
           name: m.name.trim(),
           dosage: m.dosage.trim(),
+          route: m.route || 'oral',
           timeSlots: slots,
           specificTimes: effectiveSpecificTimes,
           times: timesList.length > 0 ? timesList : undefined,
@@ -576,9 +582,9 @@ export default function TreatmentPlanForm() {
                       </Form.Select>
                     </Form.Group>
 
-                    {/* Medicine Name, Amount per dose & Dosage */}
+                    {/* Medicine Name, Amount per dose, Dosage & Route */}
                     <Row className="g-2 mb-2">
-                      <Col xs={12} md={med.inventoryItem ? 5 : 7}>
+                      <Col xs={12} md={med.inventoryItem ? 4 : 5}>
                         <Form.Label className="small fw-semibold mb-1 text-nowrap d-block" style={{ minHeight: '22px' }}>
                           Tên thuốc / Dược phẩm <span className="text-danger">*</span>
                         </Form.Label>
@@ -641,7 +647,7 @@ export default function TreatmentPlanForm() {
                         </Col>
                       )}
 
-                      <Col xs={12} md={med.inventoryItem ? 4 : 5}>
+                      <Col xs={12} md={med.inventoryItem ? 2 : 4}>
                         <Form.Label className="small fw-semibold mb-1 text-nowrap d-block" style={{ minHeight: '22px' }}>
                           Liều lượng <span className="text-danger">*</span>
                         </Form.Label>
@@ -653,6 +659,24 @@ export default function TreatmentPlanForm() {
                           disabled={submitting}
                           required
                         />
+                      </Col>
+
+                      <Col xs={12} md={3}>
+                        <Form.Label className="small fw-semibold mb-1 text-nowrap d-block" style={{ minHeight: '22px' }}>
+                          Đường dùng <span className="text-danger">*</span>
+                        </Form.Label>
+                        <Form.Select
+                          size="sm"
+                          value={med.route || 'oral'}
+                          onChange={(e) => handleMedChange(index, 'route', e.target.value)}
+                          disabled={submitting}
+                        >
+                          {MEDICATION_ROUTE_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </Form.Select>
                       </Col>
                     </Row>
 
@@ -708,14 +732,14 @@ export default function TreatmentPlanForm() {
                           <div className="small fw-semibold text-secondary mb-1">
                             <i className="bi bi-clock me-1 text-primary"></i> Tùy chỉnh giờ cụ thể cho các buổi đã chọn:
                           </div>
-                          <div className="d-flex flex-wrap gap-3 align-items-center">
+                          <div className="d-flex flex-wrap gap-x-4 gap-y-2 align-items-center">
                             {med.timeSlots?.morning && (
-                              <div className="d-flex align-items-center gap-1">
-                                <span className="small text-muted">Sáng:</span>
+                              <div className="d-flex align-items-center gap-2">
+                                <span className="small text-muted text-nowrap">🌅 Sáng:</span>
                                 <Form.Control
                                   type="time"
                                   size="sm"
-                                  style={{ width: '110px' }}
+                                  style={{ width: '145px', minWidth: '140px' }}
                                   value={med.slotTimes?.morning || '08:00'}
                                   onChange={(e) => handleSlotTimeChange(index, 'morning', e.target.value)}
                                   disabled={submitting}
@@ -723,12 +747,12 @@ export default function TreatmentPlanForm() {
                               </div>
                             )}
                             {med.timeSlots?.noon && (
-                              <div className="d-flex align-items-center gap-1">
-                                <span className="small text-muted">Trưa:</span>
+                              <div className="d-flex align-items-center gap-2">
+                                <span className="small text-muted text-nowrap">☀️ Trưa:</span>
                                 <Form.Control
                                   type="time"
                                   size="sm"
-                                  style={{ width: '110px' }}
+                                  style={{ width: '145px', minWidth: '140px' }}
                                   value={med.slotTimes?.noon || '12:00'}
                                   onChange={(e) => handleSlotTimeChange(index, 'noon', e.target.value)}
                                   disabled={submitting}
@@ -736,12 +760,12 @@ export default function TreatmentPlanForm() {
                               </div>
                             )}
                             {med.timeSlots?.afternoon && (
-                              <div className="d-flex align-items-center gap-1">
-                                <span className="small text-muted">Chiều:</span>
+                              <div className="d-flex align-items-center gap-2">
+                                <span className="small text-muted text-nowrap">🌇 Chiều:</span>
                                 <Form.Control
                                   type="time"
                                   size="sm"
-                                  style={{ width: '110px' }}
+                                  style={{ width: '145px', minWidth: '140px' }}
                                   value={med.slotTimes?.afternoon || '16:00'}
                                   onChange={(e) => handleSlotTimeChange(index, 'afternoon', e.target.value)}
                                   disabled={submitting}
@@ -749,12 +773,12 @@ export default function TreatmentPlanForm() {
                               </div>
                             )}
                             {med.timeSlots?.evening && (
-                              <div className="d-flex align-items-center gap-1">
-                                <span className="small text-muted">Tối:</span>
+                              <div className="d-flex align-items-center gap-2">
+                                <span className="small text-muted text-nowrap">🌙 Tối:</span>
                                 <Form.Control
                                   type="time"
                                   size="sm"
-                                  style={{ width: '110px' }}
+                                  style={{ width: '145px', minWidth: '140px' }}
                                   value={med.slotTimes?.evening || '20:00'}
                                   onChange={(e) => handleSlotTimeChange(index, 'evening', e.target.value)}
                                   disabled={submitting}

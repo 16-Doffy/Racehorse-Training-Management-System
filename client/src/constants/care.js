@@ -56,3 +56,32 @@ export const INCIDENT_SEVERITY_META = {
   medium: { label: 'Trung bình', color: 'orange' },
   high: { label: 'Nghiêm trọng', color: 'red' },
 };
+
+export const INCIDENT_CATEGORY_META = {
+  refused_feed: { label: 'Bỏ ăn', color: 'orange', bg: 'warning' },
+  illness: { label: 'Nghi bệnh', color: 'red', bg: 'danger' },
+  hoof_injury: { label: 'Chấn thương móng', color: 'volcano', bg: 'danger' },
+  behaviour: { label: 'Hành vi bất thường', color: 'gold', bg: 'warning' },
+  accident: { label: 'Tai nạn tại chuồng', color: 'magenta', bg: 'danger' },
+  other: { label: 'Khác', color: 'default', bg: 'secondary' },
+};
+
+export const MEDICATION_ROUTE_OPTIONS = [
+  { value: 'oral', label: 'Uống (Đường miệng)' },
+  { value: 'im', label: 'Tiêm bắp (IM)' },
+  { value: 'iv', label: 'Tiêm tĩnh mạch (IV)' },
+  { value: 'sc', label: 'Tiêm dưới da (SC)' },
+  { value: 'topical', label: 'Bôi ngoài da' },
+  { value: 'eye', label: 'Nhỏ mắt' },
+  { value: 'other', label: 'Khác' },
+];
+
+export const MEDICATION_ROUTE_LABELS = {
+  oral: 'Uống',
+  im: 'Tiêm bắp (IM)',
+  iv: 'Tiêm tĩnh mạch (IV)',
+  sc: 'Tiêm dưới da (SC)',
+  topical: 'Bôi ngoài',
+  eye: 'Nhỏ mắt',
+  other: 'Khác',
+};
