@@ -778,12 +778,14 @@ export default function TrainingSessionPage() {
               if (r?.distance) createForm.setFieldValue(['prescription', 'distanceM'], r.distance);
             }
             // A recovering horse can't be booked above the vet's level: pull the intensity down to
-            // the highest one allowed as soon as the horse is picked.
+            // the highest one allowed as soon as the horse is picked — never below what the kind of
+            // work is (a canter stays moderate; the readiness panel then says it isn't allowed).
             let intensity = all.intensity;
             if (changed.horse || changed.kind) {
               const c = clearances.get(String(all.horse));
+              const kindFloor = INTENSITY_RANK[SESSION_KINDS[all.kind]?.intensity] || 0;
               if (c?.restricted && !intensityAllowed(c, intensity)) {
-                const allowed = Object.keys(INTENSITY_RANK).filter((i) => INTENSITY_RANK[i] <= LEVEL_RANK[c.level]);
+                const allowed = Object.keys(INTENSITY_RANK).filter((i) => INTENSITY_RANK[i] <= LEVEL_RANK[c.level] && INTENSITY_RANK[i] >= kindFloor);
                 if (allowed.length) {
                   intensity = allowed[allowed.length - 1];
                   createForm.setFieldValue('intensity', intensity);
@@ -836,7 +838,12 @@ export default function TrainingSessionPage() {
               >
                 <Select
                   placeholder="Phi chậm, phi nhanh, tập dốc…"
-                  options={kindOptions.map((o) => ({ value: o.value, label: o.label }))}
+                  // A recovering horse: work above the vet's level is not offered (the kind is the work).
+                  options={kindOptions.map((o) => ({
+                    value: o.value,
+                    label: o.label,
+                    disabled: !intensityAllowed(clearances.get(String(draft.horse)), SESSION_KINDS[o.value]?.intensity),
+                  }))}
                 />
               </Form.Item>
 
@@ -887,7 +894,7 @@ export default function TrainingSessionPage() {
                     <Select
                       options={intensityOptions.map((o) => ({
                         ...o,
-                        disabled: !intensityAllowed(clearances.get(String(draft.horse)), o.value),
+                        disabled: !intensityAllowed(clearances.get(String(draft.horse)), o.value) || INTENSITY_RANK[o.value] < (INTENSITY_RANK[SESSION_KINDS[draftKind]?.intensity] || 0),
                       }))}
                     />
                   </Form.Item>

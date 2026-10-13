@@ -33,6 +33,7 @@ const {
   slotKindProblem,
 } = require('../../constants/training');
 const { announceSessionToGroom, buildFromKind, closeRun } = require('./trainingSession.service');
+const { INTENSITY_RANK } = require('../health/trainingClearance');
 const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const { ROLES } = require('../../constants/roles');
 
@@ -62,18 +63,30 @@ async function trialEntryFor({ horse, kind, sessionType, scheduledAt, raceEntry,
 }
 
 /**
- * Fills a booking from its kind of work: what the trainer left out (objective, intensity, type, the
- * workout's numbers) comes from the kind's defaults. Returns an error message or null.
+ * The kind is the work: a canter is moderate work however it is labelled, so a lighter intensity
+ * can't slip it past a vet's "light work only". Raises `body.intensity` to the kind's own.
  */
-function applyKind(body) {
+function raiseToKind(body, kind) {
+  const floor = SESSION_KINDS[kind]?.intensity;
+  if (floor && body.intensity && (INTENSITY_RANK[body.intensity] || 0) < INTENSITY_RANK[floor]) body.intensity = floor;
+}
+
+/**
+ * Fills a booking from its kind of work: what the trainer left out (objective, intensity, type, the
+ * workout's numbers) comes from the kind's defaults. `currentKind` is the session's kind when an
+ * edit leaves it unchanged. Returns an error message or null.
+ */
+function applyKind(body, currentKind) {
   if (body.kind === undefined || body.kind === null || body.kind === '') {
     delete body.kind;
+    raiseToKind(body, currentKind);
     return null;
   }
   if (!SESSION_KINDS[body.kind]) return 'Loại buổi tập không hợp lệ.';
   const base = buildFromKind(body.kind);
   for (const f of ['objective', 'intensity', 'sessionType']) if (!body[f]) body[f] = base[f];
   body.prescription = { ...base.prescription, ...(body.prescription || {}) };
+  raiseToKind(body, body.kind);
   return null;
 }
 
@@ -365,7 +378,7 @@ const updateSession = asyncHandler(async (req, res) => {
     });
   }
   const problem =
-    applyKind(changes) ||
+    applyKind(changes, session.kind) ||
     rangeProblem(changes.prescription, PRESCRIPTION_RANGES) ||
     kindSpeedProblem(changes.kind || session.kind, changes.prescription?.targetSpeedKmh) ||
     // Only a booking that changes its time or its work is checked against the afternoon rule again.

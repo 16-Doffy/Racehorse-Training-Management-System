@@ -47,6 +47,12 @@ test('real MongoDB + HTTP flow across Manager, Trainer, Vet, Groom and Owner', {
     await models.TrainingPlan.updateOne({ _id: plan._id }, { $set: { 'phases.0.week': [{ day: day(8).getDay(), slot: 'morning', kind: 'trial' }, { day: day(9).getDay(), slot: 'morning', kind: 'walk' }] } });
     await api('trainer', 'POST', `/training/plans/${plan._id}/generate-week`, { weekStart: day(8).toISOString() }, 201);
     assert.equal(await models.TrainingSession.countDocuments({ trainingPlan: plan._id, kind: 'trial' }), 0);
+    // The kind is the work: a canter booked as "light" does not slip past a vet's light work only.
+    await api('vet', 'POST', '/health/records', { horse: horse._id, diagnosis: 'Light work only', resultStatus: 'eligible', clearedLevel: 'light' }, 201);
+    const canter = await raw('trainer', 'POST', '/training/sessions', { horse: horse._id, trainingPlan: plan._id, kind: 'canter', intensity: 'light', scheduledAt: future(), overrideReason: 'Test' });
+    assert.equal(canter.status, 409);
+    assert.match(canter.body.message, /chưa được phép/);
+    await api('vet', 'POST', '/health/records', { horse: horse._id, diagnosis: 'Back to normal work', resultStatus: 'eligible', clearedLevel: 'high' }, 201);
   });
   await t.test('B: pre-check, start, concurrent end, evaluation and post-work care', async () => {
     const session = await book(ctx, horse, plan, { kind: 'breeze' });
