@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Popover, Tag, Typography, Tooltip, Empty } from 'antd';
+import { Button, Popover, Typography, Tooltip, Empty } from 'antd';
 import { LeftOutlined, RightOutlined, PlayCircleOutlined, EditOutlined, ScheduleOutlined, SafetyCertificateOutlined, StopOutlined, CheckCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -51,48 +51,59 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onC
     </>
   );
   const actions = (
-    <div className="flex flex-wrap gap-2 border-t border-black/5 pt-2.5" onClickCapture={() => setOpen(false)}>
-        {['scheduled', 'blocked'].includes(session.status) && (
-          <Button size="small" type="primary" icon={<SafetyCertificateOutlined />} onClick={() => onPreCheck(session)}>
-            {session.status === 'blocked' ? 'Kiểm tra lại' : 'Kiểm tra sẵn sàng'}
-          </Button>
-        )}
-        {session.status === 'blocked' && onRequestExam && (
-          <Button size="small" icon={<SafetyCertificateOutlined />} onClick={() => onRequestExam(session)}>
-            Yêu cầu bác sĩ khám
-          </Button>
-        )}
-        {session.status === 'ready' && (
-          <Button size="small" type="primary" icon={<PlayCircleOutlined />} loading={starting} onClick={() => onStart(session)}>
-            Bắt đầu
-          </Button>
-        )}
-        {onSchedule && (canChangeTime || canReschedule) && (
-          <Button size="small" icon={<ScheduleOutlined />} loading={scheduling} onClick={() => onSchedule(session)}>
-            {canReschedule ? 'Xếp lại lịch' : 'Đổi giờ'}
-          </Button>
-        )}
-        {session.status === 'in_progress' && onEnd && (
-          <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => onEnd(session)}>
-            Kết thúc
-          </Button>
-        )}
-        {session.status === 'in_progress' && onAbort && (
-          <Button size="small" danger icon={<PauseCircleOutlined />} onClick={() => onAbort(session)}>
-            Dừng giữa chừng
-          </Button>
-        )}
-        {DONE_STATUSES.includes(session.status) && (
-          <Button size="small" type={session.status === 'completed' ? 'primary' : 'default'} icon={<EditOutlined />} onClick={() => onEvaluate(session)}>
-            {session.status === 'completed' ? 'Đánh giá' : 'Sửa đánh giá'}
-          </Button>
-        )}
-        {onCancel && canChangeTime && (
-          <Button size="small" danger icon={<StopOutlined />} onClick={() => onCancel(session)}>
-            Hủy buổi
-          </Button>
-        )}
-      </div>
+    <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-2.5 mt-2" onClickCapture={() => setOpen(false)}>
+      {/* 1. Primary Action by status */}
+      {['scheduled', 'blocked'].includes(session.status) && (
+        <Button size="small" type="primary" icon={<SafetyCertificateOutlined />} onClick={() => onPreCheck(session)}>
+          {session.status === 'blocked' ? 'Kiểm tra lại' : 'Kiểm tra sẵn sàng'}
+        </Button>
+      )}
+      {session.status === 'blocked' && onRequestExam && (
+        <Button size="small" icon={<SafetyCertificateOutlined />} onClick={() => onRequestExam(session)}>
+          Yêu cầu bác sĩ khám
+        </Button>
+      )}
+      {session.status === 'ready' && (
+        <Button size="small" type="primary" icon={<PlayCircleOutlined />} loading={starting} onClick={() => onStart(session)}>
+          Bắt đầu
+        </Button>
+      )}
+      {session.status === 'in_progress' && onEnd && (
+        <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => onEnd(session)}>
+          Kết thúc
+        </Button>
+      )}
+      {/* 2. Direct Danger action for in_progress */}
+      {session.status === 'in_progress' && onAbort && (
+        <Button size="small" danger icon={<PauseCircleOutlined />} onClick={() => onAbort(session)}>
+          Dừng giữa chừng
+        </Button>
+      )}
+      {/* 3. Completed / Evaluated */}
+      {DONE_STATUSES.includes(session.status) && (
+        <Button size="small" type={session.status === 'completed' ? 'primary' : 'default'} icon={<EditOutlined />} onClick={() => onEvaluate(session)}>
+          {session.status === 'completed' ? 'Đánh giá' : 'Sửa đánh giá'}
+        </Button>
+      )}
+      {/* 4. Missed reschedule */}
+      {onSchedule && canReschedule && (
+        <Button size="small" type="primary" icon={<ScheduleOutlined />} loading={scheduling} onClick={() => onSchedule(session)}>
+          Xếp lại lịch
+        </Button>
+      )}
+      {/* 5. Secondary: Change time */}
+      {onSchedule && canChangeTime && (
+        <Button size="small" icon={<ScheduleOutlined />} loading={scheduling} onClick={() => onSchedule(session)}>
+          Đổi giờ
+        </Button>
+      )}
+      {/* 6. Secondary: Cancel */}
+      {onCancel && canChangeTime && (
+        <Button size="small" danger icon={<StopOutlined />} onClick={() => onCancel(session)}>
+          Hủy buổi
+        </Button>
+      )}
+    </div>
   );
   const detail = <SessionDetail session={session} statusLabel={rescheduled ? 'Đã xếp lại lịch' : status.label} notes={notes} actions={actions} />;
 
@@ -101,27 +112,38 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onC
       <button
         type="button"
         aria-label={`${kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}, ${slotLabel(session.scheduledAt)} ${dayjs(session.scheduledAt).format('HH:mm')}, ${rescheduled ? 'Đã xếp lại lịch' : status.label}`}
-        className={`w-full cursor-pointer rounded-md border px-1.5 py-1 text-left transition-shadow hover:shadow-sm ${
-          session.status === 'cancelled' ? 'opacity-50 line-through' : ''
+        className={`w-full cursor-pointer rounded-lg border px-2 py-1.5 text-left transition-all hover:border-emerald-700 hover:shadow-xs ${
+          session.status === 'cancelled'
+            ? 'opacity-50 line-through bg-gray-50 border-gray-200'
+            : session.status === 'blocked'
+            ? 'bg-amber-50/60 border-amber-300'
+            : session.status === 'ready'
+            ? 'bg-cyan-50/50 border-cyan-300'
+            : session.status === 'in_progress'
+            ? 'bg-blue-50/60 border-blue-300'
+            : 'bg-white border-gray-200/90'
         }`}
-        style={{ borderColor: 'rgba(0,0,0,0.08)', background: 'rgba(255,255,255,0.7)' }}
       >
-        <div className="flex items-start gap-1">
-          <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} />
-          <Tag color={kind?.color || 'default'} className="!m-0 !whitespace-normal !px-1 !text-[11px] !leading-4">
-            {kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}
-          </Tag>
-        </div>
-        <div className="mt-0.5 flex items-center justify-between gap-1 text-[11px] text-gray-500">
-          <span className="tabular-nums">{slotLabel(session.scheduledAt)} {dayjs(session.scheduledAt).format('HH:mm')}</span>
-          {met === true && <span className="font-medium text-green-700">Đạt</span>}
-          {met === false && <span className="font-medium text-red-700">Chưa đạt</span>}
-        </div>
-        {['missed', 'blocked', 'cancelled'].includes(session.status) && (
-          <div className={`mt-0.5 text-[11px] ${session.status === 'blocked' ? 'text-amber-700' : 'text-gray-500'}`}>
-            {rescheduled ? 'Đã xếp lại lịch' : status.label}
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${status.dot}`} />
+            <span className="font-semibold text-xs text-gray-900 truncate">
+              {kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}
+            </span>
           </div>
-        )}
+          {met === true && <span className="font-semibold text-[11px] text-green-700 shrink-0">Đạt</span>}
+          {met === false && <span className="font-semibold text-[11px] text-red-600 shrink-0">Chưa đạt</span>}
+        </div>
+        <div className="mt-1 flex items-center justify-between gap-1 text-[11px] text-gray-500">
+          <span className="tabular-nums font-medium text-gray-600">
+            {slotLabel(session.scheduledAt)} {dayjs(session.scheduledAt).format('HH:mm')}
+          </span>
+          {['missed', 'blocked', 'cancelled', 'in_progress'].includes(session.status) && (
+            <span className={`text-[10px] font-medium truncate ${session.status === 'blocked' ? 'text-amber-700' : session.status === 'in_progress' ? 'text-blue-700' : 'text-gray-500'}`}>
+              {rescheduled ? 'Đã xếp lại' : status.label}
+            </span>
+          )}
+        </div>
       </button>
     </Popover>
   );
@@ -152,14 +174,16 @@ export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], p
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Button icon={<LeftOutlined />} aria-label="Tuần trước" onClick={() => onWeekChange(weekStart.subtract(7, 'day'))} />
-        <Text strong className="min-w-[180px] text-center tabular-nums">
-          {weekStart.format('DD/MM')} – {weekStart.add(6, 'day').format('DD/MM/YYYY')}
-        </Text>
-        <Button icon={<RightOutlined />} aria-label="Tuần sau" onClick={() => onWeekChange(weekStart.add(7, 'day'))} />
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 bg-gray-50/80 p-2.5 rounded-xl border border-gray-200/80">
+        <div className="flex items-center gap-1.5">
+          <Button size="small" icon={<LeftOutlined />} aria-label="Tuần trước" onClick={() => onWeekChange(weekStart.subtract(7, 'day'))} />
+          <Button size="small" icon={<RightOutlined />} aria-label="Tuần sau" onClick={() => onWeekChange(weekStart.add(7, 'day'))} />
+          <Text strong className="px-2 text-sm text-gray-800 tabular-nums">
+            {weekStart.format('DD/MM')} – {weekStart.add(6, 'day').format('DD/MM/YYYY')}
+          </Text>
+        </div>
         {!isThisWeek && (
-          <Button type="link" onClick={() => onWeekChange(null)}>
+          <Button size="small" type="link" className="!px-2 text-xs" onClick={() => onWeekChange(null)}>
             Về tuần này
           </Button>
         )}
@@ -168,56 +192,68 @@ export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], p
       {rows.size === 0 ? (
         <Empty description="Tuần này chưa có buổi tập nào." />
       ) : (
-        <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'rgba(0,0,0,0.08)' }}>
+        <div className="overflow-x-auto rounded-xl border border-gray-200/80 bg-white shadow-xs">
           <table className="w-full min-w-[920px] border-collapse text-sm">
             <thead>
-              <tr>
-                <th className="w-[190px] px-3 py-2 text-left font-medium text-gray-500">Ngựa</th>
-                {days.map((d) => (
-                  <th
-                    key={d.day}
-                    className={`px-1.5 py-2 text-left font-medium ${d.date.isSame(dayjs(), 'day') ? 'text-gray-900' : 'text-gray-500'}`}
-                  >
-                    {d.short} <span className="tabular-nums font-normal">{d.date.format('DD/MM')}</span>
-                    {d.date.isSame(dayjs(), 'day') && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-gray-900 align-middle" />}
-                  </th>
-                ))}
+              <tr className="bg-gray-50/80 border-b border-gray-200/80">
+                <th className="w-[190px] px-3.5 py-2.5 text-left font-semibold text-gray-700 text-xs">
+                  Ngựa
+                </th>
+                {days.map((d) => {
+                  const today = d.date.isSame(dayjs(), 'day');
+                  return (
+                    <th
+                      key={d.day}
+                      className={`px-2 py-2.5 text-left font-semibold text-xs ${
+                        today ? 'bg-emerald-50 text-emerald-950 font-bold' : 'text-gray-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>{d.short}</span>
+                        <span className="tabular-nums font-normal text-gray-500">{d.date.format('DD/MM')}</span>
+                        {today && <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 inline-block shrink-0" />}
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-100">
               {[...rows.values()].map(({ horse, plan }) => (
-                <tr key={horse?._id} className="border-t align-top" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
-                  <td className="px-3 py-2">
-                    <Link to={`/horses/${horse?._id}`} className="font-medium">
+                <tr key={horse?._id} className="align-top hover:bg-gray-50/40 transition-colors">
+                  <td className="px-3.5 py-3">
+                    <Link to={`/horses/${horse?._id}`} className="font-semibold text-emerald-950 hover:text-emerald-700">
                       {horse?.name}
                     </Link>
                     {plan ? (
-                      <div className="mt-0.5 flex flex-col items-start gap-1">
-                        <Text type="secondary" className="!text-xs">
-                          {PHASE_LABELS[plan.phase]}
-                        </Text>
+                      <div className="mt-1 flex flex-col items-start gap-1">
+                        <span className="text-xs text-gray-500 font-medium">
+                          {PHASE_LABELS[plan.phase] || plan.phase}
+                        </span>
                         <Tooltip title="Xếp buổi tập tuần này theo lịch tuần mẫu của giai đoạn">
                           <Button
                             size="small"
                             icon={<ScheduleOutlined />}
                             loading={generatingPlanId === plan._id}
                             onClick={() => onGenerate(plan, weekStart)}
+                            className="text-xs"
                           >
                             Sinh lịch tuần
                           </Button>
                         </Tooltip>
                       </div>
                     ) : (
-                      <Text type="secondary" className="block !text-xs">
-                        Không có kế hoạch đang chạy
+                      <Text type="secondary" className="block !text-xs mt-0.5">
+                        Không có kế hoạch
                       </Text>
                     )}
                   </td>
                   {days.map((d) => {
                     const list = inWeek.filter((s) => String(s.horse?._id) === String(horse?._id) && dayjs(s.scheduledAt).isSame(d.date, 'day'));
+                    const today = d.date.isSame(dayjs(), 'day');
                     return (
-                      <td key={d.day} className={`px-1.5 py-2 ${d.date.isSame(dayjs(), 'day') ? 'bg-black/[0.025]' : ''}`}>
-                        <div className="flex flex-col gap-1">
+                      <td key={d.day} className={`px-1.5 py-2.5 ${today ? 'bg-emerald-50/20' : ''}`}>
+                        <div className="flex flex-col gap-1.5">
                           {list.map((s) => (
                             <SessionChip
                               key={s._id}
@@ -234,7 +270,11 @@ export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], p
                               scheduling={schedulingId === s._id}
                             />
                           ))}
-                          {!list.length && <span className="text-[11px] text-gray-400">Nghỉ</span>}
+                          {!list.length && (
+                            <span className="text-[11px] font-medium text-slate-600 block py-1 pl-1">
+                              Nghỉ
+                            </span>
+                          )}
                         </div>
                       </td>
                     );

@@ -1,4 +1,4 @@
-import { Card, Empty, Progress, Tag, Typography } from 'antd';
+import { Card, Progress, Tag, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -42,21 +42,33 @@ export default function CareOrdersCard() {
 
   return (
     <Card
-      className="!mt-6"
+      className="shadow-xs border-[#E5DEC9] border-t-2 border-t-amber-700 rounded-xl overflow-hidden"
+      styles={{ title: { whiteSpace: 'normal', overflow: 'visible' }, header: { height: 'auto' } }}
+      headStyle={{ whiteSpace: 'normal' }}
       loading={isLoading}
       title={
-        <div className="flex flex-wrap items-baseline gap-x-3">
-          <span>Y lệnh của bác sĩ hôm nay</span>
-          {open > 0 && (
-            <Text type="secondary" className="!text-xs">
-              {open} việc chưa thực hiện
-            </Text>
-          )}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-gray-900 text-base">Y lệnh bác sĩ hôm nay</span>
+            {open > 0 && (
+              <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                {open} chưa làm
+              </span>
+            )}
+          </div>
+          <Text type="secondary" className="!text-xs font-normal">
+            {open > 0 ? `${open} liều/việc cần cho` : 'Đã hoàn tất các liều'}
+          </Text>
         </div>
       }
     >
       {rows.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có ngựa nào đang điều trị theo y lệnh." />
+        <div className="light-surface-box py-5 px-4 text-center rounded-xl bg-slate-50/80 border border-slate-200/70 my-1 flex items-center justify-center gap-2.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0" />
+          <span className="text-xs font-semibold text-slate-900">
+            Hôm nay không có ngựa nào cần theo dõi y lệnh đặc biệt
+          </span>
+        </div>
       ) : (
         <div className="flex flex-col gap-4">
           {rows.map((r) => {

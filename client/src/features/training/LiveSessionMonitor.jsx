@@ -33,17 +33,22 @@ function targetsOf(session) {
 }
 
 function Figure({ icon, label, value, unit, sub, tone }) {
+  const isBad = tone === STATUS_TONES.bad;
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 rounded-md px-3 py-2" style={{ background: tone.bg }}>
-      <span className="flex items-center gap-1 text-[11px] uppercase tracking-wide" style={{ color: tone.color }}>
+    <div
+      className={`flex min-w-0 flex-col gap-0.5 rounded-lg border p-2.5 transition-colors ${
+        isBad ? 'bg-rose-50/70 border-rose-200 text-rose-900' : 'bg-gray-50/60 border-gray-200/80 text-gray-900'
+      }`}
+    >
+      <span className={`flex items-center gap-1.5 text-xs font-medium ${isBad ? 'text-rose-700' : 'text-gray-500'}`}>
         {icon}
         {label}
       </span>
-      <span className="text-2xl font-semibold tabular-nums leading-tight" style={{ color: tone.color }}>
+      <span className={`text-xl font-bold tabular-nums leading-tight ${isBad ? 'text-rose-700' : 'text-gray-900'}`}>
         {value ?? '—'}
-        <span className="ml-1 text-xs font-normal">{unit}</span>
+        <span className="ml-1 text-xs font-normal text-gray-400">{unit}</span>
       </span>
-      {sub && <span className="truncate text-[11px] text-gray-500">{sub}</span>}
+      {sub && <span className="truncate text-[11px] text-gray-400 mt-0.5">{sub}</span>}
     </div>
   );
 }
@@ -64,22 +69,26 @@ function LiveCard({ session, readings }) {
   return (
     <Card
       size="small"
-      className="min-w-0"
+      className="min-w-0 rounded-xl border-gray-200/80 shadow-xs overflow-hidden"
+      styles={{
+        header: { whiteSpace: 'normal', height: 'auto', minHeight: 'auto', padding: '8px 12px' },
+        title: { whiteSpace: 'normal', overflow: 'visible' },
+      }}
+      headStyle={{ whiteSpace: 'normal' }}
       title={
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: STATUS_TONES.good.color }} />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ background: STATUS_TONES.good.color }} />
-          </span>
-          <span className="font-semibold">{session.horse?.name}</span>
-          <Tag color={kind?.color || 'default'} className="!m-0">
-            {kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}
-          </Tag>
-          <Text type="secondary" className="!text-xs">
-            Đang tập{startedAt ? ` · bắt đầu ${startedAt}` : ''}
-          </Text>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 min-w-0">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 flex-1">
+            <span className="h-2 w-2 rounded-full bg-emerald-600 inline-block shrink-0" />
+            <span className="font-semibold text-gray-900 text-sm break-words">{session.horse?.name}</span>
+            <span className="text-xs text-gray-500 font-normal">
+              {kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}
+            </span>
+            {startedAt && (
+              <span className="text-xs text-gray-400">· Bắt đầu {startedAt}</span>
+            )}
+          </div>
           {over && (
-            <Tag color="error" className="!m-0">
+            <Tag color="error" className="!m-0 text-xs font-medium shrink-0">
               Vượt ngưỡng nhịp tim
             </Tag>
           )}
@@ -112,12 +121,21 @@ function LiveCard({ session, readings }) {
           tone={STATUS_TONES.neutral}
         />
       </div>
-      <Progress
-        className="!mt-2 !mb-0"
-        percent={Math.min(100, Math.round((distance / targetDistance) * 100))}
-        strokeColor={FOREST.primary}
-        size="small"
-      />
+      <div className="mt-2.5">
+        <div className="flex items-center justify-between text-[11px] text-gray-500 mb-1">
+          <span>Tiến độ cự ly</span>
+          <span className="tabular-nums font-medium text-gray-700">
+            {distance} / {targetDistance} m
+          </span>
+        </div>
+        <Progress
+          className="!m-0"
+          percent={Math.min(100, Math.round((distance / targetDistance) * 100))}
+          strokeColor={FOREST.primary}
+          size="small"
+          showInfo={false}
+        />
+      </div>
       <div className="mt-1 h-32 w-full">
         {data.length > 1 ? (
           <ResponsiveContainer width="100%" height="100%">

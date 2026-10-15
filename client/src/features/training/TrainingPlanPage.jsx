@@ -11,6 +11,7 @@ import { raceApi } from '../race/raceApi';
 import { useLockedHorseIds } from './useLockedHorses';
 import PlanTimeline from './PlanTimeline';
 import PlanWizard from './PlanWizard';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
 import {
   PHASE_LABELS,
   INTENSITY_LABELS,
@@ -45,7 +46,7 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, onOpen
   const p = plan.progress || {};
   const ps = p.phaseSessions || { planned: 0, completed: 0, met: 0 };
   return (
-    <Card size="small" className="h-full" styles={{ body: { padding: 18 } }}>
+    <Card size="small" className="h-full border border-[#E4DFD3] hover:border-[#0F5A43]/50 transition-colors bg-[#FFFDF8] rounded-xl shadow-xs" styles={{ body: { padding: 18 } }}>
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
@@ -53,10 +54,20 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, onOpen
               <Link to={`/horses/${plan.horse?._id}`} className="text-base font-semibold">
                 {plan.horse?.name}
               </Link>
-              {locked && <Tag color="red">🔒 Đang khóa</Tag>}
+              {locked && (
+                <Tag color="red" className="!m-0 inline-flex items-center gap-1 font-medium">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  Đang khóa
+                </Tag>
+              )}
               {plan.targetRace && (
-                <Tag color="magenta" className="!m-0">
-                  🏁 {plan.targetRace.raceName} · {dayjs(plan.targetRace.raceDate).format('DD/MM')}
+                <Tag color="magenta" className="!m-0 inline-flex items-center gap-1 font-medium">
+                  <svg className="w-3 h-3 text-pink-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                  </svg>
+                  <span>{plan.targetRace.raceName} · {dayjs(plan.targetRace.raceDate).format('DD/MM')}</span>
                   {p.raceInDays > 0 ? ` · còn ${p.raceInDays} ngày` : p.raceInDays === 0 ? ' · hôm nay' : ''}
                 </Tag>
               )}
@@ -99,6 +110,7 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, onOpen
                 percent={ps.planned ? Math.round((ps.completed / ps.planned) * 100) : 0}
                 size="small"
                 showInfo={false}
+                strokeColor="#0F5A43"
                 className="!m-0 w-24"
               />
               <Text className="!text-sm tabular-nums whitespace-nowrap">
@@ -237,8 +249,11 @@ export default function TrainingPlanPage() {
         <div className="min-w-[220px]">
           {r.goal || <Text type="secondary">Chưa nêu mục tiêu</Text>}
           {r.targetRace && (
-            <Tag color="magenta" className="!mt-1 !block !w-fit">
-              🏁 {r.targetRace.raceName} — {dayjs(r.targetRace.raceDate).format('DD/MM/YYYY')}
+            <Tag color="magenta" className="!mt-1 !inline-flex items-center gap-1 !w-fit">
+              <svg className="w-3 h-3 text-pink-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+              </svg>
+              <span>{r.targetRace.raceName} — {dayjs(r.targetRace.raceDate).format('DD/MM/YYYY')}</span>
             </Tag>
           )}
         </div>
@@ -269,21 +284,56 @@ export default function TrainingPlanPage() {
     },
   ];
 
+  const totalActive = active.length;
+  const lockedCount = active.filter((p) => lockedHorseIds.has(p.horse?._id)).length;
+  const targetRaceCount = active.filter((p) => p.targetRace).length;
+  const avgKm = active.length ? Math.round(active.reduce((acc, p) => acc + (p.weeklyVolumeKm || 0), 0) / active.length) : 0;
+
   return (
     <div>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <Title level={3} className="!mb-0">
-            Kế hoạch Huấn luyện
-          </Title>
-          <Text type="secondary" className="text-sm">
-            Mỗi ngựa theo một chu kỳ hướng tới giải: nền tảng → sức mạnh → tốc độ → giảm tải trước giải, rồi hồi phục. Mỗi
-            giai đoạn có một tuần tập mẫu; bấm &quot;Sinh lịch tuần&quot; để xếp buổi tập, kể cả buổi chạy thử trước giải.
-          </Text>
+      <PageHeroBanner
+        eyebrow="TEAM 8 • KẾ HOẠCH & GIÁO ÁN HUẤN LUYỆN"
+        roleLabel="Head Trainer"
+        title="Kế Hoạch Huấn Luyện & Chu Kỳ Phong Độ"
+        subtitle="Mỗi ngựa theo một chu kỳ hướng tới giải: Nền tảng → Sức mạnh → Tốc độ → Điểm rơi trước giải, rồi hồi phục. Xếp lịch buổi tập và kiểm soát tải trọng tuần."
+        stats={[
+          { label: 'Đang huấn luyện', value: `${totalActive} con` },
+          { label: 'Khóa y tế', value: `${lockedCount} con` },
+          { label: 'Mục tiêu giải đua', value: `${targetRaceCount} kế hoạch` },
+          { label: 'Tải trung bình', value: `${avgKm} km/tuần` },
+        ]}
+        actionButton={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setWizardOpen(true)}
+            className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer shadow-md"
+          >
+            Lập kế hoạch mới
+          </Button>
+        }
+      />
+
+      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đang Huấn Luyện</div>
+          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{totalActive} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
-          Lập kế hoạch mới
-        </Button>
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Khóa Y Tế</div>
+          <div className={`text-xl font-bold tabular-nums mt-0.5 ${lockedCount > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+            {lockedCount} <span className="text-xs font-normal text-slate-500">ngựa</span>
+          </div>
+        </div>
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Mục Tiêu Giải Đua</div>
+          <div className="text-xl font-bold text-amber-600 tabular-nums mt-0.5">{targetRaceCount} <span className="text-xs font-normal text-slate-500">kế hoạch</span></div>
+        </div>
+        <div className="px-3 py-1.5">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tải Trọng Trung Bình</div>
+          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{avgKm} <span className="text-xs font-normal text-slate-500">km/tuần</span></div>
+        </div>
       </div>
 
       {isLoading ? (

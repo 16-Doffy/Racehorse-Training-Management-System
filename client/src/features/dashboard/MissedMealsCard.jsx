@@ -38,14 +38,22 @@ export default function MissedMealsCard() {
   if (!missed.length) return null;
   return (
     <Card
-      className="mt-6"
+      className="shadow-xs border-amber-300/80 bg-amber-50/20 rounded-xl overflow-hidden"
+      styles={{ title: { whiteSpace: 'normal', overflow: 'visible' }, header: { height: 'auto' } }}
+      headStyle={{ whiteSpace: 'normal' }}
       title={
-        <span>
-          Bữa bị bỏ lỡ hôm nay{' '}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+            <span className="font-semibold text-gray-900 text-base">Bữa ăn bị bỏ lỡ</span>
+            <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-rose-100 text-rose-800 border border-rose-300 shrink-0">
+              {missed.length} bữa
+            </span>
+          </div>
           <Text type="secondary" className="!text-xs font-normal">
-            ngựa có thể chưa ăn — bài trung bình/nặng bị chặn cho tới khi được cho ăn
+            Chặn bài tập nặng
           </Text>
-        </span>
+        </div>
       }
     >
       <Table

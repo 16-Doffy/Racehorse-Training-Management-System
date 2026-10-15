@@ -37,6 +37,7 @@ import { usersApi } from '../admin/usersApi';
 import { feedingApi } from '../feeding/feedingApi';
 import { useClubPolicy } from '../training/useClubPolicy';
 import { inventoryApi } from '../inventory/inventoryApi';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
 import { ROLES } from '../../constants/roles';
 import {
   APPETITE_LABELS,
@@ -49,7 +50,7 @@ import {
   incidentStatusOf,
 } from '../../constants/care';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const STATUS_LABELS = { pending: 'Chưa thực hiện', completed: 'Đã hoàn thành', skipped: 'Đã bỏ qua' };
 const STATUS_COLORS = { pending: 'default', completed: 'green', skipped: 'orange' };
 const SEVERITY_LABELS = { low: 'Nhẹ', medium: 'Trung bình', high: 'Nghiêm trọng' };
@@ -151,7 +152,11 @@ function TaskList() {
           <Space size={4} wrap>
             <span>{TASK_LABELS[r.taskType] || r.taskType}</span>
             {r.mealSlot && <Tag>{MEAL_LABELS[r.mealSlot]}</Tag>}
-            {r.dueTime && r.taskType === 'medication' && <Tag color="purple">💊 {r.dueTime}</Tag>}
+            {r.dueTime && r.taskType === 'medication' && (
+              <Tag color="purple" icon={<MedicineBoxOutlined />}>
+                {r.dueTime}
+              </Tag>
+            )}
             {r.source === 'vet' && (
               // The vet's care order, created from a treatment — shown here so the trainer sees
               // the horse is under treatment, but not theirs to change.
@@ -870,15 +875,12 @@ function IncidentsList() {
 export default function StableAssignPage() {
   return (
     <div>
-      <div className="mb-3">
-        <Title level={3} className="!mb-0">
-          Chuồng trại &amp; Chăm sóc
-        </Title>
-        <Typography.Text type="secondary" className="text-sm">
-          Điều phối công việc chăm sóc và khẩu phần ăn — hai thứ quyết định con ngựa có ở thể trạng
-          tốt nhất vào giờ tập hay không.
-        </Typography.Text>
-      </div>
+      <PageHeroBanner
+        eyebrow="TEAM 8 • CHUỒNG TRẠI & CHĂM SÓC"
+        roleLabel="Head Trainer"
+        title="Chuồng Trại, Chăm Sóc & Khẩu Phần Ăn"
+        subtitle="Điều phối công việc chăm sóc hàng ngày, khẩu phần dinh dưỡng và sự cố chuồng trại đảm bảo thể trạng tốt nhất cho chiến mã."
+      />
 
       <Tabs
         items={[

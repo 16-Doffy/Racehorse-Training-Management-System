@@ -6,8 +6,9 @@ import dayjs from 'dayjs';
 import { reportsApi } from './reportsApi';
 import { SESSION_STATUS_LABELS, SESSION_STATUS_COLORS } from '../training/sessionStatus';
 import { categoryLabel } from '../finance/financeLabels';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { RangePicker } = DatePicker;
 
 // Two single-series magnitude charts, each its own one-hue scale — deliberately not one
@@ -119,7 +120,7 @@ function CategoryBreakdownChart({ title, rows, hue, total }) {
         <Text type="secondary" className="text-xs">
           Tổng cộng
         </Text>
-        <div className="text-2xl font-semibold" style={{ color: INK_SECONDARY }}>
+        <div className="text-2xl font-semibold text-gray-800">
           {formatVnd(total)}
         </div>
       </div>
@@ -209,15 +210,17 @@ export default function ReportsOverviewPage() {
 
   return (
     <div>
-      <div className="mb-4">
-        <Title level={3} className="!mb-0">
-          Báo cáo Tổng quan
-        </Title>
-        <Text type="secondary" className="text-sm">
-          Số liệu tổng hợp toàn câu lạc bộ: hiệu quả huấn luyện, chi phí vận hành, doanh thu và
-          mức độ tham gia thi đấu. Số liệu được tính trực tiếp từ dữ liệu thật theo kỳ bạn chọn.
-        </Text>
-      </div>
+      <PageHeroBanner
+        eyebrow="TEAM 8 • BÁO CÁO & PHÂN TÍCH VẬN HÀNH"
+        roleLabel="Club Manager"
+        title="Báo Cáo Tổng Quan & Hiệu Quả Câu Lạc Bộ"
+        subtitle="Tổng hợp dữ liệu toàn diện: Hiệu quả giáo án huấn luyện, kiểm soát chi phí vận hành, doanh thu thi đấu và giải thưởng."
+        stats={[
+          { label: 'Tổng buổi tập', value: `${training?.totalSessions ?? 0} buổi` },
+          { label: 'Điểm phong độ TB', value: `${training?.avgPerformanceRating ?? '—'}/10` },
+          { label: 'Chi phí vận hành', value: formatVnd(cost?.total) },
+        ]}
+      />
 
       {/* Filters in one row above the charts. */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -237,45 +240,33 @@ export default function ReportsOverviewPage() {
         />
       </div>
 
-      <Row gutter={[16, 16]} className="mb-4">
-        <Col xs={24} sm={12} flex="1 1 220px">
-          <Card loading={isLoading} className="h-full">
-            <Statistic title="Tổng buổi tập" value={training?.totalSessions ?? 0} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} flex="1 1 220px">
-          <Card loading={isLoading} className="h-full">
-            <Statistic
-              title={`Điểm phong độ TB (${training?.ratedSessionCount ?? 0} buổi đã chấm)`}
-              value={training?.avgPerformanceRating ?? '—'}
-              suffix={training?.avgPerformanceRating != null ? '/ 10' : ''}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} flex="1 1 220px">
-          <Card loading={isLoading} className="h-full">
-            <Statistic
-              title="Buổi tập đạt mục tiêu (trên số buổi có đặt mục tiêu)"
-              value={training?.targetsMet ?? 0}
-              suffix={`/ ${(training?.targetsMet ?? 0) + (training?.targetsMissed ?? 0)}`}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} flex="1 1 220px">
-          <Card loading={isLoading} className="h-full">
-            <Statistic title="Tổng chi phí vận hành" value={formatVnd(cost?.total)} styles={{ content: { fontSize: 22 } }} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} flex="1 1 220px">
-          <Card loading={isLoading} className="h-full">
-            <Statistic
-              title="Lợi nhuận (doanh thu − chi phí)"
-              value={formatVnd(profit)}
-              styles={{ content: { fontSize: 22, color: profit >= 0 ? '#006300' : '#d03b3b' } }}
-            />
-          </Card>
-        </Col>
-      </Row>
+      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Buổi Tập</div>
+          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{training?.totalSessions ?? 0} <span className="text-xs font-normal text-slate-500">buổi</span></div>
+        </div>
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Điểm Phong Độ TB</div>
+          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">
+            {training?.avgPerformanceRating ?? '—'} <span className="text-xs font-normal text-slate-500">{training?.avgPerformanceRating != null ? '/ 10' : ''}</span>
+          </div>
+        </div>
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đạt Mục Tiêu</div>
+          <div className="text-xl font-bold text-emerald-700 tabular-nums mt-0.5">
+            {training?.targetsMet ?? 0} <span className="text-xs font-normal text-slate-500">/ {(training?.targetsMet ?? 0) + (training?.targetsMissed ?? 0)}</span>
+          </div>
+        </div>
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chi Phí Vận Hành</div>
+          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{formatVnd(cost?.total)}</div>
+        </div>
+        <div className="px-3 py-1.5">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Lợi Nhuận (Net)</div>
+          <div className={`text-xl font-bold tabular-nums mt-0.5 ${profit >= 0 ? 'text-[#0F5A43]' : 'text-rose-600'}`}>{formatVnd(profit)}</div>
+        </div>
+      </div>
 
       <CashFlowChart />
 

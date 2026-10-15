@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Modal, Form, Select, Input, Tag, Alert, Popconfirm, Space } from 'antd';
+import { Table, Button, Modal, Form, Select, Input, Tag, Alert, Popconfirm, Space } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { EditOutlined, DeleteOutlined, HomeOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, HomeOutlined, PlusOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { stableAssignmentApi } from './stableApi';
@@ -9,8 +9,8 @@ import { horsesApi } from '../horses/horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { ROLES } from '../../constants/roles';
 import { HEALTH_LABELS, HEALTH_COLORS } from '../../constants/health';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
 
-const { Title, Text } = Typography;
 
 
 /**
@@ -142,15 +142,51 @@ export default function StableAssignmentPage() {
 
   return (
     <div>
-      <div className="mb-4">
-        <Title level={3} className="!mb-0">
-          Chuồng trại &amp; Nhân viên chăm sóc
-        </Title>
-        <Text type="secondary" className="text-sm">
-          Mỗi con ngựa cần một chuồng và một nhân viên chăm sóc phụ trách. Đây là căn cứ để hệ thống
-          tự tạo việc cho ăn hàng ngày theo khẩu phần, và cũng là một trong các điều kiện để Huấn
-          luyện viên được xếp lịch tập.
-        </Text>
+      <PageHeroBanner
+        eyebrow="TEAM 8 • VẬN HÀNH CHUỒNG TRẠI"
+        roleLabel="Club Manager"
+        title="Phân Bổ Chuồng Trại & Nhân Viên Chăm Sóc"
+        subtitle="Mỗi con ngựa cần một chuồng và một nhân viên chăm sóc phụ trách. Căn cứ tự tạo việc cho ăn hàng ngày và điều kiện xếp lịch tập."
+        stats={[
+          { label: 'Tổng đàn', value: `${horses.length} con` },
+          { label: 'Đã xếp chuồng', value: `${assignments.length} ô` },
+          { label: 'Chưa xếp chuồng', value: `${unstabled.length} con` },
+        ]}
+        actionButton={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => openModal(null)}
+            disabled={unstabled.length === 0}
+            className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer shadow-md"
+          >
+            Xếp chuồng mới
+          </Button>
+        }
+      />
+
+      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Đàn Ngựa</div>
+          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{horses.length} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
+        </div>
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đã Xếp Chuồng</div>
+          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{assignments.length} <span className="text-xs font-normal text-slate-500">ô chuồng</span></div>
+        </div>
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chưa Xếp Chuồng</div>
+          <div className={`text-xl font-bold tabular-nums mt-0.5 ${unstabled.length > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+            {unstabled.length} <span className="text-xs font-normal text-slate-500">ngựa</span>
+          </div>
+        </div>
+        <div className="px-3 py-1.5">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chưa Có Caretaker</div>
+          <div className={`text-xl font-bold tabular-nums mt-0.5 ${uncared.length > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+            {uncared.length} <span className="text-xs font-normal text-slate-500">chuồng</span>
+          </div>
+        </div>
       </div>
 
       {unstabled.length > 0 && (

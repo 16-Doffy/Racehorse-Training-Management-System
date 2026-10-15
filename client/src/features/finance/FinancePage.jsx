@@ -10,6 +10,7 @@ import { horsesApi } from '../horses/horsesApi';
 import { ROLES } from '../../constants/roles';
 import dayjs from 'dayjs';
 import { FINANCE_CATEGORIES, categoryLabel } from './financeLabels';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
 
 const { Title } = Typography;
 
@@ -71,24 +72,63 @@ export default function FinancePage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <Title level={3} className="!mb-0">
-          {isOwner ? 'Chi phí & Doanh thu' : 'Báo cáo Tài chính'}
+      {isOwner ? (
+        <Title level={3} className="!mb-4">
+          Chi phí & Doanh thu
         </Title>
-        {!isOwner && (
-          <div className="flex gap-2">
-            <Button
-              icon={<DownloadOutlined />}
-              onClick={() => downloadFile('/export/finance', `tai-chinh-${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => message.error(e.message || 'Xuất file thất bại.'))}
-            >
-              Xuất CSV
-            </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-              Ghi nhận khoản mục
-            </Button>
+      ) : (
+      <PageHeroBanner
+        eyebrow="TEAM 8 • QUẢN TRỊ TÀI CHÍNH CLB"
+        roleLabel="Club Manager"
+        title="Báo Cáo & Quản Trị Tài Chính"
+        subtitle="Tổng hợp thu chi toàn câu lạc bộ: Doanh thu giải đấu, dịch vụ chuồng trại, chi phí thức ăn, thuốc thú y và lương nhân sự."
+        actionButton={
+            <div className="flex gap-2">
+              <Button
+                icon={<DownloadOutlined />}
+                onClick={() => downloadFile('/export/finance', `tai-chinh-${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => message.error(e.message || 'Xuất file thất bại.'))}
+                className="!bg-white/10 hover:!bg-white/20 !border-white/20 !text-white"
+              >
+                Xuất CSV
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setOpen(true)}
+                className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer shadow-md"
+              >
+                Ghi nhận khoản mục
+              </Button>
+            </div>
+        }
+      />
+      )}
+
+      {!isOwner && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
+          <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Bản Ghi</div>
+            <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{(data?.data || []).length} <span className="text-xs font-normal text-slate-500">giao dịch</span></div>
           </div>
-        )}
-      </div>
+          <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Doanh Thu</div>
+            <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{(data?.data || []).filter((r) => r.type === 'revenue').reduce((acc, r) => acc + (r.amount || 0), 0).toLocaleString('vi-VN')} đ</div>
+          </div>
+          <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Chi Phí</div>
+            <div className="text-xl font-bold text-rose-600 tabular-nums mt-0.5">{(data?.data || []).filter((r) => r.type === 'cost').reduce((acc, r) => acc + (r.amount || 0), 0).toLocaleString('vi-VN')} đ</div>
+          </div>
+          <div className="px-3 py-1.5">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Lợi Nhuận Ròng</div>
+            {(() => {
+              const rev = (data?.data || []).filter((r) => r.type === 'revenue').reduce((acc, r) => acc + (r.amount || 0), 0);
+              const cost = (data?.data || []).filter((r) => r.type === 'cost').reduce((acc, r) => acc + (r.amount || 0), 0);
+              const net = rev - cost;
+              return <div className={`text-xl font-bold tabular-nums mt-0.5 ${net >= 0 ? 'text-[#0F5A43]' : 'text-rose-600'}`}>{net.toLocaleString('vi-VN')} đ</div>;
+            })()}
+          </div>
+        </div>
+      )}
 
       {isOwner && (
         <Row gutter={[16, 16]} className="mb-6">

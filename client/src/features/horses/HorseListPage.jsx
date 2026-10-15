@@ -13,6 +13,7 @@ import { ROLES } from '../../constants/roles';
 import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constants/health';
 import HorseNextStep from './HorseNextStep';
 import { HORSE_SEX_LABELS, horseSexOptions } from '../../constants/horse';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
 
 const { Title } = Typography;
 
@@ -90,6 +91,17 @@ export default function HorseListPage() {
   const incomplete = isManager
     ? horses.filter((h) => !h.owner || !h.assignedTrainer || !h.assignedVet)
     : [];
+
+  // Counted the way the dashboard counts them. A new horse is "eligible" in the record before any vet
+  // has seen it, so "ready" also needs an exam on file and no medical restriction; an unexamined horse
+  // is counted on its own rather than as healthy.
+  const checkItem = (h, key) => checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === key)?.done;
+  const readyCount = horses.filter((h) => h.healthStatus === 'eligible' && checkItem(h, 'health') && checkItem(h, 'clearance')).length;
+  const unexaminedCount = horses.filter((h) => checkItem(h, 'health') === false).length;
+  const restrictedCount = horses.filter((h) => h.trainingClearance?.restricted).length;
+  const watchCount = horses.filter((h) => ['monitoring', 'injured', 'quarantined'].includes(h.healthStatus) || h.trainingClearance?.restricted).length;
+  // The Manager closes staffing gaps; the trainer closes planning gaps.
+  const gapCount = isManager ? incomplete.length : horses.filter((h) => checkItem(h, 'plan') === false).length;
 
   // Assignee dropdowns — only fetched for the Manager, who is the only role that can assign.
   const { data: trainersData } = useQuery({
@@ -275,32 +287,76 @@ export default function HorseListPage() {
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
-        <div>
-          <Title level={3} className="!mb-0">
-            {isManager ? 'Danh mục Ngựa' : 'Danh sách Ngựa'}
-          </Title>
-          {isManager && (
-            <Typography.Text type="secondary" className="text-sm">
-              Thêm/sửa hồ sơ ngựa và gán Huấn luyện viên, Bác sĩ thú y phụ trách. Mỗi HLV/bác sĩ
-              chỉ thấy đúng những con ngựa bạn phân công cho họ.
-            </Typography.Text>
-          )}
-        </div>
-        {isManager && (
-          <div className="flex gap-2">
-            <Button
-              icon={<DownloadOutlined />}
-              onClick={() => downloadFile('/export/horses', `danh-sach-ngua-${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => message.error(e.message || 'Xuất file thất bại.'))}
-            >
-              Xuất CSV
-            </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              Thêm ngựa mới
-            </Button>
+      {showsNextStep ? (
+      <PageHeroBanner
+        eyebrow="TEAM 8 • QUẢN LÝ ĐÀN CHIẾN MÃ"
+        roleLabel={isManager ? 'Club Manager' : 'Head Trainer'}
+        title={isManager ? 'Danh Mục & Quản Lý Chiến Mã' : 'Danh Sách Chiến Mã Phụ Trách'}
+        subtitle={
+          isManager
+            ? 'Thêm/sửa hồ sơ ngựa và phân công Huấn luyện viên, Bác sĩ thú y phụ trách toàn diện.'
+            : 'Theo dõi thể trạng, lịch sử thi đấu và phân bổ kế hoạch tác chiến cho từng chiến mã.'
+        }
+        stats={[
+          { label: 'Tổng đàn', value: `${horses.length} con` },
+          { label: 'Đủ điều kiện tập', value: `${readyCount} con` },
+          { label: 'Cần theo dõi', value: `${watchCount} con` },
+        ]}
+        actionButton={
+          isManager ? (
+            <div className="flex gap-2">
+              <Button
+                icon={<DownloadOutlined />}
+                onClick={() => downloadFile('/export/horses', `danh-sach-ngua-${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => message.error(e.message || 'Xuất file thất bại.'))}
+                className="!bg-white/10 hover:!bg-white/20 !border-white/20 !text-white"
+              >
+                Xuất CSV
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={openCreate}
+                className="!bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer"
+              >
+                Thêm ngựa mới
+              </Button>
+            </div>
+          ) : null
+        }
+      />
+      ) : (
+        <Title level={3} className="!mb-4">
+          Danh sách Ngựa
+        </Title>
+      )}
+
+      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
+      {showsNextStep && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
+          <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Đàn Ngựa</div>
+            <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{horses.length} <span className="text-xs font-normal text-slate-500">chiến mã</span></div>
           </div>
-        )}
-      </div>
+          <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đủ Điều Kiện Tập</div>
+            <div className="text-xl font-bold text-emerald-700 tabular-nums mt-0.5">{readyCount} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
+            {unexaminedCount > 0 && <div className="text-[11px] text-slate-500">{unexaminedCount} ngựa chưa khám</div>}
+          </div>
+          <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Theo Dõi Y Tế</div>
+            <div className={`text-xl font-bold tabular-nums mt-0.5 ${watchCount > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+              {watchCount} <span className="text-xs font-normal text-slate-500">ngựa</span>
+            </div>
+            {restrictedCount > 0 && <div className="text-[11px] text-slate-500">{restrictedCount} ngựa bị hạn chế tập</div>}
+          </div>
+          <div className="px-3 py-1.5">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{isManager ? 'Khuyết Phụ Trách' : 'Chưa Có Kế Hoạch'}</div>
+            <div className={`text-xl font-bold tabular-nums mt-0.5 ${gapCount > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+              {gapCount} <span className="text-xs font-normal text-slate-500">ngựa</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {incomplete.length > 0 && (
         <Alert

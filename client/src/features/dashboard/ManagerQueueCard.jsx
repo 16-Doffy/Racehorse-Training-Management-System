@@ -30,6 +30,7 @@ export default function ManagerQueueCard() {
       count: (users.data?.data || []).filter((u) => u.approvalStatus === 'pending').length,
       to: '/admin/users',
       action: 'Duyệt tài khoản',
+      desc: 'Người dùng mới đăng ký cần xét duyệt quyền',
     },
     {
       key: 'restock',
@@ -38,6 +39,7 @@ export default function ManagerQueueCard() {
       count: requests.filter((r) => r.status === 'pending').length,
       to: '/inventory',
       action: 'Xem đề xuất',
+      desc: 'Yêu cầu nhập thức ăn hoặc vật tư y tế',
     },
     {
       key: 'delivery',
@@ -46,14 +48,16 @@ export default function ManagerQueueCard() {
       count: requests.filter((r) => r.status === 'approved' && r.awaitingDelivery && !r.receivedAt).length,
       to: '/inventory',
       action: 'Nhận hàng',
+      desc: 'Đơn hàng đã về kho cần kiểm đếm và nhập',
     },
     {
       key: 'assignment',
       icon: <ApartmentOutlined />,
-      label: 'Ngựa thiếu chủ, HLV, bác sĩ hoặc chuồng',
+      label: 'Ngựa thiếu phân công',
       count: (checklists.data?.data || []).filter((r) => r.items.some((i) => ASSIGNMENT_KEYS.includes(i.key) && !i.done)).length,
       to: '/horses',
-      action: 'Phân công',
+      action: 'Phân công ngay',
+      desc: 'Thiếu chủ ngựa, HLV, bác sĩ hoặc chuồng',
     },
   ];
   const waiting = rows.reduce((total, r) => total + r.count, 0);
@@ -61,35 +65,66 @@ export default function ManagerQueueCard() {
 
   return (
     <Card
-      className="mt-6"
+      className="shadow-xs border-[#E5DEC9] border-t-2 border-t-[#0F5A43] rounded-xl overflow-hidden"
+      styles={{ body: { padding: 0 }, title: { whiteSpace: 'normal', overflow: 'visible' }, header: { height: 'auto' } }}
+      headStyle={{ whiteSpace: 'normal' }}
       title={
-        <span>
-          Việc đang chờ bạn{' '}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-gray-900 text-base">Việc đang chờ bạn</span>
+            {waiting > 0 && (
+              <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                {waiting} cần xử lý
+              </span>
+            )}
+          </div>
           <Text type="secondary" className="!text-xs font-normal">
-            {loading ? 'đang tải…' : waiting ? `${waiting} việc` : 'không có việc nào đang chờ bạn'}
+            {loading ? 'Đang kiểm tra…' : waiting === 0 ? 'Tất cả đã được giải quyết' : `${waiting} việc chưa xử lý`}
           </Text>
-        </span>
+        </div>
       }
     >
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="divide-y divide-[#EFE8DA]">
         {rows.map((r) => {
           const tone = STATUS_TONES[r.count ? 'watch' : 'neutral'];
+          const hasPending = r.count > 0;
           return (
             <Link
               key={r.key}
               to={r.to}
-              className={`flex items-center gap-3 rounded-xl border border-black/5 p-3 min-w-0 transition-colors hover:bg-black/[0.02] ${r.count ? '' : 'opacity-60'}`}
+              className={`flex items-center justify-between p-4 transition-colors hover:bg-emerald-50/40 group ${hasPending ? 'bg-amber-50/20' : ''}`}
             >
-              <span className="w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0" style={{ background: tone.bg, color: tone.color }}>
-                {r.icon}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm text-gray-700">{r.label}</span>
-                <span className="block text-xs text-gray-500">{r.count ? `${r.action} →` : 'Không có'}</span>
-              </span>
-              <span className="text-2xl font-semibold tabular-nums" style={{ color: tone.color }}>
-                {loading ? '–' : r.count}
-              </span>
+              <div className="flex items-center gap-3.5 min-w-0 pr-4">
+                <span
+                  className="w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 transition-transform group-hover:scale-105"
+                  style={{ background: tone.bg, color: tone.color }}
+                >
+                  {r.icon}
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900 group-hover:text-emerald-900 transition-colors">
+                      {r.label}
+                    </span>
+                    {hasPending && (
+                      <span className="text-[11px] font-semibold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
+                        {r.action}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-500 block truncate mt-0.5">{r.desc}</span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <span
+                  className={`text-xl font-bold tabular-nums block ${hasPending ? 'text-amber-600' : 'text-slate-600'}`}
+                >
+                  {loading ? '–' : r.count}
+                </span>
+                <span className="text-[11px] text-slate-600 font-medium block">
+                  {hasPending ? 'chờ xử lý' : 'hoàn tất'}
+                </span>
+              </div>
             </Link>
           );
         })}

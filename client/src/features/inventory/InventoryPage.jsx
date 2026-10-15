@@ -5,7 +5,6 @@ import {
   Tag,
   Button,
   Space,
-  Alert,
   Popconfirm,
   Modal,
   Form,
@@ -31,8 +30,9 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { inventoryApi } from './inventoryApi';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const CATEGORIES = [
   { key: 'feed', label: 'Thức ăn', hint: 'Dùng trong khẩu phần — kho tự trừ mỗi bữa nhân viên cho ăn xong.' },
@@ -543,39 +543,84 @@ export default function InventoryPage() {
     };
   });
 
+  const totalItemsCount = items.length;
+  const lowStockCount = items.filter((i) => i.isActive !== false && i.reorderLevel > 0 && i.quantity <= i.reorderLevel).length;
+  const outOfStockCount = items.filter((i) => i.isActive !== false && i.quantity <= 0).length;
+  const pendingRequestsCount = pendingRequests.filter((r) => r.status === 'pending').length;
+  const awaitingDeliveryCount = pendingRequests.filter((r) => r.status === 'approved').length;
+
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
-        <div>
-          <Title level={3} className="!mb-0">
-            Vật tư &amp; Thức ăn
-          </Title>
-          <Text type="secondary" className="text-sm">
-            Danh mục kho theo từng loại. Khẩu phần và đơn thuốc lấy vật tư từ đây; mỗi bữa ăn hay liều thuốc nhân viên làm xong, kho
-            tự trừ. Nhân viên, HLV, bác sĩ đề xuất bổ sung: bạn duyệt là đặt hàng; khi hàng về, bấm "Nhận hàng" thì kho mới tăng.
-          </Text>
-        </div>
-        <Space wrap>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setEditing({ __category: tab })}>
-            Thêm vật tư
+      <PageHeroBanner
+        eyebrow="TEAM 8 • KHO HẬU CẦN & VẬT TƯ"
+        roleLabel="Club Manager"
+        title="Kho Vật Tư, Thức Ăn & Dược Phẩm"
+        subtitle="Danh mục kho theo từng phân loại: Khẩu phần và đơn thuốc tự động khấu trừ kho. Quản lý đề xuất nhập hàng và duyệt đặt hàng."
+        stats={[
+          { label: 'Tổng danh mục', value: `${totalItemsCount} mặt hàng` },
+          { label: 'Cảnh báo tồn', value: outOfStockCount > 0 ? `${outOfStockCount} hết` : `${lowStockCount} sắp hết` },
+          { label: 'Chờ duyệt', value: `${pendingRequestsCount} đề xuất` },
+          { label: 'Chờ nhận hàng', value: `${awaitingDeliveryCount} đơn` },
+        ]}
+        actionButton={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setEditing({ __category: tab })}
+            className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer shadow-md"
+          >
+            Thêm vật tư mới
           </Button>
-        </Space>
+        }
+      />
+
+      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Danh Mục</div>
+          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{totalItemsCount} <span className="text-xs font-normal text-slate-500">mặt hàng</span></div>
+        </div>
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Cảnh Báo Tồn Kho</div>
+          <div className={`text-xl font-bold tabular-nums mt-0.5 ${outOfStockCount > 0 ? 'text-rose-600' : lowStockCount > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+            {outOfStockCount > 0 ? `${outOfStockCount} hết hàng` : lowStockCount > 0 ? `${lowStockCount} sắp hết` : 'An toàn'}
+          </div>
+        </div>
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chờ Duyệt Mua</div>
+          <div className={`text-xl font-bold tabular-nums mt-0.5 ${pendingRequestsCount > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+            {pendingRequestsCount} <span className="text-xs font-normal text-slate-500">đề xuất</span>
+          </div>
+        </div>
+        <div className="px-3 py-1.5">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chờ Giao Nhận</div>
+          <div className="text-xl font-bold text-sky-700 tabular-nums mt-0.5">{awaitingDeliveryCount} <span className="text-xs font-normal text-slate-500">đơn đã duyệt</span></div>
+        </div>
       </div>
 
       {pendingRequests.length > 0 && (
-        <>
-          <Alert className="mb-3" type="warning" showIcon title={`${pendingRequests.length} đề xuất vật tư đang chờ duyệt`} />
+        <div className="mb-6 rounded-xl border border-amber-200/80 bg-amber-50/30 p-4 shadow-xs">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-semibold text-amber-900 flex items-center gap-2 text-sm">
+              <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              Hàng chờ duyệt &amp; nhận hàng ({pendingRequests.length})
+            </span>
+            <Text type="secondary" className="!text-xs">
+              Đề xuất từ HLV, Bác sĩ &amp; Grooms
+            </Text>
+          </div>
           <Table
-            className="mb-6"
             rowKey="key"
-            title={() => <span className="font-semibold">Chờ duyệt ({pendingRequests.length})</span>}
             columns={requestColumns}
             dataSource={pendingRequests}
             loading={isLoading}
             pagination={false}
             scroll={{ x: 'max-content' }}
+            size="small"
           />
-        </>
+        </div>
       )}
 
       <Tabs activeKey={tab} onChange={setTab} items={tabItems} />

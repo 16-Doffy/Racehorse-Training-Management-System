@@ -1,4 +1,4 @@
-import { Card, Tag, Typography, Empty } from 'antd';
+import { Card, Tag, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -21,21 +21,33 @@ export default function OpenIncidentsCard() {
 
   return (
     <Card
-      className="!mt-6"
+      className="shadow-xs border-[#E5DEC9] border-t-2 border-t-emerald-700 rounded-xl overflow-hidden"
+      styles={{ title: { whiteSpace: 'normal', overflow: 'visible' }, header: { height: 'auto' } }}
+      headStyle={{ whiteSpace: 'normal' }}
       loading={isLoading}
       title={
-        <div className="flex flex-wrap items-baseline gap-x-3">
-          <span>Sự cố đang mở</span>
-          {tasks.length > 0 && (
-            <Text type="secondary" className="!text-xs">
-              {tasks.length} sự cố chờ bác sĩ kết luận
-            </Text>
-          )}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-gray-900 text-base">Sự cố đang mở</span>
+            {tasks.length > 0 && (
+              <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-rose-50 text-rose-700 border border-rose-200 shrink-0">
+                {tasks.length} chờ kết luận
+              </span>
+            )}
+          </div>
+          <Text type="secondary" className="!text-xs font-normal">
+            {tasks.length > 0 ? `${tasks.length} sự cố` : 'Toàn đàn an toàn'}
+          </Text>
         </div>
       }
     >
       {tasks.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có sự cố nào đang chờ xử lý." />
+        <div className="light-surface-box py-5 px-4 text-center rounded-xl bg-emerald-50/60 border border-emerald-200/60 my-1 flex items-center justify-center gap-2.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse shrink-0" />
+          <span className="text-xs font-semibold text-emerald-950">
+            Hệ thống an toàn · Không có sự cố phát sinh từ chuồng trại
+          </span>
+        </div>
       ) : (
         <div className="flex flex-col divide-y divide-gray-100">
           {tasks.slice(0, 6).map((t) => {

@@ -5,8 +5,9 @@ import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { auditApi } from './auditApi';
 import { ROLE_LABELS } from '../../constants/roles';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { RangePicker } = DatePicker;
 
 // Actions are "<family>.<verb>"; both halves read in Vietnamese, unknown ones show their code.
@@ -176,57 +177,84 @@ export default function AuditLogPage() {
     { title: 'Chi tiết', dataIndex: 'metadata', key: 'metadata', render: (v) => <MetadataCell value={v} /> },
   ];
 
+  const totalLogs = total || 0;
+  const totalActors = facets.actors?.length || 0;
+  const totalFamilies = families.length;
+
   return (
     <div>
-      <Title level={3} className="!mb-1">
-        Nhật ký Thao tác Hệ thống (Audit Log)
-      </Title>
-      <Text type="secondary" className="block mb-4 text-sm">
-        Ai đã làm gì, lúc nào, trên bản ghi nào. Lọc theo người, loại việc, đối tượng hoặc khoảng ngày.
-      </Text>
+      <PageHeroBanner
+        eyebrow="TEAM 8 • NHẬT KÝ & KIỂM TOÁN VẬN HÀNH"
+        roleLabel="Club Manager"
+        title="Nhật Ký Thao Tác Hệ Thống (Audit Log)"
+        subtitle="Truy vết toàn vẹn lịch sử vận hành: Ai đã làm gì, thời điểm nào, trên đối tượng nào. Tra cứu dữ liệu bảo mật và kiểm toán."
+        stats={[
+          { label: 'Tổng thao tác', value: `${totalLogs.toLocaleString('vi-VN')} lượt` },
+          { label: 'Nhân sự thao tác', value: `${totalActors} người` },
+          { label: 'Phân hệ nghiệp vụ', value: `${totalFamilies} nhóm` },
+        ]}
+      />
 
-      <Space wrap className="mb-3">
-        <Select
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          placeholder="Người thực hiện"
-          style={{ width: 220 }}
-          value={filters.actor}
-          onChange={(actor) => set({ actor })}
-          options={facets.actors.map((u) => ({ value: u._id, label: `${u.name}${u.isActive === false ? ' (đã khóa)' : ''}` }))}
-        />
-        <Select
-          allowClear
-          placeholder="Nhóm việc"
-          style={{ width: 170 }}
-          value={filters.family}
-          onChange={(family) => set({ family, action: undefined })}
-          options={families.map((f) => ({ value: f, label: FAMILY_LABELS[f] || f }))}
-        />
-        <Select
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          placeholder="Hành động"
-          style={{ width: 240 }}
-          value={filters.action}
-          onChange={(action) => set({ action })}
-          options={actionsOfFamily.map((a) => ({ value: a, label: actionLabel(a) }))}
-        />
-        <Select
-          allowClear
-          placeholder="Loại đối tượng"
-          style={{ width: 170 }}
-          value={filters.targetModel}
-          onChange={(targetModel) => set({ targetModel })}
-          options={facets.targetModels.map((m) => ({ value: m, label: MODEL_LABELS[m] || m }))}
-        />
-        <RangePicker format="DD/MM/YYYY" value={filters.range} onChange={(range) => set({ range })} />
-        {anyFilter && (
-          <Button onClick={() => set({ actor: undefined, family: undefined, action: undefined, targetModel: undefined, range: null })}>Bỏ lọc</Button>
-        )}
-      </Space>
+      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Thao Tác Ghi Nhận</div>
+          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{totalLogs.toLocaleString('vi-VN')} <span className="text-xs font-normal text-slate-500">nhật ký</span></div>
+        </div>
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Nhân Sự Thao Tác</div>
+          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{totalActors} <span className="text-xs font-normal text-slate-500">người</span></div>
+        </div>
+        <div className="px-3 py-1.5">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Phân Hệ Nghiệp Vụ</div>
+          <div className="text-xl font-bold text-slate-700 tabular-nums mt-0.5">{totalFamilies} <span className="text-xs font-normal text-slate-500">nhóm việc</span></div>
+        </div>
+      </div>
+
+      <div className="bg-white p-3.5 rounded-xl border border-[#E4DFD3] shadow-xs mb-4">
+        <Space wrap className="w-full">
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Người thực hiện"
+            style={{ width: 220 }}
+            value={filters.actor}
+            onChange={(actor) => set({ actor })}
+            options={facets.actors.map((u) => ({ value: u._id, label: `${u.name}${u.isActive === false ? ' (đã khóa)' : ''}` }))}
+          />
+          <Select
+            allowClear
+            placeholder="Nhóm việc"
+            style={{ width: 170 }}
+            value={filters.family}
+            onChange={(family) => set({ family, action: undefined })}
+            options={families.map((f) => ({ value: f, label: FAMILY_LABELS[f] || f }))}
+          />
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Hành động"
+            style={{ width: 240 }}
+            value={filters.action}
+            onChange={(action) => set({ action })}
+            options={actionsOfFamily.map((a) => ({ value: a, label: actionLabel(a) }))}
+          />
+          <Select
+            allowClear
+            placeholder="Loại đối tượng"
+            style={{ width: 170 }}
+            value={filters.targetModel}
+            onChange={(targetModel) => set({ targetModel })}
+            options={facets.targetModels.map((m) => ({ value: m, label: MODEL_LABELS[m] || m }))}
+          />
+          <RangePicker format="DD/MM/YYYY" value={filters.range} onChange={(range) => set({ range })} />
+          {anyFilter && (
+            <Button onClick={() => set({ actor: undefined, family: undefined, action: undefined, targetModel: undefined, range: null })}>Bỏ lọc</Button>
+          )}
+        </Space>
+      </div>
 
       <Table
         rowKey="_id"

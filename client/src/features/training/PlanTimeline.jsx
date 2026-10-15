@@ -60,8 +60,10 @@ export default function PlanTimeline({ phases = [], startDate, raceDate, compact
         )}
         {race && race >= from && race <= to && (
           <Tooltip title={`Ngày đua ${ddmm(race)}`}>
-            <div className="absolute -top-3 text-sm leading-none" style={{ left: pos(race), transform: 'translateX(-50%)' }} aria-label="Ngày đua">
-              🏁
+            <div className="absolute -top-3.5 flex items-center justify-center leading-none" style={{ left: pos(race), transform: 'translateX(-50%)' }} aria-label="Ngày đua">
+              <svg className="w-3.5 h-3.5 text-amber-600 drop-shadow-xs" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+              </svg>
             </div>
           </Tooltip>
         )}

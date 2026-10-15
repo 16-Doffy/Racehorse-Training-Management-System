@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Table,
   Button,
@@ -17,6 +17,8 @@ import {
   Divider,
   Tooltip,
   Space,
+  Dropdown,
+  Grid,
 } from 'antd';
 import { message, notification } from '../../lib/antdStatic';
 import {
@@ -31,6 +33,7 @@ import {
   StopOutlined,
   CheckCircleOutlined,
   PauseCircleOutlined,
+  MoreOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -44,6 +47,7 @@ import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } fro
 import ReadinessPanel from './ReadinessPanel';
 import PreCheckModal from './PreCheckModal';
 import LiveSessionMonitor from './LiveSessionMonitor';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
 import { useClubPolicy, precheckRuleText, afternoonProblem } from './useClubPolicy';
 import { SESSION_STATUS_LABELS as STATUS_LABELS, SESSION_STATUS_COLORS as STATUS_COLORS } from './sessionStatus';
 import SessionOutcome from './SessionOutcome';
@@ -52,7 +56,6 @@ import WeekCalendar from './WeekCalendar';
 import {
   OBJECTIVE_LABELS,
   OBJECTIVE_DESCRIPTIONS,
-  OBJECTIVE_COLORS,
   INTENSITY_LABELS,
   INTENSITY_COLORS,
   PHASE_LABELS,
@@ -67,10 +70,10 @@ import {
   mondayOf,
   actualTimeLabel,
   TRAINER_ABORT_OPTIONS,
-  DONE_STATUSES,
 } from './trainingVocab';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
+const { useBreakpoint } = Grid;
 
 const SESSION_TYPE_LABELS = { training: 'Buổi tập thường', trial_run: 'Lượt chạy thử' };
 const futureTimeRule = {
@@ -93,7 +96,11 @@ function describePrescription(p) {
 }
 
 export default function TrainingSessionPage() {
-  const [createOpen, setCreateOpen] = useState(false);
+  const screens = useBreakpoint();
+  const isDesktop = screens.md ?? (typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // ?new=1 (the dashboard's "Lập buổi tập mới") lands with the create form already open.
+  const [createOpen, setCreateOpen] = useState(() => searchParams.get('new') === '1');
   const [evalOpen, setEvalOpen] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
   const [typeFilter, setTypeFilter] = useState('all');
@@ -115,8 +122,14 @@ export default function TrainingSessionPage() {
   const [cancelSession, setCancelSession] = useState(null);
   const [cancelForm] = Form.useForm();
   const queryClient = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams();
   const planFilter = searchParams.get('plan');
+  // Drop ?new=1 once read, so a reload or Back does not open the form again.
+  useEffect(() => {
+    if (!searchParams.has('new')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('new');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   const horseFilter = searchParams.get('horse');
   const lockedHorseIds = useLockedHorseIds();
   const clearances = useHorseClearances();
@@ -158,6 +171,7 @@ export default function TrainingSessionPage() {
 
   const filteredPlan = planFilter ? (plansData?.data || []).find((p) => p._id === planFilter) : null;
   const filteredHorse = horseFilter ? (horsesData?.data || []).find((h) => h._id === horseFilter) : null;
+  const allSessions = sessionsData?.data || [];
 
   const horseOptions = (horsesData?.data || []).map((h) => ({
     value: h._id,
@@ -408,45 +422,60 @@ export default function TrainingSessionPage() {
       dataIndex: ['horse', 'name'],
       key: 'horse',
       render: (name, record) => (
-        <span>
-          <Link to={`/horses/${record.horse?._id}`}>{name}</Link>
+        <div className="whitespace-nowrap">
+          <Link to={`/horses/${record.horse?._id}`} className="font-semibold text-emerald-950 hover:text-emerald-700">
+            {name}
+          </Link>
           {lockedHorseIds.has(record.horse?._id) ? (
-            <Tag color="red" className="ml-2">
-              🔒 Đang khóa
+            <Tag color="red" className="ml-2 !text-xs">
+              Khóa tập
             </Tag>
           ) : (
             clearances.get(String(record.horse?._id))?.restricted && (
-              <Tag color={TRAINING_LEVEL_META[clearances.get(String(record.horse?._id)).level]?.color} className="ml-2">
+              <Tag color={TRAINING_LEVEL_META[clearances.get(String(record.horse?._id)).level]?.color} className="ml-2 !text-xs">
                 {TRAINING_LEVEL_META[clearances.get(String(record.horse?._id)).level]?.short}
               </Tag>
             )
           )}
-        </span>
+        </div>
       ),
     },
     {
-      title: 'Mục đích buổi tập',
+      title: 'Bài tập & Mục tiêu',
       key: 'objective',
       render: (_, r) => (
-        <div className="min-w-[220px] max-w-[300px] whitespace-normal">
-          {r.kind && (
-            <Tag color={SESSION_KINDS[r.kind]?.color} className="!mr-1">
-              {SESSION_KINDS[r.kind]?.label}
-            </Tag>
-          )}
-          <Tooltip title={OBJECTIVE_DESCRIPTIONS[r.objective]}>
-            <Tag color={OBJECTIVE_COLORS[r.objective] || 'default'} className="!mr-1">
-              {OBJECTIVE_LABELS[r.objective] || '—'}
-            </Tag>
-          </Tooltip>
-          {r.intensity && (
-            <Tag color={INTENSITY_COLORS[r.intensity]}>Cường độ {INTENSITY_LABELS[r.intensity]}</Tag>
-          )}
-          {r.sessionType === 'trial_run' && <Tag color="purple">{SESSION_TYPE_LABELS.trial_run}</Tag>}
+        <div className="min-w-[200px] max-w-[320px]">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-semibold text-gray-900 text-sm">
+              {SESSION_KINDS[r.kind]?.label || r.kind || 'Buổi tập'}
+            </span>
+            {r.sessionType === 'trial_run' && (
+              <Tag color="purple" className="!m-0 text-[11px] leading-tight">
+                Chạy thử
+              </Tag>
+            )}
+          </div>
+          <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+            <Tooltip title={OBJECTIVE_DESCRIPTIONS[r.objective]}>
+              <span className="cursor-help hover:text-gray-700 underline decoration-dotted">
+                {OBJECTIVE_LABELS[r.objective] || '—'}
+              </span>
+            </Tooltip>
+            {r.intensity && (
+              <>
+                <span className="text-gray-300">·</span>
+                <Tag color={INTENSITY_COLORS[r.intensity]} className="!m-0 text-[11px] leading-tight px-1.5 py-0">
+                  {INTENSITY_LABELS[r.intensity]}
+                </Tag>
+              </>
+            )}
+          </div>
           {describePrescription(r.prescription) && (
-            <Text type="secondary" className="block !text-xs mt-1">
-              {describePrescription(r.prescription)}
-            </Text>
+            <Tooltip title={describePrescription(r.prescription)}>
+              <Text type="secondary" className="block !text-[11px] text-gray-400 mt-0.5 truncate cursor-default">
+                {describePrescription(r.prescription)}
+              </Text>
+            </Tooltip>
           )}
         </div>
       ),
@@ -455,17 +484,16 @@ export default function TrainingSessionPage() {
       title: 'Thời gian',
       dataIndex: 'scheduledAt',
       key: 'scheduledAt',
-      // The booked time and, once it has run, the real one: they are different facts.
       render: (d, r) => (
         <div className="whitespace-nowrap tabular-nums text-sm">
           <div>
             <Text type="secondary" className="!text-xs">
               Dự kiến{' '}
             </Text>
-            {sessionTimeLabel(d)}
+            <span className="font-medium text-gray-800">{sessionTimeLabel(d)}</span>
           </div>
           {actualTimeLabel(r) ? (
-            <div>
+            <div className="text-gray-500">
               <Text type="secondary" className="!text-xs">
                 Thực tế{' '}
               </Text>
@@ -473,8 +501,8 @@ export default function TrainingSessionPage() {
             </div>
           ) : (
             ['completed', 'evaluated'].includes(r.status) && (
-              <Text type="secondary" className="!text-xs">
-                Không ghi giờ thực tế (nhập tay)
+              <Text type="secondary" className="!text-xs text-gray-400">
+                Chưa ghi giờ thực tế
               </Text>
             )
           )}
@@ -489,19 +517,23 @@ export default function TrainingSessionPage() {
         <div>
           {s === 'blocked' && r.blockedReason ? (
             <Tooltip title={r.blockedReason}>
-              <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s]}</Tag>
+              <Tag color={STATUS_COLORS[s]} className="font-medium">
+                {STATUS_LABELS[s]}
+              </Tag>
             </Tooltip>
           ) : (
-            <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s] || s}</Tag>
+            <Tag color={STATUS_COLORS[s]} className="font-medium">
+              {STATUS_LABELS[s] || s}
+            </Tag>
           )}
           {s === 'missed' && (
-            <Text type="secondary" className="block !text-xs">
-              {r.rescheduledTo ? 'Đã xếp lại lịch' : 'Chưa kiểm tra hoặc bắt đầu kịp; hãy xếp lại lịch.'}
+            <Text type="secondary" className="block !text-xs mt-0.5">
+              {r.rescheduledTo ? 'Đã xếp lại lịch' : 'Lỡ thời hạn; hãy xếp lại.'}
             </Text>
           )}
           {r.readiness?.overrideReason && (
             <Tooltip title={`Đã ghi đè cảnh báo: ${r.readiness.overrideReason}`}>
-              <Tag color="orange" className="!mt-1">
+              <Tag color="orange" className="!mt-1 !text-xs">
                 ⚠️ Ghi đè
               </Tag>
             </Tooltip>
@@ -517,58 +549,125 @@ export default function TrainingSessionPage() {
     {
       title: '',
       key: 'actions',
-      // Pinned so Start/Evaluate stay reachable without scrolling the wide table sideways.
-      fixed: 'right',
-      render: (_, record) => (
-        <Space size={4} wrap>
-          {record.status === 'blocked' && (
-            <Button size="small" icon={<SafetyCertificateOutlined />} onClick={() => requestExamFor(record)}>
-              Yêu cầu bác sĩ khám
-            </Button>
-          )}
-          {['scheduled', 'blocked'].includes(record.status) && (
-            <Button size="small" type="primary" icon={<SafetyCertificateOutlined />} onClick={() => setPreCheckSession(record)}>
-              {record.status === 'blocked' ? 'Kiểm tra lại' : 'Kiểm tra sẵn sàng'}
-            </Button>
-          )}
-          {record.status === 'ready' && (
-            <Button
-              size="small"
-              type="primary"
-              icon={<PlayCircleOutlined />}
-              loading={startMutation.isPending && startMutation.variables?.id === record._id}
-              onClick={() => startMutation.mutate({ id: record._id })}
-            >
-              Bắt đầu
-            </Button>
-          )}
-          {(['scheduled', 'ready', 'blocked'].includes(record.status) || (record.status === 'missed' && !record.rescheduledTo)) && (
-            <Button size="small" icon={<CalendarOutlined />} onClick={() => openSchedule(record)}>
-              {record.status === 'missed' ? 'Xếp lại lịch' : 'Đổi giờ'}
-            </Button>
-          )}
-          {record.status === 'in_progress' && (
-            <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => setEndSession(record)}>
-              Kết thúc
-            </Button>
-          )}
-          {record.status === 'in_progress' && (
-            <Button size="small" danger icon={<PauseCircleOutlined />} onClick={() => setAbortSession(record)}>
-              Dừng giữa chừng
-            </Button>
-          )}
-          {DONE_STATUSES.includes(record.status) && (
-            <Button size="small" type={record.status === 'completed' ? 'primary' : 'default'} icon={<EditOutlined />} onClick={() => openEvaluation(record)}>
-              {record.status === 'completed' ? 'Đánh giá' : 'Sửa đánh giá'}
-            </Button>
-          )}
-          {['scheduled', 'ready', 'blocked'].includes(record.status) && (
-            <Button size="small" danger icon={<StopOutlined />} onClick={() => setCancelSession(record)}>
-              Hủy buổi
-            </Button>
-          )}
-        </Space>
-      ),
+      fixed: isDesktop ? 'right' : false,
+      render: (_, record) => {
+        const moreItems = [];
+        const canSchedule = (['scheduled', 'ready', 'blocked'].includes(record.status) || (record.status === 'missed' && !record.rescheduledTo));
+        const canCancel = ['scheduled', 'ready', 'blocked'].includes(record.status);
+
+        if (canSchedule && record.status !== 'missed') {
+          moreItems.push({
+            key: 'schedule',
+            icon: <CalendarOutlined />,
+            label: 'Đổi giờ tập',
+            onClick: () => openSchedule(record),
+          });
+        }
+        if (canCancel) {
+          moreItems.push({
+            key: 'cancel',
+            icon: <StopOutlined />,
+            danger: true,
+            label: 'Hủy buổi tập',
+            onClick: () => setCancelSession(record),
+          });
+        }
+
+        return (
+          <Space size={6} wrap>
+            {/* 1. Primary Action by status */}
+            {['scheduled', 'blocked'].includes(record.status) && (
+              <Button
+                size="small"
+                type="primary"
+                icon={<SafetyCertificateOutlined />}
+                onClick={() => setPreCheckSession(record)}
+              >
+                {record.status === 'blocked' ? 'Kiểm tra lại' : 'Kiểm tra sẵn sàng'}
+              </Button>
+            )}
+            {record.status === 'blocked' && (
+              <Button
+                size="small"
+                icon={<SafetyCertificateOutlined />}
+                onClick={() => requestExamFor(record)}
+              >
+                Yêu cầu bác sĩ khám
+              </Button>
+            )}
+            {record.status === 'ready' && (
+              <Button
+                size="small"
+                type="primary"
+                icon={<PlayCircleOutlined />}
+                loading={startMutation.isPending && startMutation.variables?.id === record._id}
+                onClick={() => startMutation.mutate({ id: record._id })}
+              >
+                Bắt đầu
+              </Button>
+            )}
+            {record.status === 'in_progress' && (
+              <Button
+                size="small"
+                type="primary"
+                icon={<CheckCircleOutlined />}
+                onClick={() => setEndSession(record)}
+              >
+                Kết thúc
+              </Button>
+            )}
+            {/* 2. Direct Danger action for in_progress */}
+            {record.status === 'in_progress' && (
+              <Button
+                size="small"
+                danger
+                icon={<PauseCircleOutlined />}
+                onClick={() => setAbortSession(record)}
+              >
+                Dừng giữa chừng
+              </Button>
+            )}
+            {/* 3. Completed / Evaluated */}
+            {record.status === 'completed' && (
+              <Button
+                size="small"
+                type="primary"
+                icon={<EditOutlined />}
+                onClick={() => openEvaluation(record)}
+              >
+                Đánh giá
+              </Button>
+            )}
+            {record.status === 'evaluated' && (
+              <Button
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => openEvaluation(record)}
+              >
+                Sửa đánh giá
+              </Button>
+            )}
+            {/* 4. Missed reschedule primary */}
+            {record.status === 'missed' && !record.rescheduledTo && (
+              <Button
+                size="small"
+                type="primary"
+                icon={<CalendarOutlined />}
+                onClick={() => openSchedule(record)}
+              >
+                Xếp lại lịch
+              </Button>
+            )}
+
+            {/* 5. Dropdown for secondary actions */}
+            {moreItems.length > 0 && (
+              <Dropdown menu={{ items: moreItems }} trigger={['click']} placement="bottomRight">
+                <Button size="small" icon={<MoreOutlined />} aria-label="Thao tác khác" />
+              </Dropdown>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -589,27 +688,34 @@ export default function TrainingSessionPage() {
   return (
     <div>
       {preCheckModal}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
-        <div>
-          <Title level={3} className="!mb-0">
-            Buổi Tập &amp; Đánh giá
-          </Title>
-          <Typography.Text type="secondary" className="text-sm">
-            Mỗi buổi tập có mục đích và nội dung cụ thể. Trước khi xếp lịch, hệ thống kiểm tra ngựa
-            đã đủ điều kiện chưa — sức khỏe, dinh dưỡng và người chăm sóc.
-          </Typography.Text>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          Tạo buổi tập
-        </Button>
-      </div>
+      <PageHeroBanner
+        eyebrow="TEAM 8 • TÁC CHIẾN BUỔI TẬP & ĐÁNH GIÁ"
+        roleLabel="Head Trainer"
+        title="Buổi Tập & Đánh Giá Thể Lực Thời Gian Thực"
+        subtitle="Xếp lịch, kiểm tra điều kiện an toàn y tế, giám sát trực tiếp buổi tập và ghi nhận kết quả hiệu suất."
+        stats={[
+          { label: 'Tổng số buổi', value: `${allSessions.length} buổi` },
+          { label: 'Hôm nay', value: `${allSessions.filter((s) => dayjs(s.scheduledAt).isSame(dayjs(), 'day')).length} buổi` },
+          { label: 'Đang diễn ra', value: `${allSessions.filter((s) => s.status === 'in_progress').length} buổi` },
+        ]}
+        actionButton={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setCreateOpen(true)}
+            className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer shadow-md shrink-0"
+          >
+            Tạo buổi tập mới
+          </Button>
+        }
+      />
 
       <Alert
-        className="!mb-4"
+        className="!mb-4 border-emerald-200 bg-emerald-50/40 rounded-lg text-xs"
         type="info"
         showIcon
-        title="Xếp lịch → Kiểm tra sẵn sàng → Bắt đầu → Kết thúc → Đánh giá"
-        description={`Xếp lịch chưa chạy cảm biến. ${precheckRuleText(policy)} Không kiểm tra hoặc bắt đầu kịp thì buổi chuyển sang Lỡ giờ và có thể xếp lại. Buổi đang chạy thì Kết thúc hoặc Dừng giữa chừng (giữ số liệu).${policy.afternoonLightOnly ? ' Buổi chiều chỉ tập nhẹ.' : ''}`}
+        title="Quy trình: Xếp lịch, kiểm tra sẵn sàng, bắt đầu, kết thúc và đánh giá"
+        description={`${precheckRuleText(policy)} Buổi lỡ giờ có thể xếp lại lịch. Khi buổi đang chạy, kết thúc hoặc dừng giữa chừng để bảo toàn số liệu.${policy.afternoonLightOnly ? ' Buổi chiều chỉ tập nhẹ.' : ''}`}
       />
 
       {filteredPlan && (

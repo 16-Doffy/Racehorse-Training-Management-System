@@ -17,14 +17,23 @@ export default function NextStepsCard() {
 
   return (
     <Card
-      className="mt-6"
+      className="shadow-xs border-[#E5DEC9] border-t-2 border-t-[#0F5A43] rounded-xl overflow-hidden"
+      styles={{ title: { whiteSpace: 'normal', overflow: 'visible' }, header: { height: 'auto' } }}
+      headStyle={{ whiteSpace: 'normal' }}
       title={
-        <span>
-          Bước tiếp theo của từng ngựa{' '}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-gray-900 text-base">Bước tiếp theo của từng ngựa</span>
+            {open > 0 && (
+              <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                {open} cần thao tác
+              </span>
+            )}
+          </div>
           <Text type="secondary" className="!text-xs font-normal">
-            {open ? `${open} ngựa cần làm tiếp` : 'mọi ngựa đang tập theo lịch'}
+            {open ? `${open} ngựa cần làm tiếp` : 'Mọi ngựa đang tập theo lịch'}
           </Text>
-        </span>
+        </div>
       }
     >
       {rows.length ? (

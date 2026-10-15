@@ -9,8 +9,9 @@ import { raceApi } from './raceApi';
 import { horsesApi } from '../horses/horsesApi';
 import { trainingSessionApi, trainingPlanApi } from '../training/trainingApi';
 import { SURFACE_LABELS, surfaceOptions, DONE_STATUSES } from '../training/trainingVocab';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const STATUS_LABELS = {
   registered: 'Đã đăng ký',
@@ -361,20 +362,55 @@ export default function RacePage() {
     },
   ];
 
+  const racesList = data?.data || [];
+  const registeredCount = racesList.filter((r) => r.status === 'registered').length;
+  const confirmedCount = racesList.filter((r) => r.status === 'confirmed').length;
+  const completedCount = racesList.filter((r) => r.status === 'completed').length;
+  const upcomingCount = racesList.filter((r) => isBeforeRaceDay(r)).length;
+
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
-        <div>
-          <Title level={3} className="!mb-0">
-            Đăng ký Giải đua
-          </Title>
-          <Text type="secondary" className="text-sm">
-            Đăng ký ngựa, lập kế hoạch hướng tới giải, quyết định tham gia dựa trên chạy thử và sức khỏe, nhập kết quả sau khi thi đấu.
-          </Text>
+      <PageHeroBanner
+        eyebrow="TEAM 8 • ĐẤU TRƯỜNG & GIẢI ĐUA"
+        roleLabel="Head Trainer"
+        title="Đăng Ký & Quản Lý Giải Đua Kỵ Binh"
+        subtitle="Đăng ký ngựa, lập kế hoạch hướng tới giải đấu, quyết định tham gia dựa trên chạy thử và sức khỏe, nhập kết quả thi đấu."
+        stats={[
+          { label: 'Đã đăng ký', value: `${registeredCount} giải` },
+          { label: 'Đã xác nhận', value: `${confirmedCount} con` },
+          { label: 'Sắp diễn ra', value: `${upcomingCount} giải` },
+          { label: 'Đã hoàn thành', value: `${completedCount} giải` },
+        ]}
+        actionButton={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setOpen(true)}
+            className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer shadow-md"
+          >
+            Đăng ký giải mới
+          </Button>
+        }
+      />
+
+      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đã Đăng Ký</div>
+          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{registeredCount} <span className="text-xs font-normal text-slate-500">giải</span></div>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-          Đăng ký giải mới
-        </Button>
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đã Xác Nhận Đi Đua</div>
+          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{confirmedCount} <span className="text-xs font-normal text-slate-500">chiến mã</span></div>
+        </div>
+        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Sắp Diễn Ra</div>
+          <div className="text-xl font-bold text-amber-600 tabular-nums mt-0.5">{upcomingCount} <span className="text-xs font-normal text-slate-500">giải</span></div>
+        </div>
+        <div className="px-3 py-1.5">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đã Hoàn Thành</div>
+          <div className="text-xl font-bold text-slate-600 tabular-nums mt-0.5">{completedCount} <span className="text-xs font-normal text-slate-500">giải</span></div>
+        </div>
       </div>
 
       <Table

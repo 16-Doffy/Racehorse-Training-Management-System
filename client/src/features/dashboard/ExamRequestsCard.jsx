@@ -1,4 +1,4 @@
-import { Card, Tag, Typography, Empty } from 'antd';
+import { Card, Tag, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -29,20 +29,33 @@ export default function ExamRequestsCard() {
 
   return (
     <Card
-      className="!mt-6"
+      className="shadow-xs border-[#E5DEC9] border-t-2 border-t-amber-600 rounded-xl overflow-hidden"
+      styles={{ title: { whiteSpace: 'normal', overflow: 'visible' }, header: { height: 'auto' } }}
+      headStyle={{ whiteSpace: 'normal' }}
       loading={isLoading}
       title={
-        <div className="flex flex-wrap items-baseline gap-x-3">
-          <span>Yêu cầu khám đã gửi</span>
-          {pending > 0 && <Text type="secondary" className="!text-xs">{pending} đang chờ bác sĩ</Text>}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-gray-900 text-base">Yêu cầu khám đã gửi</span>
+            {pending > 0 && (
+              <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                {pending} chờ bác sĩ
+              </span>
+            )}
+          </div>
+          <Text type="secondary" className="!text-xs font-normal">
+            {pending > 0 ? `${pending} yêu cầu mở` : 'Không có yêu cầu chờ'}
+          </Text>
         </div>
       }
     >
       {requests.length === 0 ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="Chưa gửi yêu cầu khám nào. Gửi từ hồ sơ ngựa hoặc từ bảng kiểm tra sẵn sàng khi xếp lịch tập."
-        />
+        <div className="light-surface-box py-5 px-4 text-center rounded-xl bg-amber-50/50 border border-amber-200/50 my-1 flex items-center justify-center gap-2.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+          <span className="text-xs font-semibold text-amber-950">
+            Không có yêu cầu khám bệnh nào đang chờ phản hồi từ bác sĩ
+          </span>
+        </div>
       ) : (
         <div className="flex flex-col divide-y divide-gray-100">
           {requests.map((r) => {
