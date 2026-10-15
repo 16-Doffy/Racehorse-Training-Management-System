@@ -110,7 +110,10 @@ test('real MongoDB + HTTP flow across Manager, Trainer, Vet, Groom and Owner', {
   });
   await t.test('D: delayed care sync retains performedAt, retries once and rejects expired metadata', async () => {
     const performedAt = new Date(Date.now() - 20 * 60000).toISOString();
-    const task = await models.DailyTask.create({ horse: horse._id, assignedTo: users.groom.id, taskType: 'cleaning', scheduledDate: day(), supplies: [{ inventoryItem: feed._id, amount: 1 }] });
+    // The task sits on the day the work was done: just after midnight that is yesterday.
+    const workDay = new Date(performedAt);
+    workDay.setHours(0, 0, 0, 0);
+    const task = await models.DailyTask.create({ horse: horse._id, assignedTo: users.groom.id, taskType: 'cleaning', scheduledDate: workDay, supplies: [{ inventoryItem: feed._id, amount: 1 }] });
     const payload = { performedAt, clientOpId: 'offline-care-1' };
     await api('groom', 'PATCH', `/stable/tasks/${task._id}/complete`, payload);
     await api('groom', 'PATCH', `/stable/tasks/${task._id}/complete`, payload);
