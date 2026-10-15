@@ -82,3 +82,21 @@ test riêng và lưu trace khi UI lỗi. Chỉ xác nhận CI trên GitHub sau k
   Không ghi mật khẩu vào code hay file trong repo.
 - Lượt chạy theo lịch thất bại thì GitHub gửi email; bảng kết quả nằm ở trang tóm tắt của lượt chạy.
   GitHub tự tắt lịch nếu repo không có hoạt động trong 60 ngày.
+
+## Hai flow demo trên web thật (ghi dữ liệu)
+
+[`server/scripts/demoFlows.js`](../server/scripts/demoFlows.js), chạy bằng workflow
+[Demo flows (live)](../.github/workflows/demo-flows.yml) (lịch một lần sáng ngày demo, hoặc nút
+**Run workflow**). Khác `liveSmoke.js`, script này **ghi vào DB thật**: tạo hai ngựa "Test Demo …" và
+lấy 2,5 kg thức ăn tinh khỏi kho. Không có `DEMO_CONFIRM=write` thì chỉ chạy bước kiểm tra trước.
+
+- Flow 1 (chuẩn): nhân viên cho ăn bữa sáng → HLV tạo buổi phi chậm 2400 m sau thời gian chờ tiêu hóa
+  của CLB (90 phút) → kiểm tra sẵn sàng → bắt đầu → cảm biến chạy hết cự ly → HLV đánh giá → "Đạt mục
+  tiêu". Chỉ tiêu tốc độ để trống vì bộ giả lập chạy 90–105% tốc độ mục tiêu (đặt tốc độ thì kết quả
+  thành ngẫu nhiên); nhịp tim và cự ly luôn đạt.
+- Flow 2 (lỡ bữa): giờ bữa sáng đã qua mà chưa ai cho ăn → ô Dinh dưỡng đỏ → tạo buổi phi chậm bị từ
+  chối, kể cả khi HLV ghi lý do. Ngựa được để nguyên trạng thái đó để demo trực tiếp.
+- Cần secret `DEMO_ACCOUNTS` (JSON: `password`, `manager`, `trainer`, `vet`, `groom`, `owner`).
+  Chỉ chạy được từ 01:00 đến 10:00 giờ Việt Nam; một lần mất khoảng 1 giờ 45 phút.
+- Sau demo: Manager "Ngừng quản lý" hai ngựa Test Demo (ngựa còn trong chuồng thì ngày nào cũng
+  sinh việc cho ăn), và xóa lịch trong workflow.

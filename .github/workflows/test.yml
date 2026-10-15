@@ -26,15 +26,19 @@ jobs:
       - name: Start isolated MongoDB replica set
         run: |
           docker run -d --name wdp301-test-mongo -p 27018:27018 mongo:8.0 mongod --port 27018 --replSet wdp301Test --bind_ip_all
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'db.adminCommand({ping:1}).ok' >/dev/null 2>&1; then break; fi
             sleep 1
           done
-          docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'rs.initiate({_id:"wdp301Test",members:[{_id:0,host:"127.0.0.1:27018"}]})'
-          for i in $(seq 1 30); do
-            if docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; then exit 0; fi
-            sleep 1
+          # A slow runner can take a while to elect the single member: initiate again if it did not take.
+          for attempt in 1 2 3; do
+            docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'try { rs.status() } catch (e) { rs.initiate({_id:"wdp301Test",members:[{_id:0,host:"127.0.0.1:27018"}]}) }'
+            for i in $(seq 1 40); do
+              if docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; then exit 0; fi
+              sleep 1
+            done
           done
+          docker logs --tail 50 wdp301-test-mongo
           exit 1
       - name: Backend unit tests
         run: env -u TEST_MONGO_URI npm run test:server

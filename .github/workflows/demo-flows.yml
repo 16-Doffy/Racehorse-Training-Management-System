@@ -1,0 +1,31 @@
+name: Demo flows (live)
+# Two demo flows on the REAL club database (server/scripts/demoFlows.js): two new "Test Demo" horses,
+# one fed and trained all the way to its evaluation, one whose breakfast was missed and whose canter
+# is refused. Runs once on the demo morning and from the "Run workflow" button.
+# Flow 1 waits the club's digestion time after breakfast (90 minutes), so a run takes ~1 h 45 min:
+# starting at 05:00 leaves the results ready before 07:00. Remove the schedule after the demo.
+on:
+  schedule:
+    - cron: '0 22 15 10 *' # 05:00 Vietnam time on 16/10 (22:00 UTC on 15/10)
+  workflow_dispatch:
+concurrency:
+  group: demo-flows
+  cancel-in-progress: false
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      TZ: Asia/Ho_Chi_Minh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run the two demo flows on the live API
+        run: node server/scripts/demoFlows.js
+        env:
+          DEMO_ACCOUNTS: ${{ secrets.DEMO_ACCOUNTS }}
+          DEMO_CONFIRM: write
+          # The cron fires every 15/10; only the 2026 demo morning writes. The button always runs.
+          DEMO_ONLY_DATE: ${{ github.event_name == 'schedule' && '2026-10-16' || '' }}
