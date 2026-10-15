@@ -575,7 +575,7 @@ export default function InventoryPage() {
       />
 
       {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
+      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
         <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Danh Mục</div>
           <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{totalItemsCount} <span className="text-xs font-normal text-slate-500">mặt hàng</span></div>

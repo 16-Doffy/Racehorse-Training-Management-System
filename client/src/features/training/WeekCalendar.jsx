@@ -174,7 +174,7 @@ export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], p
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 bg-gray-50/80 p-2.5 rounded-xl border border-gray-200/80">
+      <div className="light-surface-box mb-3 flex flex-wrap items-center justify-between gap-2 bg-gray-50/80 p-2.5 rounded-xl border border-gray-200/80">
         <div className="flex items-center gap-1.5">
           <Button size="small" icon={<LeftOutlined />} aria-label="Tuần trước" onClick={() => onWeekChange(weekStart.subtract(7, 'day'))} />
           <Button size="small" icon={<RightOutlined />} aria-label="Tuần sau" onClick={() => onWeekChange(weekStart.add(7, 'day'))} />
@@ -192,7 +192,7 @@ export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], p
       {rows.size === 0 ? (
         <Empty description="Tuần này chưa có buổi tập nào." />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-200/80 bg-white shadow-xs">
+        <div className="light-surface-box overflow-x-auto rounded-xl border border-gray-200/80 bg-white shadow-xs">
           <table className="w-full min-w-[920px] border-collapse text-sm">
             <thead>
               <tr className="bg-gray-50/80 border-b border-gray-200/80">

@@ -553,18 +553,18 @@ export default function MainLayout() {
         }
 
         /* Primary button in dark canvas: crisp dark equestrian text on gold button background */
-        .forest-layout.is-dark-canvas .ant-btn-primary {
+        .forest-layout.is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous) {
           color: #0D211A !important;
           background-color: #D4AF37 !important;
           border-color: #D4AF37 !important;
           font-weight: 600 !important;
         }
-        .forest-layout.is-dark-canvas .ant-btn-primary:hover {
+        .forest-layout.is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous):hover {
           color: #05140E !important;
           background-color: #E2C058 !important;
           border-color: #E2C058 !important;
         }
-        .forest-layout.is-dark-canvas .ant-btn-primary > span {
+        .forest-layout.is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous) > span {
           color: #0D211A !important;
         }
 
@@ -576,19 +576,29 @@ export default function MainLayout() {
         }
 
         /* Select placeholders & metadata text in dark canvas */
+        .forest-layout.is-dark-canvas .ant-select-placeholder,
         .forest-layout.is-dark-canvas .ant-select-selection-placeholder {
           color: #94A3B8 !important;
         }
         .forest-layout.is-dark-canvas .ant-input::placeholder {
           color: #94A3B8 !important;
         }
-        .forest-layout.is-dark-canvas .text-gray-500,
-        .forest-layout.is-dark-canvas .text-gray-400,
-        .forest-layout.is-dark-canvas .ant-typography-secondary {
+        .forest-layout.is-dark-canvas .text-gray-500:not(.light-surface-box *):not(.light-surface-box),
+        .forest-layout.is-dark-canvas .text-gray-400:not(.light-surface-box *):not(.light-surface-box),
+        .forest-layout.is-dark-canvas .ant-typography-secondary:not(.light-surface-box *):not(.light-surface-box) {
           color: #C3D4CA !important;
         }
-        .forest-layout.is-dark-canvas .text-gray-600 {
+        .forest-layout.is-dark-canvas .text-gray-600:not(.light-surface-box *):not(.light-surface-box) {
           color: #D1D5DB !important;
+        }
+        .forest-layout.is-dark-canvas .text-slate-600:not(.light-surface-box *):not(.light-surface-box) {
+          color: #A1B5AB !important;
+        }
+        .forest-layout.is-dark-canvas .guardrail-title {
+          color: #34D399 !important;
+        }
+        .forest-layout.is-dark-canvas .guardrail-dot {
+          background-color: #34D399 !important;
         }
         .forest-layout.is-dark-canvas .text-2xl.font-semibold {
           color: #FAF8F5 !important;
@@ -601,17 +611,36 @@ export default function MainLayout() {
           color: #0F172A !important;
         }
         .forest-layout.is-dark-canvas .light-surface-box a:not(.ant-btn) {
-          color: #022C22 !important;
+          color: #0F5A43 !important;
           text-decoration: underline !important;
         }
         .forest-layout.is-dark-canvas .light-surface-box a:not(.ant-btn):hover {
-          color: #064E3B !important;
+          color: #0B4634 !important;
         }
         .forest-layout.is-dark-canvas .light-surface-box .ant-btn {
           color: #451A03 !important;
           background-color: #FFFFFF !important;
           border-color: #FCD34D !important;
           font-weight: 600 !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box .text-gray-900,
+        .forest-layout.is-dark-canvas .light-surface-box .text-gray-800,
+        .forest-layout.is-dark-canvas .light-surface-box .text-gray-700,
+        .forest-layout.is-dark-canvas .light-surface-box strong,
+        .forest-layout.is-dark-canvas .light-surface-box th {
+          color: #0F172A !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box .text-gray-600,
+        .forest-layout.is-dark-canvas .light-surface-box .text-slate-600 {
+          color: #334155 !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box .text-gray-500,
+        .forest-layout.is-dark-canvas .light-surface-box .text-slate-500,
+        .forest-layout.is-dark-canvas .light-surface-box .ant-typography-secondary {
+          color: #475569 !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box td {
+          color: #1E293B !important;
         }
         .forest-layout.is-dark-canvas .light-surface-box .text-emerald-950,
         .forest-layout.is-dark-canvas .light-surface-box .text-emerald-900 {

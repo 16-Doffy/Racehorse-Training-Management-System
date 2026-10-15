@@ -394,7 +394,7 @@ export default function RacePage() {
       />
 
       {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
+      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
         <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đã Đăng Ký</div>
           <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{registeredCount} <span className="text-xs font-normal text-slate-500">giải</span></div>
@@ -405,7 +405,7 @@ export default function RacePage() {
         </div>
         <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Sắp Diễn Ra</div>
-          <div className="text-xl font-bold text-amber-600 tabular-nums mt-0.5">{upcomingCount} <span className="text-xs font-normal text-slate-500">giải</span></div>
+          <div className="text-xl font-bold text-amber-700 tabular-nums mt-0.5">{upcomingCount} <span className="text-xs font-normal text-slate-500">giải</span></div>
         </div>
         <div className="px-3 py-1.5">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đã Hoàn Thành</div>

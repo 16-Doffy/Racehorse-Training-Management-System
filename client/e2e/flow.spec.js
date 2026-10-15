@@ -62,19 +62,13 @@ test('trainer horse list counts from the real health status and checklist', asyn
   await expect(kpi('chưa có kế hoạch')).toHaveText(/^0\s*ngựa/);
 });
 for (const [role, picker] of [['manager', true], ['trainer', true], ['vet', false], ['owner', false]]) {
-  test(`${role} ${picker ? 'chooses' : 'does not get'} the canvas, and a dark canvas saved in the browser is not applied`, async ({ page }) => {
+  test(`${role} ${picker ? 'chooses' : 'does not get'} the canvas, even with a dark canvas saved in the browser`, async ({ page }) => {
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addInitScript(() => localStorage.setItem('wdp301_canvas_theme', 'peak_equestrian_dark'));
     await login(page, role);
     await expect(page.getByRole('button', { name: /Nền Canvas/ })).toHaveCount(picker ? 1 : 0);
-    // The dark canvases are out of the picker until their contrast is fixed; a saved one falls back to light.
-    await expect(page.locator('.is-dark-canvas')).toHaveCount(0);
-    if (picker) {
-      await page.getByRole('button', { name: /Nền Canvas/ }).click();
-      await expect(page.locator('.ant-dropdown-menu-item').first()).toBeVisible();
-      await expect(page.locator('.ant-dropdown-menu-item', { hasText: /Midnight Cockpit|Grand Prix/ })).toHaveCount(0);
-    }
+    await expect(page.locator('.is-dark-canvas')).toHaveCount(picker ? 1 : 0);
     if (role === 'owner') {
       // The Owner's sidebar stays light: no forest layout, no gradient painted over it.
       await expect(page.locator('.forest-layout')).toHaveCount(0);

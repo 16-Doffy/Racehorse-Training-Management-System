@@ -196,7 +196,7 @@ export default function AuditLogPage() {
       />
 
       {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
+      <div className="light-surface-box grid grid-cols-2 md:grid-cols-3 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
         <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Thao Tác Ghi Nhận</div>
           <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{totalLogs.toLocaleString('vi-VN')} <span className="text-xs font-normal text-slate-500">nhật ký</span></div>
@@ -211,7 +211,7 @@ export default function AuditLogPage() {
         </div>
       </div>
 
-      <div className="bg-white p-3.5 rounded-xl border border-[#E4DFD3] shadow-xs mb-4">
+      <div className="light-surface-box bg-white p-3.5 rounded-xl border border-[#E4DFD3] shadow-xs mb-4">
         <Space wrap className="w-full">
           <Select
             allowClear

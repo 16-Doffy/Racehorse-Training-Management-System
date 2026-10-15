@@ -86,7 +86,7 @@ export default function DashboardPage() {
       />
 
       {/* KPI Metric Strip: Unified, dense, tabular, no floating template boxes */}
-      <div className="bg-[#FAF7F0] rounded-xl border border-[#E5DEC9] shadow-xs divide-y sm:divide-y-0 sm:divide-x divide-[#EFE8DA] grid grid-cols-2 lg:grid-cols-4 overflow-hidden">
+      <div className="light-surface-box bg-[#FAF7F0] rounded-xl border border-[#E5DEC9] shadow-xs divide-y sm:divide-y-0 sm:divide-x divide-[#EFE8DA] grid grid-cols-2 lg:grid-cols-4 overflow-hidden">
         <button
           type="button"
           onClick={() => navigate('/horses')}
@@ -188,8 +188,8 @@ export default function DashboardPage() {
         {/* Right Column: Health, Alerts & Operational Guardrails (35% on desktop) */}
         <div className="lg:col-span-5 xl:col-span-4 space-y-5">
           <div className="flex items-center justify-between pb-1 px-1">
-            <span className="text-[11px] font-bold tracking-wider uppercase text-[#0F5A43] flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#0F5A43]" />
+            <span className="guardrail-title text-[11px] font-bold tracking-wider uppercase text-[#0F5A43] flex items-center gap-1.5">
+              <span className="guardrail-dot w-1.5 h-1.5 rounded-full bg-[#0F5A43]" />
               Giám Sát An Toàn &amp; Y Tế
             </span>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#EAE1D2] text-slate-700 font-semibold">TÁC CHIẾN 24/7</span>

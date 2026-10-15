@@ -115,11 +115,9 @@ export const CANVAS_PRESETS = {
   },
 };
 
-// The dark canvases stay out of the picker until their contrast is fixed (handoff 49): a dark canvas
-// still saved in a browser falls back to the default light one.
-const isDarkPreset = (p) => Boolean(p.isDark || p.key === 'midnight_cockpit');
-export const PICKABLE_PRESETS = Object.values(CANVAS_PRESETS).filter((p) => !isDarkPreset(p));
-export const pickableCanvas = (key) => (PICKABLE_PRESETS.some((p) => p.key === key) ? key : 'sand_bone');
+// Every preset can be picked; a key saved in a browser that no longer exists falls back to the default.
+export const PICKABLE_PRESETS = Object.values(CANVAS_PRESETS);
+export const pickableCanvas = (key) => (CANVAS_PRESETS[key] ? key : 'sand_bone');
 
 /** Colour and tint per status, for figures that carry a state (dashboard counters). */
 export const STATUS_TONES = {
@@ -153,7 +151,10 @@ export function getForestTheme(presetKey = 'sand_bone') {
       colorErrorBorder: isDark ? 'rgba(179, 38, 30, 0.4)' : '#EDC2BA',
       colorInfoBg: isDark ? 'rgba(30, 58, 138, 0.2)' : '#E8EFF5',
       colorInfoBorder: isDark ? 'rgba(30, 58, 138, 0.4)' : '#BED0E2',
-      colorTextLightSolid: isDark ? '#0D211A' : '#FFFFFF',
+      colorTextLightSolid: '#FFFFFF',
+      // Tooltip bubble: AntD derives it from colorTextBase, which is light on a dark canvas.
+      ...(isDark ? { colorBgSpotlight: 'rgba(5, 20, 14, 0.96)' } : {}),
+      colorTextPlaceholder: isDark ? '#94A3B8' : '#8A8578',
       borderRadiusLG: 12,
     },
     components: {
