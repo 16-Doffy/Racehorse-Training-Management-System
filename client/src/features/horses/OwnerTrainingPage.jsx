@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { horsesApi } from './horsesApi';
 import { trainingPlanApi, trainingSessionApi } from '../training/trainingApi';
 import { reportsApi } from '../reports/reportsApi';
+import { trainingChartRows } from './trainingChart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from 'recharts';
 import dayjs from 'dayjs';
 
@@ -86,7 +87,7 @@ export default function OwnerTrainingPage() {
     queryKey: ['training-chart', selectedHorse],
     queryFn: () => reportsApi.trainingChart({ months: 6, horse: selectedHorse || undefined }),
   });
-  const chartData = chartDataRes?.data || [];
+  const chartData = trainingChartRows(chartDataRes?.data);
 
   // Filter by selected horse
   const horseSessions = selectedHorse
@@ -397,11 +398,11 @@ export default function OwnerTrainingPage() {
       <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
         <h2 className="text-base font-semibold text-gray-900 m-0 mb-4">Biểu đồ Tập luyện (6 tháng gần đây)</h2>
         <div className="h-[300px] w-full">
-          {chartData.length > 0 ? (
+          {chartData.some((row) => row.sessions > 0) ? (
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                <XAxis dataKey="_id" axisLine={false} tickLine={false} />
+                <XAxis dataKey="label" axisLine={false} tickLine={false} />
                 <YAxis yAxisId="left" axisLine={false} tickLine={false} tickFormatter={(v) => Math.round(v)} />
                 <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} />
                 <Tooltip 
