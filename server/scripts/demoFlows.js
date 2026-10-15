@@ -75,15 +75,38 @@ const table = (rows) =>
 
 const tokens = {};
 const ids = {};
+// Render answers 502–504 while it swaps in a new deploy (a push touching server/ redeploys it).
+const TRANSIENT = new Set([502, 503, 504]);
+/**
+ * One API call, retried for up to 4 minutes while the server is unreachable or being redeployed.
+ * A request that timed out may have reached the server, so only a read is sent again after a timeout:
+ * repeating a write could create the horse or the session twice.
+ */
 async function call(role, method, path, body) {
-  const res = await fetch(BASE + path, {
-    method,
-    headers: { ...(tokens[role] ? { Authorization: `Bearer ${tokens[role]}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(90000),
-  });
-  const json = await res.json().catch(() => null);
-  return { status: res.status, json, data: json?.data, message: json?.message || '' };
+  const deadline = Date.now() + minutes(4);
+  for (;;) {
+    let res;
+    try {
+      res = await fetch(BASE + path, {
+        method,
+        headers: { ...(tokens[role] ? { Authorization: `Bearer ${tokens[role]}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(90000),
+      });
+    } catch (error) {
+      if ((error.name === 'TimeoutError' && method !== 'GET') || Date.now() > deadline) throw error;
+      console.log(`${clock()} ${method} ${path}: ${error.message} — thử lại sau 15 giây`);
+      await sleep(15000);
+      continue;
+    }
+    if (TRANSIENT.has(res.status) && Date.now() < deadline) {
+      console.log(`${clock()} ${method} ${path}: HTTP ${res.status} (server đang khởi động lại) — thử lại sau 15 giây`);
+      await sleep(15000);
+      continue;
+    }
+    const json = await res.json().catch(() => null);
+    return { status: res.status, json, data: json?.data, message: json?.message || '' };
+  }
 }
 /** A call that must answer `expected`; anything else stops the flow. */
 async function must(flow, role, action, method, path, body, expected = [200, 201]) {
