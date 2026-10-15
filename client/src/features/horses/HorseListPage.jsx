@@ -12,6 +12,7 @@ import { usersApi } from '../admin/usersApi';
 import { ROLES } from '../../constants/roles';
 import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constants/health';
 import HorseNextStep from './HorseNextStep';
+import { HORSE_SEX_LABELS, horseSexOptions } from '../../constants/horse';
 
 const { Title } = Typography;
 
@@ -141,6 +142,10 @@ export default function HorseListPage() {
       color: record.color,
       dob: record.dob ? dayjs(record.dob) : null,
       weightKg: record.weightKg,
+      sex: record.sex,
+      microchipNumber: record.microchipNumber,
+      registrationNumber: record.registrationNumber,
+      valuationVnd: record.valuationVnd ?? null,
       owner: record.owner?._id || record.owner,
       assignedTrainer: record.assignedTrainer?._id || record.assignedTrainer,
       assignedVet: record.assignedVet?._id || record.assignedVet,
@@ -151,6 +156,7 @@ export default function HorseListPage() {
   const columns = [
     { title: 'Tên ngựa', dataIndex: 'name', key: 'name' },
     { title: 'Giống', dataIndex: 'breed', key: 'breed' },
+    { title: 'Giới tính', dataIndex: 'sex', key: 'sex', render: (v) => HORSE_SEX_LABELS[v] || '—' },
     { title: 'Màu lông', dataIndex: 'color', key: 'color' },
     {
       title: 'Chủ sở hữu',
@@ -398,7 +404,15 @@ export default function HorseListPage() {
             form={form}
             layout="vertical"
             onFinish={(values) =>
-              saveMutation.mutate({ ...values, dob: values.dob ? values.dob.toISOString() : undefined })
+              // Cleared optional fields are sent as '' / null so the server removes them.
+              saveMutation.mutate({
+                ...values,
+                dob: values.dob ? values.dob.toISOString() : undefined,
+                sex: values.sex ?? '',
+                microchipNumber: values.microchipNumber ?? '',
+                registrationNumber: values.registrationNumber ?? '',
+                valuationVnd: values.valuationVnd ?? null,
+              })
             }
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
@@ -420,6 +434,32 @@ export default function HorseListPage() {
                 <InputNumber min={50} max={1200} className="w-full" />
               </Form.Item>
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4">
+              <Form.Item name="sex" label="Giới tính" className="!mb-3">
+                <Select allowClear placeholder="Chọn giới tính" options={horseSexOptions} />
+              </Form.Item>
+              <Form.Item
+                name="microchipNumber"
+                label="Số vi mạch"
+                className="!mb-3"
+                rules={[{ pattern: /^[A-Za-z0-9]{9,15}$/, message: '9–15 chữ số hoặc chữ cái' }]}
+              >
+                <Input placeholder="VD: 985141002345678" maxLength={15} />
+              </Form.Item>
+              <Form.Item name="registrationNumber" label="Số đăng ký" className="!mb-3">
+                <Input placeholder="Số trong sổ giống" maxLength={40} />
+              </Form.Item>
+            </div>
+            <Form.Item name="valuationVnd" label="Định giá (₫)" className="!mb-3" extra="Chỉ Quản lý và chủ ngựa thấy.">
+              <InputNumber
+                min={0}
+                step={1000000}
+                className="w-full"
+                formatter={(v) => (v === undefined || v === null || v === '' ? '' : Number(v).toLocaleString('vi-VN'))}
+                parser={(v) => (v ? v.replace(/[^0-9]/g, '') : '')}
+                placeholder="VD: 500.000.000"
+              />
+            </Form.Item>
             <Form.Item name="owner" label="Chủ sở hữu" className="!mb-3">
               <Select
                 allowClear

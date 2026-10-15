@@ -32,6 +32,7 @@ const stamp = () => new Date().toISOString().slice(0, 10);
 
 const TYPE_LABELS = { cost: 'Chi', revenue: 'Thu' };
 const HEALTH_LABELS = { eligible: 'Đủ điều kiện', monitoring: 'Cần theo dõi', injured: 'Chấn thương', quarantined: 'Cách ly' };
+const SEX_LABELS = { stallion: 'Ngựa đực giống', mare: 'Ngựa cái', gelding: 'Ngựa thiến', colt: 'Ngựa đực non', filly: 'Ngựa cái non' };
 
 // GET /export/finance?from=YYYY-MM-DD&to=YYYY-MM-DD — the ledger for a period (all of it by default).
 const exportFinance = asyncHandler(async (req, res) => {
@@ -71,15 +72,19 @@ const exportHorses = asyncHandler(async (req, res) => {
   return sendCsv(
     res,
     `danh-sach-ngua-${stamp()}.csv`,
-    ['Tên ngựa', 'Giống', 'Màu lông', 'Ngày sinh', 'Cân nặng (kg)', 'Chủ sở hữu', 'HLV phụ trách', 'Bác sĩ phụ trách', 'Sức khỏe', 'Chuồng', 'NV chăm sóc', 'Số thành tích'],
+    ['Tên ngựa', 'Giống', 'Giới tính', 'Màu lông', 'Ngày sinh', 'Cân nặng (kg)', 'Số vi mạch', 'Số đăng ký', 'Định giá (VNĐ)', 'Chủ sở hữu', 'HLV phụ trách', 'Bác sĩ phụ trách', 'Sức khỏe', 'Chuồng', 'NV chăm sóc', 'Số thành tích'],
     horses.map((h) => {
       const stall = stallOf.get(String(h._id));
       return [
         h.name,
         h.breed,
+        SEX_LABELS[h.sex] || '',
         h.color,
         h.dob,
         h.weightKg,
+        h.microchipNumber,
+        h.registrationNumber,
+        h.valuationVnd,
         h.owner?.name,
         h.assignedTrainer?.name,
         h.assignedVet?.name,

@@ -19,7 +19,8 @@ const { pushNotification } = require('../alerts/notification.service');
 const { clearanceMap } = require('../health/trainingClearance');
 const { closeLeftoversFor } = require('./archive.service');
 const { checklistFor } = require('./checklist.service');
-const { ownerSummary } = require('./ownerSummary.service');
+const { ownerSummary, ownerOverview } = require('./ownerSummary.service');
+const { setCareDue } = require('./careEvent.controller');
 
 /** Adds the vet's current training level (lock / recovery / clear) to each horse. */
 async function withClearance(horses) {
@@ -69,7 +70,7 @@ const listHorses = asyncHandler(async (req, res) => {
   // Horses the club no longer manages are off every working list; the Manager can ask for them.
   filter.isArchived = req.query.archived === 'true' && req.user.role === ROLES.MANAGER ? true : { $ne: true };
   const horses = await Horse.find(filter).populate(populatePedigree).sort({ name: 1 });
-  return ok(res, await withClearance(horses), 'Horses fetched.');
+  return ok(res, hideValuation(req.user, await withClearance(horses)), 'Horses fetched.');
 });
 
 // Where each horse in scope stands from arrival to training, and what comes next (checklist.service.js).
@@ -83,9 +84,12 @@ const listChecklists = asyncHandler(async (req, res) => {
 
 // The owner's horses at a glance (ownerSummary.service.js). Archived horses are left out.
 const listOwnerSummary = asyncHandler(async (req, res) => {
-  const horses = await Horse.find({ owner: req.user._id, isArchived: { $ne: true } }).select('name healthStatus').sort({ name: 1 });
+  const horses = await Horse.find({ owner: req.user._id, isArchived: { $ne: true } }).select('name healthStatus sex valuationVnd').sort({ name: 1 });
   return ok(res, await ownerSummary(horses), 'Owner summary computed.');
 });
+
+/** GET /horses/owner-overview — the owner's dashboard numbers (ownerSummary.service.js ownerOverview). */
+const getOwnerOverview = asyncHandler(async (req, res) => ok(res, await ownerOverview(req.user._id), 'Owner overview computed.'));
 
 const getChecklist = asyncHandler(async (req, res) => {
   if (!(await canAccessHorse(req.user, req.params.id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
@@ -99,7 +103,7 @@ const getHorse = asyncHandler(async (req, res) => {
   const horse = await Horse.findById(req.params.id).populate(populatePedigree);
   if (!horse) return fail(res, 'Horse not found.', 404);
   if (!(await canAccessHorse(req.user, horse._id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
-  const [withLevel] = await withClearance([horse]);
+  const [withLevel] = hideValuation(req.user, await withClearance([horse]));
   return ok(res, withLevel, 'Horse fetched.');
 });
 
@@ -108,8 +112,30 @@ const getHorse = asyncHandler(async (req, res) => {
 // write it would let a non-vet clear a horse the vet grounded. careSchedule has its own vet-only
 // endpoint. Both are dropped here rather than trusted to the UI not sending them.
 function withoutClinicalFields(body) {
-  const { healthStatus, careSchedule, ...rest } = body || {};
+  const { healthStatus, careSchedule, valuationUpdatedAt, ...rest } = body || {};
   return rest;
+}
+
+/**
+ * What a horse is worth is between the club and its owner: the Manager and the horse's owner see
+ * `valuationVnd`, trainers, vets and grooms don't. Takes plain objects (withClearance output).
+ */
+function hideValuation(user, horses) {
+  if (user.role === ROLES.MANAGER) return horses;
+  return horses.map((h) => {
+    if (user.role === ROLES.OWNER && String(h.owner?._id || h.owner) === String(user._id)) return h;
+    const { valuationVnd, valuationUpdatedAt, ...rest } = h;
+    return rest;
+  });
+}
+
+/** A microchip already on another horse, as a 409 the Manager can act on; other errors pass through. */
+function duplicateChip(err, res) {
+  if (err?.code === 11000 && err.keyValue?.microchipNumber) {
+    fail(res, `Số vi mạch ${err.keyValue.microchipNumber} đã gắn với ngựa khác.`, 409);
+    return true;
+  }
+  return false;
 }
 
 // Each staffing slot must point at an active account with the matching role. Otherwise a groom
@@ -132,7 +158,14 @@ const createHorse = asyncHandler(async (req, res) => {
   const invalid = await validateStaffing(body);
   if (invalid) return fail(res, invalid, 400);
 
-  const horse = await Horse.create(body);
+  if (body.valuationVnd !== undefined && body.valuationVnd !== null) body.valuationUpdatedAt = new Date();
+  let horse;
+  try {
+    horse = await Horse.create(body);
+  } catch (err) {
+    if (duplicateChip(err, res)) return undefined;
+    throw err;
+  }
   await logAction({ actorId: req.user._id, action: 'horse.create', targetModel: 'Horse', targetId: horse._id });
   await notifyNewAssignees(horse);
   return created(res, horse, 'Horse created.');
@@ -140,14 +173,25 @@ const createHorse = asyncHandler(async (req, res) => {
 
 const updateHorse = asyncHandler(async (req, res) => {
   // Read the current staffing first so only genuinely new assignees get notified.
-  const before = await Horse.findById(req.params.id).select('owner assignedTrainer assignedVet');
+  const before = await Horse.findById(req.params.id).select('owner assignedTrainer assignedVet valuationVnd');
   if (!before) return fail(res, 'Horse not found.', 404);
 
   const body = withoutClinicalFields(req.body);
   const invalid = await validateStaffing(body);
   if (invalid) return fail(res, invalid, 400);
 
-  const horse = await Horse.findByIdAndUpdate(req.params.id, body, { new: true, runValidators: true });
+  // Blank fields from the form clear the value rather than storing an empty string.
+  for (const f of ['sex', 'microchipNumber', 'registrationNumber']) if (body[f] === '' || body[f] === null) body[f] = undefined;
+  const unset = ['sex', 'microchipNumber', 'registrationNumber'].filter((f) => f in body && body[f] === undefined);
+  for (const f of unset) delete body[f];
+  if (body.valuationVnd !== undefined && (body.valuationVnd ?? null) !== (before.valuationVnd ?? null)) body.valuationUpdatedAt = new Date();
+  let horse;
+  try {
+    horse = await Horse.findByIdAndUpdate(req.params.id, unset.length ? { ...body, $unset: Object.fromEntries(unset.map((f) => [f, 1])) } : body, { new: true, runValidators: true });
+  } catch (err) {
+    if (duplicateChip(err, res)) return undefined;
+    throw err;
+  }
   await logAction({ actorId: req.user._id, action: 'horse.update', targetModel: 'Horse', targetId: horse._id });
   await notifyNewAssignees(horse, {
     owner: before.owner,
@@ -221,22 +265,10 @@ const updateCareSchedule = asyncHandler(async (req, res) => {
   if (!horse) return fail(res, 'Horse not found.', 404);
   if (!(await canAccessHorse(req.user, horse._id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
 
-  if (nextVaccinationDue !== undefined) {
-    horse.careSchedule.nextVaccinationDue = nextVaccinationDue;
-    horse.careSchedule.vaccinationNotifiedAt = null;
-  }
-  if (nextDewormingDue !== undefined) {
-    horse.careSchedule.nextDewormingDue = nextDewormingDue;
-    horse.careSchedule.dewormingNotifiedAt = null;
-  }
-  if (nextFarrierDue !== undefined) {
-    horse.careSchedule.nextFarrierDue = nextFarrierDue;
-    horse.careSchedule.farrierNotifiedAt = null;
-  }
-  if (nextExamDue !== undefined) {
-    horse.careSchedule.nextExamDue = nextExamDue;
-    horse.careSchedule.examNotifiedAt = null;
-  }
+  if (nextVaccinationDue !== undefined) setCareDue(horse, 'vaccination', nextVaccinationDue);
+  if (nextDewormingDue !== undefined) setCareDue(horse, 'deworming', nextDewormingDue);
+  if (nextFarrierDue !== undefined) setCareDue(horse, 'farrier', nextFarrierDue);
+  if (nextExamDue !== undefined) setCareDue(horse, 'exam', nextExamDue);
 
   await horse.save();
   await logAction({ actorId: req.user._id, action: 'horse.update_care_schedule', targetModel: 'Horse', targetId: horse._id });
@@ -310,4 +342,4 @@ const unarchiveHorse = asyncHandler(async (req, res) => {
   return ok(res, horse, `${horse.name} đã được quản lý trở lại — hãy xếp chuồng và người chăm sóc.`);
 });
 
-module.exports = { listHorses, listChecklists, getChecklist, listOwnerSummary, getHorse, createHorse, updateHorse, deleteHorse, updateCareSchedule, archiveHorse, unarchiveHorse };
+module.exports = { listHorses, listChecklists, getChecklist, listOwnerSummary, getOwnerOverview, getHorse, createHorse, updateHorse, deleteHorse, updateCareSchedule, archiveHorse, unarchiveHorse };

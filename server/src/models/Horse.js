@@ -1,5 +1,9 @@
 const mongoose = require('mongoose');
 
+// stallion/mare: adult; gelding: castrated male; colt/filly: young male/female (under 4).
+const HORSE_SEXES = ['stallion', 'mare', 'gelding', 'colt', 'filly'];
+const blankToUndefined = (v) => (v === '' || v === null ? undefined : v);
+
 const achievementSchema = new mongoose.Schema(
   {
     // Stable identity of this horse's race entry; names can repeat between editions.
@@ -35,6 +39,20 @@ const horseSchema = new mongoose.Schema(
       default: 'eligible',
     },
     weightKg: { type: Number },
+    // Identity papers, kept by the Manager: sex, the implanted microchip and the stud-book number.
+    sex: { type: String, enum: HORSE_SEXES, set: blankToUndefined },
+    microchipNumber: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      set: blankToUndefined,
+      match: [/^[A-Z0-9]{9,15}$/, 'Số vi mạch gồm 9–15 chữ số hoặc chữ cái.'],
+    },
+    registrationNumber: { type: String, trim: true, maxlength: 40, set: blankToUndefined },
+    // What the horse is worth (VND), set by the Manager. Only the Manager and the owner see it
+    // (horses.controller.js hideValuation).
+    valuationVnd: { type: Number, min: [0, 'Định giá không được âm.'], default: null },
+    valuationUpdatedAt: { type: Date, default: null },
     achievements: [achievementSchema],
     photoUrl: { type: String },
     // Recurring vet care due-dates. The care scheduler (realtime/careScheduler.js) checks these
@@ -55,4 +73,8 @@ const horseSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// One horse per microchip; horses without one are not compared.
+horseSchema.index({ microchipNumber: 1 }, { unique: true, sparse: true });
+
 module.exports = mongoose.model('Horse', horseSchema);
+module.exports.HORSE_SEXES = HORSE_SEXES;

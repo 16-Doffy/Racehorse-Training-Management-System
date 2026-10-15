@@ -24,6 +24,7 @@ import {
   Select,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
+import { HORSE_SEX_LABELS, formatVnd } from '../../constants/horse';
 import {
   UserOutlined,
   HeartOutlined,
@@ -495,6 +496,11 @@ export default function HorseDetailPage() {
         <Descriptions column={2} bordered size="small">
           <Descriptions.Item label="Giống">{horse.breed}</Descriptions.Item>
           <Descriptions.Item label="Màu lông">{horse.color}</Descriptions.Item>
+          <Descriptions.Item label="Giới tính">{HORSE_SEX_LABELS[horse.sex] || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Số vi mạch">{horse.microchipNumber || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Số đăng ký">{horse.registrationNumber || '—'}</Descriptions.Item>
+          {/* Sent only to the Manager and the owner. */}
+          {'valuationVnd' in horse && <Descriptions.Item label="Định giá">{formatVnd(horse.valuationVnd)}</Descriptions.Item>}
           <Descriptions.Item label="Ngày sinh">
             {horse.dob ? new Date(horse.dob).toLocaleDateString() : '—'}
           </Descriptions.Item>

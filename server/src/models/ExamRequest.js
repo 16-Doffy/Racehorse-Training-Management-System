@@ -15,6 +15,11 @@ const examRequestSchema = new mongoose.Schema(
     reason: { type: String, trim: true },
     priority: { type: String, enum: ['normal', 'high', 'urgent'], default: 'normal' },
     status: { type: String, enum: ['pending', 'done', 'cancelled'], default: 'pending' },
+    // A vet who has taken the request on, and when they will see the horse. The request stays
+    // 'pending' (open) until the exam is filed, so every "open request" check keeps working.
+    acceptedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    acceptedAt: { type: Date, default: null },
+    scheduledFor: { type: Date, default: null },
     resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     resolvedAt: { type: Date, default: null },
     // The exam that answered the request, when it was closed by one.

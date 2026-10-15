@@ -100,6 +100,10 @@ API: `/feeding`, `/stable/tasks`, `/stable/my-care-plan`.
 **Vet — Sức Khỏe Chiến Mã, Phác Đồ & Khóa Tập, Kê Đơn Thuốc.**
 
 1. Khám từ hồ sơ ngựa/hàng chờ yêu cầu khám; ghi chỉ số, kết luận, ảnh/PDF nếu cần.
+   Yêu cầu khám có thể được **nhận + hẹn giờ** (vẫn mở tới khi có hồ sơ khám) hoặc
+   **từ chối kèm lý do**; người yêu cầu được báo (`PATCH /health/exam-requests/:id` `action`).
+   Tiêm phòng/tẩy giun/đóng móng ghi từng lần (`/horses/:id/care-events`, vắc-xin/thuốc,
+   số lô, liều); `nextDue` dời lịch nhắc. Hiện trên dòng thời gian của ngựa.
 2. Chọn **Mức vận động được phép** (`clearedLevel`) trong hồ sơ khám.
 3. Nếu cần điều trị, lập phác đồ/y lệnh: mức tập, thuốc, lượng dùng, giờ/liều.
    Thuốc liên kết kho được trừ khi Groom thực hiện liều, không phải lúc kê đơn.
@@ -267,6 +271,9 @@ mình. Trừ kho không tự tạo hóa đơn hoặc tự ghi mọi chi phí th�
 Owner có Ngựa của tôi, Sức khỏe, Lịch Huấn luyện, Chuồng trại & Chăm sóc, Lịch
 Cuộc Đua, Đánh giá HLV, Chi phí & Doanh thu. Thẻ tóm tắt từng ngựa trên Tổng quan
 đọc API thật: bước tiếp theo, sức khỏe, buổi/kết quả gần nhất, giải và thu chi.
+Số tổng trên đầu dashboard: `GET /horses/owner-overview` (số ngựa, tổng định giá, thành tích
+giải, thu chi và buổi tập tháng này so tháng trước); biểu đồ `/reports/training-chart?months=|days=`.
+Định giá ngựa (Manager nhập) chỉ Manager và chủ ngựa thấy.
 
 Dashboard cũ còn chart/KPI giả, fallback và định giá ngẫu nhiên. Không dùng số đó
 làm bằng chứng flow thành công; dùng bản ghi chi tiết, thẻ tóm tắt và báo cáo.

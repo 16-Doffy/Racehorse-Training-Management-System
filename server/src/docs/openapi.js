@@ -108,6 +108,11 @@ module.exports = {
           assignedVet: { type: 'string', nullable: true, description: 'Veterinarian user id responsible for this horse (Manager-set). Null = visible to every Veterinarian until assigned.' },
           healthStatus: { type: 'string', enum: ['eligible', 'monitoring', 'injured', 'quarantined'] },
           weightKg: { type: 'number' },
+          sex: { type: 'string', enum: ['stallion', 'mare', 'gelding', 'colt', 'filly'], description: 'Manager-set. stallion/mare adult, gelding castrated, colt/filly young. Send "" to clear.' },
+          microchipNumber: { type: 'string', description: 'Manager-set, 9–15 letters/digits (stored upper-case), unique across horses (409 when taken). Send "" to clear.' },
+          registrationNumber: { type: 'string', description: 'Stud-book / registry number. Send "" to clear.' },
+          valuationVnd: { type: 'number', nullable: true, description: 'What the horse is worth (VND), Manager-set. Returned only to the Manager and the horse\'s owner.' },
+          valuationUpdatedAt: { type: 'string', format: 'date-time', nullable: true, readOnly: true },
           achievements: {
             type: 'array',
             items: {
@@ -203,6 +208,9 @@ module.exports = {
           resolvedAt: { type: 'string', format: 'date-time', nullable: true },
           healthRecord: { type: 'string', nullable: true, description: 'The exam that answered the request' },
           resolutionNote: { type: 'string' },
+          acceptedBy: { type: 'string', nullable: true, description: 'The vet who took the request on (populated { name } in lists). The request stays pending until the exam is filed.' },
+          acceptedAt: { type: 'string', format: 'date-time', nullable: true },
+          scheduledFor: { type: 'string', format: 'date-time', nullable: true, description: 'When the vet will see the horse' },
           trainingSession: {
             type: 'string',
             nullable: true,
@@ -866,6 +874,30 @@ module.exports = {
         },
       },
     },
+    '/horses/{id}/care-events': {
+      get: {
+        tags: ['Horses'],
+        summary: 'Routine care history: vaccinations, deworming, farrier visits (newest first)',
+        parameters: [idParam('id'), { name: 'kind', in: 'query', schema: { type: 'string', enum: ['vaccination', 'deworming', 'farrier'] } }],
+        responses: { 200: responses[200]({ type: 'array', items: { type: 'object', description: '{ _id, horse, kind, date, product, batchNumber, dose, note, nextDue, performedBy { name }, createdAt }' } }), 403: responses[403] },
+      },
+      post: {
+        tags: ['Horses'],
+        summary: 'Record care that was done (Veterinarian). nextDue moves the reminder for that kind of care',
+        description: 'date must not be after today; a vaccine or dewormer needs `product`; nextDue must be after date and sets careSchedule.next…Due (reminder reset).',
+        parameters: [idParam('id')],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['kind', 'date'], properties: { kind: { type: 'string', enum: ['vaccination', 'deworming', 'farrier'] }, date: { type: 'string', format: 'date-time' }, product: { type: 'string' }, batchNumber: { type: 'string' }, dose: { type: 'string' }, note: { type: 'string' }, nextDue: { type: 'string', format: 'date-time' } } } } } },
+        responses: { 201: responses[201]({ type: 'object' }), 400: responses[400], 403: responses[403], 404: responses[404] },
+      },
+    },
+    '/horses/{id}/care-events/{eventId}': {
+      delete: {
+        tags: ['Horses'],
+        summary: 'Undo a care entry made by mistake — its author only, within 24 h (409 after). The reminder date is left as set.',
+        parameters: [idParam('id'), idParam('eventId')],
+        responses: { 200: responses[200]({ type: 'object' }), 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
     '/horses/{id}/care-schedule': {
       patch: {
         tags: ['Horses'],
@@ -1193,9 +1225,14 @@ module.exports = {
     '/health/exam-requests/{id}': {
       patch: {
         tags: ['Health (Veterinarian)'],
-        summary: 'Close a request without filing an exam (Veterinarian)',
+        summary: 'Take a request on (with an appointment), decline it, or close it without an exam (Veterinarian)',
+        description:
+          '`action: accept` — sets acceptedBy/acceptedAt and `scheduledFor` (optional, not in the past); the request stays pending ' +
+          'and is closed by the exam as before; sending accept again moves the appointment. The requester is notified. ' +
+          '`action: decline` — needs `note` (400 without), closes the request as cancelled, the requester is notified. ' +
+          'Without `action`, `status: done|cancelled` closes it as before. 409 once the request is no longer pending.',
         parameters: [idParam('id')],
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string', enum: ['done', 'cancelled'] }, note: { type: 'string' } } } } } },
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { action: { type: 'string', enum: ['accept', 'decline'] }, scheduledFor: { type: 'string', format: 'date-time' }, status: { type: 'string', enum: ['done', 'cancelled'] }, note: { type: 'string' } } } } } },
         responses: { 200: responses[200]({ $ref: '#/components/schemas/ExamRequest' }), 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
@@ -1578,8 +1615,20 @@ module.exports = {
           'Per horse: horse { _id, name, healthStatus }; health { status, restricted, clearance (the allowed level, as a label), reason, lastExam }; ' +
           'next { kind, at, status } — the next open session; last { kind, at, status (completed/evaluated/aborted), met, summary, rating, comment, videoUrl }; ' +
           'upcomingRace { name, date, status (registered/confirmed), decided, reviewNeeded }; lastRace { name, date, result, position, prizeMoney }; ' +
-          'money { year, cost, revenue, prize (revenue in the prize category) } for the current year.',
+          'money { year, cost, revenue, prize (revenue in the prize category) } for the current year; ' +
+          'raceStats { completed, wins, podiums (top 3), prize } all time. horse also carries sex and valuationVnd.',
         responses: { 200: responses[200]({ type: 'array', items: { type: 'object' } }), 403: responses[403] },
+      },
+    },
+    '/horses/owner-overview': {
+      get: {
+        tags: ['Horses'],
+        summary: "Owner: the dashboard numbers, with last month to compare",
+        description:
+          'horses (managed, not archived); valuation { total, valued (horses with a valuation) }; ' +
+          'races { completed, wins, podiums, prize, winRate (%, null without races) } all time; ' +
+          'money { thisMonth { cost, revenue }, lastMonth { cost, revenue } }; training { thisMonth, lastMonth (sessions done), metRate (% of judged sessions this month that met their targets) }.',
+        responses: { 200: responses[200]({ type: 'object' }), 403: responses[403] },
       },
     },
     '/horses/{id}/checklist': {
@@ -1658,9 +1707,26 @@ module.exports = {
     '/audit-logs': {
       get: {
         tags: ['Audit Log (Manager)'],
-        summary: 'Paginated system audit trail',
-        parameters: [{ name: 'page', in: 'query', schema: { type: 'integer', default: 1 } }, { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 } }],
+        summary: 'Paginated system audit trail, filterable',
+        description: '`action` is one action (`trainingSession.start`) or, ending with a dot, a family (`trainingSession.`). `from`/`to` bound the time. Bad ids or dates → 400.',
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 200 } },
+          { name: 'actor', in: 'query', schema: { type: 'string' }, description: 'User id' },
+          { name: 'action', in: 'query', schema: { type: 'string' } },
+          { name: 'targetModel', in: 'query', schema: { type: 'string', example: 'Horse' } },
+          { name: 'targetId', in: 'query', schema: { type: 'string' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+        ],
         responses: { 200: responses[200]({ type: 'object', properties: { items: { type: 'array', items: { $ref: '#/components/schemas/AuditLog' } }, total: { type: 'integer' }, page: { type: 'integer' }, limit: { type: 'integer' } } }), 403: responses[403] },
+      },
+    },
+    '/audit-logs/facets': {
+      get: {
+        tags: ['Audit Log (Manager)'],
+        summary: 'What the audit filters can pick from: actions, targetModels, actors { _id, name, email, role, isActive }',
+        responses: { 200: responses[200]({ type: 'object' }), 403: responses[403] },
       },
     },
     // careCoordination in the response: incidents { reported, byStatus, avgHoursToResolve },
@@ -1668,9 +1734,10 @@ module.exports = {
     '/reports/training-chart': {
       get: {
         tags: ['Reports (Manager)'],
-        summary: 'Training progress per month, for charts (scoped: owner → own horses, trainer → assigned, manager → all)',
-        parameters: [{ name: 'months', in: 'query', schema: { type: 'integer', default: 6, maximum: 24 } }, horseQueryParam],
-        responses: { 200: responses[200]({ type: 'object', properties: { months: { type: 'array', items: { type: 'string', example: '2026-10' } }, totals: { type: 'array', items: { type: 'object', description: '{ month, sessions, avgRating, avgMaxSpeed, totalDistance, metTargets }' } }, series: { type: 'array', items: { type: 'object', description: '{ horse, points: [same shape as totals] }' } } } }) },
+        summary: 'Training progress per month — or per day with ?days — for charts (scoped: owner → own horses, trainer → assigned, manager → all)',
+        description: '`days` (7–90, 400 outside) buckets the last N days by day; otherwise `months` buckets by month. `months` in the answer holds the bucket keys (YYYY-MM or YYYY-MM-DD) and `granularity` says which.',
+        parameters: [{ name: 'months', in: 'query', schema: { type: 'integer', default: 6, maximum: 24 } }, { name: 'days', in: 'query', schema: { type: 'integer', minimum: 7, maximum: 90 } }, horseQueryParam],
+        responses: { 200: responses[200]({ type: 'object', properties: { granularity: { type: 'string', enum: ['month', 'day'] }, months: { type: 'array', items: { type: 'string', example: '2026-10' } }, totals: { type: 'array', items: { type: 'object', description: '{ month, sessions, avgRating, avgMaxSpeed, totalDistance, metTargets }' } }, series: { type: 'array', items: { type: 'object', description: '{ horse, points: [same shape as totals] }' } } } }) },
       },
     },
     '/reports/finance-chart': {

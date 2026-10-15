@@ -170,26 +170,35 @@ const getOverview = asyncHandler(async (req, res) => {
  * Training progress per month, for a chart: sessions completed, average rating, average top speed,
  * total distance and how many hit their targets — per horse and for all of them together. Scoped
  * like every horse list: an owner sees their horses, a trainer theirs, the manager all.
- * GET /reports/training-chart?months=6&horse=
+ * GET /reports/training-chart?months=6&horse= — or ?days=30 for the last N days (7–90) by day.
+ * `months` in the answer holds the bucket keys (YYYY-MM, or YYYY-MM-DD by day); `granularity` says which.
  */
 const getTrainingChart = asyncHandler(async (req, res) => {
+  const byDay = req.query.days !== undefined;
+  const days = parseInt(req.query.days, 10);
+  if (byDay && !(days >= 7 && days <= 90)) return fail(res, 'days phải trong khoảng 7–90.', 400);
   const months = Math.min(Math.max(parseInt(req.query.months, 10) || 6, 1), 24);
   const start = new Date();
-  start.setDate(1);
   start.setHours(0, 0, 0, 0);
-  start.setMonth(start.getMonth() - (months - 1));
+  if (byDay) start.setDate(start.getDate() - (days - 1));
+  else {
+    start.setDate(1);
+    start.setMonth(start.getMonth() - (months - 1));
+  }
 
   const filter = { status: { $in: SESSION_DONE_STATUSES }, scheduledAt: { $gte: start } };
   const horse = await horseFilter(req.user, req.query.horse);
   if (horse !== undefined) filter.horse = horse;
   const sessions = await TrainingSession.find(filter).populate('horse', 'name').select('horse scheduledAt performanceRating metrics outcome');
 
-  const monthKeys = Array.from({ length: months }, (_, i) => {
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const keyOf = (date) => (byDay ? `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}` : `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`);
+  const monthKeys = Array.from({ length: byDay ? days : months }, (_, i) => {
     const d = new Date(start);
-    d.setMonth(start.getMonth() + i);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (byDay) d.setDate(start.getDate() + i);
+    else d.setMonth(start.getMonth() + i);
+    return keyOf(d);
   });
-  const keyOf = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
   const blank = () => ({ sessions: 0, ratingSum: 0, rated: 0, speedSum: 0, speedCount: 0, totalDistance: 0, metTargets: 0 });
   const add = (b, s) => {
     b.sessions += 1;
@@ -221,6 +230,7 @@ const getTrainingChart = asyncHandler(async (req, res) => {
   return ok(
     res,
     {
+      granularity: byDay ? 'day' : 'month',
       months: monthKeys,
       totals: monthKeys.map((k) => finish(k, overall.get(k))),
       series: [...perHorse.values()].map((h) => ({ horse: h.horse, points: monthKeys.map((k) => finish(k, h.months.get(k))) })),

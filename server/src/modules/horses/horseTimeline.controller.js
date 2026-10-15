@@ -5,6 +5,7 @@ const Treatment = require('../../models/Treatment');
 const DailyTask = require('../../models/DailyTask');
 const ExamRequest = require('../../models/ExamRequest');
 const RaceEntry = require('../../models/RaceEntry');
+const CareEvent = require('../../models/CareEvent');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, fail } = require('../../utils/apiResponse');
 const { canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
@@ -138,6 +139,21 @@ function incidentEvents(tasks) {
   });
 }
 
+const ROUTINE_LABELS = { vaccination: 'Tiêm phòng', deworming: 'Tẩy giun', farrier: 'Đóng móng' };
+
+function routineCareEvents(events) {
+  return events.map((e) => ({
+    at: e.date,
+    kind: 'routine_care',
+    role: 'veterinarian',
+    actor: e.performedBy?.name,
+    title: `${ROUTINE_LABELS[e.kind] || e.kind}${e.product ? ` — ${e.product}` : ''}`,
+    detail: join([e.batchNumber && `Số lô: ${e.batchNumber}`, e.dose && `Liều: ${e.dose}`, e.note, e.nextDue && `Hẹn lần sau: ${new Date(e.nextDue).toLocaleDateString('vi-VN')}`]),
+    severity: 'info',
+    refId: e._id,
+  }));
+}
+
 function requestEvents(requests) {
   return requests.map((r) => ({
     at: r.createdAt,
@@ -145,7 +161,7 @@ function requestEvents(requests) {
     role: r.requestedBy?.role || 'head_trainer',
     actor: r.trainingSession ? 'Hệ thống' : r.requestedBy?.name,
     title: `Yêu cầu bác sĩ khám — ${REQUEST_STATUS[r.status] || r.status}`,
-    detail: join([r.reason, r.resolutionNote]),
+    detail: join([r.reason, r.status === 'pending' && r.scheduledFor && `Bác sĩ hẹn khám ${new Date(r.scheduledFor).toLocaleString('vi-VN')}`, r.resolutionNote]),
     severity: r.status === 'pending' ? 'warning' : 'info',
     refId: r._id,
   }));
@@ -176,7 +192,7 @@ const getTimeline = asyncHandler(async (req, res) => {
   const to = new Date(Date.now() + UPCOMING_DAYS * DAY_MS);
   const h = horse._id;
 
-  const [sessions, records, treatments, care, incidents, requests, races] = await Promise.all([
+  const [sessions, records, treatments, care, incidents, requests, races, routine] = await Promise.all([
     TrainingSession.find({ horse: h, scheduledAt: { $gte: from, $lte: to } }),
     HealthRecord.find({ horse: h, date: { $gte: from } }).populate('examinedBy', 'name'),
     Treatment.find({ horse: h, createdAt: { $gte: from } }).populate('prescribedBy', 'name'),
@@ -184,6 +200,7 @@ const getTimeline = asyncHandler(async (req, res) => {
     DailyTask.find({ horse: h, 'incidentReport.reportedAt': { $gte: from } }).populate('assignedTo', 'name'),
     ExamRequest.find({ horse: h, createdAt: { $gte: from } }).populate('requestedBy', 'name role'),
     RaceEntry.find({ horse: h, raceDate: { $gte: from } }).populate('registeredBy', 'name'),
+    CareEvent.find({ horse: h, date: { $gte: from } }).populate('performedBy', 'name'),
   ]);
 
   const events = [
@@ -194,6 +211,7 @@ const getTimeline = asyncHandler(async (req, res) => {
     ...incidentEvents(incidents),
     ...requestEvents(requests),
     ...raceEvents(races),
+    ...routineCareEvents(routine),
   ]
     .filter((e) => e.at)
     .sort((a, b) => new Date(b.at) - new Date(a.at));

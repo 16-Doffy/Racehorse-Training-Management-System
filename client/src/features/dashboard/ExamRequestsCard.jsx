@@ -46,7 +46,9 @@ export default function ExamRequestsCard() {
       ) : (
         <div className="flex flex-col divide-y divide-gray-100">
           {requests.map((r) => {
-            const status = STATUS_META[r.status] || STATUS_META.pending;
+            // An open request the vet has taken on reads as accepted, with the appointment if there is one.
+            const accepted = r.status === 'pending' && r.acceptedAt;
+            const status = accepted ? { label: 'Bác sĩ đã nhận', color: 'blue' } : STATUS_META[r.status] || STATUS_META.pending;
             const result = r.healthRecord;
             return (
               <div key={r._id} className="py-2.5 flex flex-col gap-1">
@@ -67,6 +69,13 @@ export default function ExamRequestsCard() {
                   </Text>
                 </div>
                 {r.reason && <Text className="!text-sm text-gray-600">Lý do: {r.reason}</Text>}
+                {accepted && (
+                  <Text className="!text-sm">
+                    {r.acceptedBy?.name ? `Bác sĩ ${r.acceptedBy.name}` : 'Bác sĩ'} đã nhận
+                    {r.scheduledFor ? `, hẹn khám ${dayjs(r.scheduledFor).format('HH:mm DD/MM')}` : ''}
+                    {r.resolutionNote ? ` — ${r.resolutionNote}` : ''}
+                  </Text>
+                )}
                 {r.status === 'done' && result && (
                   <Text className="!text-sm">
                     {r.resolvedBy?.name ? `Bác sĩ ${r.resolvedBy.name}` : 'Bác sĩ'} kết luận{' '}

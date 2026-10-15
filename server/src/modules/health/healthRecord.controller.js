@@ -182,6 +182,7 @@ const listExamRequests = asyncHandler(async (req, res) => {
     .populate('horse', 'name healthStatus')
     .populate('requestedBy', 'name role')
     .populate('resolvedBy', 'name')
+    .populate('acceptedBy', 'name')
     .populate('healthRecord', 'resultStatus diagnosis date')
     .sort({ status: -1, createdAt: -1 })
     .limit(100);
@@ -196,7 +197,34 @@ const resolveExamRequest = asyncHandler(async (req, res) => {
   if (!(await canAccessHorse(req.user, request.horse._id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
   if (request.status !== 'pending') return fail(res, 'Yêu cầu này đã được xử lý.', 409);
 
-  const status = req.body.status === 'done' ? 'done' : 'cancelled';
+  const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+  // Taking the request on (again, to move the appointment): it stays open until the exam is filed.
+  if (req.body.action === 'accept') {
+    let at = null;
+    if (req.body.scheduledFor) {
+      at = new Date(req.body.scheduledFor);
+      if (!Number.isFinite(at.getTime())) return fail(res, 'Giờ hẹn khám không hợp lệ.', 400);
+      if (at < new Date(Date.now() - 5 * 60000)) return fail(res, 'Giờ hẹn khám phải ở tương lai.', 400);
+    }
+    const moved = Boolean(request.acceptedAt);
+    Object.assign(request, { acceptedBy: req.user._id, acceptedAt: request.acceptedAt || new Date(), scheduledFor: at });
+    if (note) request.resolutionNote = note;
+    await request.save();
+    const when = at ? `, hẹn khám ${at.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}` : '';
+    await pushNotification({
+      recipientUser: request.requestedBy,
+      horse: request.horse._id,
+      type: 'exam_request',
+      severity: 'info',
+      message: `🩺 Bác sĩ ${req.user.name} ${moved ? 'đổi lịch' : 'đã nhận'} yêu cầu khám ${request.horse.name}${when}${note ? ` — ${note}` : ''}.`,
+    });
+    await logAction({ actorId: req.user._id, action: 'examRequest.accept', targetModel: 'ExamRequest', targetId: request._id, metadata: { horse: request.horse.name, scheduledFor: at } });
+    return ok(res, request, 'Exam request accepted.');
+  }
+  // Declining needs a reason the requester can act on.
+  if (req.body.action === 'decline' && !note) return fail(res, 'Ghi lý do từ chối để người yêu cầu biết cần làm gì.', 400);
+
+  const status = req.body.action === 'decline' ? 'cancelled' : req.body.status === 'done' ? 'done' : 'cancelled';
   Object.assign(request, { status, resolvedBy: req.user._id, resolvedAt: new Date(), resolutionNote: req.body.note });
   await request.save();
 
@@ -205,10 +233,13 @@ const resolveExamRequest = asyncHandler(async (req, res) => {
     horse: request.horse._id,
     type: 'exam_request',
     severity: 'info',
-    message: `🩺 Bác sĩ ${req.user.name} đã ${status === 'done' ? 'xử lý' : 'đóng'} yêu cầu khám ${request.horse.name}${
+    message: `🩺 Bác sĩ ${req.user.name} đã ${status === 'done' ? 'xử lý' : req.body.action === 'decline' ? 'từ chối' : 'đóng'} yêu cầu khám ${request.horse.name}${
       req.body.note ? `: ${req.body.note}` : '.'
     }`,
   });
+  if (req.body.action === 'decline') {
+    await logAction({ actorId: req.user._id, action: 'examRequest.decline', targetModel: 'ExamRequest', targetId: request._id, metadata: { horse: request.horse.name, note } });
+  }
   return ok(res, request, 'Exam request resolved.');
 });
 
