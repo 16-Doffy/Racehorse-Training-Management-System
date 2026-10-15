@@ -68,6 +68,15 @@ export default function OwnerHorseSummary() {
               </div>
               {r.money.prize > 0 && <div className="text-xs text-gray-500">trong đó tiền thưởng giải {vnd(r.money.prize)}</div>}
             </div>
+            <div className="min-w-0">
+              <div className="text-xs text-gray-500">Thành tích giải</div>
+              <div className="truncate">
+                {r.raceStats?.completed
+                  ? `${r.raceStats.wins} thắng · ${r.raceStats.podiums} top 3 / ${r.raceStats.completed} giải`
+                  : 'Chưa có giải hoàn tất'}
+              </div>
+              {r.raceStats?.prize > 0 && <div className="text-xs text-gray-500">tổng tiền thưởng {vnd(r.raceStats.prize)}</div>}
+            </div>
           </div>
         </div>
       ))}

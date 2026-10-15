@@ -1,71 +1,68 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Typography, Progress, Table, Select, Button, Tag, Dropdown } from 'antd';
-import {
-  SettingOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
-  CalendarOutlined,
-  EditOutlined,
-  MoreOutlined
-} from '@ant-design/icons';
-import { BarChart, Bar, XAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { useSelector } from 'react-redux';
+import { Alert, Button, Empty, Input, Select, Table, Tag, Tooltip as AntTooltip } from 'antd';
+import { ArrowDownOutlined, ArrowUpOutlined, CalendarOutlined, TrophyOutlined } from '@ant-design/icons';
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import dayjs from 'dayjs';
 
-import { horsesApi } from '../../features/horses/horsesApi';
-import { trainingSessionApi } from '../../features/training/trainingApi';
-import { financeApi } from '../../features/finance/financeApi';
+import { horsesApi } from './horsesApi';
+import { reportsApi } from '../reports/reportsApi';
+import { formatVnd } from '../../constants/horse';
+import { CHART_RANGES, chartRange, trainingChartRows, trainingChartTotals } from './trainingChart';
 import OwnerHorseSummary from './OwnerHorseSummary';
 
-const { Text } = Typography;
+// One shared empty list, so memoised values below do not recompute on every render while data is loading.
+const NO_ROWS = [];
 
-// Mock data for the chart
-const chartData = [
-  { name: 'Oct', value: 45 },
-  { name: 'Nov', value: 55 },
-  { name: 'Dec', value: 40 },
-  { name: 'Jan', value: 65 },
-  { name: 'Feb', value: 50 },
-  { name: 'Mar', value: 75 },
-  { name: 'Apr', value: 60 },
-  { name: 'May', value: 85 },
-  { name: 'Jun', value: 90 },
-  { name: 'Jul', value: 65 },
-  { name: 'Aug', value: 55 },
-  { name: 'Sep', value: 80 },
+const HEALTH_LABELS = { eligible: 'Đủ điều kiện', monitoring: 'Đang theo dõi', injured: 'Chấn thương', quarantined: 'Cách ly' };
+const HEALTH_COLORS = { eligible: 'green', monitoring: 'gold', injured: 'red', quarantined: 'volcano' };
+const HEALTH_FILTERS = [
+  { value: 'all', label: 'Tất cả sức khỏe' },
+  { value: 'eligible', label: 'Đủ điều kiện' },
+  { value: 'monitoring', label: 'Đang theo dõi' },
+  { value: 'injured', label: 'Chấn thương' },
+  { value: 'quarantined', label: 'Cách ly' },
+  { value: 'restricted', label: 'Đang bị hạn chế tập' },
 ];
 
-// Custom Health Bar Component matching the image (vertical bars)
-const HealthBars = ({ percent }) => {
-  const totalBars = 12;
-  const activeBars = Math.round((percent / 100) * totalBars);
-  
+/** "+12%" against last month, or null when last month has nothing to compare with. */
+const percentChange = (now, before) => {
+  if (!before) return null;
+  const pct = Math.round(((now - before) / before) * 1000) / 10;
+  return { text: `${pct > 0 ? '+' : ''}${pct}%`, up: pct >= 0 };
+};
+/** "+7" sessions against last month; nothing to show when it is the same. */
+const countChange = (now, before) => (now === before ? null : { text: `${now - before > 0 ? '+' : ''}${now - before}`, up: now > before });
+
+function StatCard({ title, value, sub, change, loading }) {
   return (
-    <div className="flex gap-[2px] h-4">
-      {Array.from({ length: totalBars }).map((_, i) => (
-        <div 
-          key={i} 
-          className={`w-1.5 rounded-sm ${i < activeBars ? 'bg-emerald-500' : 'bg-gray-200'}`}
-        />
-      ))}
+    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
+      <span className="text-gray-500 text-sm font-medium mb-4">{title}</span>
+      <div className="flex items-baseline gap-3 mb-1 flex-wrap">
+        <span className="text-xl sm:text-[22px] leading-tight font-bold text-gray-900 whitespace-nowrap">{loading ? '—' : value}</span>
+        {!loading && change && (
+          <span
+            className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 font-medium ${change.up ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}
+          >
+            {change.up ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+            {change.text}
+          </span>
+        )}
+      </div>
+      {sub && <span className="text-xs text-gray-400 font-medium">{loading ? ' ' : sub}</span>}
     </div>
   );
-};
+}
 
-// Barcode Progress Component for Goals
+// Wins out of the races a horse has finished, as ticks.
 const BarcodeProgress = ({ current, target }) => {
   const totalTicks = 40;
-  const activeTicks = Math.round((current / target) * totalTicks);
-  
+  const activeTicks = target ? Math.round((current / target) * totalTicks) : 0;
   return (
     <div className="flex gap-[2px] h-8 w-full">
       {Array.from({ length: totalTicks }).map((_, i) => (
-        <div 
-          key={i} 
-          className={`flex-1 rounded-sm ${i < activeTicks ? 'bg-gray-400' : 'bg-gray-200'}`}
-        />
+        <div key={i} className={`flex-1 rounded-sm ${i < activeTicks ? 'bg-emerald-500' : 'bg-gray-200'}`} />
       ))}
     </div>
   );
@@ -73,355 +70,303 @@ const BarcodeProgress = ({ current, target }) => {
 
 export default function OwnerDashboard() {
   const navigate = useNavigate();
-  const { user } = useSelector((state) => state.auth);
+  const [range, setRange] = useState('12months');
+  const [search, setSearch] = useState('');
+  const [healthFilter, setHealthFilter] = useState('all');
 
-  const { data: horsesData } = useQuery({
-    queryKey: ['horses'],
-    queryFn: () => horsesApi.list(),
+  const overviewQuery = useQuery({ queryKey: ['owner-overview'], queryFn: () => horsesApi.ownerOverview() });
+  const summaryQuery = useQuery({ queryKey: ['owner-summary'], queryFn: () => horsesApi.ownerSummary() });
+  const chartQuery = useQuery({
+    queryKey: ['training-chart', 'owner', range],
+    queryFn: () => reportsApi.trainingChart(chartRange(range).params()),
   });
-  const horses = horsesData?.data || [];
 
-  const { data: sessionsData } = useQuery({
-    queryKey: ['training-sessions'],
-    queryFn: () => trainingSessionApi.list(),
-  });
-  const allSessions = sessionsData?.data || [];
+  const overview = overviewQuery.data?.data;
+  const rows = summaryQuery.data?.data ?? NO_ROWS;
+  const chartRows = useMemo(() => trainingChartRows(chartQuery.data?.data), [chartQuery.data]);
+  const chartTotals = trainingChartTotals(chartRows);
+  const periodText = chartRange(range).period;
 
-  const { data: financeData } = useQuery({
-    queryKey: ['finance', 'mine'],
-    queryFn: () => financeApi.listMine(),
-  });
-  const financeRecords = financeData?.data || [];
+  const money = overview?.money;
+  const training = overview?.training;
+  const races = overview?.races;
 
-  // Computed Stats
-  const totalValue = financeRecords.filter(r => r.type === 'revenue').reduce((s, r) => s + r.amount, 0) || 2845000000;
-  const eligibleHorses = horses.filter(h => h.healthStatus === 'eligible').length;
-  const eligibleRate = horses.length > 0 ? (eligibleHorses / horses.length) * 100 : 28.4;
-  
-  const upcomingSessions = allSessions.filter(s => ['scheduled', 'ready', 'blocked', 'in_progress'].includes(s.status));
+  // What is coming up for any of the horses: the next session and the next race of each, soonest first.
+  const upcoming = useMemo(() => {
+    const events = [];
+    rows.forEach((r) => {
+      if (r.next) events.push({ key: `s-${r.horse._id}`, at: r.next.at, horse: r.horse, title: r.next.kind, icon: '🐎' });
+      if (r.upcomingRace) {
+        events.push({
+          key: `r-${r.horse._id}`,
+          at: r.upcomingRace.date,
+          horse: r.horse,
+          title: r.upcomingRace.name,
+          sub: r.upcomingRace.status === 'confirmed' ? 'Đã xác nhận tham gia' : 'Chờ HLV quyết định',
+          icon: '🏁',
+        });
+      }
+    });
+    return events.sort((a, b) => new Date(a.at) - new Date(b.at)).slice(0, 5);
+  }, [rows]);
 
-  // Top Card Component
-  const StatCard = ({ title, value, change, isPositive, prevText }) => (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
-      <div className="flex justify-between items-center mb-4">
-        <span className="text-gray-500 text-sm font-medium">{title}</span>
-        <ArrowUpOutlined className="text-gray-400 rotate-45 text-xs" />
-      </div>
-      <div className="flex items-baseline gap-3 mb-1">
-        <span className="text-2xl font-bold text-gray-900">{value}</span>
-        <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 font-medium ${isPositive ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-          {isPositive ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-          {change}
-        </span>
-      </div>
-      <span className="text-xs text-gray-400 font-medium">{prevText}</span>
-    </div>
-  );
+  const tableRows = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return rows
+      .filter((r) => (term ? r.horse.name.toLowerCase().includes(term) : true))
+      .filter((r) => {
+        if (healthFilter === 'all') return true;
+        if (healthFilter === 'restricted') return r.health.restricted;
+        return r.health.status === healthFilter;
+      });
+  }, [rows, search, healthFilter]);
 
-  // Table Columns
   const columns = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      render: (text) => <span className="text-gray-500 font-medium">OP-{text}</span>,
-    },
-    {
       title: 'Tên Chiến Mã',
-      dataIndex: 'name',
       key: 'name',
-      render: (text) => <span className="font-semibold text-gray-800">{text}</span>,
-    },
-    {
-      title: 'Trạng Thái',
-      dataIndex: 'stage',
-      key: 'stage',
-      render: (stage) => (
-        <span className="border border-gray-200 text-gray-600 bg-gray-50 text-xs px-3 py-1 rounded-full font-medium">
-          {stage}
-        </span>
+      render: (_, r) => (
+        <Link to={`/horses/${r.horse._id}`} className="font-semibold text-gray-800">
+          {r.horse.name}
+        </Link>
       ),
     },
     {
-      title: 'Mức Ưu Tiên',
-      dataIndex: 'priority',
-      key: 'priority',
-      render: (p) => <span className="text-gray-500">{p}</span>,
-    },
-    {
-      title: 'Sức Khỏe',
-      dataIndex: 'health',
+      title: 'Sức khỏe',
       key: 'health',
-      render: (health) => <HealthBars percent={health} />,
-    },
-    {
-      title: 'Định Giá',
-      dataIndex: 'value',
-      key: 'value',
-      render: (val) => <span className="font-semibold text-gray-800">{val}</span>,
-    },
-    {
-      title: 'Sửa',
-      key: 'edit',
-      align: 'right',
-      render: (_, record) => (
-        <Button 
-          type="text" 
-          icon={<EditOutlined className="text-gray-400" />} 
-          onClick={() => navigate(`/horses/${record.key}`)}
-          className="hover:bg-gray-50 rounded-lg"
-        />
+      render: (_, r) => (
+        <AntTooltip title={r.health.restricted ? r.health.reason : undefined}>
+          <span>
+            {/* The default status is not an assessment: say so until a vet has examined the horse. */}
+            {r.health.lastExam ? (
+              <Tag color={HEALTH_COLORS[r.health.status]}>{HEALTH_LABELS[r.health.status] || r.health.status}</Tag>
+            ) : (
+              <Tag>Chưa có hồ sơ khám</Tag>
+            )}
+            <span className="text-xs text-gray-500">{r.health.clearance}</span>
+          </span>
+        </AntTooltip>
       ),
-    }
+    },
+    {
+      title: 'Buổi tập tiếp theo',
+      key: 'next',
+      render: (_, r) => (r.next ? `${r.next.kind} · ${dayjs(r.next.at).format('DD/MM HH:mm')}` : <span className="text-gray-400">Chưa xếp</span>),
+    },
+    {
+      title: 'Giải sắp tới',
+      key: 'race',
+      render: (_, r) =>
+        r.upcomingRace ? `${r.upcomingRace.name} · ${dayjs(r.upcomingRace.date).format('DD/MM')}` : <span className="text-gray-400">Chưa đăng ký</span>,
+    },
+    {
+      title: 'Thành tích',
+      key: 'raceStats',
+      render: (_, r) =>
+        r.raceStats?.completed ? (
+          <span>
+            {r.raceStats.wins} thắng / {r.raceStats.completed} giải
+            {r.raceStats.podiums ? <span className="text-xs text-gray-500"> · {r.raceStats.podiums} top 3</span> : null}
+          </span>
+        ) : (
+          <span className="text-gray-400">Chưa có</span>
+        ),
+    },
+    {
+      title: 'Định giá',
+      key: 'valuation',
+      align: 'right',
+      render: (_, r) => (
+        <span className="font-semibold text-gray-800">{r.horse.valuationVnd == null ? <span className="text-gray-400 font-normal">Chưa định giá</span> : formatVnd(r.horse.valuationVnd)}</span>
+      ),
+    },
   ];
-
-  const tableData = horses.map((h, i) => ({
-    key: h._id || i,
-    id: (h._id || '104' + i).substring(0, 4).toUpperCase(),
-    name: h.name,
-    stage: h.healthStatus === 'eligible' ? 'Sẵn sàng thi đấu' : h.healthStatus === 'monitoring' ? 'Theo dõi y tế' : h.healthStatus === 'injured' ? 'Chấn thương' : 'Cách ly',
-    priority: 1,
-    health: h.healthStatus === 'eligible' ? 95 : 60,
-    value: `${(400000000 + (Math.random() * 200000000)).toLocaleString('vi-VN', {maximumFractionDigits:0})} đ`
-  }));
-
-  if (tableData.length === 0) {
-    // Fill with mock if no data to match the screenshot look
-    for (let i = 0; i < 8; i++) {
-      tableData.push({
-        key: i,
-        id: `184${i}`,
-        name: ['Asterion Bioworks', 'Bluehaven Systems', 'Cinder Health', 'Drift Manufacturing'][i % 4],
-        stage: ['Sẵn sàng thi đấu', 'Theo dõi y tế', 'Chấn thương', 'Cách ly'][i % 4],
-        priority: 1,
-        health: 40 + (i * 10),
-        value: `${(200000000 + (i * 50000000)).toLocaleString('vi-VN')} đ`
-      });
-    }
-  }
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-gray-800 p-4 md:px-8 md:pb-8 md:pt-4 font-sans">
-      
-      {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-gray-900 m-0 mb-1 tracking-tight">Tổng quan Hoạt động</h1>
-        <p className="text-sm text-gray-500 m-0">
-          Theo dõi chất lượng huấn luyện, cơ hội thi đấu và tỷ lệ thành công qua các chu kỳ.
-        </p>
+        <p className="text-sm text-gray-500 m-0">Theo dõi chất lượng huấn luyện, cơ hội thi đấu và tỷ lệ thành công qua các chu kỳ.</p>
       </div>
+
+      {overviewQuery.isError && (
+        <Alert className="!mb-4" type="warning" showIcon message="Chưa tải được số liệu tổng quan" description="Các thẻ bên dưới có thể trống. Thử tải lại trang." />
+      )}
 
       {/* Each horse at a glance: health, next session, last result, races, money */}
       <OwnerHorseSummary />
 
-      {/* 4 Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard 
-          title="Tổng Giá trị Tài sản" 
-          value={`${totalValue.toLocaleString('vi-VN')} đ`} 
-          change="+12%" 
-          isPositive={true} 
-          prevText="2.542.000.000 đ tháng trước" 
+      {/* Numbers for the owner, each with last month beside it where there is one */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-4 gap-4 mb-6">
+        <StatCard
+          title="Tổng Giá trị Tài sản"
+          loading={overviewQuery.isLoading}
+          value={formatVnd(overview?.valuation.total ?? 0)}
+          sub={overview ? `${overview.valuation.valued}/${overview.horses} ngựa đã được định giá` : undefined}
         />
-        <StatCard 
-          title="Tỷ lệ Sẵn sàng Đua" 
-          value={`${eligibleRate.toFixed(1)}%`} 
-          change="-2.5%" 
-          isPositive={false} 
-          prevText="30.9% tháng trước" 
+        <StatCard
+          title="Tỷ lệ Chiến thắng"
+          loading={overviewQuery.isLoading}
+          value={races?.winRate == null ? '—' : `${races.winRate}%`}
+          sub={races?.completed ? `${races.wins} thắng · ${races.podiums} top 3 / ${races.completed} giải` : 'Chưa có giải nào hoàn tất'}
         />
-        <StatCard 
-          title="Phiên tập Đang chờ" 
-          value={upcomingSessions.length || 42} 
-          change="+7" 
-          isPositive={true} 
-          prevText="35 tháng trước" 
+        <StatCard
+          title="Buổi tập Tháng này"
+          loading={overviewQuery.isLoading}
+          value={training?.thisMonth ?? 0}
+          change={training ? countChange(training.thisMonth, training.lastMonth) : null}
+          sub={training ? `Tháng trước ${training.lastMonth} buổi${training.metRate == null ? '' : ` · ${training.metRate}% đạt chỉ tiêu`}` : undefined}
         />
-        <StatCard 
-          title="Tỷ lệ Chiến thắng" 
-          value="18.1%" 
-          change="+1.0%" 
-          isPositive={true} 
-          prevText="15.5% tháng trước" 
+        <StatCard
+          title="Thu Tháng này"
+          loading={overviewQuery.isLoading}
+          value={formatVnd(money?.thisMonth.revenue ?? 0)}
+          change={money ? percentChange(money.thisMonth.revenue, money.lastMonth.revenue) : null}
+          sub={money ? `Chi ${formatVnd(money.thisMonth.cost)} · tháng trước thu ${formatVnd(money.lastMonth.revenue)}, chi ${formatVnd(money.lastMonth.cost)}` : undefined}
         />
       </div>
 
-      {/* Main Chart Section */}
+      {/* Training done over the chosen range */}
       <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6">
         <div className="flex justify-between items-center mb-8">
           <h2 className="text-base font-semibold text-gray-900 m-0">Lưu lượng Huấn luyện Định kỳ</h2>
-          <Select 
-            defaultValue="12months" 
-            options={[
-              { value: '12months', label: '12 tháng gần nhất' },
-              { value: '6months', label: '6 tháng gần nhất' },
-              { value: '30days', label: '30 ngày qua' },
-              { value: 'this_year', label: 'Năm nay' }
-            ]} 
-            className="w-40"
-            size="small"
-          />
+          <Select value={range} onChange={setRange} options={CHART_RANGES.map(({ value, label }) => ({ value, label }))} className="w-44" size="small" />
         </div>
-        
+
         <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 h-64">
-          {/* Chart */}
           <div className="flex-1 h-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} barSize={32}>
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 11, fill: '#9ca3af', dy: 10 }} 
-                />
-                <Tooltip 
-                  cursor={{fill: '#f3f4f6'}}
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                />
-                <Bar 
-                  dataKey="value" 
-                  fill="#e5e7eb" 
-                  radius={[4, 4, 4, 4]} 
-                />
-              </BarChart>
-            </ResponsiveContainer>
+            {chartQuery.isLoading ? (
+              <div className="h-full flex items-center justify-center text-gray-400">Đang tải…</div>
+            ) : chartTotals.sessions === 0 ? (
+              <div className="h-full flex items-center justify-center">
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`Chưa có buổi tập hoàn thành ${periodText}`} />
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartRows} barSize={range === '30days' ? 10 : 32}>
+                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9ca3af', dy: 10 }} interval="preserveStartEnd" />
+                  <Tooltip
+                    cursor={{ fill: '#f3f4f6' }}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                    formatter={(v, name) => [v, name]}
+                  />
+                  <Bar dataKey="sessions" name="Buổi tập hoàn thành" fill="#bae6fd" radius={[4, 4, 4, 4]} />
+                  <Bar dataKey="metGoals" name="Đạt chỉ tiêu" fill="#38bdf8" radius={[4, 4, 4, 4]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
-          
-          {/* Chart Summary */}
+
           <div className="w-full lg:w-72 flex flex-col justify-center border-t lg:border-t-0 lg:border-l border-gray-100 pt-6 lg:pt-0 lg:pl-8">
             <div className="mb-6">
               <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-3xl font-bold text-gray-900">523</span>
-                <span className="text-gray-500 font-medium text-sm">lượt tập</span>
+                <span className="text-3xl font-bold text-gray-900">{chartTotals.sessions}</span>
+                <span className="text-gray-500 font-medium text-sm">buổi tập</span>
               </div>
-              <p className="text-xs text-gray-400 m-0 leading-relaxed">Tổng số lượt tập luyện được ghi nhận trong 12 tháng qua.</p>
+              <p className="text-xs text-gray-400 m-0 leading-relaxed">Số buổi tập đã hoàn thành {periodText}.</p>
             </div>
-            
+
             <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
-              <div className="text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-2">Đạt chuẩn thể lực</div>
+              <div className="text-xs text-gray-400 font-bold mb-2">Đạt chỉ tiêu</div>
               <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-xl font-bold text-gray-900">184</span>
-                <span className="text-gray-500 font-medium text-xs">lần sẵn sàng</span>
+                <span className="text-xl font-bold text-gray-900">{chartTotals.met}</span>
+                <span className="text-gray-500 font-medium text-xs">buổi đạt</span>
               </div>
-              <p className="text-xs text-gray-400 m-0 mb-3">35% số lượt tập luyện đạt chỉ tiêu thi đấu</p>
-              
+              <p className="text-xs text-gray-400 m-0 mb-3">
+                {chartTotals.rate == null ? 'Chưa có buổi nào để so sánh' : `${chartTotals.rate}% số buổi tập đạt chỉ tiêu của bài`}
+              </p>
               <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden mb-1">
-                <div className="h-full bg-gray-400 w-[35%] rounded-full"></div>
+                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${chartTotals.rate || 0}%` }} />
               </div>
               <div className="flex justify-between text-[10px] font-medium text-gray-400">
-                <span>184 sẵn sàng</span>
-                <span>523 tổng cộng</span>
+                <span>{chartTotals.met} đạt</span>
+                <span>{chartTotals.sessions} tổng cộng</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 2 Middle Cards: Meetings & Goals */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        
-        {/* Timeline (Upcoming Meetings) */}
+        {/* The next sessions and races of the owner's horses */}
         <div className="bg-white border border-gray-200 rounded-xl p-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-base font-semibold text-gray-900 m-0">Lịch trình Sắp tới</h2>
-            <Button size="small" icon={<CalendarOutlined />} className="text-xs font-medium text-gray-600 border-gray-200">
+            <Button size="small" icon={<CalendarOutlined />} className="text-xs font-medium text-gray-600 border-gray-200" onClick={() => navigate('/owner/training')}>
               Xem Lịch
             </Button>
           </div>
-          
-          <div className="relative pt-2">
-            {/* Time markers */}
-            <div className="flex justify-between text-xs text-gray-500 font-medium mb-2 relative z-10">
-              <span>08:45</span>
-              <span>09:00</span>
-              <span>10:00</span>
-              <span>10:20</span>
-            </div>
-            
-            {/* Horizontal Timeline Track */}
-            <div className="relative h-1 bg-gray-100 rounded-full mb-4">
-              {/* Event Bar spanning from 09:00 to 10:20 (approx 33% to 100%) */}
-              <div className="absolute left-[33%] right-0 top-0 bottom-0 bg-emerald-500 rounded-full"></div>
-            </div>
-            
-            {/* Timeline Event Details */}
-            <div className="relative w-full">
-              <div className="ml-[33%] pl-2 border-l-2 border-emerald-100">
-                <div className="text-gray-900 text-sm font-semibold mb-0.5">Đánh giá với HLV Trưởng</div>
-                <div className="text-gray-500 text-xs flex items-center gap-1">
-                  <span>🐎</span> Trường đua trung tâm
-                </div>
-              </div>
-            </div>
-          </div>
+          {summaryQuery.isLoading ? (
+            <div className="text-gray-400 text-sm">Đang tải…</div>
+          ) : upcoming.length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có buổi tập hay giải nào sắp tới" />
+          ) : (
+            <ul className="list-none m-0 p-0 flex flex-col gap-4">
+              {upcoming.map((e) => (
+                <li key={e.key} className="flex gap-3 items-start">
+                  <div className="w-16 shrink-0 text-xs text-gray-500 font-medium pt-0.5">
+                    <div className="text-gray-900 font-semibold">{dayjs(e.at).format('DD/MM')}</div>
+                    {e.sub === undefined && <div>{dayjs(e.at).format('HH:mm')}</div>}
+                  </div>
+                  <div className="pl-3 border-l-2 border-emerald-100 min-w-0">
+                    <div className="text-gray-900 text-sm font-semibold truncate">{e.title}</div>
+                    <div className="text-gray-500 text-xs flex items-center gap-1">
+                      <span>{e.icon}</span> {e.horse.name}
+                      {e.sub ? ` · ${e.sub}` : ''}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        
-        {/* Goals Progress */}
+
+        {/* The race record of all horses together */}
         <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <h2 className="text-base font-semibold text-gray-900 m-0 mb-4">Mục tiêu Giải đấu Tháng</h2>
-          
-          <div className="flex items-baseline gap-2 mb-4">
-            <span className="text-3xl font-bold text-gray-900">12</span>
-            <span className="text-gray-500 font-medium text-sm">lượt đăng ký</span>
-            <span className="text-xs text-gray-400 font-medium ml-auto">18 chỉ tiêu</span>
-          </div>
-          
-          <BarcodeProgress current={12} target={18} />
-          
-          <p className="text-xs text-gray-500 font-medium mt-3">67% chỉ tiêu đăng ký giải tháng này đã hoàn thành.</p>
+          <h2 className="text-base font-semibold text-gray-900 m-0 mb-4">Thành tích Giải đấu</h2>
+          {overviewQuery.isLoading ? (
+            <div className="text-gray-400 text-sm">Đang tải…</div>
+          ) : !races?.completed ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có giải nào hoàn tất" />
+          ) : (
+            <>
+              <div className="flex items-baseline gap-2 mb-4">
+                <span className="text-3xl font-bold text-gray-900">{races.wins}</span>
+                <span className="text-gray-500 font-medium text-sm">chiến thắng</span>
+                <span className="text-xs text-gray-400 font-medium ml-auto">{races.completed} giải đã hoàn tất</span>
+              </div>
+              <BarcodeProgress current={races.wins} target={races.completed} />
+              <p className="text-xs text-gray-500 font-medium mt-3">
+                <TrophyOutlined /> {races.winRate}% số giải về nhất · {races.podiums} lần vào top 3 · tiền thưởng {formatVnd(races.prize)}
+              </p>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Bottom Table Section */}
+      {/* Every horse, searchable */}
       <div className="bg-white border border-gray-200 rounded-xl p-0 overflow-hidden mb-6">
         <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h2 className="text-base font-semibold text-gray-900 m-0 mb-1">Cơ hội Đăng ký thi đấu</h2>
-            <p className="text-xs text-gray-400 m-0">Theo dõi các chiến mã đủ điều kiện đang trong giai đoạn huấn luyện, hồi phục và xét duyệt.</p>
+            <h2 className="text-base font-semibold text-gray-900 m-0 mb-1">Chiến mã của Tôi</h2>
+            <p className="text-xs text-gray-400 m-0">Sức khỏe, buổi tập và giải sắp tới, thành tích và định giá của từng chiến mã.</p>
           </div>
           <div className="flex gap-2 w-full md:w-auto">
-            <input 
-              type="text" 
-              placeholder="Tìm kiếm..." 
-              className="border border-gray-200 rounded px-3 py-1 text-sm outline-none focus:border-gray-400 min-w-[200px]"
-            />
-            <Select 
-              size="middle" 
-              defaultValue="all" 
-              options={[
-                {value:'all', label:'Tất cả giai đoạn'},
-                {value:'ready', label:'Sẵn sàng thi đấu'},
-                {value:'training', label:'Đang huấn luyện'},
-                {value:'recovery', label:'Đang hồi phục'}
-              ]} 
-              className="min-w-[120px]" 
-            />
-            <Select 
-              size="middle" 
-              defaultValue="all" 
-              options={[
-                {value:'all', label:'Tất cả sức khỏe'},
-                {value:'excellent', label:'Rất tốt'},
-                {value:'good', label:'Tốt'},
-                {value:'needs_attention', label:'Cần theo dõi'},
-                {value:'injured', label:'Chấn thương'}
-              ]} 
-              className="min-w-[120px]" 
-            />
+            <Input allowClear placeholder="Tìm theo tên…" value={search} onChange={(e) => setSearch(e.target.value)} className="min-w-[200px]" />
+            <Select value={healthFilter} onChange={setHealthFilter} options={HEALTH_FILTERS} className="min-w-[170px]" />
           </div>
         </div>
-        
-        <Table 
-          columns={columns} 
-          dataSource={tableData} 
-          pagination={{ pageSize: 10, position: ['bottomRight'] }}
-          className="custom-table"
-          rowSelection={{
-            type: 'checkbox',
-          }}
+
+        <Table
+          rowKey={(r) => r.horse._id}
+          columns={columns}
+          dataSource={tableRows}
+          loading={summaryQuery.isLoading}
+          pagination={{ pageSize: 10, hideOnSinglePage: true }}
+          scroll={{ x: 'max-content' }}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={rows.length ? 'Không có chiến mã nào khớp bộ lọc' : 'Bạn chưa có chiến mã nào'} /> }}
         />
       </div>
-      
     </div>
   );
 }

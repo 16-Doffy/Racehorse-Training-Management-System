@@ -275,8 +275,10 @@ Số tổng trên đầu dashboard: `GET /horses/owner-overview` (số ngựa, t
 giải, thu chi và buổi tập tháng này so tháng trước); biểu đồ `/reports/training-chart?months=|days=`.
 Định giá ngựa (Manager nhập) chỉ Manager và chủ ngựa thấy.
 
-Dashboard cũ còn chart/KPI giả, fallback và định giá ngẫu nhiên. Không dùng số đó
-làm bằng chứng flow thành công; dùng bản ghi chi tiết, thẻ tóm tắt và báo cáo.
+Trên web, Tổng quan của Owner dùng đúng các API này: 4 thẻ (giá trị tài sản, tỷ lệ thắng, buổi tập và thu
+tháng này so với tháng trước), biểu đồ theo kỳ (12/6 tháng, 30 ngày, từ đầu năm), lịch sắp tới và bảng chiến
+mã. Không còn số liệu hay dòng mẫu; chưa có dữ liệu thì hiện "—" hoặc trạng thái trống. Tab Sức khỏe của hồ
+sơ ngựa có lịch sử tiêm phòng/tẩy giun/đóng móng (`GET /horses/:id/care-events`).
 
 Nguồn đối chiếu: `client/src/router/AppRouter.jsx`, menu theo role,
 `server/src/modules/`, `server/src/constants/training.js`, `server/src/utils/taskTiming.js`

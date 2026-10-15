@@ -39,6 +39,7 @@ import {
 } from '@ant-design/icons';
 import { horsesApi } from './horsesApi';
 import HorseTimeline from './HorseTimeline';
+import CareHistoryCard from './CareHistoryCard';
 import { TRAINING_LEVEL_META } from '../../constants/health';
 import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
 import { trainingSessionApi } from '../training/trainingApi';
@@ -378,6 +379,9 @@ export default function HorseDetailPage() {
                 )}
               </Card>
             </Col>
+            <Col xs={24}>
+              <CareHistoryCard horseId={horse._id} />
+            </Col>
           </Row>
         ),
       },
@@ -542,6 +546,10 @@ export default function HorseDetailPage() {
           locale={{ emptyText: 'Chưa có thành tích' }}
         />
       </Card>
+
+      <div className="mb-4">
+        <CareHistoryCard horseId={horse._id} />
+      </div>
 
       {canRequestExam && (
         <Modal
