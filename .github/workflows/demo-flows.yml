@@ -19,7 +19,12 @@ jobs:
     env:
       TZ: Asia/Ho_Chi_Minh
     steps:
+      # GitHub runs schedules from main, but the script comes from NDuy (only Claude pushes there), so a
+      # teammate's push to main during the morning cannot change what runs. The server itself still
+      # deploys from main.
       - uses: actions/checkout@v4
+        with:
+          ref: NDuy
       - uses: actions/setup-node@v4
         with:
           node-version: 22
