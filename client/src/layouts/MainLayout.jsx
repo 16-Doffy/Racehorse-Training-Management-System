@@ -59,9 +59,9 @@ export default function MainLayout() {
 
   const menuItems = getMenuByRole(user?.role);
   const currentPath = location.pathname;
-  // Club Manager, Head Trainer and the vet get the forest sidebar and warm page (forestTheme.js); the
-  // other roles keep the light look below until their owners decide. Only the Manager and the Head
-  // Trainer choose a canvas; everyone else stays on a fixed page.
+  // Club Manager, Head Trainer, Horse Owner and the vet get the forest sidebar and warm page
+  // (forestTheme.js). The Manager, the Head Trainer and the Owner choose a canvas; the vet stays on
+  // its fixed page.
   const forest = usesForestTheme(user?.role);
   const canvas = usesCanvasPicker(user?.role);
   const [canvasTheme, setCanvasTheme] = useState(() => {
@@ -723,6 +723,82 @@ export default function MainLayout() {
         .forest-layout .ant-card:not(.ant-card-hoverable),
         .forest-layout .ant-card-hoverable:not(:hover) {
           box-shadow: 0 1px 2px rgba(48, 40, 20, 0.06);
+        }
+
+        /* A page built from light boxes (the Owner's pages) keeps its antd cards and tables light on a dark
+           canvas too; otherwise they turn dark while the text inside stays dark. */
+        .forest-layout.is-dark-canvas .light-surface-box .ant-card,
+        .forest-layout.is-dark-canvas .light-surface-box .ant-card-body,
+        .forest-layout.is-dark-canvas .light-surface-box .ant-table,
+        .forest-layout.is-dark-canvas .light-surface-box .ant-table-tbody > tr > td {
+          background-color: #FFFFFF !important;
+          color: #1F2937 !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box .ant-card,
+        .forest-layout.is-dark-canvas .light-surface-box .ant-table-container {
+          border-color: #E5DEC9 !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box .ant-card-head,
+        .forest-layout.is-dark-canvas .light-surface-box .ant-table-thead > tr > th {
+          background-color: #F4EFE2 !important;
+          color: #123326 !important;
+          border-color: #E5DEC9 !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box .ant-table-tbody > tr > td {
+          border-bottom-color: #EFE9DB !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box .ant-table-tbody > tr:hover > td {
+          background-color: #F7F3EA !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box .ant-table-cell a:not(.ant-btn) {
+          color: #0F5A43 !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box .ant-pagination-item,
+        .forest-layout.is-dark-canvas .light-surface-box .ant-pagination-item-link {
+          background-color: #FFFFFF !important;
+          border-color: #E5DEC9 !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box .ant-pagination-item a {
+          color: #0F5A43 !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box .ant-statistic-title {
+          color: #6B7280 !important;
+        }
+        .forest-layout.is-dark-canvas .light-surface-box .ant-empty-description {
+          color: #6B7280 !important;
+        }
+
+        /* Horse Owner pages (.owner-ui): compact tables. Only spacing and type; colours stay with the rules above. */
+        .forest-layout .owner-ui .ant-table-thead > tr > th {
+          padding: 9px 14px !important;
+          font-size: 11px !important;
+          font-weight: 600 !important;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          white-space: nowrap;
+        }
+        .forest-layout .owner-ui .ant-table-thead > tr > th::before {
+          display: none !important;
+        }
+        .forest-layout .owner-ui .ant-table-tbody > tr:not(.ant-table-measure-row) > td {
+          padding: 10px 14px !important;
+          font-size: 13.5px;
+        }
+        .forest-layout .owner-ui .ant-table-tbody > tr:not(.ant-table-measure-row):last-child > td {
+          border-bottom: 0 !important;
+        }
+        /* On a dark canvas the light page panel gets a little inner margin, so bare text (the horse picker, the counts) is not on its edge. */
+        .forest-layout.is-dark-canvas .light-surface-box.owner-ui {
+          padding: 0 8px 8px;
+        }
+        .forest-layout .owner-ui .ant-pagination {
+          margin: 10px 16px !important;
+        }
+        .forest-layout .owner-ui .ant-btn {
+          border-radius: 8px;
+        }
+        .forest-layout .owner-ui .ant-segmented {
+          border-radius: 8px;
         }
       `}</style>
     </Layout>

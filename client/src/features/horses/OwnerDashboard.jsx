@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Empty, Input, Select, Table, Tag, Tooltip as AntTooltip } from 'antd';
-import { ArrowDownOutlined, ArrowUpOutlined, CalendarOutlined, TrophyOutlined } from '@ant-design/icons';
+import { useSelector } from 'react-redux';
+import { Alert, Button, Empty, Input, Select, Table, Tooltip as AntTooltip } from 'antd';
+import { CalendarOutlined, TrophyOutlined } from '@ant-design/icons';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import dayjs from 'dayjs';
 
@@ -11,12 +12,14 @@ import { reportsApi } from '../reports/reportsApi';
 import { formatVnd } from '../../constants/horse';
 import { CHART_RANGES, chartRange, trainingChartRows, trainingChartTotals } from './trainingChart';
 import OwnerHorseSummary from './OwnerHorseSummary';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
+import { OwnerCard, Pill, StatStrip } from './ownerUi';
 
 // One shared empty list, so memoised values below do not recompute on every render while data is loading.
 const NO_ROWS = [];
 
 const HEALTH_LABELS = { eligible: 'Đủ điều kiện', monitoring: 'Đang theo dõi', injured: 'Chấn thương', quarantined: 'Cách ly' };
-const HEALTH_COLORS = { eligible: 'green', monitoring: 'gold', injured: 'red', quarantined: 'volcano' };
+const HEALTH_TONES = { eligible: 'good', monitoring: 'warn', injured: 'bad', quarantined: 'neutral' };
 const HEALTH_FILTERS = [
   { value: 'all', label: 'Tất cả sức khỏe' },
   { value: 'eligible', label: 'Đủ điều kiện' },
@@ -35,26 +38,6 @@ const percentChange = (now, before) => {
 /** "+7" sessions against last month; nothing to show when it is the same. */
 const countChange = (now, before) => (now === before ? null : { text: `${now - before > 0 ? '+' : ''}${now - before}`, up: now > before });
 
-function StatCard({ title, value, sub, change, loading }) {
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
-      <span className="text-gray-500 text-sm font-medium mb-4">{title}</span>
-      <div className="flex items-baseline gap-3 mb-1 flex-wrap">
-        <span className="text-xl sm:text-[22px] leading-tight font-bold text-gray-900 whitespace-nowrap">{loading ? '—' : value}</span>
-        {!loading && change && (
-          <span
-            className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 font-medium ${change.up ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}
-          >
-            {change.up ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-            {change.text}
-          </span>
-        )}
-      </div>
-      {sub && <span className="text-xs text-gray-400 font-medium">{loading ? ' ' : sub}</span>}
-    </div>
-  );
-}
-
 // Wins out of the races a horse has finished, as ticks.
 const BarcodeProgress = ({ current, target }) => {
   const totalTicks = 40;
@@ -70,6 +53,7 @@ const BarcodeProgress = ({ current, target }) => {
 
 export default function OwnerDashboard() {
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
   const [range, setRange] = useState('12months');
   const [search, setSearch] = useState('');
   const [healthFilter, setHealthFilter] = useState('all');
@@ -95,7 +79,7 @@ export default function OwnerDashboard() {
   const upcoming = useMemo(() => {
     const events = [];
     rows.forEach((r) => {
-      if (r.next) events.push({ key: `s-${r.horse._id}`, at: r.next.at, horse: r.horse, title: r.next.kind, icon: '🐎' });
+      if (r.next) events.push({ key: `s-${r.horse._id}`, at: r.next.at, horse: r.horse, title: r.next.kind, kind: 'session' });
       if (r.upcomingRace) {
         events.push({
           key: `r-${r.horse._id}`,
@@ -103,7 +87,7 @@ export default function OwnerDashboard() {
           horse: r.horse,
           title: r.upcomingRace.name,
           sub: r.upcomingRace.status === 'confirmed' ? 'Đã xác nhận tham gia' : 'Chờ HLV quyết định',
-          icon: '🏁',
+          kind: 'race',
         });
       }
     });
@@ -126,7 +110,7 @@ export default function OwnerDashboard() {
       title: 'Tên Chiến Mã',
       key: 'name',
       render: (_, r) => (
-        <Link to={`/horses/${r.horse._id}`} className="font-semibold text-gray-800">
+        <Link to={`/horses/${r.horse._id}`} className="font-semibold text-gray-900">
           {r.horse.name}
         </Link>
       ),
@@ -136,12 +120,12 @@ export default function OwnerDashboard() {
       key: 'health',
       render: (_, r) => (
         <AntTooltip title={r.health.restricted ? r.health.reason : undefined}>
-          <span>
+          <span className="inline-flex items-center gap-2 flex-wrap">
             {/* The default status is not an assessment: say so until a vet has examined the horse. */}
             {r.health.lastExam ? (
-              <Tag color={HEALTH_COLORS[r.health.status]}>{HEALTH_LABELS[r.health.status] || r.health.status}</Tag>
+              <Pill tone={HEALTH_TONES[r.health.status]}>{HEALTH_LABELS[r.health.status] || r.health.status}</Pill>
             ) : (
-              <Tag>Chưa có hồ sơ khám</Tag>
+              <Pill>Chưa có hồ sơ khám</Pill>
             )}
             <span className="text-xs text-gray-500">{r.health.clearance}</span>
           </span>
@@ -151,7 +135,7 @@ export default function OwnerDashboard() {
     {
       title: 'Buổi tập tiếp theo',
       key: 'next',
-      render: (_, r) => (r.next ? `${r.next.kind} · ${dayjs(r.next.at).format('DD/MM HH:mm')}` : <span className="text-gray-400">Chưa xếp</span>),
+      render: (_, r) => (r.next ? <span className="tabular-nums">{`${r.next.kind} · ${dayjs(r.next.at).format('DD/MM HH:mm')}`}</span> : <span className="text-gray-400">Chưa xếp</span>),
     },
     {
       title: 'Giải sắp tới',
@@ -177,17 +161,28 @@ export default function OwnerDashboard() {
       key: 'valuation',
       align: 'right',
       render: (_, r) => (
-        <span className="font-semibold text-gray-800">{r.horse.valuationVnd == null ? <span className="text-gray-400 font-normal">Chưa định giá</span> : formatVnd(r.horse.valuationVnd)}</span>
+        <span className="font-semibold text-gray-900 tabular-nums">{r.horse.valuationVnd == null ? <span className="text-gray-400 font-normal">Chưa định giá</span> : formatVnd(r.horse.valuationVnd)}</span>
       ),
     },
   ];
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-gray-800 p-4 md:px-8 md:pb-8 md:pt-4 font-sans">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900 m-0 mb-1 tracking-tight">Tổng quan Hoạt động</h1>
-        <p className="text-sm text-gray-500 m-0">Theo dõi chất lượng huấn luyện, cơ hội thi đấu và tỷ lệ thành công qua các chu kỳ.</p>
-      </div>
+    <div className="light-surface-box owner-ui text-gray-800 font-sans">
+      <PageHeroBanner
+        eyebrow="TEAM 8 • DANH MỤC CHIẾN MÃ CỦA TÔI"
+        roleLabel="Horse Owner"
+        title={`Xin chào, ${user?.name || 'Chủ sở hữu'}`}
+        subtitle="Theo dõi chất lượng huấn luyện, cơ hội thi đấu và tỷ lệ thành công qua các chu kỳ."
+        stats={
+          overview
+            ? [
+                { label: 'Chiến mã', value: `${overview.horses} con` },
+                { label: 'Giải đã hoàn tất', value: `${overview.races.completed} giải` },
+                { label: 'Buổi tập tháng này', value: `${overview.training.thisMonth} buổi` },
+              ]
+            : []
+        }
+      />
 
       {overviewQuery.isError && (
         <Alert className="!mb-4" type="warning" showIcon message="Chưa tải được số liệu tổng quan" description="Các thẻ bên dưới có thể trống. Thử tải lại trang." />
@@ -197,44 +192,48 @@ export default function OwnerDashboard() {
       <OwnerHorseSummary />
 
       {/* Numbers for the owner, each with last month beside it where there is one */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          title="Tổng Giá trị Tài sản"
-          loading={overviewQuery.isLoading}
-          value={formatVnd(overview?.valuation.total ?? 0)}
-          sub={overview ? `${overview.valuation.valued}/${overview.horses} ngựa đã được định giá` : undefined}
-        />
-        <StatCard
-          title="Tỷ lệ Chiến thắng"
-          loading={overviewQuery.isLoading}
-          value={races?.winRate == null ? '—' : `${races.winRate}%`}
-          sub={races?.completed ? `${races.wins} thắng · ${races.podiums} top 3 / ${races.completed} giải` : 'Chưa có giải nào hoàn tất'}
-        />
-        <StatCard
-          title="Buổi tập Tháng này"
-          loading={overviewQuery.isLoading}
-          value={training?.thisMonth ?? 0}
-          change={training ? countChange(training.thisMonth, training.lastMonth) : null}
-          sub={training ? `Tháng trước ${training.lastMonth} buổi${training.metRate == null ? '' : ` · ${training.metRate}% đạt chỉ tiêu`}` : undefined}
-        />
-        <StatCard
-          title="Thu Tháng này"
-          loading={overviewQuery.isLoading}
-          value={formatVnd(money?.thisMonth.revenue ?? 0)}
-          change={money ? percentChange(money.thisMonth.revenue, money.lastMonth.revenue) : null}
-          sub={money ? `Chi ${formatVnd(money.thisMonth.cost)} · tháng trước thu ${formatVnd(money.lastMonth.revenue)}, chi ${formatVnd(money.lastMonth.cost)}` : undefined}
-        />
-      </div>
+      {(() => {
+        const loading = overviewQuery.isLoading;
+        return (
+          <StatStrip
+            className="mb-4"
+            cols={4}
+            items={[
+              {
+                label: 'Tổng giá trị tài sản',
+                value: loading ? '—' : formatVnd(overview?.valuation.total ?? 0),
+                hint: overview ? `${overview.valuation.valued}/${overview.horses} ngựa đã được định giá` : undefined,
+              },
+              {
+                label: 'Tỷ lệ chiến thắng',
+                value: loading ? '—' : races?.winRate == null ? '—' : `${races.winRate}%`,
+                hint: races?.completed ? `${races.wins} thắng · ${races.podiums} top 3 / ${races.completed} giải` : 'Chưa có giải nào hoàn tất',
+              },
+              {
+                label: 'Buổi tập tháng này',
+                value: loading ? '—' : training?.thisMonth ?? 0,
+                change: !loading && training ? countChange(training.thisMonth, training.lastMonth) : null,
+                hint: training ? `Tháng trước ${training.lastMonth} buổi${training.metRate == null ? '' : ` · ${training.metRate}% đạt chỉ tiêu`}` : undefined,
+              },
+              {
+                label: 'Thu tháng này',
+                value: loading ? '—' : formatVnd(money?.thisMonth.revenue ?? 0),
+                change: !loading && money ? percentChange(money.thisMonth.revenue, money.lastMonth.revenue) : null,
+                hint: money ? `Chi ${formatVnd(money.thisMonth.cost)} · tháng trước thu ${formatVnd(money.lastMonth.revenue)}, chi ${formatVnd(money.lastMonth.cost)}` : undefined,
+              },
+            ]}
+          />
+        );
+      })()}
 
       {/* Training done over the chosen range */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6">
-        <div className="flex justify-between items-center mb-8">
-          <h2 className="text-base font-semibold text-gray-900 m-0">Lưu lượng Huấn luyện Định kỳ</h2>
-          <Select value={range} onChange={setRange} options={CHART_RANGES.map(({ value, label }) => ({ value, label }))} className="w-44" size="small" />
-        </div>
-
-        <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 h-64">
-          <div className="flex-1 h-full">
+      <OwnerCard
+        title="Lưu lượng huấn luyện"
+        className="mb-4"
+        extra={<Select value={range} onChange={setRange} options={CHART_RANGES.map(({ value, label }) => ({ value, label }))} className="w-40" size="small" />}
+      >
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-10">
+          <div className="flex-1 h-64 min-w-0">
             {chartQuery.isLoading ? (
               <div className="h-full flex items-center justify-center text-gray-400">Đang tải…</div>
             ) : chartTotals.sessions === 0 ? (
@@ -285,33 +284,34 @@ export default function OwnerDashboard() {
             </div>
           </div>
         </div>
-      </div>
+      </OwnerCard>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         {/* The next sessions and races of the owner's horses */}
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-base font-semibold text-gray-900 m-0">Lịch trình Sắp tới</h2>
-            <Button size="small" icon={<CalendarOutlined />} className="text-xs font-medium text-gray-600 border-gray-200" onClick={() => navigate('/owner/training')}>
-              Xem Lịch
+        <OwnerCard
+          title="Lịch trình sắp tới"
+          extra={
+            <Button size="small" icon={<CalendarOutlined />} onClick={() => navigate('/owner/training')}>
+              Xem lịch
             </Button>
-          </div>
+          }
+        >
           {summaryQuery.isLoading ? (
             <div className="text-gray-400 text-sm">Đang tải…</div>
           ) : upcoming.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có buổi tập hay giải nào sắp tới" />
           ) : (
-            <ul className="list-none m-0 p-0 flex flex-col gap-4">
+            <ul className="list-none m-0 p-0 divide-y divide-gray-100">
               {upcoming.map((e) => (
-                <li key={e.key} className="flex gap-3 items-start">
-                  <div className="w-16 shrink-0 text-xs text-gray-500 font-medium pt-0.5">
+                <li key={e.key} className="flex gap-3 items-start py-2.5 first:pt-0 last:pb-0">
+                  <div className="w-14 shrink-0 text-xs text-gray-500 tabular-nums pt-0.5">
                     <div className="text-gray-900 font-semibold">{dayjs(e.at).format('DD/MM')}</div>
                     {e.sub === undefined && <div>{dayjs(e.at).format('HH:mm')}</div>}
                   </div>
-                  <div className="pl-3 border-l-2 border-emerald-100 min-w-0">
+                  <div className="min-w-0">
                     <div className="text-gray-900 text-sm font-semibold truncate">{e.title}</div>
-                    <div className="text-gray-500 text-xs flex items-center gap-1">
-                      <span>{e.icon}</span> {e.horse.name}
+                    <div className="text-gray-500 text-xs">
+                      {e.kind === 'race' ? 'Giải đua' : 'Buổi tập'} · {e.horse.name}
                       {e.sub ? ` · ${e.sub}` : ''}
                     </div>
                   </div>
@@ -319,11 +319,10 @@ export default function OwnerDashboard() {
               ))}
             </ul>
           )}
-        </div>
+        </OwnerCard>
 
         {/* The race record of all horses together */}
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <h2 className="text-base font-semibold text-gray-900 m-0 mb-4">Thành tích Giải đấu</h2>
+        <OwnerCard title="Thành tích giải đấu">
           {overviewQuery.isLoading ? (
             <div className="text-gray-400 text-sm">Đang tải…</div>
           ) : !races?.completed ? (
@@ -336,27 +335,25 @@ export default function OwnerDashboard() {
                 <span className="text-xs text-gray-400 font-medium ml-auto">{races.completed} giải đã hoàn tất</span>
               </div>
               <BarcodeProgress current={races.wins} target={races.completed} />
-              <p className="text-xs text-gray-500 font-medium mt-3">
+              <p className="text-xs text-gray-500 mt-3 mb-0">
                 <TrophyOutlined /> {races.winRate}% số giải về nhất · {races.podiums} lần vào top 3 · tiền thưởng {formatVnd(races.prize)}
               </p>
             </>
           )}
-        </div>
+        </OwnerCard>
       </div>
 
       {/* Every horse, searchable */}
-      <div className="bg-white border border-gray-200 rounded-xl p-0 overflow-hidden mb-6">
-        <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900 m-0 mb-1">Chiến mã của Tôi</h2>
-            <p className="text-xs text-gray-400 m-0">Sức khỏe, buổi tập và giải sắp tới, thành tích và định giá của từng chiến mã.</p>
-          </div>
-          <div className="flex gap-2 w-full md:w-auto">
-            <Input allowClear placeholder="Tìm theo tên…" value={search} onChange={(e) => setSearch(e.target.value)} className="min-w-[200px]" />
+      <OwnerCard
+        title="Chiến mã của tôi"
+        flush
+        extra={
+          <div className="flex gap-2">
+            <Input allowClear placeholder="Tìm theo tên…" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-48" />
             <Select value={healthFilter} onChange={setHealthFilter} options={HEALTH_FILTERS} className="min-w-[170px]" />
           </div>
-        </div>
-
+        }
+      >
         <Table
           rowKey={(r) => r.horse._id}
           columns={columns}
@@ -366,7 +363,7 @@ export default function OwnerDashboard() {
           scroll={{ x: 'max-content' }}
           locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={rows.length ? 'Không có chiến mã nào khớp bộ lọc' : 'Bạn chưa có chiến mã nào'} /> }}
         />
-      </div>
+      </OwnerCard>
     </div>
   );
 }
