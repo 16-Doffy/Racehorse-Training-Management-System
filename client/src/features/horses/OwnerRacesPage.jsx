@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { Table, Select, Empty } from 'antd';
-import { TrophyOutlined, StarOutlined, FlagOutlined, AppstoreOutlined } from '@ant-design/icons';
+import { TrophyOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { raceApi } from '../race/raceApi';
 import { horsesApi } from './horsesApi';
+import { formatVnd } from '../../constants/horse';
 import dayjs from 'dayjs';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
+import { OwnerCard, Pill, StatStrip } from './ownerUi';
 
 const STATUS_LABELS = {
   registered: 'Đã đăng ký',
@@ -13,101 +16,75 @@ const STATUS_LABELS = {
   withdrawn: 'Đã rút lui',
 };
 
-const STATUS_COLORS = { 
-  registered: 'bg-gray-100 text-gray-600 border-gray-200', 
-  confirmed: 'bg-blue-50 text-blue-600 border-blue-200', 
-  completed: 'bg-emerald-50 text-emerald-600 border-emerald-200', 
-  withdrawn: 'bg-red-50 text-red-600 border-red-200' 
-};
-
-const StatCard = ({ title, value, subtitle, icon, iconColorClass }) => (
-  <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
-    <div className="flex justify-between items-center mb-4">
-      <span className="text-gray-500 text-sm font-medium">{title}</span>
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${iconColorClass}`}>
-        {icon}
-      </div>
-    </div>
-    <div className="flex items-baseline gap-3 mb-1">
-      <span className="text-3xl font-bold text-gray-900">{value}</span>
-    </div>
-    <span className="text-xs text-gray-400 font-medium">{subtitle}</span>
-  </div>
-);
+const STATUS_TONES = { registered: 'neutral', confirmed: 'info', completed: 'good', withdrawn: 'bad' };
 
 export default function OwnerRacesPage() {
   const [selectedHorse, setSelectedHorse] = useState(null);
 
-  const { data: racesData, isLoading: racesLoading } = useQuery({ 
-    queryKey: ['races'], 
-    queryFn: () => raceApi.list() 
+  const { data: racesData, isLoading: racesLoading } = useQuery({
+    queryKey: ['races'],
+    queryFn: () => raceApi.list(),
   });
-  
-  const { data: horsesData, isLoading: horsesLoading } = useQuery({ 
-    queryKey: ['horses'], 
-    queryFn: () => horsesApi.list() 
+
+  const { data: horsesData, isLoading: horsesLoading } = useQuery({
+    queryKey: ['horses'],
+    queryFn: () => horsesApi.list(),
   });
 
   const allRaces = racesData?.data || [];
   const myHorses = horsesData?.data || [];
 
   // Filter races to only include ones where the horse is owned by the user
-  const myHorseIds = myHorses.map(h => h._id);
-  const myRaces = allRaces.filter(r => myHorseIds.includes(r.horse?._id) || myHorseIds.includes(r.horse));
+  const myHorseIds = myHorses.map((h) => h._id);
+  const myRaces = allRaces.filter((r) => myHorseIds.includes(r.horse?._id) || myHorseIds.includes(r.horse));
 
   // Apply selected horse filter if any
   const displayedRaces = selectedHorse
-    ? myRaces.filter(r => r.horse?._id === selectedHorse || r.horse === selectedHorse)
+    ? myRaces.filter((r) => r.horse?._id === selectedHorse || r.horse === selectedHorse)
     : myRaces;
 
   // Stats calculation
   const totalRaces = displayedRaces.length;
-  const upcomingRaces = displayedRaces.filter(r => r.status === 'registered' || r.status === 'confirmed').length;
-  
-  const winCount = displayedRaces.filter(r => 
-    r.status === 'completed' && r.position === 1
-  ).length;
+  const upcomingRaces = displayedRaces.filter((r) => r.status === 'registered' || r.status === 'confirmed').length;
+  const winCount = displayedRaces.filter((r) => r.status === 'completed' && r.position === 1).length;
 
   const columns = [
     {
-      title: 'Chiến mã',
-      dataIndex: ['horse', 'name'],
-      key: 'horse',
-      render: (name) => <span className="font-semibold text-gray-900">{name || '—'}</span>,
-    },
-    { 
-      title: 'Tên giải đua', 
-      dataIndex: 'raceName', 
+      title: 'Giải đua',
+      dataIndex: 'raceName',
       key: 'raceName',
-      render: (name) => <span className="font-medium text-gray-700">{name}</span>
+      render: (name, r) => (
+        <div className="min-w-0">
+          <div className="font-semibold text-gray-900">{name}</div>
+          <div className="text-xs text-gray-500">{r.horse?.name || '—'}</div>
+        </div>
+      ),
     },
     {
       title: 'Ngày thi đấu',
       dataIndex: 'raceDate',
       key: 'raceDate',
-      render: (d) => <span className="text-gray-500 font-medium">{dayjs(d).format('DD/MM/YYYY')}</span>,
+      render: (d) => <span className="text-gray-600 tabular-nums">{dayjs(d).format('DD/MM/YYYY')}</span>,
     },
-    { 
-      title: 'Cự ly', 
-      dataIndex: 'distance', 
-      key: 'distance', 
-      render: (v) => v ? <span className="text-gray-600 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded text-xs font-medium">{v}m</span> : <span className="text-gray-400">—</span> 
+    {
+      title: 'Cự ly',
+      dataIndex: 'distance',
+      key: 'distance',
+      render: (v) => (v ? <span className="text-gray-600 tabular-nums">{v} m</span> : <span className="text-gray-400">—</span>),
     },
     {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      render: (s) => <span className={`text-xs px-2 py-0.5 rounded border font-medium ${STATUS_COLORS[s] || 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[s] || s}</span>,
+      render: (s) => <Pill tone={STATUS_TONES[s]}>{STATUS_LABELS[s] || s}</Pill>,
     },
     {
       title: 'Thứ hạng',
       dataIndex: 'position',
       key: 'position',
       render: (pos) => {
-        if (!pos) return <span className="text-gray-400 font-medium">—</span>;
-        if (pos === 1) return <span className="font-bold text-yellow-600 flex items-center gap-1"><TrophyOutlined /> Hạng 1</span>;
-        if (pos === 2) return <span className="font-bold text-gray-500">Hạng 2</span>;
-        if (pos === 3) return <span className="font-bold text-orange-600">Hạng 3</span>;
+        if (!pos) return <span className="text-gray-400">—</span>;
+        if (pos === 1) return <span className="font-semibold text-amber-600 inline-flex items-center gap-1"><TrophyOutlined /> Hạng 1</span>;
         return <span className="font-semibold text-gray-700">Hạng {pos}</span>;
       },
     },
@@ -115,81 +92,57 @@ export default function OwnerRacesPage() {
       title: 'Thời gian',
       dataIndex: 'finishTime',
       key: 'finishTime',
-      render: (t) => t ? <span className="font-medium text-gray-600">{t} giây</span> : <span className="text-gray-400">—</span>,
+      align: 'right',
+      render: (t) => (t ? <span className="text-gray-600 tabular-nums">{t} giây</span> : <span className="text-gray-400">—</span>),
     },
     {
       title: 'Tiền thưởng',
       dataIndex: 'prizeMoney',
       key: 'prizeMoney',
-      render: (p) => p ? <span className="font-semibold text-emerald-600">${p.toLocaleString()}</span> : <span className="text-gray-400">—</span>,
+      align: 'right',
+      render: (p) => (p ? <span className="font-semibold text-emerald-700 tabular-nums">{formatVnd(p)}</span> : <span className="text-gray-400">—</span>),
     },
   ];
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-gray-800 p-4 md:px-8 md:pb-8 md:pt-4 font-sans">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900 m-0 mb-1 tracking-tight">Lịch sử & Đăng ký Giải đua</h1>
-        <p className="text-sm text-gray-500 m-0">
-          Theo dõi thành tích thi đấu, danh hiệu và các giải đua sắp tới của chiến mã.
-        </p>
-      </div>
+    <div className="light-surface-box owner-ui text-gray-800 font-sans">
+      <PageHeroBanner eyebrow="TEAM 8 • GIẢI ĐUA & THÀNH TÍCH" roleLabel="Horse Owner" title="Lịch Sử & Đăng Ký Giải Đua" subtitle="Theo dõi thành tích thi đấu, danh hiệu và các giải đua sắp tới của chiến mã." />
 
-      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <span className="font-medium text-gray-500 text-sm">Tra cứu thành tích:</span>
-          <Select
-            allowClear
-            placeholder="Tất cả chiến mã"
-            className="min-w-[200px]"
-            size="middle"
-            value={selectedHorse}
-            onChange={setSelectedHorse}
-            options={myHorses.map(h => ({ value: h._id, label: h.name }))}
-            loading={horsesLoading}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <StatCard 
-          title="Tổng Số Giải" 
-          value={totalRaces}
-          subtitle="Đã và đang đăng ký"
-          icon={<AppstoreOutlined />}
-          iconColorClass="bg-blue-100 text-blue-600"
-        />
-        <StatCard 
-          title="Sắp Diễn Ra" 
-          value={upcomingRaces}
-          subtitle="Lịch thi đấu dự kiến"
-          icon={<FlagOutlined />}
-          iconColorClass="bg-emerald-100 text-emerald-600"
-        />
-        <StatCard 
-          title="Chiến Thắng" 
-          value={winCount}
-          subtitle="Vô địch giải (Ước tính)"
-          icon={<StarOutlined />}
-          iconColorClass="bg-yellow-100 text-yellow-600"
+      <div className="flex items-center gap-3 mb-4">
+        <span className="font-medium text-gray-500 text-sm">Chiến mã</span>
+        <Select
+          allowClear
+          placeholder="Tất cả chiến mã"
+          className="min-w-[220px]"
+          value={selectedHorse}
+          onChange={setSelectedHorse}
+          options={myHorses.map((h) => ({ value: h._id, label: h.name }))}
+          loading={horsesLoading}
         />
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="p-5 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900 m-0">Bảng vàng Thành tích</h2>
-        </div>
+      <StatStrip
+        className="mb-4"
+        items={[
+          { label: 'Tổng số giải', value: totalRaces, hint: 'Đã và đang đăng ký' },
+          { label: 'Sắp diễn ra', value: upcomingRaces, hint: 'Lịch thi đấu dự kiến' },
+          { label: 'Chiến thắng', value: winCount, hint: 'Về nhất', tone: winCount ? 'good' : undefined },
+        ]}
+      />
+
+      <OwnerCard title="Bảng vàng thành tích" flush>
         <Table
           rowKey="_id"
           columns={columns}
           dataSource={displayedRaces}
           loading={racesLoading || horsesLoading}
-          pagination={{ pageSize: 10, position: ['bottomRight'] }}
-          className="custom-table"
-          locale={{ 
-            emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có thông tin giải đua cho ngựa này" />
+          pagination={{ pageSize: 10, hideOnSinglePage: true }}
+          scroll={{ x: 'max-content' }}
+          locale={{
+            emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có thông tin giải đua cho ngựa này" />,
           }}
         />
-      </div>
+      </OwnerCard>
     </div>
   );
 }

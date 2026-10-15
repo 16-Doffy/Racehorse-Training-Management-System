@@ -1,71 +1,66 @@
 import { useState } from 'react';
 import { SESSION_STATUS_LABELS } from '../training/sessionStatus';
-import { Typography, Select, Tag, Table, Descriptions, Segmented } from 'antd';
-import {
-  CalendarOutlined,
-  ThunderboltOutlined,
-  ClockCircleOutlined,
-  FireOutlined,
-} from '@ant-design/icons';
+import { Select, Tag, Table, Segmented, Empty } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { horsesApi } from './horsesApi';
 import { trainingPlanApi, trainingSessionApi } from '../training/trainingApi';
 import { reportsApi } from '../reports/reportsApi';
 import { trainingChartRows } from './trainingChart';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Bar, Line } from 'recharts';
 import dayjs from 'dayjs';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
+import { OwnerCard, Pill, StatStrip } from './ownerUi';
 
 const SESSION_TYPE_CONFIG = {
-  training: { color: 'blue', label: 'Tập luyện' },
-  trial_run: { color: 'orange', label: '🏁 Chạy thử' },
+  training: { label: 'Tập luyện' },
+  trial_run: { label: 'Chạy thử' },
 };
 
-const SESSION_STATUS_CONFIG = {
-  // Wording shared with the trainer's and the groom's screens (training/sessionStatus.js).
-  scheduled: { color: 'bg-gray-100 text-gray-600 border-gray-200', label: SESSION_STATUS_LABELS.scheduled },
-  in_progress: { color: 'bg-blue-50 text-blue-600 border-blue-200', label: SESSION_STATUS_LABELS.in_progress },
-  completed: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: SESSION_STATUS_LABELS.completed },
-  cancelled: { color: 'bg-red-50 text-red-600 border-red-200', label: SESSION_STATUS_LABELS.cancelled },
-  ready: { color: 'bg-cyan-50 text-cyan-600 border-cyan-200', label: SESSION_STATUS_LABELS.ready },
-  blocked: { color: 'bg-amber-50 text-amber-600 border-amber-200', label: SESSION_STATUS_LABELS.blocked },
-  evaluated: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: SESSION_STATUS_LABELS.evaluated },
-  aborted: { color: 'bg-red-50 text-red-600 border-red-200', label: SESSION_STATUS_LABELS.aborted },
-  missed: { color: 'bg-gray-100 text-gray-600 border-gray-200', label: SESSION_STATUS_LABELS.missed },
+const SESSION_STATUS_TONES = {
+  scheduled: 'neutral',
+  in_progress: 'info',
+  completed: 'good',
+  cancelled: 'bad',
+  ready: 'info',
+  blocked: 'warn',
+  evaluated: 'good',
+  aborted: 'bad',
+  missed: 'neutral',
 };
 
 const PHASE_LABELS = {
-  base_building: '🏗️ Xây nền tảng',
-  strength: '💪 Sức mạnh',
-  speed: '⚡ Tốc độ',
-  peak: '🏆 Đỉnh cao',
-  recovery: '🔄 Phục hồi',
+  base_building: 'Xây nền tảng',
+  strength: 'Sức mạnh',
+  speed: 'Tốc độ',
+  peak: 'Đỉnh cao',
+  recovery: 'Phục hồi',
 };
 
 const INTENSITY_CONFIG = {
-  light: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: 'Nhẹ' },
-  moderate: { color: 'bg-yellow-50 text-yellow-600 border-yellow-200', label: 'Vừa' },
-  high: { color: 'bg-red-50 text-red-600 border-red-200', label: 'Cao' },
+  light: { tone: 'good', label: 'Nhẹ' },
+  moderate: { tone: 'warn', label: 'Vừa' },
+  high: { tone: 'bad', label: 'Cao' },
 };
 
 const SURFACE_LABELS = {
-  turf: '🌿 Cỏ tự nhiên',
-  dirt: '🟤 Đất',
-  synthetic: '⬛ Nhân tạo',
-  sand: '🏖️ Cát',
+  turf: 'Cỏ tự nhiên',
+  dirt: 'Đất',
+  synthetic: 'Nhân tạo',
+  sand: 'Cát',
 };
 
 const PLAN_STATUS_CONFIG = {
-  draft: { color: 'bg-gray-100 text-gray-600 border-gray-200', label: 'Nháp' },
-  active: { color: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: 'Đang áp dụng' },
-  completed: { color: 'bg-blue-50 text-blue-600 border-blue-200', label: 'Hoàn thành' },
-  cancelled: { color: 'bg-red-50 text-red-600 border-red-200', label: 'Đã huỷ' },
+  draft: { tone: 'neutral', label: 'Nháp' },
+  active: { tone: 'good', label: 'Đang áp dụng' },
+  completed: { tone: 'info', label: 'Hoàn thành' },
+  cancelled: { tone: 'bad', label: 'Đã huỷ' },
 };
 
 export default function OwnerTrainingPage() {
   const [selectedHorse, setSelectedHorse] = useState(null);
   const [viewMode, setViewMode] = useState('sessions');
 
-  const { data: horsesData, isLoading: horsesLoading } = useQuery({
+  const { data: horsesData } = useQuery({
     queryKey: ['horses'],
     queryFn: () => horsesApi.list(),
   });
@@ -117,7 +112,7 @@ export default function OwnerTrainingPage() {
       title: 'Ngày',
       dataIndex: 'scheduledAt',
       key: 'scheduledAt',
-      render: (d) => <span className="font-medium text-gray-800">{dayjs(d).format('DD/MM/YYYY HH:mm')}</span>,
+      render: (d) => <span className="font-medium text-gray-900 tabular-nums">{dayjs(d).format('DD/MM/YYYY HH:mm')}</span>,
       defaultSortOrder: 'descend',
       sorter: (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt),
     },
@@ -125,11 +120,7 @@ export default function OwnerTrainingPage() {
       title: 'Loại',
       dataIndex: 'sessionType',
       key: 'sessionType',
-      render: (type) => (
-        <span className="text-gray-600 font-medium">
-          {SESSION_TYPE_CONFIG[type]?.label || type}
-        </span>
-      ),
+      render: (type) => <span className="text-gray-600">{SESSION_TYPE_CONFIG[type]?.label || type}</span>,
       filters: [
         { text: 'Tập luyện', value: 'training' },
         { text: 'Chạy thử', value: 'trial_run' },
@@ -140,29 +131,16 @@ export default function OwnerTrainingPage() {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      render: (status) => (
-        <span className={`text-xs px-2 py-0.5 rounded border font-medium ${SESSION_STATUS_CONFIG[status]?.color || 'bg-gray-100 border-gray-200 text-gray-600'}`}>
-          {SESSION_STATUS_CONFIG[status]?.label || status}
-        </span>
-      ),
+      render: (status) => <Pill tone={SESSION_STATUS_TONES[status]}>{SESSION_STATUS_LABELS[status] || status}</Pill>,
     },
     {
-      title: 'Nhịp tim TB',
-      dataIndex: ['metrics', 'avgHeartRate'],
-      key: 'avgHeartRate',
-      render: (v) => <span className="text-gray-500 font-medium">{v ? `${v} bpm` : '—'}</span>,
-    },
-    {
-      title: 'Tốc độ tối đa',
-      dataIndex: ['metrics', 'maxSpeed'],
-      key: 'maxSpeed',
-      render: (v) => <span className="text-gray-500 font-medium">{v ? `${v} km/h` : '—'}</span>,
-    },
-    {
-      title: 'Khoảng cách',
-      dataIndex: ['metrics', 'distance'],
-      key: 'distance',
-      render: (v) => <span className="text-gray-500 font-medium">{v ? `${v} m` : '—'}</span>,
+      title: 'Chỉ số',
+      key: 'metrics',
+      render: (_, r) => {
+        const m = r.metrics || {};
+        const parts = [m.avgHeartRate && `${m.avgHeartRate} bpm`, m.maxSpeed && `${m.maxSpeed} km/h`, m.distance && `${m.distance} m`].filter(Boolean);
+        return parts.length ? <span className="text-gray-600 tabular-nums">{parts.join(' · ')}</span> : <span className="text-gray-400">—</span>;
+      },
     },
     {
       title: 'Mục đích',
@@ -174,7 +152,7 @@ export default function OwnerTrainingPage() {
       title: 'Rating',
       dataIndex: 'performanceRating',
       key: 'performanceRating',
-      render: (r) => (r ? <span className="text-yellow-600 font-medium">⭐ {r}/10</span> : <span className="text-gray-400">—</span>),
+      render: (r) => (r ? <span className="font-semibold text-gray-900 tabular-nums">{r}/10</span> : <span className="text-gray-400">—</span>),
     },
     {
       title: 'Kết quả',
@@ -213,191 +191,119 @@ export default function OwnerTrainingPage() {
       title: 'Giai đoạn',
       dataIndex: 'phase',
       key: 'phase',
-      render: (p) => <span className="font-semibold text-gray-800">{PHASE_LABELS[p] || p}</span>,
+      render: (p) => <span className="font-semibold text-gray-900">{PHASE_LABELS[p] || p}</span>,
     },
     {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      render: (s) => (
-        <span className={`text-xs px-2 py-0.5 rounded border font-medium ${PLAN_STATUS_CONFIG[s]?.color || 'bg-gray-100 border-gray-200 text-gray-600'}`}>
-          {PLAN_STATUS_CONFIG[s]?.label || s}
-        </span>
-      ),
+      render: (s) => <Pill tone={PLAN_STATUS_CONFIG[s]?.tone}>{PLAN_STATUS_CONFIG[s]?.label || s}</Pill>,
     },
     {
       title: 'Cường độ',
       dataIndex: 'intensity',
       key: 'intensity',
-      render: (i) => (
-        <span className={`text-xs px-2 py-0.5 rounded border font-medium ${INTENSITY_CONFIG[i]?.color || 'bg-gray-100 border-gray-200 text-gray-600'}`}>
-          {INTENSITY_CONFIG[i]?.label || i}
-        </span>
-      ),
+      render: (i) => <Pill tone={INTENSITY_CONFIG[i]?.tone}>{INTENSITY_CONFIG[i]?.label || i}</Pill>,
     },
     {
       title: 'Mặt sân',
       dataIndex: 'surface',
       key: 'surface',
-      render: (s) => <span className="text-gray-600 font-medium">{SURFACE_LABELS[s] || s}</span>,
+      render: (s) => <span className="text-gray-600">{SURFACE_LABELS[s] || s}</span>,
     },
     {
       title: 'Cự ly',
       dataIndex: 'distanceTarget',
       key: 'distanceTarget',
-      render: (v) => <span className="text-gray-500">{v ? `${v} m` : '—'}</span>,
+      render: (v) => <span className="text-gray-600 tabular-nums">{v ? `${v} m` : '—'}</span>,
     },
     {
       title: 'KL/tuần',
       dataIndex: 'weeklyVolumeKm',
       key: 'weeklyVolumeKm',
-      render: (v) => <span className="text-gray-500">{v ? `${v} km` : '—'}</span>,
+      render: (v) => <span className="text-gray-600 tabular-nums">{v ? `${v} km` : '—'}</span>,
     },
     {
-      title: 'Bắt đầu',
-      dataIndex: 'startDate',
-      key: 'startDate',
-      render: (d) => <span className="text-gray-500 font-medium">{d ? dayjs(d).format('DD/MM/YYYY') : '—'}</span>,
-    },
-    {
-      title: 'Kết thúc',
-      dataIndex: 'endDate',
-      key: 'endDate',
-      render: (d) => <span className="text-gray-500 font-medium">{d ? dayjs(d).format('DD/MM/YYYY') : 'Chưa xác định'}</span>,
+      title: 'Thời gian',
+      key: 'period',
+      render: (_, r) => (
+        <span className="text-gray-600 tabular-nums">
+          {r.startDate ? dayjs(r.startDate).format('DD/MM/YYYY') : '—'} – {r.endDate ? dayjs(r.endDate).format('DD/MM/YYYY') : 'chưa xác định'}
+        </span>
+      ),
     },
   ];
 
-  const StatCard = ({ title, value, tagText, tagClass, subtitle }) => (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
-      <div className="flex justify-between items-center mb-4">
-        <span className="text-gray-500 text-sm font-medium">{title}</span>
-      </div>
-      <div className="flex items-baseline gap-3 mb-1">
-        <span className="text-3xl font-bold text-gray-900">{value}</span>
-        {tagText && (
-          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${tagClass}`}>
-            {tagText}
-          </span>
-        )}
-      </div>
-      <span className="text-xs text-gray-400 font-medium">{subtitle}</span>
-    </div>
-  );
-
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-gray-800 p-4 md:px-8 md:pb-8 md:pt-4 font-sans">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900 m-0 mb-1 tracking-tight">Lịch Huấn luyện</h1>
-        <p className="text-sm text-gray-500 m-0">
-          Theo dõi lịch trình tập luyện, kế hoạch huấn luyện và hiệu suất của chiến mã.
-        </p>
-      </div>
+    <div className="light-surface-box owner-ui text-gray-800 font-sans">
+      <PageHeroBanner eyebrow="TEAM 8 • LỊCH HUẤN LUYỆN" roleLabel="Horse Owner" title="Lịch Huấn Luyện Chiến Mã" subtitle="Theo dõi lịch trình tập luyện, kế hoạch huấn luyện và hiệu suất của chiến mã." />
 
       {/* Horse Selector */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <span className="font-medium text-gray-500 text-sm">Hiển thị cho:</span>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3">
+          <span className="font-medium text-gray-500 text-sm">Chiến mã</span>
           <Select
             placeholder="Tất cả chiến mã"
             allowClear
             value={selectedHorse}
             onChange={setSelectedHorse}
             options={horses.map((h) => ({ value: h._id, label: h.name }))}
-            className="min-w-[200px]"
-            size="middle"
+            className="min-w-[220px]"
           />
         </div>
         <Segmented
           value={viewMode}
           onChange={setViewMode}
           options={[
-            { value: 'sessions', label: '📅 Danh sách buổi tập' },
-            { value: 'plans', label: '📋 Kế hoạch dài hạn' },
+            { value: 'sessions', label: 'Buổi tập' },
+            { value: 'plans', label: 'Kế hoạch dài hạn' },
           ]}
-          className="bg-gray-100"
         />
       </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard 
-          title="Sắp diễn ra" 
-          value={scheduledCount}
-          tagText="Đang chờ"
-          tagClass="bg-blue-100 text-blue-700"
-          subtitle="Buổi tập theo lịch"
-        />
-        <StatCard 
-          title="Đã hoàn thành" 
-          value={completedCount}
-          tagText="Thành công"
-          tagClass="bg-emerald-100 text-emerald-700"
-          subtitle="Tổng số phiên đạt chuẩn"
-        />
-        <StatCard 
-          title="Rating Trung bình" 
-          value={avgRating}
-          tagText="⭐ Tốt"
-          tagClass="bg-yellow-100 text-yellow-700"
-          subtitle="Đánh giá từ HLV"
-        />
-        <StatCard 
-          title="Kế hoạch đang có" 
-          value={totalPlans}
-          subtitle="Kế hoạch huấn luyện"
-        />
-      </div>
+      <StatStrip
+        className="mb-4"
+        items={[
+          { label: 'Sắp diễn ra', value: scheduledCount, hint: 'Buổi tập theo lịch' },
+          { label: 'Đã hoàn thành', value: completedCount, hint: 'Buổi tập đã xong' },
+          { label: 'Rating trung bình', value: avgRating, hint: 'Đánh giá từ HLV' },
+          { label: 'Kế hoạch', value: totalPlans, hint: 'Kế hoạch huấn luyện' },
+        ]}
+      />
 
       {/* Active Plan Card */}
       {activePlan && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-emerald-800 text-base m-0">Kế hoạch đang áp dụng</h2>
-            <span className="text-xs px-2 py-0.5 rounded font-medium bg-emerald-200 text-emerald-800">
-              Đang Active
-            </span>
-          </div>
+        <OwnerCard
+          title="Kế hoạch đang áp dụng"
+          extra={<Pill tone="good">Đang áp dụng</Pill>}
+          className="mb-4"
+        >
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div>
-              <div className="text-emerald-600/70 text-xs font-medium mb-1">Giai đoạn</div>
-              <div className="font-semibold text-emerald-900 text-sm">{PHASE_LABELS[activePlan.phase] || activePlan.phase}</div>
-            </div>
-            <div>
-              <div className="text-emerald-600/70 text-xs font-medium mb-1">Cường độ</div>
-              <div className="font-semibold text-emerald-900 text-sm">{INTENSITY_CONFIG[activePlan.intensity]?.label || activePlan.intensity}</div>
-            </div>
-            <div>
-              <div className="text-emerald-600/70 text-xs font-medium mb-1">Mặt sân</div>
-              <div className="font-semibold text-emerald-900 text-sm">{SURFACE_LABELS[activePlan.surface] || activePlan.surface}</div>
-            </div>
-            <div>
-              <div className="text-emerald-600/70 text-xs font-medium mb-1">Cự ly mục tiêu</div>
-              <div className="font-semibold text-emerald-900 text-sm">{activePlan.distanceTarget} m</div>
-            </div>
-            <div>
-              <div className="text-emerald-600/70 text-xs font-medium mb-1">Khối lượng / Tuần</div>
-              <div className="font-semibold text-emerald-900 text-sm">{activePlan.weeklyVolumeKm} km</div>
-            </div>
-            <div>
-              <div className="text-emerald-600/70 text-xs font-medium mb-1">Thời gian</div>
-              <div className="font-semibold text-emerald-900 text-sm">
-                {dayjs(activePlan.startDate).format('DD/MM/YY')} - {activePlan.endDate ? dayjs(activePlan.endDate).format('DD/MM/YY') : 'N/A'}
+            {[
+              ['Giai đoạn', PHASE_LABELS[activePlan.phase] || activePlan.phase],
+              ['Cường độ', INTENSITY_CONFIG[activePlan.intensity]?.label || activePlan.intensity],
+              ['Mặt sân', SURFACE_LABELS[activePlan.surface] || activePlan.surface],
+              ['Cự ly mục tiêu', `${activePlan.distanceTarget} m`],
+              ['Khối lượng / tuần', `${activePlan.weeklyVolumeKm} km`],
+              ['Thời gian', `${dayjs(activePlan.startDate).format('DD/MM/YY')} – ${activePlan.endDate ? dayjs(activePlan.endDate).format('DD/MM/YY') : 'N/A'}`],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <div className="text-[11px] text-gray-400 uppercase font-semibold tracking-wider mb-1">{label}</div>
+                <div className="font-semibold text-gray-900 text-sm">{value}</div>
               </div>
-            </div>
+            ))}
           </div>
           {activePlan.notes && (
-            <div className="mt-4 p-3 bg-white/50 border border-emerald-100 rounded-lg text-emerald-800 text-sm">
-              <strong className="text-emerald-900 mr-2">Ghi chú HLV:</strong>
-              {activePlan.notes}
-            </div>
+            <p className="m-0 mt-4 pl-3 border-l-2 border-emerald-200 text-sm text-gray-700 leading-relaxed">
+              <strong className="text-gray-900">Ghi chú HLV:</strong> {activePlan.notes}
+            </p>
           )}
-        </div>
+        </OwnerCard>
       )}
 
       {/* Chart Section */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
-        <h2 className="text-base font-semibold text-gray-900 m-0 mb-4">Biểu đồ Tập luyện (6 tháng gần đây)</h2>
-        <div className="h-[300px] w-full">
+      <OwnerCard title="Biểu đồ tập luyện (6 tháng gần đây)" className="mb-4">
+        <div className="h-[280px] w-full">
           {chartData.some((row) => row.sessions > 0) ? (
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -405,7 +311,7 @@ export default function OwnerTrainingPage() {
                 <XAxis dataKey="label" axisLine={false} tickLine={false} />
                 <YAxis yAxisId="left" axisLine={false} tickLine={false} tickFormatter={(v) => Math.round(v)} />
                 <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                   formatter={(value, name) => {
                     const labelMap = {
@@ -418,7 +324,7 @@ export default function OwnerTrainingPage() {
                     return [typeof value === 'number' && value % 1 !== 0 ? value.toFixed(1) : value, labelMap[name] || name];
                   }}
                 />
-                <Legend />
+                <Legend formatter={(value) => <span style={{ color: '#374151' }}>{value}</span>} />
                 <Bar yAxisId="left" dataKey="sessions" name="Số buổi tập" fill="#bae6fd" radius={[4, 4, 0, 0]} />
                 <Bar yAxisId="left" dataKey="metGoals" name="Đạt mục tiêu" fill="#38bdf8" radius={[4, 4, 0, 0]} />
                 <Line yAxisId="right" type="monotone" dataKey="avgScore" name="Điểm TB" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
@@ -428,37 +334,31 @@ export default function OwnerTrainingPage() {
             <div className="h-full flex items-center justify-center text-gray-400">Không đủ dữ liệu biểu đồ</div>
           )}
         </div>
-      </div>
+      </OwnerCard>
 
       {/* Main Table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="p-5 border-b border-gray-100 flex justify-between items-center">
-          <h2 className="text-base font-semibold text-gray-900 m-0">
-            {viewMode === 'sessions' ? 'Bảng thống kê Buổi tập' : 'Danh sách Kế hoạch Huấn luyện'}
-          </h2>
-        </div>
-        
+      <OwnerCard title={viewMode === 'sessions' ? 'Buổi tập' : 'Kế hoạch huấn luyện'} flush>
         {viewMode === 'sessions' ? (
           <Table
             rowKey="_id"
             columns={sessionColumns}
             dataSource={horseSessions}
             loading={sessionsLoading}
-            pagination={{ pageSize: 10, position: ['bottomRight'] }}
-            className="custom-table"
-            locale={{ emptyText: 'Chưa có buổi tập nào' }}
+            pagination={{ pageSize: 10, hideOnSinglePage: true }}
+            scroll={{ x: 'max-content' }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có buổi tập nào" /> }}
           />
         ) : (
           <Table
             rowKey="_id"
             columns={planColumns}
             dataSource={horsePlans}
-            pagination={{ pageSize: 10, position: ['bottomRight'] }}
-            className="custom-table"
-            locale={{ emptyText: 'Chưa có kế hoạch nào' }}
+            pagination={{ pageSize: 10, hideOnSinglePage: true }}
+            scroll={{ x: 'max-content' }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có kế hoạch nào" /> }}
           />
         )}
-      </div>
+      </OwnerCard>
     </div>
   );
 }

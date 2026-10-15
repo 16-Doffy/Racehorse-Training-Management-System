@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
-import { Table, Typography, Tag, Button, Modal, Form, Select, InputNumber, Input, Row, Col, Statistic, Card } from 'antd';
+import { Table, Tag, Button, Modal, Form, Select, InputNumber, Input, Empty } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, DownloadOutlined } from '@ant-design/icons';
 import { downloadFile } from '../../lib/files';
@@ -11,10 +11,36 @@ import { ROLES } from '../../constants/roles';
 import dayjs from 'dayjs';
 import { FINANCE_CATEGORIES, categoryLabel } from './financeLabels';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
+import { OwnerCard, Pill, StatStrip } from '../horses/ownerUi';
 
-const { Title } = Typography;
+const money = (v) => `${(v || 0).toLocaleString('vi-VN')} đ`;
 
-const columns = (isOwner) => [
+// The Owner's read-only statement: one compact line per entry, money coloured by direction.
+const ownerColumns = [
+  { title: 'Ngựa', dataIndex: ['horse', 'name'], key: 'horse', render: (n) => <span className="font-semibold text-gray-900">{n || '—'}</span> },
+  { title: 'Loại', dataIndex: 'type', key: 'type', render: (t) => <Pill tone={t === 'revenue' ? 'good' : 'bad'}>{t === 'revenue' ? 'Doanh thu' : 'Chi phí'}</Pill> },
+  { title: 'Hạng mục', dataIndex: 'category', key: 'category', render: categoryLabel },
+  {
+    title: 'Nguồn',
+    dataIndex: 'source',
+    key: 'source',
+    render: (s) => <span className="text-gray-500">{s === 'race_prize' ? 'Tự động · kết quả giải' : s === 'system' ? 'Tự động' : 'Nhập tay'}</span>,
+  },
+  {
+    title: 'Số tiền',
+    dataIndex: 'amount',
+    key: 'amount',
+    align: 'right',
+    render: (v, r) => (
+      <span className={`font-semibold tabular-nums ${r.type === 'revenue' ? 'text-emerald-700' : 'text-red-600'}`}>
+        {r.type === 'revenue' ? '+' : '−'}{money(v)}
+      </span>
+    ),
+  },
+  { title: 'Ngày', dataIndex: 'date', key: 'date', render: (d) => <span className="text-gray-600 tabular-nums">{dayjs(d).format('DD/MM/YYYY')}</span> },
+];
+
+const columns = (isOwner) => isOwner ? ownerColumns : [
   { title: 'Ngựa', dataIndex: ['horse', 'name'], key: 'horse' },
   {
     title: 'Loại',
@@ -71,11 +97,15 @@ export default function FinancePage() {
   });
 
   return (
-    <div>
+    // The Owner's page is built from light boxes, like the other Owner pages (MainLayout keeps them light on a dark canvas).
+    <div className={isOwner ? 'light-surface-box owner-ui' : undefined}>
       {isOwner ? (
-        <Title level={3} className="!mb-4">
-          Chi phí & Doanh thu
-        </Title>
+        <PageHeroBanner
+          eyebrow="TEAM 8 • TÀI CHÍNH CHIẾN MÃ"
+          roleLabel="Horse Owner"
+          title="Chi Phí & Doanh Thu"
+          subtitle="Sổ thu chi của các chiến mã bạn sở hữu: tiền thưởng giải đấu, chi phí chăm sóc, thức ăn và y tế."
+        />
       ) : (
       <PageHeroBanner
         eyebrow="TEAM 8 • QUẢN TRỊ TÀI CHÍNH CLB"
@@ -131,45 +161,32 @@ export default function FinancePage() {
       )}
 
       {isOwner && (
-        <Row gutter={[16, 16]} className="mb-6">
-          <Col xs={24} md={8}>
-            <Card bordered={false} className="shadow-sm border border-gray-100" loading={summaryLoading}>
-              <Statistic
-                title="Tổng Doanh Thu"
-                value={summary.totalRevenue}
-                suffix="đ"
-                valueStyle={{ color: '#3f8600', fontWeight: 'bold' }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} md={8}>
-            <Card bordered={false} className="shadow-sm border border-gray-100" loading={summaryLoading}>
-              <Statistic
-                title="Tổng Chi Phí"
-                value={summary.totalCost}
-                suffix="đ"
-                valueStyle={{ color: '#cf1322', fontWeight: 'bold' }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} md={8}>
-            <Card
-              bordered={false}
-              className={`shadow-sm border border-gray-100 ${summary.netBalance >= 0 ? 'bg-green-50' : 'bg-red-50'}`}
-              loading={summaryLoading}
-            >
-              <Statistic
-                title="Lợi Nhuận Ròng"
-                value={summary.netBalance}
-                suffix="đ"
-                valueStyle={{ color: summary.netBalance >= 0 ? '#10b981' : '#ef4444', fontWeight: 'bold' }}
-              />
-            </Card>
-          </Col>
-        </Row>
+        <StatStrip
+          className="mb-4"
+          cols={3}
+          items={[
+            { label: 'Tổng doanh thu', value: summaryLoading ? '—' : money(summary.totalRevenue), hint: 'Năm nay', tone: 'good' },
+            { label: 'Tổng chi phí', value: summaryLoading ? '—' : money(summary.totalCost), hint: 'Năm nay', tone: summary.totalCost ? 'bad' : undefined },
+            { label: 'Lợi nhuận ròng', value: summaryLoading ? '—' : money(summary.netBalance), hint: summary.netBalance >= 0 ? 'Đang có lãi' : 'Đang lỗ', tone: summary.netBalance >= 0 ? 'good' : 'bad' },
+          ]}
+        />
       )}
 
-      <Table rowKey="_id" columns={columns(isOwner)} dataSource={data?.data} loading={isLoading} />
+      {isOwner ? (
+        <OwnerCard title="Sổ thu chi" flush>
+          <Table
+            rowKey="_id"
+            columns={columns(true)}
+            dataSource={data?.data}
+            loading={isLoading}
+            pagination={{ pageSize: 10, hideOnSinglePage: true }}
+            scroll={{ x: 'max-content' }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có khoản thu chi nào" /> }}
+          />
+        </OwnerCard>
+      ) : (
+        <Table rowKey="_id" columns={columns(false)} dataSource={data?.data} loading={isLoading} />
+      )}
 
       {!isOwner && (
         <Modal
