@@ -2,6 +2,13 @@ name: Test
 on:
   push:
   pull_request:
+  # Every morning at 06:45 Vietnam time (23:45 UTC), on main, so the time-of-day rules (meal slots,
+  # afternoon light work, pre-check windows) are exercised at a real morning hour. GitHub may start
+  # a scheduled run a few minutes late.
+  schedule:
+    - cron: '45 23 * * *'
+  # "Run workflow" button on the Actions tab.
+  workflow_dispatch:
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -43,3 +50,20 @@ jobs:
           name: playwright-failure
           path: scratch/playwright-results
           if-no-files-found: ignore
+  # Read-only check of the deployed API (server/scripts/liveSmoke.js). Only on the schedule or the
+  # button, not on every push. It signs in when the repository secrets LIVE_MANAGER_EMAIL and
+  # LIVE_MANAGER_PASSWORD are set; without them it only wakes the server and checks health.
+  live-smoke:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Read-only check of the live API
+        run: node server/scripts/liveSmoke.js
+        env:
+          LIVE_MANAGER_EMAIL: ${{ secrets.LIVE_MANAGER_EMAIL }}
+          LIVE_MANAGER_PASSWORD: ${{ secrets.LIVE_MANAGER_PASSWORD }}

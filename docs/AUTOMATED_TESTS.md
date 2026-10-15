@@ -69,3 +69,16 @@ nếu cần lưu browser vào thư mục có quyền ghi.
 [Workflow CI](../.github/workflows/test.yml) chạy các bước trên cho push/PR, MongoDB
 test riêng và lưu trace khi UI lỗi. Chỉ xác nhận CI trên GitHub sau khi workflow
 đã thực sự chạy. Kết quả local được ghi ở [TEST_REPORT.md](TEST_REPORT.md).
+
+## Chạy theo lịch và kiểm tra web thật
+
+- Cùng workflow chạy thêm mỗi sáng 06:45 giờ Việt Nam trên `main` (GitHub có thể trễ vài phút),
+  và chạy tay được bằng nút **Run workflow** ở tab Actions. Chỉ test code đã push lên `main`.
+- Job `live-smoke` ([server/scripts/liveSmoke.js](../server/scripts/liveSmoke.js)) chỉ chạy theo lịch
+  hoặc khi bấm tay: đánh thức Render, kiểm tra `/health-check`, rồi đăng nhập Manager và đọc một
+  số danh sách. Chỉ gửi GET và đăng nhập, không tạo hay sửa dữ liệu thật.
+- Đăng nhập cần hai secret của repo (Settings → Secrets and variables → Actions):
+  `LIVE_MANAGER_EMAIL`, `LIVE_MANAGER_PASSWORD`. Không có secret thì job chỉ kiểm tra health.
+  Không ghi mật khẩu vào code hay file trong repo.
+- Lượt chạy theo lịch thất bại thì GitHub gửi email; bảng kết quả nằm ở trang tóm tắt của lượt chạy.
+  GitHub tự tắt lịch nếu repo không có hoạt động trong 60 ngày.
