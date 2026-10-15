@@ -2,6 +2,10 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { startIntegration, intake, day } = require('../../test-support/integration');
 
+// n minutes from now, but still today: a session tomorrow has no meals to judge yet, so a run just
+// before midnight would otherwise test nothing.
+const laterToday = (n) => new Date(Math.min(Date.now() + n * 60000, day(1).getTime() - 1000));
+
 // A missed meal is not just a red label: the trainer is told, harder work waits until the horse has
 // eaten, and the trainer can ask the groom to feed it now. Rations sit in their part of the day, far
 // enough apart, and the trainer can delete one.
@@ -54,7 +58,7 @@ test('meals: ration times, missed meals, hard work on an empty stomach, make-up,
       horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', mealSlot: 'morning',
       scheduledDate: today, status: 'skipped', skipReason: 'TEST hết cám',
     });
-    const at = new Date(Date.now() + 15 * 60000);
+    const at = laterToday(15);
     const hard = (await computeReadiness(horse._id, { scheduledAt: at, intensity: 'high' })).gates.find((g) => g.key === 'nutrition');
     assert.equal(hard.status, 'blocked', hard.detail);
     assert.match(hard.detail, /nhân viên báo không cho ăn được \(TEST hết cám\)/);
@@ -71,7 +75,7 @@ test('meals: ration times, missed meals, hard work on an empty stomach, make-up,
     assert.equal((await raw('trainer', 'POST', `/stable/tasks/${skipped._id}/make-up`)).status, 409, 'once per missed meal');
     // A meal reported "can't feed" before its hour is scheduled after its make-up; the groom's list
     // still puts the make-up first, so the app (one task per meal) shows the one still to do.
-    await models.DailyTask.updateOne({ _id: skipped._id }, { $set: { scheduledDate: new Date(Date.now() + 60 * 60000) } });
+    await models.DailyTask.updateOne({ _id: skipped._id }, { $set: { scheduledDate: laterToday(60) } });
     const list = (await api('groom', 'GET', `/stable/tasks?horse=${horse._id}`)).map((task) => String(task._id));
     assert.ok(list.indexOf(String(makeUp._id)) < list.indexOf(String(skipped._id)), 'make-up listed before the meal it replaces');
     await models.DailyTask.updateOne({ _id: skipped._id }, { $set: { scheduledDate: today } });
