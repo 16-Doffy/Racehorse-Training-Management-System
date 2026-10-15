@@ -430,7 +430,9 @@ export default function HorseHealthDetail() {
                 records={records}
                 horseId={horse._id}
                 onNewExam={() => navigate(`/veterinarian/examinations/new/${horse._id}`)}
+                onRecordUpdated={fetchHorseDetails}
               />
+
             </Tab>
 
             {/* Tab 3: Injuries & 3D Anatomy Model */}

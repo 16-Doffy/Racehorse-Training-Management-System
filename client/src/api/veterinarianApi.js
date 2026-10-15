@@ -5,6 +5,11 @@ export const veterinarianApi = {
   getHorses: (params) => axiosClient.get('/horses', { params }),
   getHorseById: (id) => axiosClient.get(`/horses/${id}`),
   updateCareSchedule: (id, payload) => axiosClient.patch(`/horses/${id}/care-schedule`, payload),
+  // Routine Care Events (Tiêm phòng, Tẩy giun, Đóng móng)
+  getCareEvents: (horseId, params) => axiosClient.get(`/horses/${horseId}/care-events`, { params }),
+  createCareEvent: (horseId, payload) => axiosClient.post(`/horses/${horseId}/care-events`, payload),
+  deleteCareEvent: (horseId, eventId) => axiosClient.delete(`/horses/${horseId}/care-events/${eventId}`),
+
 
   // Health Records (Medical Examinations & Diagnoses)
   getHealthRecords: (params) => axiosClient.get('/health/records', { params }),

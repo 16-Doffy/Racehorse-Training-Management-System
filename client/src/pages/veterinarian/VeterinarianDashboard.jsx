@@ -22,7 +22,7 @@ import HealthStatusBadge from '../../components/veterinarian/HealthStatusBadge';
 import HealthAlert from '../../components/veterinarian/HealthAlert';
 import TrainingLockModal from '../../components/veterinarian/TrainingLockModal';
 import IncidentManagementModal from '../../components/veterinarian/IncidentManagementModal';
-import { formatDate } from '../../utils/formatDate';
+import { formatDate, formatDateForInput } from '../../utils/formatDate';
 import { INJURY_SEVERITY_CONFIG } from '../../utils/healthStatus';
 import { INCIDENT_STATUS_META, INCIDENT_SEVERITY_META, INCIDENT_CATEGORY_META, incidentStatusOf } from '../../constants/care';
 import CareOrdersCard from '../../features/dashboard/CareOrdersCard';
@@ -65,26 +65,103 @@ export default function VeterinarianDashboard() {
   // Update Exam Request Modal State
   const [selectedExamReq, setSelectedExamReq] = useState(null);
   const [showExamModal, setShowExamModal] = useState(false);
-  const [examStatus, setExamStatus] = useState('done');
-  const [resolutionNote, setResolutionNote] = useState('');
+  const [examAction, setExamAction] = useState('accept'); // 'accept' | 'decline' | 'close'
+  const [examScheduledDate, setExamScheduledDate] = useState('');
+  const [examScheduledTime, setExamScheduledTime] = useState('');
+  const [examResolutionNote, setExamResolutionNote] = useState('');
+  const [examModalError, setExamModalError] = useState(null);
   const [isUpdatingExam, setIsUpdatingExam] = useState(false);
+
+  const parseDatePart = (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    if (!Number.isFinite(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
+  const parseTimePart = (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    if (!Number.isFinite(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const handleClearAppointment = () => {
+    setExamScheduledDate('');
+    setExamScheduledTime('');
+  };
+
+  const handleOpenAcceptExam = (req) => {
+    setSelectedExamReq(req);
+    setExamAction('accept');
+    setExamScheduledDate(parseDatePart(req.scheduledFor));
+    setExamScheduledTime(parseTimePart(req.scheduledFor));
+    setExamResolutionNote(req.resolutionNote || '');
+    setExamModalError(null);
+    setShowExamModal(true);
+  };
+
+  const handleOpenDeclineExam = (req) => {
+    setSelectedExamReq(req);
+    setExamAction('decline');
+    setExamScheduledDate('');
+    setExamScheduledTime('');
+    setExamResolutionNote('');
+    setExamModalError(null);
+    setShowExamModal(true);
+  };
 
   const handleUpdateExamRequest = async () => {
     if (!selectedExamReq) return;
+    setExamModalError(null);
+
+    let payload = {};
+    if (examAction === 'accept') {
+      payload = { action: 'accept' };
+      if (examScheduledDate) {
+        const timePart = examScheduledTime || '09:00';
+        const at = new Date(`${examScheduledDate}T${timePart}`);
+        if (!Number.isFinite(at.getTime())) {
+          setExamModalError('Ngày hoặc giờ hẹn khám không hợp lệ.');
+          return;
+        }
+        if (at < new Date(Date.now() - 5 * 60000)) {
+          setExamModalError('Thời gian hẹn khám phải ở tương lai.');
+          return;
+        }
+        payload.scheduledFor = at.toISOString();
+      } else if (examScheduledTime) {
+        setExamModalError('Vui lòng chọn ngày hẹn khám trước khi chọn giờ.');
+        return;
+      }
+      if (examResolutionNote.trim()) {
+        payload.note = examResolutionNote.trim();
+      }
+    } else if (examAction === 'decline') {
+      if (!examResolutionNote.trim()) {
+        setExamModalError('Vui lòng ghi lý do từ chối để người yêu cầu biết hướng xử lý.');
+        return;
+      }
+      payload = { action: 'decline', note: examResolutionNote.trim() };
+    } else {
+      payload = { status: 'done', resolutionNote: examResolutionNote.trim() };
+    }
+
+
     setIsUpdatingExam(true);
     try {
-      await veterinarianApi.updateExamRequest(selectedExamReq._id, {
-        status: examStatus,
-        resolutionNote,
-      });
+      await veterinarianApi.updateExamRequest(selectedExamReq._id, payload);
       setShowExamModal(false);
       refreshData();
     } catch (err) {
-      console.error(err);
+      setExamModalError(err?.message || 'Không thể cập nhật yêu cầu khám.');
     } finally {
       setIsUpdatingExam(false);
     }
   };
+
 
   // Statistics Calculations
   const totalHorses = horses.length;
@@ -218,31 +295,68 @@ export default function VeterinarianDashboard() {
             <strong className="fs-6">Hàng Đợi Khám Bệnh ({examRequests.filter(req => req.status === 'pending').length} yêu cầu chờ xử lý)</strong>
           </div>
           <div className="d-flex flex-column gap-2 mt-2">
-            {examRequests.filter(req => req.status === 'pending').map(req => (
-              <div key={req._id} className="d-flex justify-content-between align-items-center bg-white p-2.5 rounded border border-warning-subtle">
-                <div>
-                  <strong>{req.horse?.name || 'Ngựa'}</strong>
-                  <span className="text-muted small ms-2">Yêu cầu bởi: {req.requestedBy?.name || 'HLV'}</span>
-                  <div className="small mt-1">
-                    <span className="badge bg-danger me-1">{req.priority === 'urgent' ? 'Khẩn cấp' : (req.priority === 'high' ? 'Cao' : 'Bình thường')}</span>
-                    Lý do: {req.reason}
+            {examRequests.filter(req => req.status === 'pending').map((req) => {
+              const isAccepted = Boolean(req.acceptedAt);
+              return (
+                <div key={req._id} className="d-flex flex-wrap justify-content-between align-items-center bg-white p-3 rounded border border-warning-subtle gap-2">
+                  <div className="flex-grow-1">
+                    <div className="d-flex flex-wrap align-items-center gap-2">
+                      <strong className="fs-6">{req.horse?.name || 'Ngựa'}</strong>
+                      <span className="text-muted small">Yêu cầu bởi: {req.requestedBy?.name || 'HLV'}</span>
+                      <span className={`badge ${req.priority === 'urgent' ? 'bg-danger' : req.priority === 'high' ? 'bg-warning text-dark' : 'bg-secondary'}`}>
+                        {req.priority === 'urgent' ? 'Khẩn cấp' : req.priority === 'high' ? 'Ưu tiên cao' : 'Bình thường'}
+                      </span>
+                      {isAccepted ? (
+                        <span className="badge bg-success-subtle text-success border border-success">
+                          <i className="bi bi-check-circle me-1"></i>
+                          Bác sĩ {req.acceptedBy?.name || ''} đã nhận
+                        </span>
+                      ) : (
+                        <span className="badge bg-warning-subtle text-dark border border-warning">
+                          <i className="bi bi-hourglass-split me-1"></i> Chờ tiếp nhận
+                        </span>
+                      )}
+                    </div>
+                    {req.reason && (
+                      <div className="small text-muted mt-1">
+                        <strong>Lý do:</strong> {req.reason}
+                      </div>
+                    )}
+                    {isAccepted && req.scheduledFor && (
+                      <div className="small text-primary fw-semibold mt-1">
+                        <i className="bi bi-calendar-event me-1"></i>
+                        Hẹn khám lúc: {new Date(req.scheduledFor).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        {req.resolutionNote && <span className="text-secondary fw-normal ms-1">({req.resolutionNote})</span>}
+                      </div>
+                    )}
+                  </div>
+                  <div className="d-flex flex-wrap gap-2">
+                    <Button
+                      variant={isAccepted ? 'outline-primary' : 'success'}
+                      size="sm"
+                      onClick={() => handleOpenAcceptExam(req)}
+                    >
+                      <i className={`bi ${isAccepted ? 'bi-clock-history' : 'bi-calendar-check'} me-1`}></i>
+                      {isAccepted ? 'Đổi lịch hẹn' : 'Nhận & Hẹn giờ'}
+                    </Button>
+                    <Button
+                      variant="outline-danger"
+                      size="sm"
+                      onClick={() => handleOpenDeclineExam(req)}
+                    >
+                      <i className="bi bi-x-circle me-1"></i> Từ chối
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => navigate(`/veterinarian/examinations/new/${req.horse?._id || req.horse}`)}
+                    >
+                      <i className="bi bi-stethoscope me-1"></i> Khám ngay
+                    </Button>
                   </div>
                 </div>
-                <div className="d-flex gap-2">
-                  <Button variant="outline-secondary" size="sm" onClick={() => {
-                    setSelectedExamReq(req);
-                    setExamStatus('cancelled');
-                    setResolutionNote('');
-                    setShowExamModal(true);
-                  }}>
-                    <i className="bi bi-x-circle me-1"></i> Đóng yêu cầu
-                  </Button>
-                  <Button variant="primary" size="sm" onClick={() => navigate(`/veterinarian/examinations/new/${req.horse?._id || req.horse}`)}>
-                    <i className="bi bi-stethoscope me-1"></i> Tiến hành khám
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -794,39 +908,155 @@ export default function VeterinarianDashboard() {
       />
 
       {/* Update Exam Request Modal */}
-      <Modal show={showExamModal} onHide={() => setShowExamModal(false)}>
-        <Modal.Header closeButton>
-          <Modal.Title>Cập nhật Yêu cầu Khám bệnh</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Trạng thái</Form.Label>
-              <Form.Select value={examStatus} onChange={(e) => setExamStatus(e.target.value)}>
-                <option value="done">Đã giải quyết (Done)</option>
-                <option value="cancelled">Từ chối / Hủy (Cancelled)</option>
-              </Form.Select>
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Ghi chú phản hồi (Tùy chọn)</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={resolutionNote}
-                onChange={(e) => setResolutionNote(e.target.value)}
-                placeholder="Ví dụ: Đã khám xong, không có vấn đề gì nghiêm trọng..."
-              />
-            </Form.Group>
-          </Form>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowExamModal(false)} disabled={isUpdatingExam}>
-            Đóng
-          </Button>
-          <Button variant="primary" onClick={handleUpdateExamRequest} disabled={isUpdatingExam}>
-            {isUpdatingExam ? 'Đang lưu...' : 'Lưu cập nhật'}
-          </Button>
-        </Modal.Footer>
+      <Modal show={showExamModal} onHide={() => setShowExamModal(false)} centered>
+        <Form onSubmit={(e) => { e.preventDefault(); handleUpdateExamRequest(); }}>
+          <Modal.Header closeButton>
+            <Modal.Title className="fs-6 fw-bold">
+              {examAction === 'accept' ? (
+                <>
+                  <i className="bi bi-calendar-check me-2 text-success"></i>
+                  Tiếp Nhận & Hẹn Giờ Khám — {selectedExamReq?.horse?.name || 'Chiến mã'}
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-x-circle me-2 text-danger"></i>
+                  Từ Chối Yêu Cầu Khám — {selectedExamReq?.horse?.name || 'Chiến mã'}
+                </>
+              )}
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            {examModalError && (
+              <Alert variant="danger" className="py-2 small">
+                {examModalError}
+              </Alert>
+            )}
+
+            {selectedExamReq?.reason && (
+              <div className="mb-3 p-2.5 bg-light rounded border small">
+                <strong>Lý do từ người gửi ({selectedExamReq.requestedBy?.name || 'HLV'}):</strong>
+                <div className="text-secondary mt-1">{selectedExamReq.reason}</div>
+              </div>
+            )}
+
+            {examAction === 'accept' ? (
+              <>
+                <div className="mb-3 p-3 bg-light rounded border">
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <Form.Label className="fw-semibold mb-0">
+                      <i className="bi bi-calendar-event me-1 text-primary"></i>
+                      Lịch Hẹn Khám (Tùy chọn)
+                    </Form.Label>
+                    {(examScheduledDate || examScheduledTime) && (
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        className="py-0 px-2"
+                        style={{ fontSize: '12px' }}
+                        onClick={handleClearAppointment}
+                        title="Xóa ngày và giờ hẹn khám"
+                      >
+                        <i className="bi bi-trash me-1"></i> Xóa hẹn
+                      </Button>
+                    )}
+                  </div>
+
+                  <Row className="g-2">
+                    <Col xs={12} sm={7}>
+                      <Form.Group>
+                        <Form.Label className="small text-muted mb-1">Ngày hẹn khám</Form.Label>
+                        <Form.Control
+                          type="date"
+                          min={formatDateForInput(new Date())}
+                          value={examScheduledDate}
+                          onChange={(e) => setExamScheduledDate(e.target.value)}
+                        />
+                      </Form.Group>
+                    </Col>
+                    <Col xs={12} sm={5}>
+                      <Form.Group>
+                        <Form.Label className="small text-muted mb-1">Giờ hẹn khám</Form.Label>
+                        <div className="d-flex gap-1">
+                          <Form.Control
+                            type="time"
+                            value={examScheduledTime}
+                            onChange={(e) => setExamScheduledTime(e.target.value)}
+                          />
+                          {(examScheduledDate || examScheduledTime) && (
+                            <Button
+                              variant="outline-danger"
+                              onClick={handleClearAppointment}
+                              title="Xóa ngày giờ hẹn"
+                            >
+                              <i className="bi bi-x-lg"></i>
+                            </Button>
+                          )}
+                        </div>
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                  <Form.Text className="text-muted d-block mt-1" style={{ fontSize: '11px' }}>
+                    Ngày và giờ đã được tách riêng. Bấm nút xóa bên cạnh để hủy đặt lịch hẹn nếu cần.
+                  </Form.Text>
+                </div>
+
+
+                <Form.Group className="mb-3">
+                  <Form.Label className="fw-semibold">Ghi chú phản hồi / Dặn dò</Form.Label>
+                  <Form.Control
+                    as="textarea"
+                    rows={3}
+                    value={examResolutionNote}
+                    onChange={(e) => setExamResolutionNote(e.target.value)}
+                    placeholder="Ví dụ: Đã nhận, chuẩn bị sẵn ngựa ở khu chuồng A lúc 15:00..."
+                  />
+                </Form.Group>
+              </>
+            ) : (
+              <Form.Group className="mb-3">
+                <Form.Label className="fw-semibold">
+                  Lý do từ chối khám <span className="text-danger">*</span>
+                </Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={3}
+                  value={examResolutionNote}
+                  onChange={(e) => setExamResolutionNote(e.target.value)}
+                  placeholder="Bắt buộc ghi rõ lý do để HLV / Manager biết hướng xử lý..."
+                  required
+                />
+                <Form.Text className="text-muted" style={{ fontSize: '11px' }}>
+                  Thông báo sẽ được gửi trực tiếp tới người yêu cầu kèm lý do này.
+                </Form.Text>
+              </Form.Group>
+            )}
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowExamModal(false)} disabled={isUpdatingExam}>
+              Hủy
+            </Button>
+            <Button
+              variant={examAction === 'accept' ? 'success' : 'danger'}
+              type="submit"
+              disabled={isUpdatingExam}
+            >
+              {isUpdatingExam ? (
+                <>
+                  <Spinner animation="border" size="sm" className="me-1" />
+                  Đang lưu...
+                </>
+              ) : examAction === 'accept' ? (
+                <>
+                  <i className="bi bi-check2-circle me-1"></i> Xác nhận nhận yêu cầu
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-x-circle me-1"></i> Xác nhận từ chối
+                </>
+              )}
+            </Button>
+          </Modal.Footer>
+        </Form>
       </Modal>
     </Container>
   );

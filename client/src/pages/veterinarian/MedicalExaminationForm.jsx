@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Form, Button, Alert, Spinner } from 'react-bootstrap';
+import React, { useState, useEffect, useRef } from 'react';
+import { Container, Row, Col, Card, Form, Button, Alert, Spinner, InputGroup } from 'react-bootstrap';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import veterinarianApi from '../../api/veterinarianApi';
@@ -13,6 +13,7 @@ export default function MedicalExaminationForm() {
   const { user } = useSelector((state) => state.auth);
 
   const isEditMode = Boolean(id);
+  const fileInputRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -23,6 +24,7 @@ export default function MedicalExaminationForm() {
   const [existingAttachments, setExistingAttachments] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState(null);
+
 
   const [formData, setFormData] = useState({
     horse: horseId || '',
@@ -143,9 +145,23 @@ export default function MedicalExaminationForm() {
     }
   };
 
-  const handleRemoveSelectedFile = (index) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  const handleClearSelectedFiles = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    setSelectedFiles([]);
   };
+
+  const handleRemoveSelectedFile = (index) => {
+    setSelectedFiles((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      if (next.length === 0 && fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return next;
+    });
+  };
+
 
   const handleDeleteExistingAttachment = async (attachmentId) => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa tệp đính kèm này?')) return;
@@ -524,19 +540,22 @@ export default function MedicalExaminationForm() {
                           </div>
                         </div>
                         <Button
-                          variant="link"
+                          variant="outline-danger"
                           size="sm"
-                          className="text-danger p-0 ms-1 border-0"
+                          className="py-1 px-2.5 ms-2 text-nowrap"
                           onClick={() => handleDeleteExistingAttachment(att._id)}
                           disabled={deletingAttachmentId === att._id}
-                          title="Xóa tệp này"
+                          title="Xóa vĩnh viễn tệp đính kèm này"
                         >
                           {deletingAttachmentId === att._id ? (
                             <Spinner size="sm" animation="border" />
                           ) : (
-                            <i className="bi bi-trash"></i>
+                            <>
+                              <i className="bi bi-trash me-1"></i> Xóa
+                            </>
                           )}
                         </Button>
+
                       </div>
                     ))}
                   </div>
@@ -544,8 +563,9 @@ export default function MedicalExaminationForm() {
               )}
 
               {/* File Input */}
-              <Form.Group>
+              <Form.Group className="mb-2">
                 <Form.Control
+                  ref={fileInputRef}
                   type="file"
                   multiple
                   accept="image/*,application/pdf"
@@ -557,30 +577,60 @@ export default function MedicalExaminationForm() {
                 </Form.Text>
               </Form.Group>
 
+
+
               {/* Staged files for upload */}
               {selectedFiles.length > 0 && (
-                <div className="mt-2">
-                  <span className="small fw-semibold text-primary d-block mb-1">
-                    Tệp mới chuẩn bị tải lên ({selectedFiles.length}):
-                  </span>
-                  <div className="d-flex flex-wrap gap-2">
+                <div className="mt-3">
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <span className="small fw-bold text-primary">
+                      <i className="bi bi-file-earmark-arrow-up me-1"></i>
+                      Tệp chuẩn bị tải lên ({selectedFiles.length}):
+                    </span>
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="text-danger p-0 text-decoration-none small"
+                      onClick={handleClearSelectedFiles}
+                    >
+                      <i className="bi bi-trash me-1"></i> Xóa tất cả
+                    </Button>
+                  </div>
+                  <div className="d-flex flex-column gap-2">
                     {selectedFiles.map((file, idx) => (
-                      <span key={idx} className="badge bg-white text-dark border p-2 d-flex align-items-center gap-2">
-                        <i className="bi bi-file-earmark-arrow-up text-primary"></i>
-                        <span>
-                          {file.name} ({Math.round(file.size / 1024)} KB)
-                        </span>
-                        <i
-                          className="bi bi-x-circle text-danger cursor-pointer ms-1"
-                          style={{ cursor: 'pointer' }}
+                      <div
+                        key={idx}
+                        className="p-2.5 bg-white rounded border d-flex justify-content-between align-items-center shadow-sm"
+                      >
+                        <div className="d-flex align-items-center gap-2 text-truncate me-2">
+                          <i
+                            className={
+                              file.type.startsWith('image/')
+                                ? 'bi bi-image text-info fs-5'
+                                : 'bi bi-file-earmark-pdf text-danger fs-5'
+                            }
+                          ></i>
+                          <div className="text-truncate">
+                            <div className="fw-semibold small text-truncate text-dark">{file.name}</div>
+                            <small className="text-muted">{Math.round(file.size / 1024)} KB</small>
+                          </div>
+                        </div>
+                        <Button
+                          variant="outline-danger"
+                          size="sm"
+                          className="py-1 px-2.5 text-nowrap"
                           onClick={() => handleRemoveSelectedFile(idx)}
-                        ></i>
-                      </span>
+                          title="Xóa tệp này"
+                        >
+                          <i className="bi bi-trash me-1"></i> Xóa
+                        </Button>
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
             </div>
+
 
             {/* Actions */}
             <div className="d-flex justify-content-end gap-2 pt-3 border-top">

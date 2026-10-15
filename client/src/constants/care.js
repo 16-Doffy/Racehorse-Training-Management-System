@@ -85,3 +85,10 @@ export const MEDICATION_ROUTE_LABELS = {
   eye: 'Nhỏ mắt',
   other: 'Khác',
 };
+
+export const CARE_EVENT_META = {
+  vaccination: { label: 'Tiêm phòng', icon: 'bi-eyedropper', color: 'primary', bg: 'primary', badgeColor: 'blue' },
+  deworming: { label: 'Tẩy giun', icon: 'bi-capsule', color: 'success', bg: 'success', badgeColor: 'green' },
+  farrier: { label: 'Đóng móng', icon: 'bi-hammer', color: 'dark', bg: 'dark', badgeColor: 'purple' },
+};
+

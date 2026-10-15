@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Card, Table, Badge, Button, Form, Modal, Spinner, Alert } from 'react-bootstrap';
 import { formatDate, formatDateForInput } from '../../utils/formatDate';
 import veterinarianApi from '../../api/veterinarianApi';
+import CareEventsSection from './CareEventsSection';
+
 
 export default function MedicalScheduleList({ horse, onUpdated }) {
   const careSchedule = horse?.careSchedule || {};
@@ -197,6 +199,10 @@ export default function MedicalScheduleList({ horse, onUpdated }) {
           </Modal.Footer>
         </Form>
       </Modal>
+
+      {/* Routine Care History & Actions */}
+      <CareEventsSection horse={horse} onUpdated={onUpdated} />
     </div>
   );
 }
+

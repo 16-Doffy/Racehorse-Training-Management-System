@@ -317,9 +317,17 @@ export default function MedicalSchedule() {
                             variant="outline-primary"
                             size="sm"
                             onClick={() => handleOpenEdit(row.horse)}
-                            title="Cập nhật lịch cho ngựa này"
+                            title="Cập nhật hạn lịch cho ngựa này"
                           >
                             <i className="bi bi-pencil me-1"></i> Sửa
+                          </Button>
+                          <Button
+                            variant="outline-info"
+                            size="sm"
+                            onClick={() => navigate(`/veterinarian/horses/${row.horse._id}`)}
+                            title="Xem hồ sơ & Lịch sử chăm sóc thực tế"
+                          >
+                            <i className="bi bi-journal-medical"></i>
                           </Button>
                         </div>
                       </td>

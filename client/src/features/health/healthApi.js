@@ -11,6 +11,13 @@ export const healthRecordApi = {
   updateExamRequest: (id, payload) => axiosClient.patch(`/health/exam-requests/${id}`, payload),
 };
 
+export const careEventApi = {
+  list: (horseId, params) => axiosClient.get(`/horses/${horseId}/care-events`, { params }),
+  create: (horseId, payload) => axiosClient.post(`/horses/${horseId}/care-events`, payload),
+  delete: (horseId, eventId) => axiosClient.delete(`/horses/${horseId}/care-events/${eventId}`),
+};
+
+
 export const treatmentApi = {
   list: (params) => axiosClient.get('/health/treatments', { params }),
   getOne: (id) => axiosClient.get(`/health/treatments/${id}`),
