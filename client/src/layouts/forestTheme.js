@@ -8,12 +8,16 @@ import { ROLES } from '../constants/roles';
  * Applied by MainLayout through a nested ConfigProvider, so every Ant Design component inside the
  * layout (tables, cards, forms, modals) picks it up without page-by-page changes.
  */
-export const FOREST_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN, ROLES.OWNER];
+export const FOREST_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN, ROLES.OWNER, ROLES.GROOM];
 export const usesForestTheme = (role) => FOREST_ROLES.includes(role);
-// The Sáng/Tối switch is the Club Manager / Head Trainer / Horse Owner look. The vet stays on the
-// forest look it had (the warm oat page, preset parchment_old) until trunghieu decides.
-export const CANVAS_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.OWNER];
+// Every role on the web has the Sáng/Tối switch and the Team 8 look.
+export const CANVAS_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.OWNER, ROLES.VETERINARIAN, ROLES.GROOM];
 export const usesCanvasPicker = (role) => CANVAS_ROLES.includes(role);
+// On the dark canvas these roles' pages go fully dark; the Owner's pages keep their own light panels.
+export const FULL_DARK_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN, ROLES.GROOM];
+// The vet's pages are built with Bootstrap: on the dark canvas they use Bootstrap's dark mode
+// (MainLayout puts data-bs-theme on <body>), recoloured to the forest palette.
+export const BOOTSTRAP_ROLES = [ROLES.VETERINARIAN];
 
 // Small label above the sidebar menu.
 export const MENU_SECTION_LABEL = {
@@ -21,6 +25,7 @@ export const MENU_SECTION_LABEL = {
   [ROLES.HEAD_TRAINER]: 'Huấn luyện',
   [ROLES.VETERINARIAN]: 'Y Tế & Thú Y',
   [ROLES.OWNER]: 'Chủ Sở Hữu',
+  [ROLES.GROOM]: 'Chăm sóc',
 };
 
 export const FOREST = {
@@ -61,7 +66,7 @@ export const CANVAS_PRESETS = {
     ink: '#FAF8F5',
     isDark: true,
   },
-  // The vet's fixed page (the warm oat it always had).
+  // The warm oat page the vet had before the switch (kept for a key saved in a browser).
   parchment_old: {
     key: 'parchment_old',
     label: 'Bản cũ',

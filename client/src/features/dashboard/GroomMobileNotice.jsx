@@ -11,18 +11,18 @@ const { Title, Paragraph, Text } = Typography;
 export default function GroomMobileNotice() {
   return (
     <div className="max-w-[720px] mx-auto">
-      <div className="premium-card p-10 text-center">
+      <div className="premium-card light-surface-box p-10 text-center">
         <div className="w-16 h-16 rounded-full bg-[#022c22] text-[#eab308] flex items-center justify-center text-3xl mx-auto mb-6">
           <MobileOutlined />
         </div>
-        <Title level={3} className="!text-[#022c22]" style={{ fontFamily: "'Lora', Georgia, serif" }}>
+        <Title level={3} style={{ fontFamily: "'Lora', Georgia, serif" }}>
           Vai trò Nhân viên Chăm sóc dùng trên điện thoại
         </Title>
         <Paragraph type="secondary" className="!mb-6">
           Toàn bộ công việc chăm sóc — sơ đồ chuồng trại, việc hàng ngày, khẩu phần ăn, báo cáo sự cố kèm ảnh và vật tư
           khu vực — đã chuyển sang ứng dụng di động, nên bản web không còn các màn hình này.
         </Paragraph>
-        <div className="bg-[#fdfbf7] border border-gray-100 rounded-xl p-5 text-left">
+        <div className="bg-[#FAF7F0] border border-[#E5DEC9] rounded-xl p-5 text-left">
           <Text strong className="block mb-2">
             Cách mở ứng dụng
           </Text>

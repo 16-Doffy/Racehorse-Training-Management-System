@@ -61,21 +61,18 @@ test('trainer horse list counts from the real health status and checklist', asyn
   const kpi = (label) => page.locator('div').filter({ hasText: new RegExp(`^${label}$`, 'i') }).locator('xpath=following-sibling::div[1]');
   await expect(kpi('chưa có kế hoạch')).toHaveText(/^0\s*ngựa/);
 });
-for (const [role, picker] of [['manager', true], ['trainer', true], ['vet', false], ['owner', true]]) {
-  test(`${role} ${picker ? 'gets' : 'does not get'} the light/dark switch, even with a dark canvas saved in the browser`, async ({ page }) => {
+for (const role of ['manager', 'trainer', 'vet', 'owner', 'groom']) {
+  test(`${role} gets the light/dark switch and opens dark when a dark canvas is saved in the browser`, async ({ page }) => {
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addInitScript(() => localStorage.setItem('wdp301_canvas_theme', 'peak_equestrian_dark'));
     await login(page, role);
-    await expect(page.locator('.ant-segmented', { hasText: 'Tối' })).toHaveCount(picker ? 1 : 0);
-    await expect(page.locator('.is-dark-canvas')).toHaveCount(picker ? 1 : 0);
-    // Only the Manager's and the Head Trainer's pages go fully dark; the Owner keeps its light panels.
-    await expect(page.locator('.staff-dark')).toHaveCount(['manager', 'trainer'].includes(role) ? 1 : 0);
-    if (role === 'vet') {
-      // The vet stays on its fixed classic forest page; the Owner now shares the Manager's canvas look.
-      await expect(page.locator('.forest-layout')).toHaveCount(1);
-      await expect(page.locator('.canvas-sider')).toHaveCount(0);
-    }
+    await expect(page.locator('.ant-segmented', { hasText: 'Tối' })).toHaveCount(1);
+    await expect(page.locator('.is-dark-canvas.canvas-sider, .is-dark-canvas .canvas-sider')).toHaveCount(1);
+    // The staff's pages go fully dark; the Owner keeps its light panels.
+    await expect(page.locator('.staff-dark')).toHaveCount(role === 'owner' ? 0 : 1);
+    // The vet's Bootstrap pages follow through Bootstrap's dark mode.
+    await expect(page.locator('body[data-bs-theme="dark"]')).toHaveCount(role === 'vet' ? 1 : 0);
     expect(errors).toEqual([]);
   });
 }

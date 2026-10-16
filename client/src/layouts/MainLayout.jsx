@@ -13,11 +13,11 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { loggedOut } from '../features/auth/authSlice';
 import { siderCollapsedSet } from '../store/uiSlice';
 import { getMenuByRole } from './menuConfig';
-import { ROLES, ROLE_LABELS } from '../constants/roles';
+import { ROLE_LABELS } from '../constants/roles';
 import AlertBell from '../features/alerts/AlertBell';
 import { disconnectSocket } from '../lib/socket';
 import { fileHref } from '../lib/files';
-import { FOREST, MENU_SECTION_LABEL, usesForestTheme, usesCanvasPicker, CANVAS_PRESETS, LIGHT_CANVAS, DARK_CANVAS, canvasOf, getForestTheme } from './forestTheme';
+import { FOREST, MENU_SECTION_LABEL, usesForestTheme, usesCanvasPicker, CANVAS_PRESETS, LIGHT_CANVAS, DARK_CANVAS, FULL_DARK_ROLES, BOOTSTRAP_ROLES, canvasOf, getForestTheme } from './forestTheme';
 
 const { Sider, Content } = Layout;
 
@@ -61,9 +61,7 @@ export default function MainLayout() {
 
   const menuItems = getMenuByRole(user?.role);
   const currentPath = location.pathname;
-  // Club Manager, Head Trainer, Horse Owner and the vet get the forest sidebar and warm page
-  // (forestTheme.js). The Manager, the Head Trainer and the Owner choose a canvas; the vet stays on
-  // its fixed page.
+  // Every role gets the forest sidebar and chooses a light or dark canvas (forestTheme.js).
   const forest = usesForestTheme(user?.role);
   const canvas = usesCanvasPicker(user?.role);
   const [canvasTheme, setCanvasTheme] = useState(() => {
@@ -78,8 +76,10 @@ export default function MainLayout() {
   const activePreset = CANVAS_PRESETS[canvasKey] || CANVAS_PRESETS.sand_bone;
   const currentTheme = getForestTheme(canvasKey);
   const isDarkCanvas = canvas && canvasKey === DARK_CANVAS;
-  // The Manager's and the Head Trainer's pages go fully dark; the Owner's pages keep their light panels.
-  const staffDark = isDarkCanvas && [ROLES.MANAGER, ROLES.HEAD_TRAINER].includes(user?.role);
+  // The staff's pages go fully dark; the Owner's pages keep their light panels.
+  const staffDark = isDarkCanvas && FULL_DARK_ROLES.includes(user?.role);
+  // The vet's Bootstrap pages use Bootstrap's own dark mode, recoloured to the forest palette below.
+  const bootstrapDark = isDarkCanvas && BOOTSTRAP_ROLES.includes(user?.role);
 
   // Popovers, modals and dropdowns (the alert bell's too, in every role's header) render on <body>, outside
   // the layout: they follow the dark canvas through a body class.
@@ -87,6 +87,11 @@ export default function MainLayout() {
     document.body.classList.toggle('wdp-dark-portals', isDarkCanvas);
     return () => document.body.classList.remove('wdp-dark-portals');
   }, [isDarkCanvas]);
+  useEffect(() => {
+    if (bootstrapDark) document.body.setAttribute('data-bs-theme', 'dark');
+    else document.body.removeAttribute('data-bs-theme');
+    return () => document.body.removeAttribute('data-bs-theme');
+  }, [bootstrapDark]);
 
   let pageBgStyle = { backgroundColor: forest ? activePreset.page : '#FAFAFA' };
   if (canvasKey === 'peak_equestrian_dark') {
@@ -823,6 +828,52 @@ export default function MainLayout() {
           color: #FDA4AF !important;
           border-color: rgba(244, 63, 94, 0.45) !important;
         }
+
+        /* The vet's Bootstrap pages on the dark canvas: Bootstrap's dark mode (data-bs-theme on <body>, so its
+           modals and toasts follow), in the forest palette instead of Bootstrap's greys; and the light
+           utilities the pages write by hand (bg-white, bg-light, text-dark, table-light) turn dark with it. */
+        body[data-bs-theme='dark'] {
+          --bs-body-bg: #06130E; --bs-body-bg-rgb: 6, 19, 14;
+          --bs-body-color: #E6EDE8; --bs-body-color-rgb: 230, 237, 232;
+          --bs-emphasis-color: #F4F1E8; --bs-emphasis-color-rgb: 244, 241, 232;
+          --bs-heading-color: #F3E3BC;
+          --bs-secondary-color: rgba(230, 237, 232, 0.75); --bs-secondary-color-rgb: 230, 237, 232;
+          --bs-tertiary-color: rgba(230, 237, 232, 0.6);
+          --bs-secondary-bg: #12291F; --bs-secondary-bg-rgb: 18, 41, 31;
+          --bs-tertiary-bg: #0F241C; --bs-tertiary-bg-rgb: 15, 36, 28;
+          --bs-border-color: rgba(212, 175, 55, 0.22);
+          --bs-border-color-translucent: rgba(212, 175, 55, 0.18);
+          --bs-link-color: #F6D57A; --bs-link-color-rgb: 246, 213, 122;
+          --bs-link-hover-color: #F8E7B2; --bs-link-hover-color-rgb: 248, 231, 178;
+        }
+        body[data-bs-theme='dark'] .forest-layout {
+          --bs-link-color-rgb: 246, 213, 122;
+          --bs-link-hover-color-rgb: 248, 231, 178;
+        }
+        body[data-bs-theme='dark'] .card { --bs-card-bg: #0D211A; --bs-card-cap-bg: #122B22; --bs-card-color: #E6EDE8; }
+        body[data-bs-theme='dark'] .forest-layout .card { border-color: rgba(212, 175, 55, 0.22) !important; }
+        body[data-bs-theme='dark'] .modal-content { --bs-modal-bg: #0D211A; --bs-modal-color: #E6EDE8; }
+        body[data-bs-theme='dark'] .dropdown-menu { --bs-dropdown-bg: #0D211A; --bs-dropdown-link-color: #E6EDE8; --bs-dropdown-link-hover-bg: rgba(255, 255, 255, 0.07); }
+        body[data-bs-theme='dark'] .toast { --bs-toast-bg: rgba(13, 33, 26, 0.96); }
+        body[data-bs-theme='dark'] .list-group { --bs-list-group-bg: transparent; --bs-list-group-color: #E6EDE8; }
+        body[data-bs-theme='dark'] .nav-tabs { --bs-nav-tabs-link-active-bg: #0D211A; --bs-nav-tabs-link-active-color: #F6D57A; --bs-nav-tabs-link-active-border-color: rgba(212, 175, 55, 0.3) rgba(212, 175, 55, 0.3) #0D211A; }
+        body[data-bs-theme='dark'] .table { --bs-table-bg: transparent; --bs-table-color: #E6EDE8; --bs-table-border-color: rgba(255, 255, 255, 0.08); --bs-table-hover-bg: rgba(255, 255, 255, 0.05); --bs-table-hover-color: #F4F1E8; --bs-table-striped-bg: rgba(255, 255, 255, 0.03); }
+        body[data-bs-theme='dark'] .table-light, body[data-bs-theme='dark'] .table > .table-light > tr > * { --bs-table-bg: #132E24; --bs-table-color: #F6D57A; --bs-table-border-color: rgba(212, 175, 55, 0.25); }
+        body[data-bs-theme='dark'] .bg-white { background-color: #0D211A !important; }
+        body[data-bs-theme='dark'] .bg-light { background-color: #12291F !important; }
+        body[data-bs-theme='dark'] .text-dark { color: #F4F1E8 !important; }
+        body[data-bs-theme='dark'] .text-secondary { color: #B9CABF !important; }
+        body[data-bs-theme='dark'] .text-success { color: #6EE7B7 !important; }
+        body[data-bs-theme='dark'] .text-danger { color: #FDA4AF !important; }
+        body[data-bs-theme='dark'] :is(.forest-layout, .modal) .text-primary { color: #6EE7B7 !important; }
+        body[data-bs-theme='dark'] :is(.forest-layout, .modal) :is(.bg-primary-subtle, .badge.bg-primary-subtle) { background-color: rgba(16, 185, 129, 0.16) !important; color: #6EE7B7 !important; border-color: rgba(110, 231, 183, 0.35) !important; }
+        body[data-bs-theme='dark'] .forest-layout .border-primary-subtle { border-color: rgba(110, 231, 183, 0.35) !important; }
+        body[data-bs-theme='dark'] :is(.forest-layout, .modal) .btn-outline-primary { color: #6EE7B7 !important; border-color: rgba(110, 231, 183, 0.55) !important; }
+        body[data-bs-theme='dark'] :is(.forest-layout, .modal) .btn-outline-primary:hover { color: #06130E !important; background-color: #6EE7B7 !important; }
+        body[data-bs-theme='dark'] .btn-outline-secondary { --bs-btn-color: #C3D4CA; --bs-btn-border-color: rgba(195, 212, 202, 0.45); --bs-btn-hover-bg: rgba(255, 255, 255, 0.08); --bs-btn-hover-color: #F4F1E8; --bs-btn-hover-border-color: rgba(195, 212, 202, 0.6); }
+        body[data-bs-theme='dark'] .btn-outline-dark { --bs-btn-color: #F4F1E8; --bs-btn-border-color: rgba(244, 241, 232, 0.45); --bs-btn-hover-bg: rgba(255, 255, 255, 0.1); --bs-btn-hover-color: #FFFFFF; --bs-btn-hover-border-color: rgba(244, 241, 232, 0.6); }
+        body[data-bs-theme='dark'] .btn-light { --bs-btn-bg: #12291F; --bs-btn-color: #F4F1E8; --bs-btn-border-color: rgba(212, 175, 55, 0.25); --bs-btn-hover-bg: #1A3A2E; --bs-btn-hover-color: #FFFFFF; }
+        body[data-bs-theme='dark'] .premium-card { background: #0D211A; border-color: rgba(212, 175, 55, 0.22); }
       `}</style>
     </Layout>
   );
