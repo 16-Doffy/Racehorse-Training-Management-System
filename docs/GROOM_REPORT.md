@@ -267,3 +267,71 @@ Nếu Quản lý khóa tài khoản Groom, app báo lỗi đăng nhập theo th�
 - Điểm chấn thương lấy từ `GET /health/injury-markers` (toạ độ bác sĩ chấm trên sơ đồ nghiêng), đặt dọc thân ngựa.
   Bác sĩ không cần đổi gì.
 - Trình xem `model-viewer` và bộ giải nén meshopt tải từ CDN (jsDelivr), nên lần đầu mở cần có mạng.
+
+## J. Ngựa 3D theo giống, từ lúc Manager tạo ngựa (Tien, 16/10/2026)
+Manager chọn giống khi tạo ngựa. Ai được giao ngựa đó (Head Trainer, bác sĩ thú y, Owner, Groom) đều thấy cùng một con ngựa 3D,
+mang màu lông của giống ấy.
+
+**Cách làm:** chỉ có một mô hình 3D. Texture thân (`M_Body`) và bờm/đuôi (`M_Hair`) là ảnh xám trung tính,
+nên trình xem tô màu lông lên khi hiển thị. Không cần thêm file, không đổi database.
+
+| Giống (giá trị lưu) | Châu lục | Màu lông mặc định (giá trị lưu) |
+|---|---|---|
+| Arabian | Châu Á | Grey: xám trắng |
+| Akhal-Teke | Châu Á | Palomino: vàng kim, bờm kem |
+| Thoroughbred | Châu Âu | Bay: hồng (nâu đỏ, bờm đen) |
+| Friesian | Châu Âu | Black: đen tuyền |
+| Quarter Horse | Châu Mỹ | Chestnut: hạt dẻ |
+| Standardbred | Châu Mỹ | Dark Bay: nâu sẫm |
+
+- Thứ tự chọn màu: lấy màu lông trong hồ sơ nếu nhận ra được, không thì lấy màu mặc định của giống, cuối cùng là Hồng.
+  Dữ liệu cũ gõ tay vẫn khớp: chấp nhận tiếng Anh, tiếng Việt có dấu hoặc không dấu ("Grey", "xám", "nâu đỏ", "ngựa ô"…).
+  Ví dụ seed: Golden Wind (Arabian, Chestnut) ra màu hạt dẻ.
+- Bảng tra nằm ở `mobile/src/three/horseBreeds.js`, có bản sao giống hệt ở `client/src/features/horses/horse3d/horseBreeds.js`.
+  `npm test` trong `mobile/` sẽ báo lỗi nếu hai file khác nhau. Sửa bản ở mobile rồi chép sang client.
+- Web lấy mô hình từ `client/public/models/horse.glb` (bản sao của `mobile/assets/models/horse.glb`).
+
+**Đã sửa ở phần của role khác.** Bạn Tien yêu cầu trực tiếp; mỗi chỗ chỉ thêm khung 3D hoặc đổi ô nhập, không đổi API hay quyền:
+- **Manager**, `client/src/features/horses/HorseListPage.jsx` (form Thêm/Sửa ngựa):
+  - ô Giống và Màu lông đổi từ ô gõ tự do sang ô chọn, có khung 3D xem trước đổi màu ngay khi chọn;
+  - chọn giống thì tự điền màu lông mặc định, nếu Manager chưa tự chọn màu khác;
+  - giá trị cũ không nằm trong danh sách vẫn hiển thị và giữ nguyên; xoá trắng thì gửi `''` như các ô khác.
+- **Manager / Head Trainer / Owner**, `client/src/features/horses/HorseDetailPage.jsx`:
+  - khung 3D bên cạnh "Hồ sơ lý lịch";
+  - Owner: khung 3D thay avatar khi ngựa chưa có ảnh;
+  - Giống/Màu lông hiện tên tiếng Việt.
+- **Bác sĩ thú y**, `client/src/pages/veterinarian/HorseHealthDetail.jsx`: khung 3D thay ảnh minh hoạ mặc định khi ngựa chưa có ảnh.
+  `Horse3DAnatomyViewer` (sơ đồ chấn thương) giữ nguyên.
+
+**Kiểm thử:**
+- Server cục bộ chạy dữ liệu seed, kịch bản Playwright:
+  - Manager tạo "Bach Tuyet": chọn Ả Rập ra ngựa trắng; đổi sang Friesian thì màu tự điền "Đen tuyền" và ra ngựa đen;
+  - lưu đúng `breed: "Arabian"`, `color: "Grey"`;
+  - Head Trainer, bác sĩ thú y, Owner mở ngựa đó đều thấy ngựa trắng;
+  - Groom mở Midnight Star (Black) thấy ngựa đen.
+- `npm test` mobile 16/16; client build và lint không có cảnh báo mới; bundle Android OK.
+
+## K. Nút Sáng/Tối cho mọi role trên web (Tien, 16/10/2026)
+Theo yêu cầu của bạn Tien, nút Sáng/Tối (Doffy làm cho Manager, Head Trainer, Owner) nay có ở cả **bác sĩ thú y** và **Groom**.
+Cả hai role này cũng dùng chung sidebar Team 8 như các role kia.
+- `client/src/layouts/forestTheme.js`:
+  - `CANVAS_ROLES` có đủ 5 role;
+  - `FULL_DARK_ROLES` (trang tối hoàn toàn) gồm Manager, Head Trainer, bác sĩ, Groom; Owner vẫn giữ các khung sáng riêng;
+  - `BOOTSTRAP_ROLES` gồm bác sĩ.
+- `client/src/layouts/MainLayout.jsx`:
+  - Trang của bác sĩ viết bằng Bootstrap. Khi bật Tối, layout đặt `data-bs-theme="dark"` trên `<body>`, nên dark mode của
+    Bootstrap áp dụng cho cả modal và toast.
+  - Bảng màu Bootstrap được đổi sang xanh rêu và vàng đồng.
+  - Các lớp màu viết cứng (`bg-white`, `bg-light`, `text-dark`, `table-light`, `text-primary`…) được đổi màu theo, chỉ khi bật Tối.
+  - Chế độ Sáng của bác sĩ giữ nguyên như cũ.
+- `GroomMobileNotice.jsx` (trang Groom trên web) đọc rõ ở cả hai chế độ.
+- `client/e2e/flow.spec.js`: bài test nút Sáng/Tối kiểm tra đủ 5 role.
+
+**Kiểm thử:**
+- Chụp 11 trang của bác sĩ ở chế độ Tối, kèm modal "Chỉ định mức tập":
+  tổng quan, danh sách, chi tiết, khám bệnh, chấn thương, phác đồ, đơn thuốc, kho, lịch y tế, hồ sơ.
+  Không có khối trắng hay chữ tối trên nền tối.
+- Chụp trang Groom ở cả hai chế độ.
+- Chạy cho cả 5 role: bật Tối đúng như bài test e2e mong đợi; bấm Sáng thì gỡ `data-bs-theme`.
+- Client build OK.
+- Chưa chạy được bộ `testUi.js` trên máy này, vì `@playwright/test` chưa được cài (cần `npm install`).

@@ -14,8 +14,20 @@ import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constan
 import HorseNextStep from './HorseNextStep';
 import { HORSE_SEX_LABELS, horseSexOptions } from '../../constants/horse';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
+import Horse3D from './horse3d/Horse3D';
+import { BREEDS, COATS, REGIONS, coatValueOfBreed } from './horse3d/horseBreeds';
 
 const { Title } = Typography;
+
+// The Manager picks a breed and sees the horse in 3D, in the coat the breed is known for.
+const breedOptions = REGIONS.map((region) => ({
+  label: region,
+  options: BREEDS.filter((b) => b.region === region).map((b) => ({ value: b.value, label: b.label, origin: b.origin, coat: COATS[b.coat] })),
+}));
+const coatOptions = Object.values(COATS).map((c) => ({ value: c.value, label: c.label, hint: c.hint, swatch: c.swatch }));
+const Swatch = ({ color }) => (
+  <span className="inline-block rounded-full shrink-0" style={{ width: 12, height: 12, background: color, boxShadow: '0 0 0 1px rgba(0,0,0,.25)' }} />
+);
 
 
 export default function HorseListPage() {
@@ -32,7 +44,15 @@ export default function HorseListPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [form] = Form.useForm();
+  const breedValue = Form.useWatch('breed', form);
+  const colorValue = Form.useWatch('color', form);
   const queryClient = useQueryClient();
+
+  // Picking a breed fills in the coat it is known for, unless the Manager already chose another.
+  const onBreedChange = (next) => {
+    const current = form.getFieldValue('color');
+    if (!current || current === coatValueOfBreed(breedValue)) form.setFieldValue('color', coatValueOfBreed(next) || undefined);
+  };
 
   const { data, isLoading } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const horses = data?.data || [];
@@ -467,6 +487,8 @@ export default function HorseListPage() {
               saveMutation.mutate({
                 ...values,
                 dob: values.dob ? values.dob.toISOString() : undefined,
+                breed: values.breed ?? '',
+                color: values.color ?? '',
                 sex: values.sex ?? '',
                 microchipNumber: values.microchipNumber ?? '',
                 registrationNumber: values.registrationNumber ?? '',
@@ -479,12 +501,39 @@ export default function HorseListPage() {
                 <Input placeholder="VD: Thunder Bolt" />
               </Form.Item>
               <Form.Item name="breed" label="Giống" className="!mb-3">
-                <Input placeholder="VD: Thoroughbred" />
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Chọn giống ngựa"
+                  popupMatchSelectWidth={400}
+                  options={breedOptions}
+                  onChange={onBreedChange}
+                  optionRender={(option) => (
+                    <div className="flex items-center gap-2">
+                      <Swatch color={option.data.coat.swatch} />
+                      <span>{option.data.label}</span>
+                      <span className="ml-auto text-xs text-gray-400">{option.data.origin} · {option.data.coat.label}</span>
+                    </div>
+                  )}
+                />
               </Form.Item>
             </div>
+            {/* The horse as everyone it is assigned to will see it in 3D, the groom's phone included. */}
+            <Horse3D breed={breedValue} color={colorValue} height={230} className="!mb-3" />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4">
               <Form.Item name="color" label="Màu lông" className="!mb-3">
-                <Input placeholder="VD: Bay" />
+                <Select
+                  allowClear
+                  placeholder="Theo giống"
+                  options={coatOptions}
+                  optionRender={(option) => (
+                    <div className="flex items-center gap-2" title={option.data.hint}>
+                      <Swatch color={option.data.swatch} />
+                      <span>{option.data.label}</span>
+                    </div>
+                  )}
+                />
               </Form.Item>
               <Form.Item name="dob" label="Ngày sinh" className="!mb-3">
                 <DatePicker className="w-full" format="DD/MM/YYYY" />

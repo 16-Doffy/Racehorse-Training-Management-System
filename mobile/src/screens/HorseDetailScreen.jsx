@@ -40,6 +40,7 @@ import {
   restockRequestFor,
   taskState,
 } from '../utils/groom';
+import { coatFor } from '../three/horseBreeds';
 import { colors, font, radius, spacing } from '../theme';
 
 // The status colours, lightened to read on the dark 3D stage.
@@ -88,6 +89,8 @@ export default function HorseDetailScreen({ route }) {
   const { markers } = useInjuryMarkers(horseId);
 
   const horse = data?.data;
+  // Painted the way the Manager set the horse up: its breed, or its own coat colour.
+  const coat = useMemo(() => coatFor({ breed: horse?.breed, color: horse?.color }), [horse?.breed, horse?.color]);
   const plan = sheets[0];
   const clearance = plan?.trainingClearance || horse?.trainingClearance;
   const clearanceCfg = clearance ? TRAINING_LEVEL[clearance.level] : null;
@@ -189,9 +192,15 @@ export default function HorseDetailScreen({ route }) {
             and whether it may work — the things to know before opening a stall. */}
         <HorseStage
           name={horse?.name}
-          subtitle={[assignment?.stableBlock || 'Chưa xếp chuồng', horse?.breed, horse?.weightKg ? `${horse.weightKg}kg` : null]
+          subtitle={[
+            assignment?.stableBlock || 'Chưa xếp chuồng',
+            horse?.breed,
+            coat.from !== 'default' ? coat.label : null,
+            horse?.weightKg ? `${horse.weightKg}kg` : null,
+          ]
             .filter(Boolean)
             .join(' · ')}
+          coat={coat}
           badges={[
             health ? { label: health.label, color: ON_DARK[horse?.healthStatus] || '#a7f3d0', dot: true } : null,
             clearanceCfg ? { label: clearanceCfg.label, color: ON_DARK_LEVEL[clearance.level] || '#fde68a' } : null,

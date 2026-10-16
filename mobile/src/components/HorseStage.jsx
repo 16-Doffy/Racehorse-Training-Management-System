@@ -17,10 +17,11 @@ const STAGE_HEIGHT = 320;
  * (health, how hard it may work, a training lock) sit over it; the full-screen view gives the
  * whole screen to turning and zooming.
  *
- * One model for every horse (three/horseModel.js). Without one, or without a connection (the
- * viewer script comes from a CDN), the stage says so and the injury list below still works.
+ * One model for every horse (three/horseModel.js), painted in the horse's coat (`coat`, from
+ * three/horseBreeds.js coatFor). Without a model, or without a connection (the viewer script comes
+ * from a CDN), the stage says so and the injury list below still works.
  */
-export default function HorseStage({ name, subtitle, badges = [], markers = [] }) {
+export default function HorseStage({ name, subtitle, badges = [], markers = [], coat = null }) {
   const viewer = useRef(null);
   const fullViewer = useRef(null);
   const [status, setStatus] = useState(hasHorseModel() ? 'loading' : 'none');
@@ -75,7 +76,7 @@ export default function HorseStage({ name, subtitle, badges = [], markers = [] }
     <View style={{ gap: spacing.md }}>
       <View style={styles.stage}>
         {showViewer ? (
-          <Horse360View key={attempt} ref={viewer} hotspots={hotspots} onEvent={onEvent} style={StyleSheet.absoluteFill} />
+          <Horse360View key={attempt} ref={viewer} hotspots={hotspots} coat={coat} onEvent={onEvent} style={StyleSheet.absoluteFill} />
         ) : (
           <StageEmpty status={status} onRetry={retry} />
         )}
@@ -145,7 +146,7 @@ export default function HorseStage({ name, subtitle, badges = [], markers = [] }
 
       <Modal visible={fullscreen} animationType="fade" onRequestClose={() => setFullscreen(false)} statusBarTranslucent>
         <SafeAreaView style={styles.fullscreen}>
-          <Horse360View ref={fullViewer} hotspots={hotspots} interactive onEvent={onEvent} style={{ flex: 1 }} />
+          <Horse360View ref={fullViewer} hotspots={hotspots} coat={coat} interactive onEvent={onEvent} style={{ flex: 1 }} />
           <View style={styles.fullTop} pointerEvents="box-none">
             <View style={{ flex: 1 }} pointerEvents="none">
               <Text style={styles.name}>{name}</Text>

@@ -1,8 +1,8 @@
 /**
  * The 3D horse shown on the horse screen (components/HorseStage.jsx).
  *
- * One model for every horse: it shows where the vet marked an injury and how the horse stands,
- * not what this particular horse looks like. To use a model:
+ * One model for every horse, painted in its coat (three/horseBreeds.js: the breed the Manager picked,
+ * or the coat colour on its record), with the injuries the vet marked on it. To use a model:
  *   1. put the binary glTF at mobile/assets/models/horse.glb (keep it small: compress textures to
  *      1–2K, e.g. `npx @gltf-transform/cli optimize in.glb horse.glb --texture-compress webp`);
  *   2. set `source: require('../../assets/models/horse.glb')` below;
@@ -22,6 +22,8 @@ export const HORSE_MODEL = {
   headDirection: process.env.EXPO_PUBLIC_HORSE_MODEL_HEAD || '+z',
   // The model's own animation to play (the horse breathing and shifting its weight), or null.
   animation: 'Horse|Horse_Idle',
+  // The materials the coat is painted on: their textures are neutral grey.
+  coatMaterials: { body: 'M_Body', hair: 'M_Hair' },
   // Shown under the viewer, as the model's licence (CC BY-NC 4.0) requires.
   credit: 'Mô hình 3D: “HORSE – Realistic 3D Model” · WildMesh 3D · CC BY-NC 4.0',
 };

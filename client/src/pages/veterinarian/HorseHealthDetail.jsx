@@ -10,6 +10,7 @@ import InjuryList from '../../components/veterinarian/InjuryList';
 import MedicalScheduleList from '../../components/veterinarian/MedicalScheduleList';
 import TrainingLockModal from '../../components/veterinarian/TrainingLockModal';
 import Horse3DAnatomyViewer from '../../components/veterinarian/Horse3DAnatomyViewer';
+import Horse3D from '../../features/horses/horse3d/Horse3D';
 import { formatDate, calculateAge } from '../../utils/formatDate';
 import { TREATMENT_STATUS_CONFIG } from '../../utils/healthStatus';
 
@@ -208,15 +209,20 @@ export default function HorseHealthDetail() {
         <Card.Body className="p-4">
           <Row className="g-4 align-items-center">
             <Col xs={12} md={3} className="text-center text-md-start">
-              <img
-                src={horse.photoUrl || defaultPhoto}
-                alt={horse.name}
-                className="img-fluid rounded shadow-sm object-fit-cover w-100"
-                style={{ maxHeight: '200px' }}
-                onError={(e) => {
-                  e.target.src = defaultPhoto;
-                }}
-              />
+              {/* No photo on file: the horse in 3D, in the breed and coat the Manager set. */}
+              {horse.photoUrl ? (
+                <img
+                  src={horse.photoUrl}
+                  alt={horse.name}
+                  className="img-fluid rounded shadow-sm object-fit-cover w-100"
+                  style={{ maxHeight: '200px' }}
+                  onError={(e) => {
+                    e.target.src = defaultPhoto;
+                  }}
+                />
+              ) : (
+                <Horse3D breed={horse.breed} color={horse.color} height={200} compact />
+              )}
             </Col>
 
             <Col xs={12} md={9}>

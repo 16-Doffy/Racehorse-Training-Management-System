@@ -5,11 +5,13 @@
  *
  *   app → page   { type: 'model-url', url } · { type: 'model-chunk', index, total, data } (base64)
  *                { type: 'auto-rotate', value } · { type: 'reset' } · { type: 'focus', index }
+ *                { type: 'coat', coat }
  *   page → app   { type: 'ready' } · { type: 'progress', value } · { type: 'loaded' }
  *                { type: 'error', message } · { type: 'hotspot', index }
  *
  * Injury marks arrive already placed along the body (three/injuryHotspots.js); the page turns them
- * into points on the model once it knows the model's size.
+ * into points on the model once it knows the model's size. The model's textures are neutral grey:
+ * the page paints the horse's coat on them (three/horseBreeds.js).
  */
 export const MODEL_VIEWER_VERSION = '4.3.1';
 const MODEL_VIEWER_URL = `https://cdn.jsdelivr.net/npm/@google/model-viewer@${MODEL_VIEWER_VERSION}/dist/model-viewer.min.js`;
@@ -35,8 +37,18 @@ const escapeHtml = (text) =>
 /**
  * `hotspots`: [{ along, height, label, sub, color }]. `interactive`: full touch control (the
  * full-screen view); otherwise vertical swipes go to the page so the screen still scrolls.
+ * `coat`: { body, hair, roughness } (horseBreeds.coatFor), painted on the materials `coatMaterials`
+ * names ({ body, hair }).
  */
-export function horse360Html({ hotspots = [], headDirection = '-x', autoRotate = true, interactive = false, animation = null } = {}) {
+export function horse360Html({
+  hotspots = [],
+  headDirection = '-x',
+  autoRotate = true,
+  interactive = false,
+  animation = null,
+  coat = null,
+  coatMaterials = null,
+} = {}) {
   const points = hotspots
     .map(
       (h, i) => `
@@ -101,6 +113,8 @@ export function horse360Html({ hotspots = [], headDirection = '-x', autoRotate =
   var HOTSPOTS = ${JSON.stringify(hotspots.map(({ along, height }) => ({ along, height })))};
   var HEAD = ${JSON.stringify(headDirection)};
   var INITIAL = ${JSON.stringify(initialOrbit(headDirection))};
+  var COAT = ${JSON.stringify(coat ? { body: coat.body, hair: coat.hair, roughness: coat.roughness } : null)};
+  var COAT_MATERIALS = ${JSON.stringify(coatMaterials)};
   var mv = document.getElementById('mv');
   var chunks = [];
   var positions = [];
@@ -123,6 +137,16 @@ export function horse360Html({ hotspots = [], headDirection = '-x', autoRotate =
       p[axis] = center[axis] + sign * (0.5 - h.along) * length;
       positions[i] = p.x + 'm ' + p.y + 'm ' + p.z + 'm';
       mv.updateHotspot({ name: 'hotspot-' + i, position: positions[i] });
+    });
+  }
+
+  function paint() {
+    if (!COAT || !COAT_MATERIALS || !mv.model) return;
+    mv.model.materials.forEach(function (m) {
+      var part = m.name === COAT_MATERIALS.body ? 'body' : m.name === COAT_MATERIALS.hair ? 'hair' : null;
+      if (!part || !COAT[part]) return;
+      m.pbrMetallicRoughness.setBaseColorFactor([COAT[part][0], COAT[part][1], COAT[part][2], 1]);
+      if (part === 'body' && COAT.roughness) m.pbrMetallicRoughness.setRoughnessFactor(COAT.roughness);
     });
   }
 
@@ -163,6 +187,7 @@ export function horse360Html({ hotspots = [], headDirection = '-x', autoRotate =
       mv.fieldOfView = '28deg';
     }
     if (msg.type === 'focus') focus(msg.index);
+    if (msg.type === 'coat') { COAT = msg.coat; paint(); }
   }
 
   // Android's WebView delivers on document, iOS and the web on window.
@@ -189,7 +214,7 @@ export function horse360Html({ hotspots = [], headDirection = '-x', autoRotate =
       document.getElementById('progress').classList.toggle('done', v >= 1);
       post({ type: 'progress', value: v });
     });
-    mv.addEventListener('load', function () { place(); post({ type: 'loaded' }); });
+    mv.addEventListener('load', function () { paint(); place(); post({ type: 'loaded' }); });
     mv.addEventListener('error', function (e) {
       post({ type: 'error', message: (e.detail && e.detail.type) || 'load failed' });
     });

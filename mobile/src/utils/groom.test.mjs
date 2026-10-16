@@ -224,3 +224,45 @@ test('the 3D page: head to the right of a catalogue view, injury labels kept as 
   assert.ok(page.includes('class="floor"'), 'the card stage has its glow ring');
   assert.ok(!horse360Html({ interactive: true }).includes('class="floor"'), 'full screen does not');
 });
+
+test('the 3D horse wears the coat of its breed, or its own coat colour when the record has one', async () => {
+  const { BREEDS, COATS, coatFor, breedOf, coatKeyOf, coatValueOfBreed, coatLabel } = await import('../three/horseBreeds.js');
+  assert.equal(coatFor({ breed: 'Arabian' }).key, 'grey', 'an Asian breed comes out white');
+  assert.equal(coatFor({ breed: 'Friesian' }).key, 'black', 'a European one black');
+  assert.equal(new Set(BREEDS.map((b) => b.coat)).size, BREEDS.length, 'every breed looks different');
+  assert.ok(BREEDS.every((b) => COATS[b.coat]), 'every breed has a coat to wear');
+
+  // The seed and older horses: English or Vietnamese, typed by hand.
+  assert.deepEqual(coatFor({ breed: 'Arabian', color: 'Chestnut' }), { key: 'chestnut', ...COATS.chestnut, from: 'color' });
+  assert.equal(coatFor({ breed: 'Thoroughbred', color: 'Grey' }).key, 'grey');
+  assert.equal(coatKeyOf('Dark Bay'), 'darkBay', "'dark bay' is not read as 'bay'");
+  assert.equal(coatKeyOf('nâu đỏ'), 'bay', "'nâu đỏ' is not read as 'đỏ'");
+  assert.equal(coatKeyOf('hat de'), 'chestnut', 'without accents too');
+  assert.equal(coatKeyOf('Ngựa ô'), 'black');
+  assert.equal(coatKeyOf('Đen'), 'black');
+  assert.equal(coatKeyOf('xanh lá'), null);
+  assert.equal(breedOf('thuần chủng')?.value, 'Thoroughbred');
+  assert.equal(breedOf('Akhal Teke')?.value, 'Akhal-Teke');
+  assert.equal(coatFor({ breed: 'Mustang' }).from, 'default', 'an unknown breed still gets a horse');
+  assert.equal(coatFor({}).key, 'bay');
+
+  assert.equal(coatValueOfBreed('Friesian'), 'Black', 'what the form fills in is a value the data already uses');
+  assert.equal(coatLabel('Bay'), 'Hồng');
+  assert.equal(coatLabel('Lang (Pinto)'), 'Lang (Pinto)', 'a coat we do not know is shown as typed');
+});
+
+test('the web and the phone paint the horse from the same catalogue', async () => {
+  const { readFileSync } = await import('node:fs');
+  const mobile = readFileSync(new URL('../three/horseBreeds.js', import.meta.url), 'utf8');
+  const web = readFileSync(new URL('../../../client/src/features/horses/horse3d/horseBreeds.js', import.meta.url), 'utf8');
+  assert.equal(web.replace(/\r\n/g, '\n'), mobile.replace(/\r\n/g, '\n'), 'copy mobile/src/three/horseBreeds.js over the client one');
+});
+
+test('the 3D page paints the coat on the model it is given', async () => {
+  const { horse360Html } = await import('../three/horse360Html.js');
+  const { coatFor } = await import('../three/horseBreeds.js');
+  const page = horse360Html({ coat: coatFor({ breed: 'Friesian' }), coatMaterials: { body: 'M_Body', hair: 'M_Hair' } });
+  assert.ok(page.includes('var COAT = {"body":[0.035,0.033,0.033]'), 'the coat goes into the page');
+  assert.ok(page.includes('"body":"M_Body"'));
+  assert.ok(horse360Html().includes('var COAT = null'), 'no coat: the model as it is');
+});

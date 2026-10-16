@@ -20,3 +20,10 @@ File gốc thường nặng (texture 4K). Nén lại trước khi đưa vào app
 ```
 npx @gltf-transform/cli optimize horse-original.glb horse.glb --texture-compress webp --texture-size 2048
 ```
+
+## Màu lông theo giống
+Texture thân (`M_Body`) và bờm/đuôi (`M_Hair`) là ảnh xám, nên app tô màu lông của từng con ngựa lên khi hiển thị
+(`src/three/horseBreeds.js`). Mô hình thay thế cũng cần texture xám trung tính như vậy, và tên vật liệu khai báo trong
+`coatMaterials` (`src/three/horseModel.js`).
+
+Web dùng bản sao của file này ở `client/public/models/horse.glb`. Thay mô hình thì chép đè cả hai file.

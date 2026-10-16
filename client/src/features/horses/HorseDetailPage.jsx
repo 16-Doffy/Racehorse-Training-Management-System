@@ -40,6 +40,8 @@ import {
 import { horsesApi } from './horsesApi';
 import HorseTimeline from './HorseTimeline';
 import CareHistoryCard from './CareHistoryCard';
+import Horse3D from './horse3d/Horse3D';
+import { breedLabel, coatLabel } from './horse3d/horseBreeds';
 import { TRAINING_LEVEL_META } from '../../constants/health';
 import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
 import { trainingSessionApi } from '../training/trainingApi';
@@ -257,8 +259,8 @@ export default function HorseDetailPage() {
                   <Descriptions.Item label="Ngày sinh">
                     {horse.dob ? dayjs(horse.dob).format('DD/MM/YYYY') : '—'}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Giống">{horse.breed || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Màu lông">{horse.color || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Giống">{breedLabel(horse.breed) || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Màu lông">{coatLabel(horse.color) || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Cân nặng">
                     {horse.weightKg ? `${horse.weightKg} kg` : '—'}
                   </Descriptions.Item>
@@ -436,15 +438,19 @@ export default function HorseDetailPage() {
           >
             <Row gutter={[24, 16]} align="middle">
               <Col xs={24} sm={6} className="text-center">
-                <Avatar
-                  size={140}
-                  src={horse.photoUrl}
-                  icon={!horse.photoUrl && <UserOutlined />}
-                  className="shadow-sm"
-                  style={{
-                    border: `4px solid ${statusCfg.color === 'green' ? '#22c55e' : statusCfg.color === 'gold' ? '#eab308' : statusCfg.color === 'red' ? '#ef4444' : '#e5e7eb'}`,
-                  }}
-                />
+                {/* No photo on file: the horse in 3D, in the breed and coat the Manager set. */}
+                {horse.photoUrl ? (
+                  <Avatar
+                    size={140}
+                    src={horse.photoUrl}
+                    className="shadow-sm"
+                    style={{
+                      border: `4px solid ${statusCfg.color === 'green' ? '#22c55e' : statusCfg.color === 'gold' ? '#eab308' : statusCfg.color === 'red' ? '#ef4444' : '#e5e7eb'}`,
+                    }}
+                  />
+                ) : (
+                  <Horse3D breed={horse.breed} color={horse.color} height={190} compact />
+                )}
               </Col>
               <Col xs={24} sm={12}>
                 <Title level={2} className="!mb-2 !font-bold !text-[#022c22]" style={{ fontFamily: 'Georgia, serif' }}>
@@ -456,7 +462,7 @@ export default function HorseDetailPage() {
                   </Tag>
                 </div>
                 <div className="text-gray-600 text-base mb-1">
-                  <span className="font-medium text-gray-800">{horse.breed || 'Chưa rõ giống'}</span> • {horse.color || 'Chưa rõ màu'} • {calcAge(horse.dob)}
+                  <span className="font-medium text-gray-800">{breedLabel(horse.breed) || 'Chưa rõ giống'}</span> • {coatLabel(horse.color) || 'Chưa rõ màu'} • {calcAge(horse.dob)}
                 </div>
                 {horse.weightKg && (
                   <div className="text-gray-500">
@@ -496,40 +502,48 @@ export default function HorseDetailPage() {
         )}
       </div>
 
-      <Card className="mb-4" title="Hồ sơ lý lịch">
-        <Descriptions column={2} bordered size="small">
-          <Descriptions.Item label="Giống">{horse.breed}</Descriptions.Item>
-          <Descriptions.Item label="Màu lông">{horse.color}</Descriptions.Item>
-          <Descriptions.Item label="Giới tính">{HORSE_SEX_LABELS[horse.sex] || '—'}</Descriptions.Item>
-          <Descriptions.Item label="Số vi mạch">{horse.microchipNumber || '—'}</Descriptions.Item>
-          <Descriptions.Item label="Số đăng ký">{horse.registrationNumber || '—'}</Descriptions.Item>
-          {/* Sent only to the Manager and the owner. */}
-          {'valuationVnd' in horse && <Descriptions.Item label="Định giá">{formatVnd(horse.valuationVnd)}</Descriptions.Item>}
-          <Descriptions.Item label="Ngày sinh">
-            {horse.dob ? new Date(horse.dob).toLocaleDateString() : '—'}
-          </Descriptions.Item>
-          <Descriptions.Item label="Cân nặng">{horse.weightKg ? `${horse.weightKg} kg` : '—'}</Descriptions.Item>
-          <Descriptions.Item label="Chủ sở hữu">{horse.owner?.name || '—'}</Descriptions.Item>
-          <Descriptions.Item label="Trạng thái sức khỏe">
-            <Tag color={STATUS_CONFIG[horse.healthStatus]?.color}>
-              {STATUS_CONFIG[horse.healthStatus]?.label || horse.healthStatus}
-            </Tag>
-          </Descriptions.Item>
-          <Descriptions.Item label="Tập luyện" span={2}>
-            <Tag color={TRAINING_LEVEL_META[horse.trainingClearance?.level || 'high']?.color}>
-              {TRAINING_LEVEL_META[horse.trainingClearance?.level || 'high']?.label}
-            </Tag>
-            {horse.trainingClearance?.restricted && (
-              <span className="text-gray-500 text-sm">
-                {horse.trainingClearance.reason ? `${horse.trainingClearance.reason} — ` : ''}
-                theo phác đồ của bác sĩ {horse.trainingClearance.prescribedBy || ''}
-                {horse.trainingClearance.since ? ` từ ${dayjs(horse.trainingClearance.since).format('DD/MM')}` : ''}. Hết hạn chế khi bác sĩ
-                nâng mức hoặc kết thúc điều trị.
-              </span>
-            )}
-          </Descriptions.Item>
-        </Descriptions>
-      </Card>
+      <Row gutter={[16, 16]} className="mb-4">
+        {/* The horse in 3D, in the breed and coat the Manager set — the same horse its groom sees. */}
+        <Col xs={24} lg={9}>
+          <Horse3D breed={horse.breed} color={horse.color} height={300} />
+        </Col>
+        <Col xs={24} lg={15}>
+          <Card className="h-full" title="Hồ sơ lý lịch">
+            <Descriptions column={2} bordered size="small">
+              <Descriptions.Item label="Giống">{breedLabel(horse.breed)}</Descriptions.Item>
+              <Descriptions.Item label="Màu lông">{coatLabel(horse.color)}</Descriptions.Item>
+              <Descriptions.Item label="Giới tính">{HORSE_SEX_LABELS[horse.sex] || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Số vi mạch">{horse.microchipNumber || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Số đăng ký">{horse.registrationNumber || '—'}</Descriptions.Item>
+              {/* Sent only to the Manager and the owner. */}
+              {'valuationVnd' in horse && <Descriptions.Item label="Định giá">{formatVnd(horse.valuationVnd)}</Descriptions.Item>}
+              <Descriptions.Item label="Ngày sinh">
+                {horse.dob ? new Date(horse.dob).toLocaleDateString() : '—'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Cân nặng">{horse.weightKg ? `${horse.weightKg} kg` : '—'}</Descriptions.Item>
+              <Descriptions.Item label="Chủ sở hữu">{horse.owner?.name || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Trạng thái sức khỏe">
+                <Tag color={STATUS_CONFIG[horse.healthStatus]?.color}>
+                  {STATUS_CONFIG[horse.healthStatus]?.label || horse.healthStatus}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="Tập luyện" span={2}>
+                <Tag color={TRAINING_LEVEL_META[horse.trainingClearance?.level || 'high']?.color}>
+                  {TRAINING_LEVEL_META[horse.trainingClearance?.level || 'high']?.label}
+                </Tag>
+                {horse.trainingClearance?.restricted && (
+                  <span className="text-gray-500 text-sm">
+                    {horse.trainingClearance.reason ? `${horse.trainingClearance.reason} — ` : ''}
+                    theo phác đồ của bác sĩ {horse.trainingClearance.prescribedBy || ''}
+                    {horse.trainingClearance.since ? ` từ ${dayjs(horse.trainingClearance.since).format('DD/MM')}` : ''}. Hết hạn chế khi bác sĩ
+                    nâng mức hoặc kết thúc điều trị.
+                  </span>
+                )}
+              </Descriptions.Item>
+            </Descriptions>
+          </Card>
+        </Col>
+      </Row>
 
       <HorseTimeline horseId={horse._id} />
 
