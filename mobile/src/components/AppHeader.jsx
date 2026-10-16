@@ -5,7 +5,7 @@ import Icon from './Icon';
 import { Badge, Card, EmptyState, IconButton, Row, Sheet } from './ui';
 import { notificationApi } from '../api/endpoints';
 import { useNotifications } from '../hooks/useGroomData';
-import { formatDateTime } from '../utils/groom';
+import { NOTIFICATION_TYPE, formatDateTime } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
 const TONE = {
@@ -61,15 +61,33 @@ function NotificationSheet({ visible, onClose, notifications, unread }) {
     mutationFn: (id) => notificationApi.markRead(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
+  const markAll = useMutation({
+    mutationFn: () => notificationApi.markAllRead(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
 
   return (
     <Sheet visible={visible} onClose={onClose} title={unread ? `Thông báo (${unread} mới)` : 'Thông báo'}>
       <ScrollView contentContainerStyle={styles.sheetBody}>
+        {unread > 1 ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => markAll.mutate()}
+            disabled={markAll.isPending}
+            style={({ pressed }) => [styles.readAll, pressed && { opacity: 0.6 }]}
+            hitSlop={6}
+          >
+            <Icon name="check" size={14} color={colors.forestLight} />
+            <Text style={styles.readAllText}>{markAll.isPending ? 'Đang đánh dấu...' : 'Đánh dấu đã đọc hết'}</Text>
+          </Pressable>
+        ) : null}
         {notifications.length === 0 ? (
           <EmptyState icon="bell" text="Chưa có thông báo nào" />
         ) : (
           notifications.map((n) => {
             const tone = TONE[n.severity] || TONE.info;
+            // What it is about (a missed meal, a vet's order, a supply request…); the colour says how urgent.
+            const kind = NOTIFICATION_TYPE[n.type];
             return (
               <Card
                 key={n._id}
@@ -78,11 +96,12 @@ function NotificationSheet({ visible, onClose, notifications, unread }) {
               >
                 <Row style={{ gap: spacing.md, alignItems: 'flex-start' }}>
                   <View style={[styles.notificationIcon, { backgroundColor: tone.bg }]}>
-                    <Icon name={tone.icon} size={16} color={tone.color} />
+                    <Icon name={kind?.icon || tone.icon} size={16} color={tone.color} />
                   </View>
                   <View style={{ flex: 1, gap: 4 }}>
                     <Text style={[font.body, !n.isRead && { fontWeight: '700' }]}>{n.message}</Text>
                     <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
+                      {kind ? <Badge label={kind.label} color={tone.color} bg={tone.bg} /> : null}
                       {n.horse?.name ? <Badge label={n.horse.name} /> : null}
                       <Text style={font.small}>{formatDateTime(n.createdAt)}</Text>
                     </Row>
@@ -126,6 +145,8 @@ const styles = StyleSheet.create({
   notification: { padding: spacing.md },
   notificationIcon: { width: 32, height: 32, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
   unreadDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
+  readAll: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-end' },
+  readAllText: { color: colors.forestLight, fontWeight: '700', fontSize: 13 },
   logout: {
     width: 40,
     height: 40,

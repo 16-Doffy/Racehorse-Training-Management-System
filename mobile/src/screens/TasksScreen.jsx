@@ -172,7 +172,7 @@ export default function TasksScreen({ segments }) {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <AppHeader
         title="Việc chuồng trại"
-        subtitle={`Vệ sinh · tắm rửa · ngâm chân · việc khác — ${done.length}/${planned.length} đã xong`}
+        subtitle={`Vệ sinh · tắm · ngâm chân · móng · việc khác — ${done.length}/${planned.length} đã xong`}
       />
 
       {segments}

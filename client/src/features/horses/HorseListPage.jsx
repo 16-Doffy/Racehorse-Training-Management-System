@@ -25,6 +25,7 @@ export default function HorseListPage() {
   // (POST/PUT /horses is Manager-only on the server); every other role sees the same read-only
   // roster they always had.
   const isManager = user?.role === ROLES.MANAGER;
+  const isOwner = user?.role === ROLES.OWNER;
   // The Manager and the trainer run a horse from arrival to training: they see its next step.
   const showsNextStep = [ROLES.MANAGER, ROLES.HEAD_TRAINER].includes(user?.role);
 
@@ -286,16 +287,18 @@ export default function HorseListPage() {
   }
 
   return (
-    <div>
-      {showsNextStep ? (
+    <div className={isOwner ? 'owner-ui' : undefined}>
+      {showsNextStep || isOwner ? (
       <PageHeroBanner
         eyebrow="TEAM 8 • QUẢN LÝ ĐÀN CHIẾN MÃ"
-        roleLabel={isManager ? 'Club Manager' : 'Head Trainer'}
-        title={isManager ? 'Danh Mục & Quản Lý Chiến Mã' : 'Danh Sách Chiến Mã Phụ Trách'}
+        roleLabel={isManager ? 'Club Manager' : isOwner ? 'Horse Owner' : 'Head Trainer'}
+        title={isManager ? 'Danh Mục & Quản Lý Chiến Mã' : isOwner ? 'Chiến Mã Của Tôi' : 'Danh Sách Chiến Mã Phụ Trách'}
         subtitle={
           isManager
             ? 'Thêm/sửa hồ sơ ngựa và phân công Huấn luyện viên, Bác sĩ thú y phụ trách toàn diện.'
-            : 'Theo dõi thể trạng, lịch sử thi đấu và phân bổ kế hoạch tác chiến cho từng chiến mã.'
+            : isOwner
+              ? 'Hồ sơ, sức khỏe và người phụ trách của từng chiến mã bạn sở hữu.'
+              : 'Theo dõi thể trạng, lịch sử thi đấu và phân bổ kế hoạch tác chiến cho từng chiến mã.'
         }
         stats={[
           { label: 'Tổng đàn', value: `${horses.length} con` },

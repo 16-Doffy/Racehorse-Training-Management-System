@@ -1446,8 +1446,9 @@ module.exports = {
         description:
           'Groom: the horses they look after. Other roles: the horses they can see (?horse= narrows). Each sheet: horse, stall, ' +
           'trainingClearance, rations [{ mealTime, timeOfDay, items: [{ name, amount, unit, stock, enough }] }], prescriptions ' +
-          '[{ prescribedBy, trainingLevel, careInstructions, medications: [{ name, dosage, amount, times, stock, enough, dailyNeed }] }], ' +
-          'shortages [{ name, needed, available, short, unit }] for one day.',
+          '[{ prescribedBy, trainingLevel, careInstructions, medications: [{ name, dosage, amount, times, route, stock, enough, dailyNeed }] }], ' +
+          'shortages [{ name, needed, available, short, unit }] for one day, and exams [{ reason, priority, acceptedBy, scheduledFor, requestedAt }] — ' +
+          'the open exam requests for the horse, soonest appointment first (scheduledFor null until a vet takes one on), so the groom has it ready.',
         parameters: [horseQueryParam],
         responses: { 200: responses[200]({ type: 'array', items: { type: 'object' } }) },
       },

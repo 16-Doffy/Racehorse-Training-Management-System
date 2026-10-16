@@ -7,7 +7,9 @@ import {
   MEAL_CONFIG,
   OBSERVATION_LABELS,
   canCompleteTask,
+  canRecordLate,
   describeSupplies,
+  formatTime,
   missingSupplies,
   formatDateTime,
   mealTimeOf,
@@ -21,7 +23,7 @@ import { colors, font, radius, spacing } from '../theme';
  * One meal for one horse: exactly what goes in the bucket, how much of each feed the store has
  * for it, and the button that records it as given.
  */
-export default function MealDetailSheet({ meal, visible, onClose, onComplete, onNotDone, onAskSupply }) {
+export default function MealDetailSheet({ meal, visible, onClose, onComplete, onRecordLate, onNotDone, onAskSupply }) {
   if (!meal) return <Sheet visible={visible} onClose={onClose} title="Chi tiết bữa ăn" />;
 
   const { horse, slot, schedules, task, inventory, allSchedules, ctx } = meal;
@@ -50,9 +52,13 @@ export default function MealDetailSheet({ meal, visible, onClose, onComplete, on
             <Icon name={config?.icon || 'rations'} size={22} color={colors.gold} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={font.h2}>{config?.label}</Text>
+            <Text style={font.h2}>{task?.makeUpOf ? `Cho ăn bù — ${config?.label?.toLowerCase()}` : config?.label}</Text>
             <Row style={{ gap: spacing.sm, marginTop: 4, flexWrap: 'wrap' }}>
-              <Badge label={mealTimeOf(slot, allSchedules) || config?.defaultTime} color={colors.forest} bg={colors.goldSoft} />
+              <Badge
+                label={task?.makeUpOf ? formatTime(task.scheduledDate) : mealTimeOf(slot, allSchedules) || config?.defaultTime}
+                color={colors.forest}
+                bg={colors.goldSoft}
+              />
               {fed ? (
                 <Badge label="Đã cho ăn" color={colors.green} bg={colors.greenSoft} />
               ) : state ? (
@@ -97,7 +103,10 @@ export default function MealDetailSheet({ meal, visible, onClose, onComplete, on
           <DataRow label="Người duyệt" value={approver?.name || 'Chưa duyệt'} />
           {/* Issued (taken out of stock) and eaten are not the same thing; both are kept. */}
           {issued ? <DataRow label={fed ? 'Đã xuất kho' : 'Xuất kho khi ghi nhận'} value={issued} valueStyle={styles.wrapValue} /> : null}
-          {task?.completedAt ? <DataRow label="Đã cho ăn lúc" value={formatDateTime(task.completedAt)} /> : null}
+          {task?.makeUpOf && task.note ? <DataRow label="Cho ăn bù" value={task.note} valueStyle={styles.wrapValue} /> : null}
+          {task?.completedAt ? (
+            <DataRow label="Đã cho ăn lúc" value={`${formatDateTime(task.completedAt)}${task.recordedLate ? ' (ghi muộn)' : ''}`} />
+          ) : null}
           {fed && eaten ? <DataRow label="Ngựa ăn được" value={eaten.label} /> : null}
           {fed && observation.manure ? <DataRow label="Phân" value={OBSERVATION_LABELS.manure[observation.manure]} /> : null}
           {fed && observation.waterIntake ? <DataRow label="Uống nước" value={OBSERVATION_LABELS.waterIntake[observation.waterIntake]} /> : null}
@@ -123,10 +132,13 @@ export default function MealDetailSheet({ meal, visible, onClose, onComplete, on
         ) : null}
       </ScrollView>
 
-      {task?.status === 'pending' && state?.key !== 'missed' ? (
+      {task?.status === 'pending' ? (
         <View style={styles.actions}>
           <Row style={{ gap: spacing.sm }}>
             {canFeed ? <Button title="Đã cho ăn" icon="check" style={{ flex: 3 }} onPress={onComplete} /> : null}
+            {state?.key === 'missed' && canRecordLate(task, ctx) && onRecordLate ? (
+              <Button title="Đã cho ăn, quên ghi" icon="clock" variant="subtle" style={{ flex: 3 }} onPress={onRecordLate} />
+            ) : null}
             <Button
               title={noRation ? 'Báo HLV chưa có khẩu phần' : 'Không cho ăn'}
               icon="block"

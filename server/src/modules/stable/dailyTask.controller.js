@@ -15,6 +15,7 @@ const StableAssignment = require('../../models/StableAssignment');
 const FeedingSchedule = require('../../models/FeedingSchedule');
 const Treatment = require('../../models/Treatment');
 const InventoryItem = require('../../models/InventoryItem');
+const ExamRequest = require('../../models/ExamRequest');
 const { wantedTasks, isActiveToday, keyOf: careKey } = require('../health/treatmentCare.service');
 const { clearanceMap, levelOf } = require('../health/trainingClearance');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
@@ -568,7 +569,7 @@ const myCarePlan = asyncHandler(async (req, res) => {
   }
   if (req.query.horse) horseIds = horseIds.filter((id) => String(id) === String(req.query.horse));
 
-  const [horses, stalls, rations, treatments, clearances] = await Promise.all([
+  const [horses, stalls, rations, treatments, clearances, examRequests] = await Promise.all([
     Horse.find({ _id: { $in: horseIds } }).select('name healthStatus').sort({ name: 1 }),
     StableAssignment.find({ horse: { $in: horseIds } }).populate('assignedCaretaker', 'name'),
     FeedingSchedule.find({ horse: { $in: horseIds } }).select('horse mealTime timeOfDay items'),
@@ -576,6 +577,11 @@ const myCarePlan = asyncHandler(async (req, res) => {
       .populate('prescribedBy', 'name')
       .select('horse medications careInstructions trainingLevel isTrainingLocked status lockReason startDate endDate prescribedBy'),
     clearanceMap(horseIds),
+    // Open exam requests: the groom is the one who brings the horse out when the vet comes.
+    ExamRequest.find({ horse: { $in: horseIds }, status: 'pending' })
+      .populate('acceptedBy', 'name')
+      .select('horse reason priority acceptedBy acceptedAt scheduledFor createdAt')
+      .sort({ scheduledFor: 1, createdAt: 1 }),
   ]);
   const ids = [
     ...rations.flatMap((r) => r.items.map((i) => i.inventoryItem)),
@@ -626,6 +632,15 @@ const myCarePlan = asyncHandler(async (req, res) => {
       rations: horseRations,
       prescriptions,
       shortages: shortagesFrom(needs, stock),
+      // Vet visits to have the horse ready for: when the vet will come (null until one takes it on).
+      exams: mine(examRequests).map((r) => ({
+        _id: r._id,
+        reason: r.reason,
+        priority: r.priority,
+        acceptedBy: r.acceptedBy?.name || null,
+        scheduledFor: r.scheduledFor,
+        requestedAt: r.createdAt,
+      })),
     };
   });
   return ok(res, sheets, 'Care plan fetched.');

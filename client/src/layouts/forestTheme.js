@@ -8,11 +8,11 @@ import { ROLES } from '../constants/roles';
  * Applied by MainLayout through a nested ConfigProvider, so every Ant Design component inside the
  * layout (tables, cards, forms, modals) picks it up without page-by-page changes.
  */
-export const FOREST_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN];
+export const FOREST_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN, ROLES.OWNER];
 export const usesForestTheme = (role) => FOREST_ROLES.includes(role);
-// The canvas picker and its presets are the Club Manager / Head Trainer look. The vet stays on the
+// The canvas picker and its presets are the Club Manager / Head Trainer / Horse Owner look. The vet stays on the
 // forest look it had (the warm oat page, preset parchment_old) until trunghieu decides.
-export const CANVAS_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER];
+export const CANVAS_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.OWNER];
 export const usesCanvasPicker = (role) => CANVAS_ROLES.includes(role);
 
 // Small label above the sidebar menu.

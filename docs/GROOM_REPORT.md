@@ -215,3 +215,55 @@ Backend (Duy, đã có):
 - Bữa "Quá hạn ghi nhận" vẫn hiện 2 nút: **"Không cho ăn được"** (gọi `PATCH /stable/tasks/:id/not-done` — server cho phép sau khi quá giờ, HLV được báo) và **"Đã cho ăn, quên ghi"** (gửi `performedAt` = giờ thật, phải trong khung giờ của bữa và trong 24 giờ; server lưu `recordedLate`).
 - Hiện nhãn "Cho ăn bù" cho việc có `makeUpOf` (giờ lấy từ `scheduledDate` của việc, không lấy giờ khẩu phần).
 - Thông báo `meal_missed`: biểu tượng/nhãn riêng nếu app phân loại thông báo.
+
+## I. App Groom làm theo phản hồi (Tien, 16/10/2026)
+
+Đối chiếu mục H, ghi chú của nhóm ngày 15/10 (Chủ ngựa, Bác sĩ, Quản lý) và code `main` tới `1fe4e7d`.
+
+| Mục | App đã làm | Ghi chú |
+|---|---|---|
+| DEP-05 Chăm sóc móng | Loại `hoof_care` có nhãn "Chăm sóc móng", nằm ở tab Việc chuồng, có bộ lọc. Trước đó việc loại này **không hiện ở tab nào**. | |
+| DEP-01 Đường dùng | Hiện ở dòng thuốc, chi tiết thuốc, toa trong chi tiết ngựa, và trong câu xác nhận liều ("đúng đường dùng (uống)"). | Toa cũ không có đường dùng thì không hiện gì. Form bác sĩ đã có ô chọn (`61150f8`). |
+| DEP-03 Ưu tiên, nơi nhận, duyệt một phần | Đề xuất bổ sung có "Mức độ cần" (mặc định Khẩn khi gửi từ việc đang bị chặn) và "Giao về" (khu của ngựa / khu của tôi / Kho chung). Đề xuất vật tư mới cũng có mức Khẩn. Lịch sử hiện "Khẩn", "cho Block A", "Duyệt 6/10 · chờ hàng về", số thực nhận. | |
+| Bữa/liều quá hạn | Hai nút: **"Đã cho ăn/cho dùng, quên ghi"** (chọn giờ thật, mốc 30 phút trong khung giờ và trong 24 giờ, gửi `performedAt`; hiện "Ghi nhận muộn") và **"Không làm được"**. Không cho "quên ghi" khi đã có bữa ăn bù hoặc khi việc vẫn bị chặn (thiếu kho, chưa có khẩu phần). | Có ở Cho ăn, Chi tiết bữa, Chi tiết thuốc. Tổng quan có banner "N bữa/liều quá hạn chưa ghi nhận". |
+| Cho ăn bù | Bữa có `makeUpOf`: tiêu đề "Cho ăn bù — bữa tối", giờ lấy từ việc, kèm ghi chú của HLV, thẻ màu riêng. | |
+| Thông báo | Nhãn và biểu tượng theo loại ("Bữa bị bỏ lỡ", "Y lệnh bác sĩ", "Việc được giao", "Đề xuất kho", "Lịch khám"…); nút "Đánh dấu đã đọc hết" (`PATCH /notifications/read-all`). Chuông chỉ ở Tổng quan. | |
+| Lịch sử tiêm phòng / tẩy giun / đóng móng | Chi tiết ngựa → Lịch sử: danh sách từ `GET /horses/:id/care-events` (sản phẩm, số lô, liều, người làm, hẹn lần sau). Lịch chăm sóc định kỳ ghi thêm "Lần trước". Chỉ xem, không sửa. | Từ ghi chú của nhóm (phần Bác sĩ). |
+| Lịch bác sĩ hẹn khám | **Server (Groom):** `GET /stable/my-care-plan` trả thêm `exams` — các yêu cầu khám đang mở của ngựa, kèm giờ hẹn và bác sĩ nhận. **App:** thẻ "Lịch bác sĩ khám" và dòng trong lịch trình hôm nay ở chi tiết ngựa; Tổng quan nhắc "Bác sĩ khám · Golden Wind 09:00 16/10". | Groom không đọc được `GET /health/exam-requests` (route chỉ cho Vet/HLV/Manager), nên đọc qua endpoint của Groom; không sửa logic của bác sĩ. |
+| Buổi tập bị hủy / dừng | Lịch trình hôm nay vẫn hiện buổi đã hủy, kèm `cancelReason` ("Đã hủy: …") hoặc `abortReason`. | Từ ghi chú của nhóm (hủy buổi có lý do). |
+
+Ghi chú của nhóm ngày 15/10 về Chủ ngựa (định giá, tổng quan, biểu đồ) và Quản lý (khóa tài khoản, đặt lại mật khẩu) không có phần nào thuộc Groom.
+Nếu Quản lý khóa tài khoản Groom, app báo lỗi đăng nhập theo thông báo của server; đổi mật khẩu vẫn ở Hồ sơ của tôi.
+
+### DEP-11 — Báo Groom khi bác sĩ hẹn giờ khám
+- **Role phụ trách:** Bác sĩ thú y · **Ưu tiên:** P2 · **Trạng thái:** BLOCKED_BY_TEAM
+- **Hiện có:** `PATCH /health/exam-requests/:id { action: 'accept', scheduledFor }` chỉ báo cho người yêu cầu (HLV/Quản lý). Groom chỉ thấy lịch khi mở app (`my-care-plan.exams`).
+- **Cần bổ sung:** khi nhận hoặc đổi giờ khám, gửi thêm `Notification` loại `exam_request` cho Groom phụ trách ngựa (`StableAssignment.assignedCaretaker`), ví dụ "🩺 BS … hẹn khám Golden Wind 09:00 16/10 — giữ ngựa trong chuồng".
+- **Groom dùng để:** nhận thông báo ngay thay vì phải mở app mới biết; app đã có nhãn "Lịch khám" cho loại thông báo này.
+
+### Trạng thái DEP còn mở
+- **DEP-04** cấp phát về khu: vẫn chờ chốt thiết kế (mục H).
+- **DEP-11:** như trên.
+- Các DEP khác đã xong ở backend/web và đã được app dùng.
+
+### Kiểm thử (16/10/2026)
+- Server: `groom.test.js` thêm 2 ca (bữa quá hạn: không cho ghi lúc này, ghi muộn với giờ thật thì `recordedLate`, báo không cho ăn được; lịch hẹn khám có trong `my-care-plan`).
+- Kết quả tích hợp: 47 đạt, 2 bỏ qua (2 ca liều thuốc tự bỏ qua khi chạy gần nửa đêm), 0 lỗi, chạy 3 lần liền.
+  Một lần chạy trước đó lỗi khởi động ở file `groom.test.js` và không lặp lại.
+- Unit server 78 đạt; mobile 11/11 (thêm ca ghi muộn, cho ăn bù, chăm sóc móng, duyệt một phần).
+- Chạy app bản web với server cục bộ và dữ liệu seed, chụp bằng Playwright, không lỗi console:
+  - bữa quá hạn → "quên ghi" → "Ghi nhận muộn";
+  - bữa ăn bù;
+  - đường dùng trong xác nhận liều;
+  - việc chăm sóc móng;
+  - lịch khám và lịch sử tẩy giun ở chi tiết ngựa;
+  - nhãn thông báo;
+  - đề xuất Khẩn / Giao về.
+
+### Ngựa 3D ở màn chi tiết ngựa (16/10/2026)
+- Mô hình **"HORSE – Realistic 3D Model (DEMO FREE)"** của WildMesh 3D (Sketchfab), giấy phép **CC BY-NC 4.0**:
+  dùng cho đồ án được, phải ghi công (app hiện dòng ghi công dưới khung), **không dùng thương mại**.
+  Muốn dùng thương mại thì thay `mobile/assets/models/horse.glb` bằng mô hình có bản quyền.
+- Điểm chấn thương lấy từ `GET /health/injury-markers` (toạ độ bác sĩ chấm trên sơ đồ nghiêng), đặt dọc thân ngựa.
+  Bác sĩ không cần đổi gì.
+- Trình xem `model-viewer` và bộ giải nén meshopt tải từ CDN (jsDelivr), nên lần đầu mở cần có mạng.

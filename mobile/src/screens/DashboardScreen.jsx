@@ -12,6 +12,7 @@ import {
   HEALTH_STATUS,
   MEAL_CONFIG,
   describeDaysLeft,
+  formatDateTime,
   formatDayLabel,
   getUpcomingCare,
   levelOf,
@@ -83,6 +84,15 @@ export default function DashboardScreen({ navigation }) {
     [myHorseIds, horseById]
   );
 
+  // The vet's visits for the groom's horses (open exam requests), the booked ones first.
+  const exams = useMemo(
+    () =>
+      sheets
+        .flatMap((sheet) => (sheet.exams || []).map((e) => ({ ...e, horse: sheet.horse })))
+        .sort((a, b) => (a.scheduledFor ? new Date(a.scheduledFor) : Infinity) - (b.scheduledFor ? new Date(b.scheduledFor) : Infinity)),
+    [sheets]
+  );
+
   const meal = useMemo(() => nextMealSlot(feedings.filter((f) => myHorseIds.has(refId(f.horse)))), [feedings, myHorseIds]);
 
   const onRefresh = async () => {
@@ -113,11 +123,8 @@ export default function DashboardScreen({ navigation }) {
             </Text>
           </Row>
           <ProgressBar percent={percent} />
-          {missed.length > 0 ? (
-            <Text style={styles.heroNote}>
-              {missed.length} việc đã quá hạn ghi nhận hôm nay
-              {todayTasks.length !== planned ? ` · ${todayTasks.length - planned} việc HLV cho bỏ qua` : ''}
-            </Text>
+          {todayTasks.length !== planned ? (
+            <Text style={styles.heroNote}>{todayTasks.length - planned} việc HLV cho bỏ qua hôm nay</Text>
           ) : null}
           <Row style={{ gap: 6, marginTop: spacing.md }}>
             <Icon name={MEAL_CONFIG[meal.slot].icon} size={15} color={colors.gold} />
@@ -134,6 +141,22 @@ export default function DashboardScreen({ navigation }) {
           <WorkTile icon="medication" label="Thuốc" value={doses.length} tint={colors.red} onPress={() => navigation.navigate('Chăm sóc', { segment: 'medication', at: Date.now() })} />
           <WorkTile icon="tasks" label="Việc chuồng" value={chores.length} tint={colors.green} onPress={() => navigation.navigate('Chăm sóc', { segment: 'chores', at: Date.now() })} />
         </Row>
+
+        {/* Meals and doses whose window closed unrecorded: the trainer (and vet) have been told; the
+            groom still says what happened — given but not ticked, or not given. */}
+        {missed.length > 0 ? (
+          <Banner tone="danger">
+            <Row style={{ gap: spacing.sm }}>
+              <Icon name="clock" size={17} color={colors.red} />
+              <Text style={[font.body, { flex: 1 }]}>
+                {missed.length} bữa/liều quá hạn chưa ghi nhận — báo "quên ghi" hoặc "không làm được".
+              </Text>
+              <Pressable onPress={() => navigation.navigate('Chăm sóc', { segment: segmentOf(missed[0]), at: Date.now() })} hitSlop={6}>
+                <Text style={styles.link}>Xem →</Text>
+              </Pressable>
+            </Row>
+          </Banner>
+        ) : null}
 
         {/* Work that can't go ahead: short of stock, no approved ration, an expired item. */}
         {blocked.length > 0 ? (
@@ -240,9 +263,28 @@ export default function DashboardScreen({ navigation }) {
           ) : null}
         </Card>
 
-        {care.length > 0 ? (
+        {care.length > 0 || exams.length > 0 ? (
           <Card style={{ marginBottom: spacing.lg }}>
             <SectionTitle>Nhắc lịch chăm sóc</SectionTitle>
+            {exams.slice(0, 3).map((e) => (
+              <Pressable
+                key={e._id}
+                style={styles.careRow}
+                onPress={() => navigation.navigate('HorseDetail', { horseId: e.horse?._id, name: e.horse?.name })}
+              >
+                <Row style={{ gap: spacing.sm }}>
+                  <Icon name="exam" size={15} color={colors.purple} />
+                  <Text style={[font.body, { flex: 1 }]} numberOfLines={1}>
+                    Bác sĩ khám · {e.horse?.name}
+                  </Text>
+                  <Badge
+                    label={e.scheduledFor ? formatDateTime(e.scheduledFor) : 'Chờ hẹn giờ'}
+                    color={colors.purple}
+                    bg={colors.purpleSoft}
+                  />
+                </Row>
+              </Pressable>
+            ))}
             {care.slice(0, 3).map((c) => (
               <Row key={`${c.horse?._id}-${c.key}`} style={styles.careRow}>
                 <Icon name={c.icon} size={15} color={colors.forestLight} />

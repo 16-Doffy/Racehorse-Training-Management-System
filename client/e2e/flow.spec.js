@@ -61,7 +61,7 @@ test('trainer horse list counts from the real health status and checklist', asyn
   const kpi = (label) => page.locator('div').filter({ hasText: new RegExp(`^${label}$`, 'i') }).locator('xpath=following-sibling::div[1]');
   await expect(kpi('chưa có kế hoạch')).toHaveText(/^0\s*ngựa/);
 });
-for (const [role, picker] of [['manager', true], ['trainer', true], ['vet', false], ['owner', false]]) {
+for (const [role, picker] of [['manager', true], ['trainer', true], ['vet', false], ['owner', true]]) {
   test(`${role} ${picker ? 'chooses' : 'does not get'} the canvas, even with a dark canvas saved in the browser`, async ({ page }) => {
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
@@ -69,10 +69,10 @@ for (const [role, picker] of [['manager', true], ['trainer', true], ['vet', fals
     await login(page, role);
     await expect(page.getByRole('button', { name: /Nền Canvas/ })).toHaveCount(picker ? 1 : 0);
     await expect(page.locator('.is-dark-canvas')).toHaveCount(picker ? 1 : 0);
-    if (role === 'owner') {
-      // The Owner's sidebar stays light: no forest layout, no gradient painted over it.
-      await expect(page.locator('.forest-layout')).toHaveCount(0);
-      expect(await page.locator('.ant-layout-sider').evaluate((el) => getComputedStyle(el).backgroundImage)).toBe('none');
+    if (role === 'vet') {
+      // The vet stays on its fixed classic forest page; the Owner now shares the Manager's canvas look.
+      await expect(page.locator('.forest-layout')).toHaveCount(1);
+      await expect(page.locator('.canvas-sider')).toHaveCount(0);
     }
     expect(errors).toEqual([]);
   });

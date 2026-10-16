@@ -6,6 +6,7 @@ export const TASK_CONFIG = {
   cleaning: { label: 'Vệ sinh chuồng', icon: 'cleaning', color: '#2563eb', bg: '#dbeafe' },
   bathing: { label: 'Tắm rửa', icon: 'bathing', color: '#0891b2', bg: '#cffafe' },
   icing: { label: 'Ngâm chân nước đá', icon: 'icing', color: '#4f46e5', bg: '#e0e7ff' },
+  hoof_care: { label: 'Chăm sóc móng', icon: 'farrier', color: '#92400e', bg: '#fef3c7' },
   // Ordered by the vet through a treatment, not assigned by hand.
   medication: { label: 'Cho dùng thuốc', icon: 'medication', color: '#dc2626', bg: '#fee2e2' },
   monitoring: { label: 'Theo dõi theo y lệnh', icon: 'monitoring', color: '#7c3aed', bg: '#ede9fe' },
@@ -13,11 +14,49 @@ export const TASK_CONFIG = {
   other: { label: 'Việc khác', icon: 'note', color: '#475569', bg: '#f1f5f9' },
 };
 
-export const TASK_TYPE_ORDER = ['feeding', 'medication', 'monitoring', 'cleaning', 'bathing', 'icing', 'other'];
+export const TASK_TYPE_ORDER = ['feeding', 'medication', 'monitoring', 'cleaning', 'bathing', 'icing', 'hoof_care', 'other'];
 
 // The three parts of the day's work, as the "Chăm sóc" tab splits them.
 export const CARE_TYPES = ['medication', 'monitoring'];
-export const CHORE_TYPES = ['cleaning', 'bathing', 'icing', 'other'];
+export const CHORE_TYPES = ['cleaning', 'bathing', 'icing', 'hoof_care', 'other'];
+
+/** How a medicine is given (Treatment.medications[].route); null on prescriptions written before it existed. */
+export const MEDICATION_ROUTE = {
+  oral: 'Uống',
+  im: 'Tiêm bắp',
+  iv: 'Tiêm tĩnh mạch',
+  sc: 'Tiêm dưới da',
+  topical: 'Bôi ngoài da',
+  eye: 'Nhỏ mắt',
+  other: 'Khác (theo dặn dò)',
+};
+
+/** Routine care the vet records (GET /horses/:id/care-events). */
+export const CARE_EVENT_KIND = {
+  vaccination: { label: 'Tiêm phòng', icon: 'syringe' },
+  deworming: { label: 'Tẩy giun', icon: 'deworm' },
+  farrier: { label: 'Đóng móng', icon: 'farrier' },
+};
+
+/**
+ * What a notification is about, for the ones a groom receives. Unknown types fall back to the
+ * severity's look, so a type added on the server later still shows.
+ */
+export const NOTIFICATION_TYPE = {
+  task_assigned: { label: 'Việc được giao', icon: 'tasks' },
+  care_order: { label: 'Y lệnh bác sĩ', icon: 'vet' },
+  meal_missed: { label: 'Bữa bị bỏ lỡ', icon: 'clock' },
+  session_scheduled: { label: 'Lịch tập', icon: 'session' },
+  restock_decision: { label: 'Đề xuất kho', icon: 'supplies' },
+  low_stock: { label: 'Kho sắp hết', icon: 'supplies' },
+  incident_report: { label: 'Sự cố', icon: 'warning' },
+  incident_update: { label: 'Sự cố', icon: 'warning' },
+  exam_request: { label: 'Lịch khám', icon: 'exam' },
+  injury_lock: { label: 'Khóa tập', icon: 'lock' },
+  training_restricted: { label: 'Hạn chế tập', icon: 'lock' },
+  training_unlocked: { label: 'Mở khóa tập', icon: 'check' },
+  horse_assigned: { label: 'Phân công', icon: 'stall' },
+};
 
 export const TASK_STATUS = {
   pending: { label: 'Chưa xong', color: '#6b7280', bg: '#f3f4f6' },
@@ -144,7 +183,15 @@ export function taskState(task, ctx) {
     return { key, ...TASK_STATE[key], reason: task.skipReason };
   }
   const timing = task.timing || {};
-  if (timing.state === 'missed') return { key: 'missed', ...TASK_STATE.missed, reason: timing.reason };
+  if (timing.state === 'missed') {
+    // The server's reason is about ticking it now; what is left is to say what happened.
+    const by = timing.closesAt ? ` (hạn ${formatTime(timing.closesAt)})` : '';
+    return {
+      key: 'missed',
+      ...TASK_STATE.missed,
+      reason: `Đã quá giờ ghi nhận${by}. Đã làm mà quên bấm: chọn "quên ghi" với giờ thật; chưa làm được: báo để HLV/bác sĩ biết.`,
+    };
+  }
   const blockers = taskBlockers(task, ctx);
   if (blockers.length) return { key: 'blocked', ...TASK_STATE.blocked, reason: blockers[0].message, blockers };
   if (timing.state === 'upcoming') return { key: 'upcoming', ...TASK_STATE.upcoming, reason: timing.reason };
@@ -186,6 +233,47 @@ export function summarizeTasks(tasks = [], ctx, now = new Date()) {
     stateOf: (task) => states.find((s) => s.task === task)?.state || taskState(task, ctx),
   };
 }
+
+// How far back a record may be sent (server dailyTask.controller.js MAX_OFFLINE_HOURS).
+const LATE_RECORD_HOURS = 24;
+const LATE_STEP_MINUTES = 30;
+
+/**
+ * The times a meal or dose that was done but not ticked may be recorded at: inside its own window
+ * (the server judges the window at the time given, not at the time sent) and within the last 24
+ * hours. Every 30 minutes, plus the scheduled time itself. Empty when it can't be recorded late.
+ */
+export function lateRecordTimes(task, now = new Date()) {
+  const { opensAt, closesAt } = task?.timing || {};
+  if (!opensAt || !closesAt) return [];
+  const from = Math.max(new Date(opensAt).getTime(), now.getTime() - LATE_RECORD_HOURS * 3600000 + 60000);
+  const to = Math.min(new Date(closesAt).getTime(), now.getTime());
+  if (from > to) return [];
+  const step = LATE_STEP_MINUTES * 60000;
+  const times = new Set();
+  for (let t = Math.ceil(from / step) * step; t <= to; t += step) times.add(t);
+  const scheduled = new Date(task.scheduledDate).getTime();
+  if (scheduled >= from && scheduled <= to) times.add(scheduled);
+  return [...times].sort((a, b) => a - b).map((t) => new Date(t));
+}
+
+/**
+ * A missed meal or dose the groom did give but forgot to record: it can still be recorded at its
+ * real time (shown as recorded late). Not when a make-up meal already stands in for it, and not
+ * when something would block it anyway (no ration, short of stock, expired).
+ */
+export const canRecordLate = (task, ctx, now = new Date()) =>
+  task?.status === 'pending' &&
+  task.timing?.state === 'missed' &&
+  !task.makeUpTask &&
+  taskBlockers(task, ctx).length === 0 &&
+  lateRecordTimes(task, now).length > 0;
+
+/** A meal or dose whose window closed can still be reported as not done (the trainer / vet is told). */
+export const canReportNotDone = (task) => task?.status === 'pending';
+
+/** What the Manager approved of a request: all of it unless they approved less (approvedQuantity). */
+export const approvedOf = (request) => request?.approvedQuantity ?? request?.quantity;
 
 /** One id per action the groom takes, so a resend of the same tap is recognised by the server. */
 export const newOpId = () => `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -298,6 +386,10 @@ export const RESTOCK_STATUS = {
 export function restockState(request) {
   if (request?.status === 'approved' && !request.awaitingDelivery) {
     return { key: 'received', label: 'Đã duyệt · đã cộng kho', color: '#16a34a', bg: '#dcfce7' };
+  }
+  // The Manager approved less than asked: say how much is on its way.
+  if (request?.status === 'approved' && request.approvedQuantity != null && request.approvedQuantity < request.quantity) {
+    return { key: 'approved', ...RESTOCK_STATUS.approved, label: `Duyệt ${request.approvedQuantity}/${request.quantity} · chờ hàng về`, partial: true };
   }
   return { key: request?.status, ...(RESTOCK_STATUS[request?.status] || { label: request?.status, color: '#6b7280', bg: '#f3f4f6' }) };
 }
@@ -557,6 +649,17 @@ export function describeTask(task, schedulesForHorse = []) {
     return { ...base, label, time: task.dueTime || (task.scheduledDate ? formatTime(task.scheduledDate) : null), meal: null };
   }
   const meal = MEAL_CONFIG[task.mealSlot];
+  // A make-up the trainer asked for: given now, not at the ration's time.
+  if (task.makeUpOf) {
+    return {
+      ...base,
+      icon: meal?.icon || base.icon,
+      label: `Cho ăn bù — ${meal?.label || task.mealSlot}`,
+      meal: meal?.label,
+      makeUp: true,
+      time: formatTime(task.scheduledDate),
+    };
+  }
   return {
     ...base,
     icon: meal?.icon || base.icon,
