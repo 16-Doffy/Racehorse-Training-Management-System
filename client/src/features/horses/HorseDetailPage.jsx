@@ -85,7 +85,7 @@ function PedigreeTree({ horse }) {
     }
     return (
       <div
-        className="border rounded px-3 py-2 text-center"
+        className="border rounded px-3 py-2 text-center light-surface-box"
         style={{
           minWidth: 140,
           background: level === 0 ? '#e6f7ff' : level === 1 ? '#f0f5ff' : '#fafafa',
@@ -430,8 +430,9 @@ export default function HorseDetailPage() {
 
         {/* Hero Section */}
         <div className="premium-card mb-6 overflow-hidden">
+          {/* light-surface-box: this header stays a light panel on the dark canvas, so its grey text must not turn cream. */}
           <div
-            className="p-8"
+            className="p-8 light-surface-box"
             style={{
               background: `linear-gradient(135deg, ${statusCfg.bg || '#f9fafb'} 0%, #ffffff 100%)`,
             }}

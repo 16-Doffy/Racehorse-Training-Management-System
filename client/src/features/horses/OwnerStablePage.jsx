@@ -88,7 +88,7 @@ export default function OwnerStablePage() {
     <div className="light-surface-box text-gray-800 font-sans">
       <PageHeroBanner eyebrow="TEAM 8 • CHUỒNG TRẠI & CHĂM SÓC" roleLabel="Horse Owner" title="Chuồng Trại & Chăm Sóc" subtitle="Theo dõi vị trí chuồng, thông tin người chăm sóc, khẩu phần ăn và lịch trình hàng ngày." />
 
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <span className="font-medium text-gray-500 text-sm">Chiến mã</span>
         <Select
           placeholder="Chọn chiến mã"

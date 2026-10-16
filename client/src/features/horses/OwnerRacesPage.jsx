@@ -108,7 +108,7 @@ export default function OwnerRacesPage() {
     <div className="light-surface-box owner-ui text-gray-800 font-sans">
       <PageHeroBanner eyebrow="TEAM 8 • GIẢI ĐUA & THÀNH TÍCH" roleLabel="Horse Owner" title="Lịch Sử & Đăng Ký Giải Đua" subtitle="Theo dõi thành tích thi đấu, danh hiệu và các giải đua sắp tới của chiến mã." />
 
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <span className="font-medium text-gray-500 text-sm">Chiến mã</span>
         <Select
           allowClear

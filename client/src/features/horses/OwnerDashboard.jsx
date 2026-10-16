@@ -348,7 +348,7 @@ export default function OwnerDashboard() {
         title="Chiến mã của tôi"
         flush
         extra={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Input allowClear placeholder="Tìm theo tên…" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-48" />
             <Select value={healthFilter} onChange={setHealthFilter} options={HEALTH_FILTERS} className="min-w-[170px]" />
           </div>
