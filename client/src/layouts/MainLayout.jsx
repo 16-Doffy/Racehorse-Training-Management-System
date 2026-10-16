@@ -1,21 +1,23 @@
-import { useState } from 'react';
-import { ConfigProvider, Layout, Menu, Avatar, Dropdown, Button } from 'antd';
+import { useEffect, useState } from 'react';
+import { ConfigProvider, Layout, Menu, Avatar, Dropdown, Segmented } from 'antd';
 import { 
   UserOutlined, 
   LogoutOutlined, 
   AppstoreFilled,
-  EllipsisOutlined
+  EllipsisOutlined,
+  SunOutlined,
+  MoonOutlined,
 } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { loggedOut } from '../features/auth/authSlice';
 import { siderCollapsedSet } from '../store/uiSlice';
 import { getMenuByRole } from './menuConfig';
-import { ROLE_LABELS } from '../constants/roles';
+import { ROLES, ROLE_LABELS } from '../constants/roles';
 import AlertBell from '../features/alerts/AlertBell';
 import { disconnectSocket } from '../lib/socket';
 import { fileHref } from '../lib/files';
-import { FOREST, MENU_SECTION_LABEL, usesForestTheme, usesCanvasPicker, CANVAS_PRESETS, PICKABLE_PRESETS, pickableCanvas, getForestTheme } from './forestTheme';
+import { FOREST, MENU_SECTION_LABEL, usesForestTheme, usesCanvasPicker, CANVAS_PRESETS, LIGHT_CANVAS, DARK_CANVAS, canvasOf, getForestTheme } from './forestTheme';
 
 const { Sider, Content } = Layout;
 
@@ -72,16 +74,22 @@ export default function MainLayout() {
     }
   });
   // A canvas saved in this browser by a Manager must not follow the next person who signs in here.
-  const canvasKey = canvas ? pickableCanvas(canvasTheme) : 'parchment_old';
+  const canvasKey = canvas ? canvasOf(canvasTheme) : 'parchment_old';
   const activePreset = CANVAS_PRESETS[canvasKey] || CANVAS_PRESETS.sand_bone;
   const currentTheme = getForestTheme(canvasKey);
-  const isDarkCanvas = canvas && Boolean(activePreset.isDark || canvasKey === 'midnight_cockpit');
+  const isDarkCanvas = canvas && canvasKey === DARK_CANVAS;
+  // The Manager's and the Head Trainer's pages go fully dark; the Owner's pages keep their light panels.
+  const staffDark = isDarkCanvas && [ROLES.MANAGER, ROLES.HEAD_TRAINER].includes(user?.role);
+
+  // Popovers, modals and dropdowns render on <body>, outside the layout: they follow the dark canvas through a body class.
+  useEffect(() => {
+    document.body.classList.toggle('wdp-dark-portals', staffDark);
+    return () => document.body.classList.remove('wdp-dark-portals');
+  }, [staffDark]);
 
   let pageBgStyle = { backgroundColor: forest ? activePreset.page : '#FAFAFA' };
   if (canvasKey === 'peak_equestrian_dark') {
     pageBgStyle = { background: 'radial-gradient(circle at 50% 0%, #0E281F 0%, #06130E 65%, #030A07 100%)' };
-  } else if (canvasKey === 'peak_equestrian_light') {
-    pageBgStyle = { background: 'radial-gradient(circle at 50% 0%, #F5EFE4 0%, #FAF6EE 70%, #F3ECDC 100%)' };
   }
 
   const handleSelectCanvas = (key) => {
@@ -107,7 +115,7 @@ export default function MainLayout() {
   };
 
   const layout = (
-    <Layout className={forest ? `forest-layout${canvas ? ' is-canvas' : ''}${isDarkCanvas ? ' is-dark-canvas' : ''}` : undefined} style={{ height: '100vh', ...pageBgStyle }}>
+    <Layout className={forest ? `forest-layout${canvas ? ' is-canvas' : ''}${isDarkCanvas ? ' is-dark-canvas' : ''}${staffDark ? ' staff-dark' : ''}` : undefined} style={{ height: '100vh', ...pageBgStyle }}>
       {/* SIDEBAR */}
       <Sider
         theme={forest ? 'dark' : 'light'}
@@ -226,63 +234,16 @@ export default function MainLayout() {
       <Layout style={{ ...pageBgStyle, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <div className="flex justify-between items-center px-4 pt-3 md:px-8 md:pt-4 shrink-0 bg-transparent">
           {canvas ? (
-            <Dropdown
-              rootClassName={isDarkCanvas ? 'canvas-dropdown-dark' : 'canvas-dropdown-light'}
-              menu={{
-                items: PICKABLE_PRESETS.map((p) => {
-                  const isSelected = p.key === canvasKey;
-                  return {
-                    key: p.key,
-                    label: (
-                      <div className="flex items-center justify-between gap-4 py-1">
-                        <div className="flex items-center gap-2">
-                          <span className="w-3.5 h-3.5 rounded-full border border-black/20 shrink-0" style={{ backgroundColor: p.page }} />
-                          <span
-                            className={`font-medium text-xs ${
-                              isDarkCanvas
-                                ? (isSelected ? 'text-[#F6D57A] font-semibold' : 'text-[#FAF8F5]')
-                                : (isSelected ? 'text-emerald-900 font-semibold' : 'text-slate-800')
-                            }`}
-                          >
-                            {p.label}
-                          </span>
-                        </div>
-                        <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                            isDarkCanvas
-                              ? 'bg-white/10 text-amber-200/90 border border-amber-300/20'
-                              : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {p.badge}
-                        </span>
-                      </div>
-                    ),
-                    onClick: () => handleSelectCanvas(p.key),
-                  };
-                }),
-                selectedKeys: [canvasKey],
-              }}
-              trigger={['click']}
-            >
-              <Button
-                size="small"
-                aria-label={`Nền Canvas: ${activePreset.badge}`}
-                className={`flex items-center gap-1.5 text-xs font-semibold shadow-xs cursor-pointer max-w-[170px] sm:max-w-none ${
-                  isDarkCanvas
-                    ? '!bg-[#122B22] !border-[rgba(212,175,55,0.35)] !text-[#FAF8F5] hover:!border-[#D4AF37]'
-                    : '!bg-white/95 !border-[#E5DEC9] !text-slate-800 hover:!border-emerald-600'
-                }`}
-              >
-                <span className="w-2.5 h-2.5 rounded-full border border-black/20 shrink-0" style={{ backgroundColor: activePreset.page }} />
-                <span className="truncate">
-                  <span className="hidden sm:inline">Nền Canvas: </span>
-                  <span className="sm:hidden">Nền: </span>
-                  {activePreset.badge || activePreset.label.split(':')[0]}
-                </span>
-                <span className={`text-[10px] shrink-0 ${isDarkCanvas ? 'text-amber-300/70' : 'text-slate-400'}`}>▼</span>
-              </Button>
-            </Dropdown>
+            <Segmented
+              size="small"
+              aria-label="Giao diện sáng hoặc tối"
+              value={isDarkCanvas ? 'dark' : 'light'}
+              onChange={(mode) => handleSelectCanvas(mode === 'dark' ? DARK_CANVAS : LIGHT_CANVAS)}
+              options={[
+                { value: 'light', label: 'Sáng', icon: <SunOutlined /> },
+                { value: 'dark', label: 'Tối', icon: <MoonOutlined /> },
+              ]}
+            />
           ) : <div />}
           <AlertBell />
         </div>
@@ -400,31 +361,6 @@ export default function MainLayout() {
         }
         .custom-sidebar-menu.is-canvas-menu .ant-menu-item-selected .anticon {
           color: #F2C14E !important;
-        }
-
-        /* Canvas Dropdown styling (rendered as portal on body) */
-        .canvas-dropdown-dark .ant-dropdown-menu {
-          background-color: #0D211A !important;
-          border: 1px solid rgba(212, 175, 55, 0.35) !important;
-          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.4) !important;
-          padding: 6px !important;
-        }
-        .canvas-dropdown-dark .ant-dropdown-menu-item {
-          border-radius: 6px !important;
-          padding: 6px 10px !important;
-          color: #FAF8F5 !important;
-          transition: all 0.15s ease !important;
-        }
-        .canvas-dropdown-dark .ant-dropdown-menu-item:hover,
-        .canvas-dropdown-dark .ant-dropdown-menu-item-active {
-          background-color: #16362B !important;
-        }
-        .canvas-dropdown-dark .ant-dropdown-menu-item-selected {
-          background-color: rgba(212, 175, 55, 0.16) !important;
-          border: 1px solid rgba(212, 175, 55, 0.35) !important;
-        }
-        .canvas-dropdown-dark .ant-dropdown-menu-item-selected span {
-          color: #F6D57A !important;
         }
 
         /* Luxury Equestrian Card & Table Styling for Light Canvas */
@@ -799,6 +735,91 @@ export default function MainLayout() {
         }
         .forest-layout .owner-ui .ant-segmented {
           border-radius: 8px;
+        }
+
+        /* Manager / Head Trainer on the dark canvas: the boxes that stay light on the light canvas (KPI
+           strips, ribbons, the week calendar, empty states) go dark as well, with cream text, so the page
+           has no white blocks. The Owner's pages keep their own light panels (rules above). These win over
+           the light-box rules by one more class. */
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box {
+          background-color: #10261E !important;
+          background-image: none !important;
+          border-color: rgba(212, 175, 55, 0.22) !important;
+          color: #E6EDE8 !important;
+        }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box strong, .forest-layout.is-dark-canvas.staff-dark .light-surface-box th, .forest-layout.is-dark-canvas.staff-dark .light-surface-box td { color: #F4F1E8 !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box a:not(.ant-btn) { color: #F6D57A !important; text-decoration: none !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box a:not(.ant-btn):hover { color: #F8E7B2 !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-btn:not(.ant-btn-primary):not(.ant-btn-dangerous) {
+          color: #FCD34D !important;
+          background-color: rgba(255, 255, 255, 0.06) !important;
+          border-color: rgba(252, 211, 77, 0.4) !important;
+        }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-card, .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-card-body, .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-table, .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-table-tbody > tr > td {
+          background-color: transparent !important;
+          color: #E6EDE8 !important;
+        }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-card-head, .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-table-thead > tr > th {
+          background-color: rgba(255, 255, 255, 0.05) !important;
+          color: #F4F1E8 !important;
+          border-color: rgba(212, 175, 55, 0.18) !important;
+        }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-table-tbody > tr:hover > td { background-color: rgba(255, 255, 255, 0.05) !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-statistic-title, .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-empty-description, .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-typography-secondary { color: #B9CABF !important; }
+
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-gray-900"], [class~="text-gray-800"], [class~="text-gray-700"], [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-slate-700"], [class~="text-[#0F5A43]"]) { color: #F4F1E8 !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-gray-600"], [class~="text-gray-500"], [class~="text-slate-600"], [class~="text-slate-500"]) { color: #B9CABF !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-gray-400"], [class~="text-gray-300"], [class~="text-slate-400"]) { color: #93AB9E !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-emerald-900"], [class~="text-emerald-950"], [class~="text-green-600"], [class~="text-green-700"]) { color: #6EE7B7 !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-orange-600"], [class~="text-orange-700"], [class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"]) { color: #FCD34D !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-rose-900"], [class~="text-red-600"], [class~="text-red-700"]) { color: #FDA4AF !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"], [class~="text-sky-700"], [class~="text-cyan-600"], [class~="text-cyan-700"]) { color: #93C5FD !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-white"], [class~="!bg-white"], [class~="bg-gray-100"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-50/80"], [class~="bg-slate-50"], [class~="bg-slate-50/80"], [class~="bg-[#FFFDF8]"], [class~="bg-[#FAF7F0]"], [class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"]) { background-color: rgba(255, 255, 255, 0.05) !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-emerald-100"], [class~="bg-emerald-50"], [class~="bg-emerald-50/20"], [class~="bg-emerald-50/60"], [class~="bg-green-50"]) { background-color: rgba(16, 185, 129, 0.14) !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-orange-50"], [class~="bg-orange-100"], [class~="bg-yellow-50"], [class~="bg-amber-50"], [class~="bg-amber-50/30"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/90"]) { background-color: rgba(245, 158, 11, 0.14) !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-rose-50"], [class~="bg-rose-100"], [class~="bg-red-50"], [class~="bg-red-100"]) { background-color: rgba(244, 63, 94, 0.14) !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-blue-50"], [class~="bg-blue-50/60"], [class~="bg-blue-100"], [class~="bg-cyan-50"], [class~="bg-sky-50"]) { background-color: rgba(59, 130, 246, 0.16) !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="border-amber-200/50"], [class~="border-emerald-200/60"], [class~="divide-[#EFE8DA]"], [class~="divide-gray-100"]) { border-color: rgba(212, 175, 55, 0.18) !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="hover:bg-rose-50/40"], [class~="hover:bg-gray-50/40"], [class~="hover:bg-emerald-50/50"], [class~="hover:bg-amber-50/50"], [class~="hover:!bg-amber-50"], [class~="hover:bg-gray-50"]):hover { background-color: rgba(255, 255, 255, 0.07) !important; }
+        /* Item codes (<code>, inventory): Bootstrap's pink is too faint on the warm cards and on the dark ones. */
+        .forest-layout.is-canvas code { color: #0F5A43 !important; }
+        .forest-layout.is-dark-canvas.staff-dark code { color: #F6D57A !important; background-color: rgba(255, 255, 255, 0.06) !important; }
+        /* Chart legends on the dark canvas: the label reads in cream, the marker keeps the series colour. */
+        .forest-layout.is-dark-canvas.staff-dark .recharts-legend-item-text { color: #E6EDE8 !important; }
+        /* Headings on the dark canvas: warm champagne rather than plain white, to sit with the brass accents. */
+        .forest-layout.is-dark-canvas.staff-dark .ant-card-head-title,
+        .forest-layout.is-dark-canvas.staff-dark h1.ant-typography,
+        .forest-layout.is-dark-canvas.staff-dark h2.ant-typography,
+        .forest-layout.is-dark-canvas.staff-dark h3.ant-typography,
+        .forest-layout.is-dark-canvas.staff-dark h4.ant-typography {
+          color: #F3E3BC !important;
+        }
+
+        /* Popups render outside the layout (body), so the dark canvas reaches them through a body class:
+           text written for a light popup turns light on the dark popup. */
+        body.wdp-dark-portals .ant-popover .ant-popover-inner,
+        body.wdp-dark-portals .ant-popover .ant-popover-arrow::before {
+          border: 1px solid rgba(212, 175, 55, 0.25);
+        }
+
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-gray-900"], [class~="text-gray-800"], [class~="text-gray-700"], [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-slate-700"], [class~="text-[#0F5A43]"]) { color: #F4F1E8 !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-gray-600"], [class~="text-gray-500"], [class~="text-slate-600"], [class~="text-slate-500"]) { color: #B9CABF !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-gray-400"], [class~="text-gray-300"], [class~="text-slate-400"]) { color: #93AB9E !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-emerald-900"], [class~="text-emerald-950"], [class~="text-green-600"], [class~="text-green-700"]) { color: #6EE7B7 !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-orange-600"], [class~="text-orange-700"], [class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"]) { color: #FCD34D !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-rose-900"], [class~="text-red-600"], [class~="text-red-700"]) { color: #FDA4AF !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"], [class~="text-sky-700"], [class~="text-cyan-600"], [class~="text-cyan-700"]) { color: #93C5FD !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-white"], [class~="!bg-white"], [class~="bg-gray-100"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-50/80"], [class~="bg-slate-50"], [class~="bg-slate-50/80"], [class~="bg-[#FFFDF8]"], [class~="bg-[#FAF7F0]"], [class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"]) { background-color: rgba(255, 255, 255, 0.05) !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-emerald-100"], [class~="bg-emerald-50"], [class~="bg-emerald-50/20"], [class~="bg-emerald-50/60"], [class~="bg-green-50"]) { background-color: rgba(16, 185, 129, 0.14) !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-orange-50"], [class~="bg-orange-100"], [class~="bg-yellow-50"], [class~="bg-amber-50"], [class~="bg-amber-50/30"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/90"]) { background-color: rgba(245, 158, 11, 0.14) !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-rose-50"], [class~="bg-rose-100"], [class~="bg-red-50"], [class~="bg-red-100"]) { background-color: rgba(244, 63, 94, 0.14) !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-blue-50"], [class~="bg-blue-50/60"], [class~="bg-blue-100"], [class~="bg-cyan-50"], [class~="bg-sky-50"]) { background-color: rgba(59, 130, 246, 0.16) !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="border-amber-200/50"], [class~="border-emerald-200/60"], [class~="divide-[#EFE8DA]"], [class~="divide-gray-100"]) { border-color: rgba(212, 175, 55, 0.18) !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) strong { color: #F4F1E8 !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) .ant-btn-dangerous:not(.ant-btn-primary),
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) .ant-btn-dangerous:not(.ant-btn-primary) span {
+          color: #FDA4AF !important;
+          border-color: rgba(244, 63, 94, 0.45) !important;
         }
       `}</style>
     </Layout>

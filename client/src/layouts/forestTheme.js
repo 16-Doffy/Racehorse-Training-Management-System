@@ -10,7 +10,7 @@ import { ROLES } from '../constants/roles';
  */
 export const FOREST_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN, ROLES.OWNER];
 export const usesForestTheme = (role) => FOREST_ROLES.includes(role);
-// The canvas picker and its presets are the Club Manager / Head Trainer / Horse Owner look. The vet stays on the
+// The Sáng/Tối switch is the Club Manager / Head Trainer / Horse Owner look. The vet stays on the
 // forest look it had (the warm oat page, preset parchment_old) until trunghieu decides.
 export const CANVAS_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.OWNER];
 export const usesCanvasPicker = (role) => CANVAS_ROLES.includes(role);
@@ -44,48 +44,16 @@ export const FOREST = {
 export const CANVAS_PRESETS = {
   sand_bone: {
     key: 'sand_bone',
-    label: 'PA 1: Trắng Ngà Cát Ấm (Sand Bone)',
-    badge: 'Khuyên dùng',
+    label: 'Sáng',
     page: '#F4EFE6',
     card: '#FAF7F0',
     border: '#E5DAC6',
     borderStrong: '#D7C7AE',
     ink: '#1A2B22',
   },
-  platinum_slate: {
-    key: 'platinum_slate',
-    label: 'PA 2: Bạch Kim Xám Bạc (Platinum Slate)',
-    badge: 'Chuẩn SaaS',
-    page: '#EEF2F6',
-    card: '#F8FAFC',
-    border: '#E2E8F0',
-    borderStrong: '#CBD5E1',
-    ink: '#0F172A',
-  },
-  turf_mist: {
-    key: 'turf_mist',
-    label: 'PA 3: Sương Rêu Đồng Cỏ (Turf Mist)',
-    badge: 'Bản sắc Đua ngựa',
-    page: '#EDF4F0',
-    card: '#F6FAF8',
-    border: '#D2E2DA',
-    borderStrong: '#BDD4C8',
-    ink: '#132A20',
-  },
-  midnight_cockpit: {
-    key: 'midnight_cockpit',
-    label: 'PA 4: Khoang Lái Đêm (Midnight Cockpit)',
-    badge: 'Dark VIP',
-    page: '#090E0C',
-    card: '#121C18',
-    border: '#1D2E27',
-    borderStrong: '#2A4238',
-    ink: '#F8FAFC',
-  },
   peak_equestrian_dark: {
     key: 'peak_equestrian_dark',
-    label: 'PA 5 (PEAK): Đỉnh Cao Kỵ Binh — Đêm Grand Prix (Horsey & Alizée)',
-    badge: 'Peak Luxury',
+    label: 'Tối',
     page: '#06130E',
     card: '#0D211A',
     border: 'rgba(212, 175, 55, 0.28)',
@@ -93,20 +61,10 @@ export const CANVAS_PRESETS = {
     ink: '#FAF8F5',
     isDark: true,
   },
-  peak_equestrian_light: {
-    key: 'peak_equestrian_light',
-    label: 'PA 6 (PEAK): Kỵ Binh Lụa Ngà — Ngày Chantilly (Linen & Saddle)',
-    badge: 'Peak Day',
-    page: '#F2ECE0',
-    card: '#FAF6EE',
-    border: '#E5DAC4',
-    borderStrong: '#D4C29E',
-    ink: '#15251D',
-  },
+  // The vet's fixed page (the warm oat it always had).
   parchment_old: {
     key: 'parchment_old',
-    label: 'Gốc: Warm Oat (Bìa giấy cũ)',
-    badge: 'Bản cũ',
+    label: 'Bản cũ',
     page: '#EFECE4',
     card: '#FFFDF8',
     border: '#E4DFD3',
@@ -115,9 +73,11 @@ export const CANVAS_PRESETS = {
   },
 };
 
-// Every preset can be picked; a key saved in a browser that no longer exists falls back to the default.
-export const PICKABLE_PRESETS = Object.values(CANVAS_PRESETS);
-export const pickableCanvas = (key) => (CANVAS_PRESETS[key] ? key : 'sand_bone');
+// The two canvases of the Sáng/Tối switch in the header (MainLayout).
+export const LIGHT_CANVAS = 'sand_bone';
+export const DARK_CANVAS = 'peak_equestrian_dark';
+/** The canvas a key saved in the browser stands for: a dark preset of the old picker means dark, anything else light. */
+export const canvasOf = (key) => (key === DARK_CANVAS || key === 'midnight_cockpit' ? DARK_CANVAS : LIGHT_CANVAS);
 
 /** Colour and tint per status, for figures that carry a state (dashboard counters). */
 export const STATUS_TONES = {
@@ -129,7 +89,7 @@ export const STATUS_TONES = {
 
 export function getForestTheme(presetKey = 'sand_bone') {
   const p = CANVAS_PRESETS[presetKey] || CANVAS_PRESETS.sand_bone;
-  const isDark = Boolean(p.isDark || presetKey === 'midnight_cockpit');
+  const isDark = Boolean(p.isDark);
   return {
     token: {
       colorPrimary: isDark ? '#D4AF37' : FOREST.primary,
@@ -155,6 +115,8 @@ export function getForestTheme(presetKey = 'sand_bone') {
       // Tooltip bubble: AntD derives it from colorTextBase, which is light on a dark canvas.
       ...(isDark ? { colorBgSpotlight: 'rgba(5, 20, 14, 0.96)' } : {}),
       colorTextPlaceholder: isDark ? '#94A3B8' : '#8A8578',
+      // Secondary text on the dark canvas (hints, descriptions, statistic titles): cream, readable at ~7:1.
+      ...(isDark ? { colorTextSecondary: 'rgba(244, 241, 232, 0.8)', colorTextTertiary: 'rgba(244, 241, 232, 0.68)', colorTextDescription: 'rgba(244, 241, 232, 0.68)' } : {}),
       borderRadiusLG: 12,
     },
     components: {
@@ -181,7 +143,8 @@ export function getForestTheme(presetKey = 'sand_bone') {
         rowSelectedHoverBg: isDark ? '#26483B' : '#E4EDE3',
       },
       Card: { headerBg: 'transparent' },
-      Segmented: { trackBg: isDark ? '#16221E' : '#E9E4D8', itemSelectedBg: p.card },
+      // Unselected options read at ~7:1 on the track (the default grey was 4.3:1 on the warm one).
+      Segmented: { trackBg: isDark ? '#16221E' : '#E9E4D8', itemSelectedBg: isDark ? 'rgba(212, 175, 55, 0.24)' : p.card, itemSelectedColor: isDark ? '#F6D57A' : '#1A2B22', itemColor: isDark ? 'rgba(244, 241, 232, 0.82)' : '#3D4A41', itemHoverColor: isDark ? '#F4F1E8' : '#1A2B22' },
       Select: { controlItemBgActive: '#E5EFE8', controlItemBgHover: '#F3EEE3', optionSelectedColor: FOREST.sider },
       Dropdown: { controlItemBgActive: '#E5EFE8', controlItemBgHover: '#F3EEE3' },
     },

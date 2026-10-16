@@ -7,6 +7,11 @@ const { Text } = Typography;
 const DAY_MS = 24 * 60 * 60 * 1000;
 // Same DD/MM as the wizard's phase table, whatever the browser's locale formatting does.
 const ddmm = (d) => dayjs(d).format('DD/MM');
+/** Text on a phase segment: dark on the light phase colours, white on the dark ones, readable on each. */
+const inkOn = (hex) => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.18 ? '#10261E' : '#FFFFFF';
+};
 
 /**
  * A plan's phases as one bar, each segment as wide as its weeks, with a marker for today and a flag
@@ -45,8 +50,8 @@ export default function PlanTimeline({ phases = [], startDate, raceDate, compact
               }
             >
               <div
-                className="flex items-center justify-center overflow-hidden whitespace-nowrap px-1 text-[11px] font-medium text-white"
-                style={{ width: `${(p.weeks / laid.reduce((n, x) => n + x.weeks, 0)) * 100}%`, background: PHASE_COLORS[p.key], borderRight: i < laid.length - 1 ? '2px solid rgba(255,255,255,0.7)' : 'none' }}
+                className="flex items-center justify-center overflow-hidden whitespace-nowrap px-1 text-[11px] font-medium"
+                style={{ width: `${(p.weeks / laid.reduce((n, x) => n + x.weeks, 0)) * 100}%`, background: PHASE_COLORS[p.key], color: inkOn(PHASE_COLORS[p.key]), borderRight: i < laid.length - 1 ? '2px solid rgba(255,255,255,0.7)' : 'none' }}
               >
                 {compact ? `${p.weeks}t` : `${PHASE_SHORT[p.key]} · ${p.weeks}t`}
               </div>
