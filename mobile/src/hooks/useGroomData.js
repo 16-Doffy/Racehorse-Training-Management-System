@@ -55,6 +55,28 @@ export function useHorseTimeline(horseId) {
   return { ...query, events: query.data?.data?.events || [] };
 }
 
+/** Injuries the vet marked on one horse, shown on the 3D horse (components/HorseStage.jsx). */
+export function useInjuryMarkers(horseId) {
+  const query = useQuery({
+    queryKey: ['injury-markers', horseId],
+    queryFn: () => healthApi.injuryMarkers({ horse: horseId }),
+    enabled: !!horseId,
+    retry: false,
+  });
+  return { ...query, markers: list(query) };
+}
+
+/** The vet's record of routine care for one horse: vaccinations, deworming, farrier visits. */
+export function useCareEvents(horseId) {
+  const query = useQuery({
+    queryKey: ['care-events', horseId],
+    queryFn: () => horseApi.careEvents(horseId),
+    enabled: !!horseId,
+    retry: false,
+  });
+  return { ...query, careEvents: list(query) };
+}
+
 /**
  * The vet's treatments. Each ongoing one turns into today's medication / monitoring tasks for the
  * horse's caretaker (server/src/modules/health/treatmentCare.service.js), so the prescription and

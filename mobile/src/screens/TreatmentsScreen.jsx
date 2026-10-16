@@ -25,6 +25,7 @@ import {
 import { useInventory, useRefreshAll, useStableOverview, useTasks, useTreatments } from '../hooks/useGroomData';
 import {
   CARE_TYPES,
+  MEDICATION_ROUTE,
   canCompleteTask,
   describeTask,
   doseSlots,
@@ -197,7 +198,7 @@ export default function TreatmentsScreen({ navigation, segments }) {
                         slots={slots}
                         ctx={ctx}
                         onOpen={open}
-                        onComplete={setCompleting}
+                        onComplete={(task) => setCompleting({ task, medication })}
                       />
                     );
                   })
@@ -212,7 +213,7 @@ export default function TreatmentsScreen({ navigation, segments }) {
                       mine={mine}
                       ctx={ctx}
                       onOpen={() => setOpenDose({ isCare: true, title: treatment.careInstructions, task: careTask, treatment, inventory, ctx })}
-                      onComplete={setCompleting}
+                      onComplete={(task) => setCompleting({ task })}
                     />
                   </>
                 ) : null}
@@ -238,7 +239,7 @@ export default function TreatmentsScreen({ navigation, segments }) {
                 mine
                 ctx={ctx}
                 onOpen={() => setOpenDose({ isCare: task.taskType !== 'medication', title: task.note, task, inventory, ctx })}
-                onComplete={setCompleting}
+                onComplete={(item) => setCompleting({ task: item })}
               />
             ))}
           </Card>
@@ -254,8 +255,14 @@ export default function TreatmentsScreen({ navigation, segments }) {
           setRestock(restockRequestFor({ entry, missing: missingSupplies(task), task, inventory }));
         }}
         onComplete={(task) => {
+          const medication = openDose?.medication;
           setOpenDose(null);
-          setCompleting(task);
+          setCompleting({ task, medication });
+        }}
+        onRecordLate={(task) => {
+          const medication = openDose?.medication;
+          setOpenDose(null);
+          setCompleting({ task, medication, late: true });
         }}
         onNotDone={(task, reason) => {
           setOpenDose(null);
@@ -263,8 +270,11 @@ export default function TreatmentsScreen({ navigation, segments }) {
         }}
       />
 
+      {/* `completing` = { task, medication?, late? }: the medicine line gives the route to confirm. */}
       <CompleteTaskModal
-        task={completing}
+        task={completing?.task}
+        medication={completing?.medication}
+        late={!!completing?.late}
         visible={!!completing}
         onClose={() => setCompleting(null)}
         onShortage={(missing, task) => setRestock(restockRequestFor({ missing, task, inventory }))}
@@ -310,6 +320,9 @@ function MedicationBlock({ medication, slots, ctx, onOpen, onComplete }) {
           </Text>
           <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
             {medication.dosage ? <Text style={font.small}>Liều {medication.dosage}</Text> : null}
+            {MEDICATION_ROUTE[medication.route] ? (
+              <Text style={[font.small, { color: colors.forest, fontWeight: '700' }]}>· {MEDICATION_ROUTE[medication.route]}</Text>
+            ) : null}
             {medication.frequency ? <Text style={font.small}>· {medication.frequency}</Text> : null}
           </Row>
           {medication.instructions ? (

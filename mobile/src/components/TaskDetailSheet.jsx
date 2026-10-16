@@ -146,7 +146,8 @@ export default function TaskDetailSheet({ task, ctx, schedules = [], visible, on
         ) : null}
         <Row style={{ gap: spacing.sm }}>
           {canComplete ? <Button title="Hoàn thành" icon="check" style={{ flex: 2 }} onPress={onComplete} /> : null}
-          {isPending && state?.key !== 'missed' ? (
+          {/* Still offered after the window closes: the server accepts it and the trainer is told. */}
+          {isPending ? (
             <Button title="Không làm được" icon="block" variant="ghost" style={{ flex: 2 }} onPress={onNotDone} />
           ) : null}
           <Button

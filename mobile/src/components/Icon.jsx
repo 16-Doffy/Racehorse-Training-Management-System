@@ -96,6 +96,13 @@ const ICONS = {
   empty: ['mci', 'inbox-outline'],
   info: ['ion', 'information-circle-outline'],
   flag: ['ion', 'flag-outline'],
+
+  // The 3D horse viewer
+  rotate360: ['mci', 'rotate-3d-variant'],
+  pause: ['ion', 'pause'],
+  expand: ['ion', 'expand-outline'],
+  recenter: ['mci', 'image-filter-center-focus'],
+  cube: ['mci', 'cube-outline'],
 };
 
 export default function Icon({ name, size = 18, color = colors.text, style }) {

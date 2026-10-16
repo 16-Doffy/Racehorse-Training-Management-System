@@ -3,8 +3,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  CHORE_TYPES,
+  approvedOf,
   canCompleteTask,
+  canRecordLate,
   describeTask,
+  lateRecordTimes,
   doseSlots,
   getStockLevel,
   hasApprovedRation,
@@ -146,4 +150,77 @@ test('labels: "Việc khác" shows the job, a ration line shows the item and its
   assert.deepEqual(rationLine({ type: 'Cỏ khô Timothy', inventoryItem: 'hay', amount: 5, unit: 'kg', quantity: '5 kg' }).amount, '5 kg');
   assert.equal(rationLine({ type: 'Cỏ khô Timothy', inventoryItem: 'hay', amount: 5, unit: 'kg' }).label, 'Cỏ khô Timothy');
   assert.equal(rationLine({ type: 'hay', quantity: '2.5 kg' }).label, 'Cỏ khô', 'older free-text lines keep their kind');
+});
+
+test('a missed meal can be recorded late only inside its own window and the last 24 hours', () => {
+  const scheduled = new Date('2026-10-15T06:00:00');
+  const missed = task({
+    taskType: 'feeding',
+    mealSlot: 'morning',
+    scheduledDate: scheduled.toISOString(),
+    timing: { state: 'missed', canComplete: false, opensAt: '2026-10-15T05:00:00', closesAt: '2026-10-15T10:00:00' },
+  });
+  const noon = new Date('2026-10-15T12:00:00');
+  const times = lateRecordTimes(missed, noon);
+  assert.equal(times[0].getHours(), 5, 'from an hour before');
+  assert.equal(times.at(-1).getHours(), 10, 'until the window closed');
+  assert.ok(times.some((t) => t.getTime() === scheduled.getTime()), 'the scheduled time is offered');
+  assert.equal(canRecordLate(missed, { rations: [ration] }, noon), true);
+
+  const nextDay = new Date('2026-10-16T09:00:00');
+  assert.ok(lateRecordTimes(missed, nextDay).every((t) => t >= new Date('2026-10-15T09:01:00')), 'nothing older than 24 hours');
+  assert.equal(canRecordLate(missed, { rations: [ration] }, new Date('2026-10-16T11:00:00')), false, 'too old to send');
+  assert.equal(canRecordLate({ ...missed, makeUpTask: 'm1' }, { rations: [ration] }, noon), false, 'a make-up already stands in for it');
+  assert.equal(canRecordLate({ ...missed, mealSlot: 'evening' }, { rations: [ration] }, noon), false, 'no approved ration, nothing to record');
+  assert.equal(canRecordLate({ ...missed, timing: { state: 'open', canComplete: true } }, { rations: [ration] }, noon), false);
+});
+
+test('a make-up meal says so and keeps its own time; hoof care is stable work', () => {
+  const makeUp = task({ taskType: 'feeding', mealSlot: 'evening', makeUpOf: 'meal-1', scheduledDate: new Date('2026-10-15T18:42:00').toISOString() });
+  const info = describeTask(makeUp, [{ ...ration, mealTime: 'evening', timeOfDay: '17:30' }]);
+  assert.equal(info.label, 'Cho ăn bù — Bữa tối');
+  assert.equal(info.time, '18:42', 'when the trainer asked for it, not the ration time');
+  assert.equal(info.makeUp, true);
+  assert.ok(CHORE_TYPES.includes('hoof_care'));
+  assert.equal(describeTask(task({ taskType: 'hoof_care' })).label, 'Chăm sóc móng');
+});
+
+test('a request the Manager approved in part says how much is coming', () => {
+  const partial = { status: 'approved', awaitingDelivery: true, quantity: 10, approvedQuantity: 6 };
+  assert.equal(restockState(partial).label, 'Duyệt 6/10 · chờ hàng về');
+  assert.equal(approvedOf(partial), 6);
+  assert.equal(approvedOf({ quantity: 10 }), 10, 'older requests: what was asked');
+  assert.equal(restockState({ status: 'approved', awaitingDelivery: true, quantity: 10, approvedQuantity: 10 }).label, 'Đã duyệt · chờ hàng về');
+});
+
+test('an injury mark on the side view becomes a place along the 3D horse', async () => {
+  const { hotspotFor, activeInjuries } = await import('../three/injuryHotspots.js');
+  const hoof = hotspotFor({ coordinates: { x: 0.39, y: 0.88 } });
+  assert.ok(hoof.along > 0.35 && hoof.along < 0.45, 'front leg, a little over a third of the way back');
+  assert.ok(hoof.height < 0.1, 'near the ground');
+  const head = hotspotFor({ coordinates: { x: 0.12, y: 0.09 } });
+  assert.ok(head.along < 0.15 && head.height > 0.85);
+  assert.deepEqual(hotspotFor({ coordinates: { x: 2, y: -1 } }), { along: 1, height: 1 }, 'kept on the horse');
+  const list = activeInjuries([
+    { _id: 'a', severity: 'mild', recoveryStatus: 'recovering' },
+    { _id: 'b', severity: 'severe', recoveryStatus: 'new' },
+    { _id: 'c', severity: 'severe', recoveryStatus: 'recovered' },
+  ]);
+  assert.deepEqual(list.map((m) => m._id), ['b', 'a'], 'healed ones are left out, worst first');
+});
+
+test('the 3D page: head to the right of a catalogue view, injury labels kept as text', async () => {
+  const { horse360Html, initialOrbit } = await import('../three/horse360Html.js');
+  assert.equal(initialOrbit('+z'), '-60deg 76deg 115%');
+  assert.equal(initialOrbit('-x'), '-150deg 76deg 115%');
+  const page = horse360Html({
+    headDirection: '+z',
+    animation: 'Horse|Horse_Idle',
+    hotspots: [{ along: 0.4, height: 0.1, label: '<img src=x onerror=alert(1)>', sub: 'Nặng', color: '#ef4444' }],
+  });
+  assert.ok(!page.includes('<img src=x'), 'a body part from the server is shown as text, never as markup');
+  assert.ok(page.includes('&lt;img src=x onerror=alert(1)&gt;'));
+  assert.ok(page.includes('animation-name="Horse|Horse_Idle"'));
+  assert.ok(page.includes('class="floor"'), 'the card stage has its glow ring');
+  assert.ok(!horse360Html({ interactive: true }).includes('class="floor"'), 'full screen does not');
 });

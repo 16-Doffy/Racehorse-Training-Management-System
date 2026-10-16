@@ -2,7 +2,16 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Icon from './Icon';
 import { Badge, Button, Card, DataRow, HorseAvatar, Row, Sheet } from './ui';
 import SupplyShortage from './SupplyShortage';
-import { canCompleteTask, formatDate, formatDateTime, missingSupplies, stockFor, taskState } from '../utils/groom';
+import {
+  MEDICATION_ROUTE,
+  canCompleteTask,
+  canRecordLate,
+  formatDate,
+  formatDateTime,
+  missingSupplies,
+  stockFor,
+  taskState,
+} from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
 /**
@@ -13,7 +22,7 @@ import { colors, font, radius, spacing } from '../theme';
  * `dose` is { medication, treatment, slots, focus, inventory, ctx } for a medicine, or
  * { isCare, title, task, treatment, inventory, ctx } for care instructions / an unplaced order.
  */
-export default function DoseDetailSheet({ dose, visible, onClose, onComplete, onNotDone, onAskSupply }) {
+export default function DoseDetailSheet({ dose, visible, onClose, onComplete, onRecordLate, onNotDone, onAskSupply }) {
   if (!dose) return <Sheet visible={visible} onClose={onClose} title="Chi tiết y lệnh" />;
 
   const { medication, treatment, inventory = [], ctx, isCare } = dose;
@@ -35,6 +44,9 @@ export default function DoseDetailSheet({ dose, visible, onClose, onComplete, on
             <Text style={font.h2}>{medication?.name || dose.title}</Text>
             <Row style={{ gap: spacing.sm, marginTop: 4, flexWrap: 'wrap' }}>
               {medication?.dosage ? <Badge label={`Liều ${medication.dosage}`} color={colors.forest} bg={colors.forestSoft} /> : null}
+              {MEDICATION_ROUTE[medication?.route] ? (
+                <Badge label={`Đường dùng: ${MEDICATION_ROUTE[medication.route]}`} color={colors.forest} bg={colors.forestSoft} />
+              ) : null}
               {medication?.frequency ? <Badge label={medication.frequency} /> : null}
             </Row>
           </View>
@@ -122,6 +134,7 @@ export default function DoseDetailSheet({ dose, visible, onClose, onComplete, on
             ctx={ctx}
             isCare={isCare}
             onComplete={() => onComplete(slot.task)}
+            onRecordLate={onRecordLate ? () => onRecordLate(slot.task) : null}
             onNotDone={(reason) => onNotDone(slot.task, reason)}
             onAskSupply={(entry) => onAskSupply?.(entry, slot.task)}
           />
@@ -132,7 +145,7 @@ export default function DoseDetailSheet({ dose, visible, onClose, onComplete, on
 }
 
 /** One dose today: its state, its record, and what can be done with it now. */
-function DoseCard({ slot, ctx, isCare, onComplete, onNotDone, onAskSupply }) {
+function DoseCard({ slot, ctx, isCare, onComplete, onRecordLate, onNotDone, onAskSupply }) {
   const { task } = slot;
   const state = taskState(task, ctx);
   const canComplete = canCompleteTask(task, ctx);
@@ -149,7 +162,12 @@ function DoseCard({ slot, ctx, isCare, onComplete, onNotDone, onAskSupply }) {
       </Row>
 
       {!task ? <Text style={font.small}>{slot.reason || 'Hôm nay chưa có việc cho liều này.'}</Text> : null}
-      {task?.completedAt ? <DataRow label={isCare ? 'Đã làm lúc' : 'Đã cho dùng lúc'} value={formatDateTime(task.completedAt)} /> : null}
+      {task?.completedAt ? (
+        <DataRow
+          label={isCare ? 'Đã làm lúc' : 'Đã cho dùng lúc'}
+          value={`${formatDateTime(task.completedAt)}${task.recordedLate ? ' (ghi muộn)' : ''}`}
+        />
+      ) : null}
       {task?.skipReason ? <DataRow label="Không thực hiện" value={task.skipReason} valueStyle={{ color: colors.orange, flex: 1, textAlign: 'right' }} /> : null}
       {task?.status === 'pending' && state?.reason && state.key !== 'blocked' ? (
         <Text style={[font.small, { color: state.key === 'missed' ? colors.red : colors.orange }]}>{state.reason}</Text>
@@ -166,9 +184,20 @@ function DoseCard({ slot, ctx, isCare, onComplete, onNotDone, onAskSupply }) {
 
       <SupplyShortage missing={missingSupplies(task)} onAskSupply={onAskSupply} compact />
 
-      {task?.status === 'pending' && state?.key !== 'missed' ? (
-        <Row style={{ gap: spacing.sm }}>
+      {/* A dose past its window is still reported: given but not ticked (at its real time), or not given. */}
+      {task?.status === 'pending' ? (
+        <Row style={{ gap: spacing.sm, flexWrap: 'wrap' }}>
           {canComplete ? <Button title={isCare ? 'Đã làm' : 'Đã cho dùng'} icon="check" size="sm" style={{ flex: 3 }} onPress={onComplete} /> : null}
+          {state?.key === 'missed' && canRecordLate(task, ctx) && onRecordLate ? (
+            <Button
+              title={isCare ? 'Đã làm, quên ghi' : 'Đã cho dùng, quên ghi'}
+              icon="clock"
+              variant="subtle"
+              size="sm"
+              style={{ flex: 3 }}
+              onPress={onRecordLate}
+            />
+          ) : null}
           <Button
             title="Không làm được"
             icon="block"

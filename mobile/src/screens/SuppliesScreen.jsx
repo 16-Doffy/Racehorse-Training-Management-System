@@ -38,6 +38,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useInventory, useRefreshAll, useStableOverview } from '../hooks/useGroomData';
 import {
   INVENTORY_CATEGORY,
+  approvedOf,
   formatDate,
   formatDateTime,
   formatStock,
@@ -324,7 +325,9 @@ function ItemRow({ item, request, onRestock, last }) {
           </Text>
           {status ? (
             <Badge
-              label={`${status.key === 'approved' ? 'Chờ hàng về' : 'Đã xin'} +${request.quantity} ${item.unit}`}
+              label={`${status.key === 'approved' ? 'Chờ hàng về' : request.priority === 'urgent' ? 'Đã xin khẩn' : 'Đã xin'} +${
+                status.key === 'approved' ? approvedOf(request) : request.quantity
+              } ${item.unit}`}
               color={status.color}
               bg={status.bg}
             />
@@ -391,20 +394,30 @@ function RequestHistorySheet({ visible, onClose, requests, pendingCount }) {
           return (
             <Row style={[styles.historyRow, { alignItems: 'flex-start' }]}>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={font.body}>{r.item.name}</Text>
+                <Row style={{ gap: 6, flexWrap: 'wrap' }}>
+                  <Text style={font.body}>{r.item.name}</Text>
+                  {r.priority === 'urgent' ? <Badge label="Khẩn" color={colors.red} bg={colors.redSoft} /> : null}
+                </Row>
                 <Text style={font.small}>
-                  Xin +{r.quantity} {r.item.unit} · {formatDateTime(r.requestedAt)}
+                  Xin +{r.quantity} {r.item.unit}
+                  {r.destinationBlock ? ` · cho ${r.destinationBlock}` : ''} · {formatDateTime(r.requestedAt)}
                 </Text>
                 {r.task ? <Text style={[font.small, { color: colors.red }]}>Gửi từ một việc đang bị chặn vì thiếu vật tư</Text> : null}
                 {r.note ? <Text style={font.small}>“{r.note}”</Text> : null}
                 {status.key === 'approved' ? (
-                  <Text style={[font.small, { color: colors.blue }]}>Đã duyệt — kho chỉ tăng khi Quản lý nhận hàng về.</Text>
+                  <Text style={[font.small, { color: colors.blue }]}>
+                    {status.partial
+                      ? `Quản lý duyệt ${approvedOf(r)}/${r.quantity} ${r.item.unit} — kho chỉ tăng khi hàng về.`
+                      : 'Đã duyệt — kho chỉ tăng khi Quản lý nhận hàng về.'}
+                  </Text>
                 ) : null}
                 {r.status === 'received' ? (
                   <Text style={[font.small, { color: colors.green }]}>
                     Đã nhận {r.receivedQty ?? r.quantity} {r.item.unit}
                     {r.receivedAt ? ` · ${formatDateTime(r.receivedAt)}` : ''}
-                    {r.receivedQty !== null && r.receivedQty !== undefined && r.receivedQty !== r.quantity ? ` (xin ${r.quantity})` : ''}
+                    {r.receivedQty !== null && r.receivedQty !== undefined && r.receivedQty !== r.quantity
+                      ? ` (xin ${r.quantity}${r.approvedQuantity != null && r.approvedQuantity !== r.quantity ? `, duyệt ${r.approvedQuantity}` : ''})`
+                      : ''}
                   </Text>
                 ) : null}
                 {r.reviewNote ? (
@@ -433,6 +446,7 @@ function ProposeItemModal({ visible, onClose, blocks }) {
   const [unit, setUnit] = useState('');
   const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
+  const [urgent, setUrgent] = useState(false);
   const queryClient = useQueryClient();
 
   const close = () => {
@@ -441,6 +455,7 @@ function ProposeItemModal({ visible, onClose, blocks }) {
     setUnit('');
     setQuantity('');
     setNote('');
+    setUrgent(false);
     onClose();
   };
 
@@ -466,6 +481,8 @@ function ProposeItemModal({ visible, onClose, blocks }) {
       quantity: value,
       note: note.trim() || undefined,
       stableBlock: blocks?.[0],
+      destinationBlock: blocks?.[0],
+      priority: urgent ? 'urgent' : 'normal',
     });
   };
 
@@ -535,6 +552,19 @@ function ProposeItemModal({ visible, onClose, blocks }) {
                 />
               </View>
             </Row>
+
+            <View>
+              <Text style={styles.label}>Mức độ cần{blocks?.[0] ? ` · giao về ${blocks[0]}` : ''}</Text>
+              <ChipGroup
+                options={[
+                  { value: false, label: 'Bình thường' },
+                  { value: true, label: 'Khẩn' },
+                ]}
+                value={urgent}
+                onChange={setUrgent}
+                size="sm"
+              />
+            </View>
 
             <View>
               <Text style={styles.label}>Lý do cần dùng (tuỳ chọn)</Text>

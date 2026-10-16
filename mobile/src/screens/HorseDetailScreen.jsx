@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Icon from '../components/Icon';
-import { Badge, Banner, Button, Card, EmptyState, HorseAvatar, Loading, Row, SectionTitle, Segments } from '../components/ui';
+import { Badge, Banner, Button, Card, EmptyState, Loading, Row, SectionTitle, Segments } from '../components/ui';
 import RestockSheet from '../components/RestockSheet';
+import HorseStage from '../components/HorseStage';
 import {
+  useCareEvents,
+  useInjuryMarkers,
   useCarePlan,
   useFeedings,
   useHealthRecords,
@@ -16,8 +19,10 @@ import {
   useTreatments,
 } from '../hooks/useGroomData';
 import {
+  CARE_EVENT_KIND,
   HEALTH_STATUS,
   MEAL_CONFIG,
+  MEDICATION_ROUTE,
   SESSION_STATUS,
   TRAINING_LEVEL,
   describeDaysLeft,
@@ -37,6 +42,10 @@ import {
 } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
+// The status colours, lightened to read on the dark 3D stage.
+const ON_DARK = { eligible: '#86efac', monitoring: '#fde047', injured: '#fca5a5', quarantined: '#fdba74' };
+const ON_DARK_LEVEL = { none: '#fca5a5', light: '#fdba74', moderate: '#fde047', high: '#86efac' };
+
 // Icons for the kinds of event the timeline endpoint returns.
 const TIMELINE_KIND = {
   session: { icon: 'session', color: colors.blue },
@@ -46,6 +55,7 @@ const TIMELINE_KIND = {
   incident: { icon: 'warning', color: colors.orange },
   exam_request: { icon: 'flag', color: colors.purple },
   race: { icon: 'race', color: colors.gold },
+  routine_care: { icon: 'syringe', color: colors.forestLight },
 };
 
 const TABS = [
@@ -74,6 +84,8 @@ export default function HorseDetailScreen({ route }) {
   const { treatments } = useTreatments();
   const { items: inventory } = useInventory();
   const { sheets } = useCarePlan(horseId);
+  const { careEvents } = useCareEvents(horseId);
+  const { markers } = useInjuryMarkers(horseId);
 
   const horse = data?.data;
   const plan = sheets[0];
@@ -85,10 +97,12 @@ export default function HorseDetailScreen({ route }) {
   const health = HEALTH_STATUS[horse?.healthStatus];
   const schedules = feedings.filter((f) => refId(f.horse) === horseId);
   const todayTasks = tasks.filter((t) => refId(t.horse) === horseId && isSameDay(t.scheduledDate, new Date()));
-  const todaySessions = sessions.filter(
-    (s) => refId(s.horse) === horseId && isSameDay(s.scheduledAt, new Date()) && s.status !== 'cancelled'
-  );
+  // A cancelled session stays on the list with its reason, so the groom doesn't get the horse ready for nothing.
+  const todaySessions = sessions.filter((s) => refId(s.horse) === horseId && isSameDay(s.scheduledAt, new Date()));
   const care = getUpcomingCare(horse, 30);
+  // When the vet will come for this horse (from the open exam requests), soonest first.
+  const exams = useMemo(() => plan?.exams || [], [plan]);
+  const lastCareOf = (kind) => careEvents.find((e) => e.kind === kind);
   const activeTreatment = treatments.find((t) => refId(t.horse) === horseId && t.status === 'ongoing');
 
   const doneCount = todayTasks.filter((t) => t.status === 'completed').length;
@@ -124,9 +138,28 @@ export default function HorseDetailScreen({ route }) {
           color: colors.blue,
           bg: colors.blueSoft,
           label: s.sessionType === 'trial_run' ? 'Chạy thử' : 'Buổi tập',
-          detail: s.objective || '',
+          // Called off or stopped: why, so the groom knows the horse isn't going out (or came back early).
+          detail:
+            s.status === 'cancelled' && s.cancelReason
+              ? `Đã hủy: ${s.cancelReason}`
+              : s.status === 'aborted' && s.abortReason
+                ? `Dừng giữa chừng: ${s.abortReason}`
+                : s.objective || '',
           badge: SESSION_STATUS[s.status] || { label: s.status, color: colors.textMuted, bg: colors.graySoft },
         })),
+        // The vet's visit, when it is today: the horse has to be in its stall and ready.
+        ...exams
+          .filter((e) => e.scheduledFor && isSameDay(e.scheduledFor, new Date()))
+          .map((e) => ({
+            key: `exam-${e._id}`,
+            time: formatTime(e.scheduledFor),
+            icon: 'exam',
+            color: colors.purple,
+            bg: colors.purpleSoft,
+            label: `Bác sĩ khám${e.acceptedBy ? ` — BS ${e.acceptedBy}` : ''}`,
+            detail: e.reason || '',
+            badge: { label: 'Lịch khám', color: colors.purple, bg: colors.purpleSoft },
+          })),
         ...todayTasks
           .filter((t) => t.taskType !== 'feeding')
           .map((t) => {
@@ -144,7 +177,7 @@ export default function HorseDetailScreen({ route }) {
             };
           }),
       ].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99')),
-    [schedules, todayTasks, todaySessions, feedings, inventory]
+    [schedules, todayTasks, todaySessions, exams, feedings, inventory]
   );
 
   if (isLoading) return <Loading />;
@@ -152,27 +185,25 @@ export default function HorseDetailScreen({ route }) {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        {/* Who this horse is and whether it may work — the two things to know before opening a stall. */}
+        {/* The horse on its stage: turned 360° by hand, with the injuries the vet marked glowing where they are,
+            and whether it may work — the things to know before opening a stall. */}
+        <HorseStage
+          name={horse?.name}
+          subtitle={[assignment?.stableBlock || 'Chưa xếp chuồng', horse?.breed, horse?.weightKg ? `${horse.weightKg}kg` : null]
+            .filter(Boolean)
+            .join(' · ')}
+          badges={[
+            health ? { label: health.label, color: ON_DARK[horse?.healthStatus] || '#a7f3d0', dot: true } : null,
+            clearanceCfg ? { label: clearanceCfg.label, color: ON_DARK_LEVEL[clearance.level] || '#fde68a' } : null,
+            lockedHorseIds.has(horseId) ? { label: 'Khóa huấn luyện', color: '#fca5a5' } : null,
+          ].filter(Boolean)}
+          markers={markers}
+        />
+
         <Card style={styles.hero}>
-          <Row style={{ gap: spacing.md }}>
-            <HorseAvatar name={horse?.name} size={52} />
-            <View style={{ flex: 1 }}>
-              <Text style={font.h1}>{horse?.name}</Text>
-              <Text style={font.small}>
-                {assignment?.stableBlock || 'Chưa xếp chuồng'}
-                {horse?.breed ? ` · ${horse.breed}` : ''}
-                {horse?.weightKg ? ` · ${horse.weightKg}kg` : ''}
-              </Text>
-              <Row style={{ gap: 5, marginTop: 4 }}>
-                <Icon name="person" size={12} color={colors.textFaint} />
-                <Text style={font.small}>{assignment?.assignedCaretaker?.name || 'Chưa có người phụ trách'}</Text>
-              </Row>
-            </View>
-          </Row>
-          <Row style={{ gap: spacing.sm, marginTop: spacing.md, flexWrap: 'wrap' }}>
-            {health ? <Badge label={health.label} color={health.color} bg={health.bg} dot /> : null}
-            {clearanceCfg ? <Badge label={clearanceCfg.label} color={clearanceCfg.color} bg={clearanceCfg.bg} /> : null}
-            {lockedHorseIds.has(horseId) ? <Badge label="Khóa huấn luyện" color={colors.red} bg={colors.redSoft} /> : null}
+          <Row style={{ gap: 5 }}>
+            <Icon name="person" size={13} color={colors.textFaint} />
+            <Text style={font.small}>Phụ trách: {assignment?.assignedCaretaker?.name || 'Chưa có người phụ trách'}</Text>
           </Row>
           {clearance?.reason ? <Text style={styles.clearanceNote}>{clearance.reason}</Text> : null}
         </Card>
@@ -234,24 +265,52 @@ export default function HorseDetailScreen({ route }) {
               )}
             </Card>
 
+            {exams.length > 0 ? (
+              <Card>
+                <SectionTitle>Lịch bác sĩ khám</SectionTitle>
+                {exams.map((e) => (
+                  <Row key={e._id} style={[styles.listRow, { alignItems: 'flex-start', gap: spacing.sm }]}>
+                    <Icon name="exam" size={16} color={colors.purple} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={font.body}>
+                        {e.scheduledFor ? `Hẹn ${formatDateTime(e.scheduledFor)}` : 'Chờ bác sĩ nhận và hẹn giờ'}
+                        {e.acceptedBy ? ` · BS ${e.acceptedBy}` : ''}
+                      </Text>
+                      {e.reason ? <Text style={font.small}>{e.reason}</Text> : null}
+                    </View>
+                    {e.priority === 'urgent' || e.priority === 'high' ? (
+                      <Badge label={e.priority === 'urgent' ? 'Khẩn' : 'Ưu tiên'} color={colors.red} bg={colors.redSoft} />
+                    ) : null}
+                  </Row>
+                ))}
+                <Text style={[font.small, { marginTop: spacing.sm }]}>Giữ ngựa trong chuồng, sẵn sàng khi bác sĩ tới.</Text>
+              </Card>
+            ) : null}
+
             <Card style={{ marginBottom: spacing.xxl }}>
               <SectionTitle>Lịch chăm sóc định kỳ</SectionTitle>
               {care.length === 0 ? (
                 <Text style={font.small}>Không có lịch tiêm phòng, tẩy giun hay kiểm tra móng trong 30 ngày tới.</Text>
               ) : (
-                care.map((c) => (
-                  <Row key={c.key} style={styles.listRow}>
-                    <Icon name={c.icon} size={16} color={colors.forestLight} />
-                    <Text style={{ flex: 1, ...font.body }}>
-                      {c.label} · {formatDate(c.date)}
-                    </Text>
-                    <Badge
-                      label={describeDaysLeft(c.daysLeft)}
-                      color={c.daysLeft < 0 ? colors.red : colors.textMuted}
-                      bg={c.daysLeft < 0 ? colors.redSoft : colors.graySoft}
-                    />
-                  </Row>
-                ))
+                care.map((c) => {
+                  const last = lastCareOf(c.key);
+                  return (
+                    <Row key={c.key} style={styles.listRow}>
+                      <Icon name={c.icon} size={16} color={colors.forestLight} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={font.body}>
+                          {c.label} · {formatDate(c.date)}
+                        </Text>
+                        {last ? <Text style={font.small}>Lần trước: {formatDate(last.date)}{last.product ? ` · ${last.product}` : ''}</Text> : null}
+                      </View>
+                      <Badge
+                        label={describeDaysLeft(c.daysLeft)}
+                        color={c.daysLeft < 0 ? colors.red : colors.textMuted}
+                        bg={c.daysLeft < 0 ? colors.redSoft : colors.graySoft}
+                      />
+                    </Row>
+                  );
+                })
               )}
             </Card>
           </>
@@ -277,9 +336,10 @@ export default function HorseDetailScreen({ route }) {
                         <Text style={[font.h3, { flex: 1 }]}>{medication.name}</Text>
                         <Text style={styles.qty}>{medication.dosage}</Text>
                       </Row>
-                      {medication.times?.length ? (
+                      {medication.times?.length || MEDICATION_ROUTE[medication.route] ? (
                         <Row style={{ gap: 5, marginLeft: 24, flexWrap: 'wrap' }}>
-                          {medication.times.map((time) => (
+                          {MEDICATION_ROUTE[medication.route] ? <Badge label={MEDICATION_ROUTE[medication.route]} /> : null}
+                          {(medication.times || []).map((time) => (
                             <Badge key={time} label={time} color={colors.forest} bg={colors.forestSoft} />
                           ))}
                         </Row>
@@ -381,6 +441,39 @@ export default function HorseDetailScreen({ route }) {
                         <Text style={font.body}>{e.title}</Text>
                         {e.detail ? <Text style={font.small}>{e.detail}</Text> : null}
                         <Text style={font.small}>{formatDateTime(e.at)}</Text>
+                      </View>
+                    </Row>
+                  );
+                })
+              )}
+            </Card>
+
+            {/* What the vet recorded doing: the groom is asked "when was he last wormed?". Read-only here. */}
+            <Card>
+              <SectionTitle>Tiêm phòng · tẩy giun · đóng móng</SectionTitle>
+              {careEvents.length === 0 ? (
+                <Text style={font.small}>Bác sĩ chưa ghi lần tiêm phòng, tẩy giun hay đóng móng nào.</Text>
+              ) : (
+                careEvents.slice(0, 10).map((e) => {
+                  const kind = CARE_EVENT_KIND[e.kind] || { label: e.kind, icon: 'note' };
+                  return (
+                    <Row key={e._id} style={[styles.listRow, { alignItems: 'flex-start', gap: spacing.sm }]}>
+                      <View style={[styles.timelineIcon, { backgroundColor: colors.forestSoft }]}>
+                        <Icon name={kind.icon} size={14} color={colors.forestLight} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={font.body}>
+                          {kind.label}
+                          {e.product ? ` — ${e.product}` : ''}
+                        </Text>
+                        <Text style={font.small}>
+                          {formatDate(e.date)}
+                          {e.performedBy?.name ? ` · ${e.performedBy.name}` : ''}
+                          {e.batchNumber ? ` · Lô ${e.batchNumber}` : ''}
+                          {e.dose ? ` · ${e.dose}` : ''}
+                        </Text>
+                        {e.note ? <Text style={font.small}>{e.note}</Text> : null}
+                        {e.nextDue ? <Text style={[font.small, { color: colors.forestLight }]}>Hẹn lần sau: {formatDate(e.nextDue)}</Text> : null}
                       </View>
                     </Row>
                   );

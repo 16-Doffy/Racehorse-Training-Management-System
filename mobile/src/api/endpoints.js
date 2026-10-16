@@ -41,11 +41,15 @@ export const horseApi = {
   getOne: (id) => api.get(`/horses/${id}`),
   /** Everything every role did to this horse, in order. */
   timeline: (id, params) => api.get(`/horses/${id}/timeline`, { params }),
+  /** Vaccinations, deworming, farrier visits the vet recorded, newest first (read-only here). */
+  careEvents: (id, params) => api.get(`/horses/${id}/care-events`, { params }),
 };
 
 export const healthApi = {
   records: (params) => api.get('/health/records', { params }),
   treatments: () => api.get('/health/treatments'),
+  /** Where the vet marked an injury on the horse (side-view coordinates), with severity and recovery. */
+  injuryMarkers: (params) => api.get('/health/injury-markers', { params }),
 };
 
 export const feedingApi = {
@@ -65,6 +69,7 @@ export const inventoryApi = {
 export const notificationApi = {
   list: () => api.get('/notifications'),
   markRead: (id) => api.patch(`/notifications/${id}/read`),
+  markAllRead: () => api.patch('/notifications/read-all'),
 };
 
 export const trainingApi = {
