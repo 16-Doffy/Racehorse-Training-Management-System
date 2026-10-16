@@ -85,7 +85,7 @@ export default function OwnerEvaluationsPage() {
       <PageHeroBanner eyebrow="TEAM 8 • ĐÁNH GIÁ CHUYÊN MÔN" roleLabel="Horse Owner" title="Đánh Giá Từ Huấn Luyện Viên" subtitle="Nhật ký nhận xét và đánh giá chuyên môn định kỳ từ Huấn luyện viên Trưởng." />
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="font-medium text-gray-500 text-sm">Chiến mã</span>
           <Select
             placeholder="Tất cả chiến mã"

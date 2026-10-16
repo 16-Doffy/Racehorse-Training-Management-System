@@ -101,3 +101,65 @@ test('trainer dashboard fitness panel shows the chosen run against its targets',
   await expect(panel.getByText(/Xu hướng \d+ buổi gần nhất của ngựa/)).toBeVisible();
   await expect(panel.getByText(/So sánh các ngựa ngày/)).toBeVisible();
 });
+
+// ---- Horse Owner pages ----
+// Is the text of this element dark? (Any CSS colour, oklch included, is read back through a canvas.)
+const textIsDark = (locator) =>
+  locator.evaluate((el) => {
+    const cv = document.createElement('canvas').getContext('2d');
+    cv.fillStyle = '#000';
+    cv.fillStyle = getComputedStyle(el).color;
+    cv.fillRect(0, 0, 1, 1);
+    const [r, g, b] = cv.getImageData(0, 0, 1, 1).data;
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.45;
+  });
+for (const [name, canvas] of [['light', 'sand_bone'], ['dark', 'peak_equestrian_dark']]) {
+  test(`owner opens every menu page on the ${name} canvas without errors or a sideways scroll`, async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.addInitScript((c) => localStorage.setItem('wdp301_canvas_theme', c), canvas);
+    await login(page, 'owner');
+    const items = page.locator('.custom-sidebar-menu .ant-menu-item');
+    await expect(items.first()).toBeVisible();
+    const count = await items.count();
+    expect(count).toBeGreaterThanOrEqual(7);
+    for (let i = 0; i < count; i++) {
+      await items.nth(i).click();
+      await expect(page.locator('h1').first()).toBeVisible();
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow, `menu item ${i} scrolls sideways`).toBeLessThanOrEqual(1);
+    }
+    expect(errors).toEqual([]);
+  });
+}
+test('owner dashboard shows the real race record and prize money', async ({ page }) => {
+  await login(page, 'owner');
+  // The fixture horse has one finished race, won, with a 1,000,000 prize (owner-overview).
+  await expect(page.getByText('Tỷ lệ chiến thắng', { exact: true })).toBeVisible();
+  await expect(page.getByText('100%', { exact: true })).toBeVisible();
+  await expect(page.getByText(/tiền thưởng 1\.000\.000 ₫/)).toBeVisible();
+});
+test('owner race page shows the prize in dong, not dollars', async ({ page }) => {
+  await login(page, 'owner');
+  await page.goto('/owner/races');
+  await expect(page.getByText('TEST Browser Cup', { exact: true })).toBeVisible();
+  await expect(page.getByText('1.000.000 ₫', { exact: true })).toBeVisible();
+  await expect(page.getByText(/\$1,000,000/)).toHaveCount(0);
+});
+test('owner horse list counts the examined horse as ready, like the trainer sees it', async ({ page }) => {
+  await login(page, 'owner');
+  await page.goto('/horses');
+  const bannerStat = (label) => page.locator('span').filter({ hasText: new RegExp(`^${label}:$`, 'i') }).locator('xpath=following-sibling::span[1]');
+  await expect(bannerStat('đủ điều kiện tập')).toHaveText('1 con');
+  await expect(bannerStat('cần theo dõi')).toHaveText('0 con');
+});
+test('owner horse page keeps its header and pedigree readable on the dark canvas', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('wdp301_canvas_theme', 'peak_equestrian_dark'));
+  await login(page, 'owner');
+  await page.goto(`/horses/${fixture.horseId}`);
+  const hero = page.locator('.premium-card').first();
+  await expect(hero.getByText('Thành tích', { exact: true })).toBeVisible();
+  // The header is a light panel: its text must stay dark, not turn cream like the page's own text.
+  expect(await textIsDark(hero.getByText('Thành tích', { exact: true }))).toBe(true);
+  expect(await textIsDark(page.getByText('Bản thân', { exact: true }))).toBe(true);
+});

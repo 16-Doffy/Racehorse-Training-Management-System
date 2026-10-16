@@ -58,6 +58,17 @@ export default function HorseListPage() {
   const horses = data?.data || [];
   const { data: checklistData } = useQuery({ queryKey: ['horses', 'checklist'], queryFn: () => horsesApi.checklists(), enabled: showsNextStep });
   const checklistByHorse = new Map((checklistData?.data || []).map((c) => [String(c.horse._id), c]));
+  // The checklist is for the staff. The Owner's own view of whether a vet has seen each horse comes from the owner summary.
+  const { data: ownerSummaryData } = useQuery({ queryKey: ['owner-summary'], queryFn: () => horsesApi.ownerSummary(), enabled: isOwner });
+  const summaryByHorse = new Map((ownerSummaryData?.data || []).map((r) => [String(r.horse._id), r]));
+  // Has a vet examined the horse? true / false, or undefined while that is still loading.
+  const examined = (h) => {
+    if (isOwner) {
+      const row = summaryByHorse.get(String(h._id));
+      return row ? Boolean(row.health.lastExam) : undefined;
+    }
+    return checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === 'health')?.done;
+  };
 
   // Manager: horses the club no longer manages, kept for their records.
   const [view, setView] = useState('active');
@@ -117,8 +128,12 @@ export default function HorseListPage() {
   // has seen it, so "ready" also needs an exam on file and no medical restriction; an unexamined horse
   // is counted on its own rather than as healthy.
   const checkItem = (h, key) => checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === key)?.done;
-  const readyCount = horses.filter((h) => h.healthStatus === 'eligible' && checkItem(h, 'health') && checkItem(h, 'clearance')).length;
-  const unexaminedCount = horses.filter((h) => checkItem(h, 'health') === false).length;
+  const readyCount = horses.filter((h) =>
+    isOwner
+      ? h.healthStatus === 'eligible' && examined(h) && !h.trainingClearance?.restricted
+      : h.healthStatus === 'eligible' && checkItem(h, 'health') && checkItem(h, 'clearance')
+  ).length;
+  const unexaminedCount = horses.filter((h) => examined(h) === false).length;
   const restrictedCount = horses.filter((h) => h.trainingClearance?.restricted).length;
   const watchCount = horses.filter((h) => ['monitoring', 'injured', 'quarantined'].includes(h.healthStatus) || h.trainingClearance?.restricted).length;
   // The Manager closes staffing gaps; the trainer closes planning gaps.
@@ -205,7 +220,7 @@ export default function HorseListPage() {
       key: 'healthStatus',
       // A horse nobody has examined yet starts as "eligible" in the record; say what is true instead.
       render: (status, h) =>
-        checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === 'health')?.done === false ? (
+        examined(h) === false ? (
           <Tooltip title="Bác sĩ chưa khám tiếp nhận ngựa này — bài nặng và chạy thử cần giấy khám.">
             <Tag>Chưa khám</Tag>
           </Tooltip>

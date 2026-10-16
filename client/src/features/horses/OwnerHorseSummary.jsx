@@ -20,11 +20,11 @@ export default function OwnerHorseSummary() {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
       {rows.map((r) => (
         <div key={r.horse._id} className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col gap-2 min-w-0">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <Link to={`/horses/${r.horse._id}`} className="text-base font-semibold text-gray-900">
               {r.horse.name}
             </Link>
-            <Pill tone={r.health.restricted ? 'warn' : !r.health.lastExam ? 'neutral' : 'good'}>
+            <Pill className="!whitespace-normal max-w-full" tone={r.health.restricted ? 'warn' : !r.health.lastExam ? 'neutral' : 'good'}>
               {/* The default health status is not an assessment: say so until a vet has examined it. */}
               {r.health.lastExam ? HEALTH[r.health.status] || r.health.status : 'Chưa có hồ sơ khám'} · {r.health.clearance}
             </Pill>

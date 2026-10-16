@@ -9,6 +9,11 @@ export const TASK_CONFIG = {
   cleaning: { label: 'Vệ sinh chuồng', emoji: '🧹', color: 'blue' },
   bathing: { label: 'Tắm rửa', emoji: '🚿', color: 'cyan' },
   icing: { label: 'Ngâm chân nước đá', emoji: '🧊', color: 'geekblue' },
+  // The rest of DailyTask.taskType, worded as the groom's phone words them (mobile/src/utils/groom.js).
+  hoof_care: { label: 'Chăm sóc móng', emoji: '🔧', color: 'gold' },
+  medication: { label: 'Cho dùng thuốc', emoji: '💊', color: 'red' },
+  monitoring: { label: 'Theo dõi theo y lệnh', emoji: '🩺', color: 'purple' },
+  other: { label: 'Việc khác', emoji: '📌', color: 'default' },
 };
 
 export const TASK_STATUS_CONFIG = {

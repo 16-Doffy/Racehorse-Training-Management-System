@@ -9,7 +9,7 @@ export function OwnerCard({ title, extra, flush = false, className = '', childre
   return (
     <div className={`bg-white border border-gray-200 rounded-xl overflow-hidden ${className}`}>
       {(title || extra) && (
-        <div className="flex items-center justify-between gap-3 px-[20px] py-3.5 border-b border-gray-100">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-[20px] py-3.5 border-b border-gray-100">
           {/* A div, not an h2: the global Bootstrap rule `h2 { font-size: 2rem }` outranks Tailwind's text-sm. */}
           <div role="heading" aria-level={2} className="text-sm font-semibold text-gray-900">{title}</div>
           {extra}
@@ -59,7 +59,8 @@ export function StatStrip({ items, cols = items.length, className = '' }) {
   return (
     <div className={`grid grid-cols-2 ${wide} gap-px bg-gray-200 border border-gray-200 rounded-xl overflow-hidden ${className}`}>
       {items.map((item) => (
-        <div key={item.label} className="bg-white px-4 py-3.5 min-w-0">
+        // With an odd count, the last figure takes the whole row on a phone (two columns) instead of leaving a grey hole.
+        <div key={item.label} className={`bg-white px-4 py-3.5 min-w-0 ${items.length % 2 ? 'last:col-span-2 lg:last:col-span-1' : ''}`}>
           <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{item.label}</div>
           <div className="flex items-baseline gap-2 mt-1 flex-wrap">
             <span className={`text-xl font-bold tabular-nums leading-tight ${valueTone[item.tone] || 'text-gray-900'}`}>{item.value}</span>

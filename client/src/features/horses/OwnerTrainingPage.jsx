@@ -240,7 +240,7 @@ export default function OwnerTrainingPage() {
 
       {/* Horse Selector */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="font-medium text-gray-500 text-sm">Chiến mã</span>
           <Select
             placeholder="Tất cả chiến mã"
