@@ -5,8 +5,16 @@ import Icon from './Icon';
 import { Badge, Banner, Button, Card, ChipGroup, DataRow, Row, Sheet } from './ui';
 import { inventoryApi } from '../api/endpoints';
 import { useAuth } from '../auth/AuthContext';
-import { describeTask, formatStock, isOpenRequest, levelOf, refId, restockState } from '../utils/groom';
+import { useStableOverview } from '../hooks/useGroomData';
+import { describeTask, formatStock, isOpenRequest, levelOf, parseStableBlock, refId, restockState } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
+
+// The request's destination when it is for the shared store rather than one block.
+const MAIN_STORE = '__main__';
+const PRIORITY_OPTIONS = [
+  { value: 'normal', label: 'Bình thường' },
+  { value: 'urgent', label: 'Khẩn' },
+];
 
 /**
  * Asks the Manager for more of one stock item.
@@ -18,6 +26,7 @@ import { colors, font, radius, spacing } from '../theme';
  */
 export default function RestockSheet({ request, visible, onClose }) {
   const { user } = useAuth();
+  const { myBlocks, assignmentByHorseId } = useStableOverview();
   const { item, task, missing } = request || {};
   const packed = !!(item?.packUnit && item?.packSize);
   // A request of mine already with the Manager for this item: asking again only if more is needed.
@@ -25,13 +34,22 @@ export default function RestockSheet({ request, visible, onClose }) {
   const [mode, setMode] = useState(packed ? 'packs' : 'units');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  const [priority, setPriority] = useState('normal');
+  const [destination, setDestination] = useState(MAIN_STORE);
   const queryClient = useQueryClient();
+
+  // Where it should go: the block of the horse whose work is blocked, else the groom's own block.
+  const taskBlock = task ? parseStableBlock(assignmentByHorseId.get(refId(task.horse))?.stableBlock || '').block : null;
+  const blocks = [...new Set([taskBlock, ...myBlocks].filter((b) => b && b !== 'Khác'))];
 
   // Pre-fill with the shortfall, rounded up to whole packs when the item is sold in packs.
   useEffect(() => {
     if (!visible || !item) return;
     const short = missing?.find((m) => String(m.inventoryItem) === String(item._id))?.short;
     setMode(packed ? 'packs' : 'units');
+    // Work that is waiting on it is urgent by default; the groom can still say otherwise.
+    setPriority(task ? 'urgent' : 'normal');
+    setDestination(blocks[0] || MAIN_STORE);
     setNote(task ? `Thiếu để làm việc ${describeTask(task).label.toLowerCase()} cho ${task.horse?.name || 'ngựa'}.` : '');
     if (!short) {
       setAmount('');
@@ -71,6 +89,8 @@ export default function RestockSheet({ request, visible, onClose }) {
       ...(mode === 'packs' ? { packs: value } : { quantity: value }),
       note: note.trim() || undefined,
       task: task?._id,
+      priority,
+      destinationBlock: destination === MAIN_STORE ? undefined : destination,
     });
   };
 
@@ -160,6 +180,21 @@ export default function RestockSheet({ request, visible, onClose }) {
           {converted ? (
             <DataRow label="Quy đổi" value={`${converted} ${item.unit}`} />
           ) : null}
+        </View>
+
+        <View>
+          <Text style={styles.label}>Mức độ cần</Text>
+          <ChipGroup options={PRIORITY_OPTIONS} value={priority} onChange={setPriority} size="sm" />
+        </View>
+
+        <View>
+          <Text style={styles.label}>Giao về</Text>
+          <ChipGroup
+            options={[...blocks.map((b) => ({ value: b, label: b })), { value: MAIN_STORE, label: 'Kho chung' }]}
+            value={destination}
+            onChange={setDestination}
+            size="sm"
+          />
         </View>
 
         <View>

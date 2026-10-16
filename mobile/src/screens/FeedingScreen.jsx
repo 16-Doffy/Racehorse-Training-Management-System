@@ -31,6 +31,7 @@ import {
   MEAL_CONFIG,
   MEAL_ORDER,
   canCompleteTask,
+  canRecordLate,
   formatDays,
   formatStock,
   formatTime,
@@ -80,6 +81,8 @@ export default function FeedingScreen({ navigation, segments }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [openMeal, setOpenMeal] = useState(null);
   const [completing, setCompleting] = useState(null);
+  // A missed meal that was given but not ticked, recorded at its real time.
+  const [recordingLate, setRecordingLate] = useState(null);
   const [notDone, setNotDone] = useState(null);
   const [notDoneReason, setNotDoneReason] = useState('');
   const [restock, setRestock] = useState(null);
@@ -271,6 +274,7 @@ export default function FeedingScreen({ navigation, segments }) {
               dailyTask={dailyTaskFor(horse._id)}
               onOpenMeal={(payload) => setOpenMeal({ ...payload, inventory, ctx })}
               onComplete={setCompleting}
+              onRecordLate={setRecordingLate}
               onNotDone={reportNotDone}
             />
           ))
@@ -291,6 +295,11 @@ export default function FeedingScreen({ navigation, segments }) {
           setOpenMeal(null);
           setCompleting(task);
         }}
+        onRecordLate={() => {
+          const task = openMeal?.task;
+          setOpenMeal(null);
+          setRecordingLate(task);
+        }}
         onNotDone={(reason) => {
           const task = openMeal?.task;
           setOpenMeal(null);
@@ -303,6 +312,14 @@ export default function FeedingScreen({ navigation, segments }) {
         schedules={completing ? feedings.filter((f) => refId(f.horse) === refId(completing.horse)) : []}
         visible={!!completing}
         onClose={() => setCompleting(null)}
+        onShortage={(missing, task) => setRestock(restockRequestFor({ missing, task, inventory }))}
+      />
+      <CompleteTaskModal
+        task={recordingLate}
+        late
+        schedules={recordingLate ? feedings.filter((f) => refId(f.horse) === refId(recordingLate.horse)) : []}
+        visible={!!recordingLate}
+        onClose={() => setRecordingLate(null)}
         onShortage={(missing, task) => setRestock(restockRequestFor({ missing, task, inventory }))}
       />
       <NotDoneModal task={notDone} visible={!!notDone} initialReason={notDoneReason} onClose={() => setNotDone(null)} />
@@ -339,7 +356,7 @@ export default function FeedingScreen({ navigation, segments }) {
  * One horse's meals today. A meal is recorded only against an approved ration: with none, the
  * groom can't tick it (the server refuses too) and tells the trainer instead.
  */
-function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nextSlot, taskFor, dailyTask, ctx, onOpenMeal, onComplete, onNotDone }) {
+function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nextSlot, taskFor, dailyTask, ctx, onOpenMeal, onComplete, onRecordLate, onNotDone }) {
   const health = HEALTH_STATUS[horse.healthStatus];
   const slots = mealFilter === 'all' ? MEAL_ORDER : [mealFilter];
 
@@ -374,13 +391,16 @@ function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nex
         const canFeed = canCompleteTask(task, ctx);
         const noRation = state?.blockers?.some((b) => b.code === 'NO_APPROVED_RATION');
         const approvedBy = forSlot.find((s) => s.approvedBy)?.approvedBy;
+        // The trainer asked for this meal to be made up now: it has its own time, not the ration's.
+        const makeUp = !!task?.makeUpOf;
+        const missed = state?.key === 'missed';
 
         return (
-          <View key={slot} style={[styles.meal, isNext && styles.mealNext, fed && styles.mealDone]}>
+          <View key={slot} style={[styles.meal, isNext && styles.mealNext, fed && styles.mealDone, makeUp && !fed && styles.mealMakeUp]}>
             <Row style={{ justifyContent: 'space-between' }}>
               <Row style={{ gap: 6, flex: 1 }}>
                 <Icon name={fed ? 'checkCircle' : meal.icon} size={16} color={fed ? colors.green : isNext ? colors.gold : colors.forestLight} />
-                <Text style={font.h3}>{meal.label}</Text>
+                <Text style={font.h3}>{makeUp ? `Cho ăn bù — ${meal.label.toLowerCase()}` : meal.label}</Text>
               </Row>
               <Row style={{ gap: 6 }}>
                 {fed ? (
@@ -389,12 +409,14 @@ function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nex
                   <Badge label={state.label} color={state.color} bg={state.bg} />
                 ) : null}
                 <Badge
-                  label={mealTimeOf(slot, schedules) || meal.defaultTime}
+                  label={makeUp ? formatTime(task.scheduledDate) : mealTimeOf(slot, schedules) || meal.defaultTime}
                   color={isNext ? colors.forest : colors.textMuted}
                   bg={isNext ? colors.goldSoft : colors.graySoft}
                 />
               </Row>
             </Row>
+            {makeUp && task.note ? <Text style={[font.small, { color: colors.blue, marginTop: 4 }]}>{task.note}</Text> : null}
+            {fed && task.recordedLate ? <Text style={[font.small, { color: colors.orange, marginTop: 4 }]}>Ghi nhận muộn</Text> : null}
 
             {forSlot.length === 0 ? (
               <Text style={[font.small, { marginTop: 4 }]}>
@@ -438,21 +460,23 @@ function HorseRations({ horse, stableBlock, schedules, mealFilter, approval, nex
                     {b.message}
                   </Text>
                 ))}
-                {state?.key !== 'missed' ? (
-                  <Row style={{ gap: spacing.sm }}>
-                    {canFeed ? (
-                      <Button title="Đã cho ăn" icon="check" size="sm" style={{ flex: 2 }} onPress={() => onComplete(task)} />
-                    ) : null}
-                    <Button
-                      title={noRation ? 'Báo HLV chưa có khẩu phần' : 'Không cho ăn được'}
-                      icon="block"
-                      variant="ghost"
-                      size="sm"
-                      style={{ flex: canFeed ? 2 : 1 }}
-                      onPress={() => onNotDone(task, noRation ? NO_RATION_REASON : '')}
-                    />
-                  </Row>
-                ) : null}
+                {/* A missed meal is still reported: given but not ticked (at its real time), or not given. */}
+                <Row style={{ gap: spacing.sm }}>
+                  {canFeed ? (
+                    <Button title="Đã cho ăn" icon="check" size="sm" style={{ flex: 2 }} onPress={() => onComplete(task)} />
+                  ) : null}
+                  {missed && canRecordLate(task, ctx) ? (
+                    <Button title="Đã cho ăn, quên ghi" icon="clock" variant="subtle" size="sm" style={{ flex: 2 }} onPress={() => onRecordLate(task)} />
+                  ) : null}
+                  <Button
+                    title={noRation ? 'Báo HLV chưa có khẩu phần' : 'Không cho ăn được'}
+                    icon="block"
+                    variant="ghost"
+                    size="sm"
+                    style={{ flex: 2 }}
+                    onPress={() => onNotDone(task, noRation ? NO_RATION_REASON : '')}
+                  />
+                </Row>
               </View>
             ) : null}
             {task?.status === 'skipped' ? (
@@ -527,6 +551,7 @@ const styles = StyleSheet.create({
   meal: { borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.sm, padding: spacing.md, backgroundColor: colors.cream },
   mealNext: { borderColor: colors.gold, backgroundColor: '#fefce8' },
   mealDone: { backgroundColor: colors.forestSoft, borderColor: colors.greenSoft },
+  mealMakeUp: { borderColor: colors.blue, backgroundColor: colors.blueSoft },
   mealBlocked: { borderColor: colors.redSoft, backgroundColor: '#fff7f7' },
   feedRow: { gap: 2 },
   qty: { fontWeight: '800', color: colors.text },

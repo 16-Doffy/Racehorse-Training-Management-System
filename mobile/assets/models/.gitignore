@@ -1,0 +1,5 @@
+# Only the optimised model goes into git; the downloaded original (tens of MB) stays local.
+*
+!.gitignore
+!README.md
+!horse.glb
