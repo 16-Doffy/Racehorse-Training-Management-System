@@ -170,4 +170,33 @@ test('groom care work against real MongoDB', { skip: !process.env.TEST_MONGO_URI
     const listed = await api('vet', 'GET', `/stable/incidents?horse=${horse._id}`);
     assert.ok(listed.some((row) => row._id === String(task._id)));
   });
+
+  await t.test('a missed meal can still be reported: not given, or given and recorded late at its real time', async () => {
+    // A meal of the slot that has a ration, scheduled 5 hours ago: its window (until 4 hours after) has closed.
+    const scheduled = new Date(Date.now() - 5 * 3600000);
+    const forgot = await models.DailyTask.create({ horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', mealSlot: mealSlotAt(), scheduledDate: scheduled, supplies: [] });
+    const now = await raw('groom', 'PATCH', `/stable/tasks/${forgot._id}/complete`, {});
+    assert.equal(now.status, 409, 'ticking it now would record a meal at the wrong time');
+    const late = await api('groom', 'PATCH', `/stable/tasks/${forgot._id}/complete`, { performedAt: new Date(scheduled.getTime() + 20 * 60000).toISOString(), clientOpId: 'g-late-1' });
+    assert.equal(late.status, 'completed');
+    assert.equal(late.recordedLate, true, 'shown as recorded late, never hidden');
+
+    const missed = await models.DailyTask.create({ horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', mealSlot: mealSlotAt(), scheduledDate: scheduled, supplies: [] });
+    const notGiven = await api('groom', 'PATCH', `/stable/tasks/${missed._id}/not-done`, { reason: 'Ngựa không chịu ăn' });
+    assert.equal(notGiven.status, 'skipped');
+  });
+
+  await t.test("the vet's appointment for a horse is on its groom's care plan", async () => {
+    const request = await api('trainer', 'POST', '/health/exam-requests', { horse: horse._id, reason: 'TEST đi khập khiễng' }, 201);
+    const open = (await api('groom', 'GET', `/stable/my-care-plan?horse=${horse._id}`))[0];
+    assert.equal(open.exams.length, 1);
+    assert.equal(open.exams[0].scheduledFor, null, 'no time until a vet takes it on');
+
+    const at = new Date(Date.now() + 2 * 3600000);
+    await api('vet', 'PATCH', `/health/exam-requests/${request._id}`, { action: 'accept', scheduledFor: at.toISOString() });
+    const booked = (await api('groom', 'GET', `/stable/my-care-plan?horse=${horse._id}`))[0].exams[0];
+    assert.equal(new Date(booked.scheduledFor).getTime(), at.getTime());
+    assert.equal(booked.acceptedBy, 'TEST vet');
+    assert.equal(booked.reason, 'TEST đi khập khiễng');
+  });
 });
