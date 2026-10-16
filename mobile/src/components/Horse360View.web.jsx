@@ -8,15 +8,23 @@ import { horseModelUrl } from '../three/loadHorseModel';
  * The 3D horse in the web build: the same model-viewer page as on the phone, in an iframe. Same
  * props and ref as components/Horse360View.jsx.
  */
-const Horse360View = forwardRef(function Horse360View({ hotspots = [], interactive = false, onEvent, style }, ref) {
+const Horse360View = forwardRef(function Horse360View({ hotspots = [], coat = null, interactive = false, onEvent, style }, ref) {
   const frame = useRef(null);
   const handler = useRef(onEvent);
   handler.current = onEvent;
   const key = JSON.stringify(hotspots);
   const html = useMemo(
-    () => horse360Html({ hotspots, headDirection: HORSE_MODEL.headDirection, animation: HORSE_MODEL.animation, interactive }),
+    () =>
+      horse360Html({
+        hotspots,
+        headDirection: HORSE_MODEL.headDirection,
+        animation: HORSE_MODEL.animation,
+        interactive,
+        coat,
+        coatMaterials: HORSE_MODEL.coatMaterials,
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key, interactive]
+    [key, interactive, coat?.key]
   );
 
   const send = (message) => frame.current?.contentWindow?.postMessage({ horse360cmd: message }, '*');

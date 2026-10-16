@@ -11,15 +11,24 @@ const CHUNK = 256 * 1024;
 /**
  * The 3D horse on the phone: the model-viewer page (three/horse360Html.js) in a WebView.
  * `onEvent` gets the page's messages (ready, progress, loaded, error, hotspot); the ref's
- * `send(message)` turns rotation on and off, resets the view or flies to an injury.
+ * `send(message)` turns rotation on and off, resets the view or flies to an injury. `coat`: how to
+ * paint the horse (three/horseBreeds.js coatFor).
  */
-const Horse360View = forwardRef(function Horse360View({ hotspots = [], interactive = false, onEvent, style }, ref) {
+const Horse360View = forwardRef(function Horse360View({ hotspots = [], coat = null, interactive = false, onEvent, style }, ref) {
   const web = useRef(null);
   const key = JSON.stringify(hotspots);
   const html = useMemo(
-    () => horse360Html({ hotspots, headDirection: HORSE_MODEL.headDirection, animation: HORSE_MODEL.animation, interactive }),
+    () =>
+      horse360Html({
+        hotspots,
+        headDirection: HORSE_MODEL.headDirection,
+        animation: HORSE_MODEL.animation,
+        interactive,
+        coat,
+        coatMaterials: HORSE_MODEL.coatMaterials,
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key, interactive]
+    [key, interactive, coat?.key]
   );
 
   const send = (message) => web.current?.postMessage(JSON.stringify(message));
