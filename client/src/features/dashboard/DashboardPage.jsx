@@ -176,7 +176,7 @@ export default function DashboardPage() {
               title={
                 <div>
                   <span className="font-semibold text-gray-900 text-base">Biểu đồ thể lực tổng quan</span>
-                  <p className="text-xs text-gray-500 font-normal m-0 mt-0.5">Tiến độ và cường độ các buổi tập đã hoàn thành</p>
+                  <p className="text-xs text-gray-600 font-normal m-0 mt-0.5">Chọn ngày và ngựa để xem kết quả từng buổi tập</p>
                 </div>
               }
             >

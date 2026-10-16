@@ -117,6 +117,8 @@ export function getForestTheme(presetKey = 'sand_bone') {
       colorTextPlaceholder: isDark ? '#94A3B8' : '#8A8578',
       // Secondary text on the dark canvas (hints, descriptions, statistic titles): cream, readable at ~7:1.
       ...(isDark ? { colorTextSecondary: 'rgba(244, 241, 232, 0.8)', colorTextTertiary: 'rgba(244, 241, 232, 0.68)', colorTextDescription: 'rgba(244, 241, 232, 0.68)' } : {}),
+      // Same on the light canvas: antd's default grey hints were ~2.7:1 on the warm cards; ~5:1 now. The vet's page keeps its own.
+      ...(presetKey === LIGHT_CANVAS ? { colorTextSecondary: 'rgba(26, 43, 34, 0.78)', colorTextTertiary: 'rgba(26, 43, 34, 0.68)', colorTextDescription: 'rgba(26, 43, 34, 0.68)' } : {}),
       borderRadiusLG: 12,
     },
     components: {

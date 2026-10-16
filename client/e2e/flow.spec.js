@@ -91,3 +91,16 @@ test('the light/dark switch changes the canvas, stays after a reload and takes t
   await expect(page.locator('.is-dark-canvas')).toHaveCount(0);
   await expect(page.locator('body.wdp-dark-portals')).toHaveCount(0);
 });
+test('trainer dashboard fitness panel shows the chosen run against its targets', async ({ page }) => {
+  await login(page, 'trainer');
+  const panel = page.locator('.ant-card', { hasText: 'Biểu đồ thể lực tổng quan' }).first();
+  // The fixture's walk ran today: today's horses are listed and that run is open.
+  await expect(panel.locator('.ant-select', { hasText: 'TEST Browser Horse' })).toBeVisible();
+  const result = panel.locator('.ant-card', { hasText: 'Kết quả buổi tập · TEST Browser Horse' });
+  await expect(result.getByText('Đạt mục tiêu', { exact: true })).toBeVisible();
+  await expect(result.getByText('4000 / 4000 m')).toBeVisible();
+  await expect(result.getByText('112 / trần 120 bpm')).toBeVisible();
+  await expect(result.getByText('8/10')).toBeVisible();
+  await expect(panel.getByText(/Xu hướng \d+ buổi gần nhất của ngựa/)).toBeVisible();
+  await expect(panel.getByText(/So sánh các ngựa ngày/)).toBeVisible();
+});

@@ -1,7 +1,7 @@
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
-const { startIntegration, intake, planFor, book, day, TEST_PASSWORD } = require('../test-support/integration');
+const { startIntegration, intake, planFor, book, start, day, future, TEST_PASSWORD } = require('../test-support/integration');
 const root = path.resolve(__dirname, '../..');
 async function main() {
   const ctx = await startIntegration('ui');
@@ -10,6 +10,12 @@ async function main() {
     const { horse } = await intake(ctx, 'TEST Browser Horse');
     const plan = await planFor(ctx, horse);
     await book(ctx, horse, plan);
+    // A run that already happened, with its numbers, for the dashboard's fitness panel: a walk started now
+    // and ended with the readings typed in (allowed while no sensor has reported).
+    const run = await book(ctx, horse, plan, { scheduledAt: future(40) });
+    await start(ctx, run);
+    await ctx.api('trainer', 'POST', `/training/sessions/${run._id}/end`, { metrics: { avgHeartRate: 112, maxHeartRate: 124, maxSpeed: 13.4, distance: 4000 } });
+    await ctx.api('trainer', 'PATCH', `/training/sessions/${run._id}/evaluation`, { performanceRating: 8, trainerComment: 'TEST đi bộ đều, hồi sức tốt' });
     const race = await ctx.api('trainer', 'POST', '/races', { horse: horse._id, raceName: 'TEST Browser Cup', raceDate: day().toISOString(), distance: 1600 }, 201);
     await ctx.api('trainer', 'PATCH', `/races/${race._id}/results`, { position: 1, prizeMoney: 1000000 });
     await ctx.api('manager', 'POST', '/inventory', { name: 'TEST Browser Feed', category: 'feed', unit: 'kg', quantity: 100 }, 201);
