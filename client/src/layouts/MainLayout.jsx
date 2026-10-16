@@ -81,11 +81,12 @@ export default function MainLayout() {
   // The Manager's and the Head Trainer's pages go fully dark; the Owner's pages keep their light panels.
   const staffDark = isDarkCanvas && [ROLES.MANAGER, ROLES.HEAD_TRAINER].includes(user?.role);
 
-  // Popovers, modals and dropdowns render on <body>, outside the layout: they follow the dark canvas through a body class.
+  // Popovers, modals and dropdowns (the alert bell's too, in every role's header) render on <body>, outside
+  // the layout: they follow the dark canvas through a body class.
   useEffect(() => {
-    document.body.classList.toggle('wdp-dark-portals', staffDark);
+    document.body.classList.toggle('wdp-dark-portals', isDarkCanvas);
     return () => document.body.classList.remove('wdp-dark-portals');
-  }, [staffDark]);
+  }, [isDarkCanvas]);
 
   let pageBgStyle = { backgroundColor: forest ? activePreset.page : '#FAFAFA' };
   if (canvasKey === 'peak_equestrian_dark') {
@@ -809,12 +810,13 @@ export default function MainLayout() {
         body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-orange-600"], [class~="text-orange-700"], [class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"]) { color: #FCD34D !important; }
         body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-rose-900"], [class~="text-red-600"], [class~="text-red-700"]) { color: #FDA4AF !important; }
         body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"], [class~="text-sky-700"], [class~="text-cyan-600"], [class~="text-cyan-700"]) { color: #93C5FD !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-white"], [class~="!bg-white"], [class~="bg-gray-100"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-50/80"], [class~="bg-slate-50"], [class~="bg-slate-50/80"], [class~="bg-[#FFFDF8]"], [class~="bg-[#FAF7F0]"], [class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"]) { background-color: rgba(255, 255, 255, 0.05) !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-white"], [class~="!bg-white"], [class~="bg-gray-100"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-50/80"], [class~="bg-slate-50"], [class~="bg-slate-50/80"], [class~="bg-[#FFFDF8]"], [class~="bg-[#FAF7F0]"], [class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"]) { background-color: #12291F !important; }
         body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-emerald-100"], [class~="bg-emerald-50"], [class~="bg-emerald-50/20"], [class~="bg-emerald-50/60"], [class~="bg-green-50"]) { background-color: rgba(16, 185, 129, 0.14) !important; }
         body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-orange-50"], [class~="bg-orange-100"], [class~="bg-yellow-50"], [class~="bg-amber-50"], [class~="bg-amber-50/30"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/90"]) { background-color: rgba(245, 158, 11, 0.14) !important; }
         body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-rose-50"], [class~="bg-rose-100"], [class~="bg-red-50"], [class~="bg-red-100"]) { background-color: rgba(244, 63, 94, 0.14) !important; }
         body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-blue-50"], [class~="bg-blue-50/60"], [class~="bg-blue-100"], [class~="bg-cyan-50"], [class~="bg-sky-50"]) { background-color: rgba(59, 130, 246, 0.16) !important; }
         body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="border-amber-200/50"], [class~="border-emerald-200/60"], [class~="divide-[#EFE8DA]"], [class~="divide-gray-100"]) { border-color: rgba(212, 175, 55, 0.18) !important; }
+        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="hover:bg-rose-50/40"], [class~="hover:bg-gray-50/40"], [class~="hover:bg-emerald-50/50"], [class~="hover:bg-amber-50/50"], [class~="hover:!bg-amber-50"], [class~="hover:bg-gray-50"]):hover { background-color: #1A3A2E !important; }
         body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) strong { color: #F4F1E8 !important; }
         body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) .ant-btn-dangerous:not(.ant-btn-primary),
         body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) .ant-btn-dangerous:not(.ant-btn-primary) span {

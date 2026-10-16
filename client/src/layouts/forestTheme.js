@@ -145,8 +145,14 @@ export function getForestTheme(presetKey = 'sand_bone') {
       Card: { headerBg: 'transparent' },
       // Unselected options read at ~7:1 on the track (the default grey was 4.3:1 on the warm one).
       Segmented: { trackBg: isDark ? '#16221E' : '#E9E4D8', itemSelectedBg: isDark ? 'rgba(212, 175, 55, 0.24)' : p.card, itemSelectedColor: isDark ? '#F6D57A' : '#1A2B22', itemColor: isDark ? 'rgba(244, 241, 232, 0.82)' : '#3D4A41', itemHoverColor: isDark ? '#F4F1E8' : '#1A2B22' },
-      Select: { controlItemBgActive: '#E5EFE8', controlItemBgHover: '#F3EEE3', optionSelectedColor: FOREST.sider },
-      Dropdown: { controlItemBgActive: '#E5EFE8', controlItemBgHover: '#F3EEE3' },
+      // The hovered and the selected option: light tints on the light canvas, dark ones on the dark canvas
+      // (a light row under cream text could not be read).
+      Select: isDark
+        ? { controlItemBgActive: 'rgba(212, 175, 55, 0.22)', controlItemBgHover: 'rgba(255, 255, 255, 0.08)', optionSelectedColor: '#F6D57A' }
+        : { controlItemBgActive: '#E5EFE8', controlItemBgHover: '#F3EEE3', optionSelectedColor: FOREST.sider },
+      Dropdown: isDark
+        ? { controlItemBgActive: 'rgba(212, 175, 55, 0.22)', controlItemBgHover: 'rgba(255, 255, 255, 0.08)' }
+        : { controlItemBgActive: '#E5EFE8', controlItemBgHover: '#F3EEE3' },
     },
   };
 }
