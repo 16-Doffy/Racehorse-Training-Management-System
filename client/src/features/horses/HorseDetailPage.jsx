@@ -261,11 +261,31 @@ export default function HorseDetailPage() {
                   </Descriptions.Item>
                   <Descriptions.Item label="Giống">{breedLabel(horse.breed) || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Màu lông">{coatLabel(horse.color) || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Giới tính">{HORSE_SEX_LABELS[horse.sex] || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Cân nặng">
                     {horse.weightKg ? `${horse.weightKg} kg` : '—'}
                   </Descriptions.Item>
                   <Descriptions.Item label="Chủ sở hữu">
                     {horse.owner?.name || '—'}
+                  </Descriptions.Item>
+                </Descriptions>
+              </Card>
+              {/* The papers and the club's valuation of the horse: the server sends the valuation only to the Manager and the owner. */}
+              <Card title="Giấy tờ & Định giá" size="small" className="mt-4">
+                <Descriptions column={1} size="small">
+                  <Descriptions.Item label="Số vi mạch">{horse.microchipNumber || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Số đăng ký">{horse.registrationNumber || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Định giá">
+                    {horse.valuationVnd == null ? (
+                      'Chưa định giá'
+                    ) : (
+                      <span>
+                        <span className="font-semibold">{formatVnd(horse.valuationVnd)}</span>
+                        {horse.valuationUpdatedAt && (
+                          <span className="text-xs text-gray-500"> · cập nhật {dayjs(horse.valuationUpdatedAt).format('DD/MM/YYYY')}</span>
+                        )}
+                      </span>
+                    )}
                   </Descriptions.Item>
                 </Descriptions>
               </Card>

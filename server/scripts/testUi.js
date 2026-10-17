@@ -8,6 +8,8 @@ async function main() {
   let vite;
   try {
     const { horse } = await intake(ctx, 'TEST Browser Horse');
+    // Papers and the club's valuation, for the Owner's horse page (the valuation is the Manager's and the owner's only).
+    await ctx.api('manager', 'PUT', `/horses/${horse._id}`, { microchipNumber: '985112345678901', registrationNumber: 'TEST-REG-001', valuationVnd: 750000000 });
     const plan = await planFor(ctx, horse);
     await book(ctx, horse, plan);
     // A run that already happened, with its numbers, for the dashboard's fitness panel: a walk started now
