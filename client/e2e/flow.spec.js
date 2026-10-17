@@ -153,6 +153,21 @@ test('owner horse list counts the examined horse as ready, like the trainer sees
   await expect(bannerStat('đủ điều kiện tập')).toHaveText('1 con');
   await expect(bannerStat('cần theo dõi')).toHaveText('0 con');
 });
+test('owner horse page shows the papers and the valuation', async ({ page }) => {
+  await login(page, 'owner');
+  await page.goto(`/horses/${fixture.horseId}`);
+  const papers = page.locator('.ant-card', { hasText: 'Giấy tờ & Định giá' });
+  await expect(papers.getByText('985112345678901')).toBeVisible();
+  await expect(papers.getByText('TEST-REG-001')).toBeVisible();
+  await expect(papers.getByText('750.000.000 ₫')).toBeVisible();
+});
+test('the trainer sees the horse papers but not the valuation', async ({ page }) => {
+  await login(page, 'trainer');
+  await page.goto(`/horses/${fixture.horseId}`);
+  // The valuation is sent only to the Manager and the owner.
+  await expect(page.getByText('985112345678901').first()).toBeVisible();
+  await expect(page.getByText('750.000.000')).toHaveCount(0);
+});
 test('owner horse page keeps its header and pedigree readable on the dark canvas', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('wdp301_canvas_theme', 'peak_equestrian_dark'));
   await login(page, 'owner');
