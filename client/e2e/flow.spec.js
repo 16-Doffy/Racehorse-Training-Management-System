@@ -178,6 +178,11 @@ test('owner stable page reads the stall from the stable map, not from the old fr
   // The stall code A-01 used to be split at the dash and shown as "A – 01".
   await expect(page.getByText('A – 01')).toHaveCount(0);
 });
+test('owner dashboard says where each horse stands', async ({ page }) => {
+  await login(page, 'owner');
+  // The fixture horse is in stall A-01 of Khu A (stable map).
+  await expect(page.getByText('Chuồng A-01 · Khu A', { exact: true })).toBeVisible();
+});
 test('owner stable page keeps the stall card title readable on the dark canvas', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('wdp301_canvas_theme', 'peak_equestrian_dark'));
   await login(page, 'owner');
