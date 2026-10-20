@@ -18,13 +18,21 @@ export const veterinarianApi = {
   updateHealthRecord: (id, payload) => axiosClient.put(`/health/records/${id}`, payload),
   getExamRequests: (params) => axiosClient.get('/health/exam-requests', { params }),
   updateExamRequest: (id, payload) => axiosClient.patch(`/health/exam-requests/${id}`, payload),
-  getClearances: () => axiosClient.get('/health/clearances'),
+  // Horses that need an exam ({ all: true } also lists those whose clearance is still valid).
+  getClearances: (params) => axiosClient.get('/health/clearances', { params }),
+  // Ongoing treatments with that day's care tasks and how far the groom has got with them.
+  getCareOrders: (params) => axiosClient.get('/health/care-orders', { params }),
 
   // Treatment Plans & Prescriptions
   getTreatments: (params) => axiosClient.get('/health/treatments', { params }),
   getTreatmentById: (id) => axiosClient.get(`/health/treatments/${id}`),
   createTreatment: (payload) => axiosClient.post('/health/treatments', payload),
   updateTreatment: (id, payload) => axiosClient.put(`/health/treatments/${id}`, payload),
+
+  // Prescription templates per condition (built-in ones live in the client; these are the vets' own)
+  getPrescriptionTemplates: () => axiosClient.get('/health/prescription-templates'),
+  savePrescriptionTemplate: (payload) => axiosClient.post('/health/prescription-templates', payload),
+  deletePrescriptionTemplate: (id) => axiosClient.delete(`/health/prescription-templates/${id}`),
 
   // Emergency Training Lock
   setTrainingLock: (treatmentId, payload) =>
@@ -38,7 +46,8 @@ export const veterinarianApi = {
 
   // Inventory & Restock Request
   getInventory: (params) => axiosClient.get('/inventory', { params }),
-  requestRestock: (id, quantity) => axiosClient.post(`/inventory/${id}/restock-request`, { quantity }),
+  // body: { quantity, note?, priority? ('normal' | 'urgent') }
+  requestRestock: (id, body) => axiosClient.post(`/inventory/${id}/restock-request`, body),
 
   // Realtime / Role Notifications
   getNotifications: (params) => axiosClient.get('/notifications', { params }),

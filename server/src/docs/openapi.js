@@ -394,9 +394,49 @@ module.exports = {
           _id: { type: 'string' },
           horse: { type: 'string' },
           bodyPart: { type: 'string' },
-          coordinates: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' } }, description: 'Normalized 0-1 against a reference silhouette' },
+          coordinates: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' } }, description: 'Along the body (0 = nose, 0.97 = tail) and height (0 = ears, 0.95 = hooves) on a side view; the groom app places marks from it' },
+          location3d: {
+            type: 'object',
+            description: 'Optional: where the injury was marked on the 3D horse (client/public/models/horse.glb units) — a point on the skin with its normal, or an organ inside',
+            properties: {
+              position: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' } } },
+              normal: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' } } },
+              layer: { type: 'string', enum: ['surface', 'internal'] },
+            },
+          },
           severity: { type: 'string', enum: ['mild', 'moderate', 'severe'] },
           recoveryStatus: { type: 'string', enum: ['new', 'in_treatment', 'recovering', 'recovered'] },
+        },
+      },
+      PrescriptionTemplate: {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          _id: { type: 'string' },
+          name: { type: 'string', example: 'Viêm gân / căng cơ' },
+          condition: { type: 'string' },
+          days: { type: 'integer', minimum: 1, maximum: 90 },
+          trainingLevel: { type: 'string', enum: ['none', 'light', 'moderate', 'high'] },
+          lockReason: { type: 'string' },
+          careInstructions: { type: 'string' },
+          medications: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                inventoryItem: { type: 'string', nullable: true, description: 'The medicine on the club list, when it is on it' },
+                amount: { type: 'number', description: 'Per dose, in the item unit' },
+                unit: { type: 'string' },
+                dosage: { type: 'string' },
+                route: { type: 'string', enum: ['oral', 'im', 'iv', 'sc', 'topical', 'eye', 'other'] },
+                times: { type: 'array', items: { type: 'string', example: '08:00' } },
+                days: { type: 'integer' },
+                instructions: { type: 'string' },
+              },
+            },
+          },
+          createdBy: { type: 'object', properties: { _id: { type: 'string' }, name: { type: 'string' } } },
         },
       },
       DailyTask: {
@@ -1304,6 +1344,18 @@ module.exports = {
     '/health/injury-markers/{id}': {
       put: { tags: ['Health (Veterinarian)'], summary: 'Update injury marker (e.g. recoveryStatus)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/InjuryMarker' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InjuryMarker' }), 404: responses[404] } },
       delete: { tags: ['Health (Veterinarian)'], summary: 'Delete injury marker — for one placed on the wrong body part, which previously could only be edited, never removed', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
+    },
+    '/health/prescription-templates': {
+      get: { tags: ['Health (Veterinarian)'], summary: 'Prescription templates per condition (every vet’s), picked in the prescription form', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/PrescriptionTemplate' } }), 403: responses[403] } },
+      post: {
+        tags: ['Health (Veterinarian)'],
+        summary: 'Save a prescription template under its name — the same vet saving the same name again updates it',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/PrescriptionTemplate' } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/PrescriptionTemplate' }), 201: responses[201]({ $ref: '#/components/schemas/PrescriptionTemplate' }), 400: responses[400], 403: responses[403] },
+      },
+    },
+    '/health/prescription-templates/{id}': {
+      delete: { tags: ['Health (Veterinarian)'], summary: 'Delete a prescription template (only its author)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
     },
     '/stable/tasks': {
       get: {
