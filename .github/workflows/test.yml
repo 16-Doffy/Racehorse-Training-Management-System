@@ -26,14 +26,18 @@ jobs:
       - run: npm ci
       - name: Start isolated MongoDB replica set
         run: |
-          docker run -d --name wdp301-test-mongo -p 27018:27018 mongo:8.0 mongod --port 27018 --replSet wdp301Test --bind_ip_all
-          for i in $(seq 1 60); do
+          # Docker Hub limits anonymous pulls and runners share addresses: retry, then use Google's mirror of it.
+          image=mongo:8.0
+          for i in 1 2 3; do docker pull -q "$image" && break; echo "pull failed ($i)"; sleep $((i * 10)); done
+          if ! docker image inspect "$image" >/dev/null 2>&1; then image=mirror.gcr.io/library/mongo:8.0; docker pull -q "$image"; fi
+          docker run -d --name wdp301-test-mongo -p 27018:27018 "$image" mongod --port 27018 --replSet wdp301Test --bind_ip_all
+          for i in $(seq 1 90); do
             if docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'db.adminCommand({ping:1}).ok' >/dev/null 2>&1; then break; fi
             sleep 1
           done
           # A slow runner can take a while to elect the single member: initiate again if it did not take.
           for attempt in 1 2 3; do
-            docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'try { rs.status() } catch (e) { rs.initiate({_id:"wdp301Test",members:[{_id:0,host:"127.0.0.1:27018"}]}) }'
+            docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'try { rs.status() } catch (e) { rs.initiate({_id:"wdp301Test",members:[{_id:0,host:"127.0.0.1:27018"}]}) }' || true # a failed try must not end the step: the loop below checks and tries again
             for i in $(seq 1 40); do
               if docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; then exit 0; fi
               sleep 1
