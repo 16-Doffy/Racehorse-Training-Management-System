@@ -2,18 +2,24 @@
 // (.github/workflows/demo-flows.yml) or by hand. Unlike liveSmoke.js this WRITES to the real club
 // database, so it only writes when DEMO_CONFIRM=write; otherwise it stops after the preflight.
 //
-// A round is two new horses taken through every role:
-//   "Đạt": the manager stables it, the vet examines it, the trainer sets a breakfast ration and a
-//   plan, the groom feeds it, the trainer books a canter after the club's digestion wait,
-//   pre-checks, starts it, the sensor feed finishes it ("Đạt mục tiêu"), the trainer evaluates it
-//   and the owner sees it.
+// A round is new horses taken through every role, each a different case:
+//   "Đạt": the head trainer enters it for the demo race (tomorrow), the manager stables it, the vet
+//   examines it, the trainer sets a breakfast ration and a plan, the groom feeds it, the trainer books
+//   a canter after the club's digestion wait, pre-checks, starts it, the sensor feed finishes it
+//   ("Đạt mục tiêu"), the trainer evaluates it and the owner sees it. Then a trial over the race
+//   distance, and the race decision taken on that trial: confirmed, with the trainer's reason when the
+//   trial missed its targets (the simulated pace is random, so either can happen).
 //   "Không đạt": breakfast time passes unfed, so the canter is refused (also with a reason); the
-//   groom feeds it late, the canter runs after the digestion wait,
-//   the horse struggles and the trainer ends it early ("Chưa đạt mục tiêu"), evaluates it low and
-//   asks the vet for an exam, which the vet takes on. Round 1 leaves this horse refused instead,
-//   so the block can be shown live.
+//   groom feeds it late, the canter runs after the digestion wait, the horse struggles and the trainer
+//   ends it early ("Chưa đạt mục tiêu"), evaluates it low and asks the vet for an exam, which the vet
+//   takes on.
+//   "Chấn thương" (round 1): entered for the same race; it goes lame in its canter, the trainer stops it
+//   and calls the vet, the vet records a tendon injury, so the trial and the race confirmation are
+//   refused and the trainer withdraws it.
 // The first round starts at once; another starts every DEMO_ROUND_EVERY_MIN until DEMO_LAST_START.
 // Every round uses new horses named "Test Demo …" and takes 2.5 kg of grain out of stock per meal.
+// On race day (DEMO_MODE=results, or DEMO_RESULT_DATE is today) the trainer records the race's results
+// instead: the horses that ran, ranked by their trial, prize money for the first three.
 //
 // DEMO_ACCOUNTS (a GitHub secret): {"password":"…","manager":"…","trainer":"…","vet":"…","groom":"…","owner":"…"}
 // TZ must be the club's time zone (Asia/Ho_Chi_Minh): rations are clock times on the server's day.
@@ -28,6 +34,8 @@ const WRITE = process.env.DEMO_CONFIRM === 'write';
 const MARGIN = Number(process.env.DEMO_MARGIN_MIN ?? 10);
 const ROUND_EVERY = Number(process.env.DEMO_ROUND_EVERY_MIN ?? 45);
 const LAST_START = process.env.DEMO_LAST_START || '08:00';
+// Minutes between the end of the canter and the trial (a breather; a rehearsal can shorten it).
+const TRIAL_GAP = Number(process.env.DEMO_TRIAL_GAP_MIN ?? 30);
 // A breakfast is grain or pellets weighed in kg — not hay (the readiness check treats that as lighter),
 // nor the supplements also filed under feed (electrolytes, vitamins, oil, salt).
 const GRAIN = /(yến mạch|oats|cám|grain|viên|pellet|ngô|corn|lúa mạch|barley)/i;
@@ -40,6 +48,7 @@ const clock = (d = new Date()) => `${hhmm(d)}:${pad(d.getSeconds())}`;
 const ddmm = (d = new Date()) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const minutes = (n) => n * 60000;
+const vnd = (n) => `${Number(n || 0).toLocaleString('vi-VN')} đ`;
 /** n minutes after `from`, on a 5-minute mark (up), as trainers book. */
 const slotAfter = (from, n) => {
   const d = new Date(from.getTime() + minutes(n));
@@ -58,6 +67,16 @@ const atClock = (text) => {
   d.setHours(h, m, 0, 0);
   return d;
 };
+
+// The demo race: tomorrow unless DEMO_RACE_DATE (YYYY-MM-DD) says otherwise. A trial must be run before
+// race day, and results can only be recorded from race day on — hence a race the day after the rounds.
+const RACE = { distance: 1600, surface: 'dirt', venue: 'Trường đua Đại Nam' };
+function raceDay() {
+  const d = process.env.DEMO_RACE_DATE ? new Date(`${process.env.DEMO_RACE_DATE}T00:00:00`) : new Date(Date.now() + minutes(24 * 60));
+  d.setHours(15, 0, 0, 0);
+  return d;
+}
+const raceName = (d) => `TEST Cúp Demo ${ddmm(d)}`;
 
 const steps = [];
 let failed = false;
@@ -116,6 +135,13 @@ async function must(flow, role, action, method, path, body, expected = [200, 201
   if (!ok) throw new Error(`${action}: HTTP ${r.status} ${r.message}`);
   return r.data;
 }
+/** A write the club's rules must refuse: the step passes when it is refused. */
+async function refused(flow, role, action, method, path, body) {
+  const r = await call(role, method, path, body);
+  const ok = r.status === 400 || r.status === 409;
+  log(flow, role, action, ok, `HTTP ${r.status}: ${r.message}`);
+  return ok;
+}
 /** A read that must not end the flow when one request drops. */
 const read = async (role, path) => (await call(role, 'GET', path).catch(() => ({}))).data;
 
@@ -142,6 +168,19 @@ async function waitUntil(until, label) {
   }
 }
 
+async function login(P, accounts, role) {
+  const r = await call(null, 'POST', '/auth/login', { email: accounts[role], password: accounts.password });
+  const token = r.data?.token;
+  const user = r.data?.user;
+  const ok = Boolean(token) && user?.role === ROLE_OF[role];
+  log(P, role, 'đăng nhập', ok, ok ? user.name : r.message || `vai trò ${user?.role}`);
+  if (ok) {
+    tokens[role] = token;
+    ids[role] = user.id || user._id;
+  }
+  return ok;
+}
+
 async function preflight(accounts) {
   const P = 'Kiểm tra trước';
   if (!(await wake())) {
@@ -150,14 +189,7 @@ async function preflight(accounts) {
   }
   log(P, '-', 'API trả lời health-check', true, BASE);
   for (const role of Object.keys(ROLE_OF)) {
-    const login = await call(null, 'POST', '/auth/login', { email: accounts[role], password: accounts.password });
-    const token = login.data?.token;
-    const user = login.data?.user;
-    const ok = Boolean(token) && user?.role === ROLE_OF[role];
-    log(P, role, 'đăng nhập', ok, ok ? user.name : login.message || `vai trò ${user?.role}`);
-    if (!ok) return null;
-    tokens[role] = token;
-    ids[role] = user.id || user._id;
+    if (!(await login(P, accounts, role))) return null;
   }
   const policy = (await call('trainer', 'GET', '/settings/policy')).data || {};
   const digest = Number(policy.digestMinutes) || 90;
@@ -206,9 +238,37 @@ async function setUpHorse(F, name, stall, breakfastAt, feed) {
 }
 
 const CANTER = { kind: 'canter', prescription: { distanceM: 2400, targetHeartRateMax: 170, targetSpeedKmh: null } };
+const TRIAL = { kind: 'trial', prescription: { distanceM: RACE.distance, reps: 1, targetSpeedKmh: 60, targetHeartRateMax: 225 } };
 const gateLine = (readiness) => (readiness?.gates || []).map((g) => `${g.label}: ${g.status}`).join(', ');
-const readinessAt = (horse, at) => read('trainer', `/training/sessions/readiness?horse=${horse._id}&scheduledAt=${at.toISOString()}&intensity=moderate`);
+const readinessAt = (horse, at, intensity = 'moderate') => read('trainer', `/training/sessions/readiness?horse=${horse._id}&scheduledAt=${at.toISOString()}&intensity=${intensity}`);
 const FED_WELL = { observation: { appetite: 'Tốt', manure: 'Bình thường', waterIntake: 'Bình thường' }, amountEatenPercent: 100 };
+const metricsLine = (s) => `${s.metrics?.distance} m, nhịp tim TB ${s.metrics?.avgHeartRate} bpm, tốc độ tối đa ${s.metrics?.maxSpeed} km/h`;
+
+/** The session once the sensor feed has finished it, or null after 10 minutes. */
+async function untilFinished(id) {
+  for (let i = 0; i < 60; i += 1) {
+    await sleep(10000);
+    const s = await read('trainer', `/training/sessions/${id}`);
+    if (s?.status === 'completed') return s;
+  }
+  return null;
+}
+/** The session after its first sensor readings (or once it is no longer running). */
+async function firstReadings(id) {
+  let s;
+  for (let i = 0; i < 30; i += 1) {
+    await sleep(2000);
+    s = await read('trainer', `/training/sessions/${id}`);
+    if (s?.metrics?.sampleCount >= 1 || (s && s.status !== 'in_progress')) break;
+  }
+  return s;
+}
+async function pendingBreakfast(F, horse) {
+  const tasks = (await read('groom', `/stable/tasks?horse=${horse._id}`)) || [];
+  const breakfast = tasks.find((t) => t.taskType === 'feeding' && t.mealSlot === 'morning' && t.status === 'pending');
+  log(F, 'groom', 'thấy việc cho ăn bữa sáng trong danh sách', Boolean(breakfast));
+  return breakfast;
+}
 
 /** The groom gives a meal; the trainer books a canter once the club's digestion wait has passed, then runs it to its start. */
 async function feedThenRun(F, ctx, { horse, plan }, taskId, what) {
@@ -237,20 +297,54 @@ async function ownerSees(F, horse) {
   log(F, 'owner', `chủ ngựa thấy "${horse.name}" trong danh sách ngựa của mình`, Boolean(found));
 }
 
-async function flowPass(ctx, F, setup) {
+async function registerRace(F, horse) {
+  const date = raceDay();
+  return must(F, 'trainer', `đăng ký giải "${raceName(date)}" ngày ${ddmm(date)}: ${RACE.distance} m mặt cát, ${RACE.venue}`, 'POST', '/races', {
+    horse: horse._id, raceName: raceName(date), raceDate: date.toISOString(), ...RACE,
+  }, 201);
+}
+
+/** A trial over the race distance after the canter, then the race decision taken on it. */
+async function trialThenDecide(F, { horse, plan }, entry) {
+  const at = slotAfter(new Date(), TRIAL_GAP);
+  log(F, 'trainer', `xem bảng sẵn sàng cho buổi chạy thử ${hhmm(at)} (bài nặng)`, true, gateLine(await readinessAt(horse, at, 'high')));
+  const trial = await must(F, 'trainer', `lên lịch chạy thử ${RACE.distance} m cho giải lúc ${hhmm(at)}: tốc độ ≥ 60 km/h, nhịp tim ≤ 225`, 'POST', '/training/sessions', {
+    horse: horse._id, trainingPlan: plan._id, ...TRIAL, raceEntry: entry._id, scheduledAt: at.toISOString(),
+    coachNote: 'Khởi động 15 phút, chạy thử đủ cự ly giải ở tốc độ thi đấu; ghi nhận tốc độ tối đa và nhịp tim.',
+  }, 201);
+  await waitUntil(new Date(at.getTime() - minutes(2)), `${F}: kiểm tra sẵn sàng trước chạy thử`);
+  await wake();
+  await must(F, 'trainer', 'kiểm tra sẵn sàng chạy thử: 37,6 °C, sân cát đã bừa', 'POST', `/training/sessions/${trial._id}/pre-check`, {
+    confirmed: true, bodyTempC: 37.6, trackCondition: 'Sân cát đã bừa, mặt sân tốt', weather: 'Nắng nhẹ, 28 °C',
+  });
+  await waitUntil(at, `${F}: giờ chạy thử`);
+  await must(F, 'trainer', 'bắt đầu chạy thử', 'POST', `/training/sessions/${trial._id}/start`, {});
+  const done = await untilFinished(trial._id);
+  log(F, 'trainer', 'chạy thử xong (cảm biến chạy hết cự ly)', Boolean(done), done ? metricsLine(done) : 'sau 10 phút vẫn chưa kết thúc');
+  if (!done) return 'chạy thử lỗi';
+  const met = done.outcome?.met === true;
+  log(F, 'trainer', `kết quả chạy thử so với chỉ tiêu: ${met ? 'đạt' : 'chưa đạt'}`, true, done.outcome?.summary || '');
+  await must(F, 'trainer', `đánh giá chạy thử: ${met ? 9 : 6}/10`, 'PATCH', `/training/sessions/${trial._id}/evaluation`, {
+    performanceRating: met ? 9 : 6,
+    trainerComment: met
+      ? 'Chạy thử đạt tốc độ thi đấu, nhịp tim trong ngưỡng, về đích còn sức. Sẵn sàng cho giải.'
+      : 'Tốc độ tối đa còn thiếu một chút so với chỉ tiêu; nhịp tim tốt, hồi sức nhanh. Có thể thi đấu, giữ sức ở nửa đầu.',
+  });
+  const decided = await must(F, 'trainer', met ? 'quyết định dự giải: tham gia, dựa trên buổi chạy thử đạt' : 'quyết định dự giải: vẫn tham gia dù chạy thử chưa đạt (ghi lý do)', 'POST', `/races/${entry._id}/decision`, {
+    decision: 'confirmed', trialSession: trial._id,
+    ...(met ? {} : { reason: 'Tốc độ chạy thử thiếu dưới 10% chỉ tiêu, nhịp tim và hồi sức tốt — HLV vẫn cho thi đấu, giữ sức nửa đầu.' }),
+  });
+  return `chạy thử ${met ? 'đạt' : 'chưa đạt'} → ${decided?.status === 'confirmed' ? 'xác nhận dự giải' : decided?.status}`;
+}
+
+async function flowPass(ctx, F, setup, withRace) {
   const { horse } = setup;
-  const tasks = (await read('groom', `/stable/tasks?horse=${horse._id}`)) || [];
-  const breakfast = tasks.find((t) => t.taskType === 'feeding' && t.mealSlot === 'morning' && t.status === 'pending');
-  log(F, 'groom', 'thấy việc cho ăn bữa sáng trong danh sách', Boolean(breakfast));
+  const entry = withRace ? await registerRace(F, horse) : null;
+  const breakfast = await pendingBreakfast(F, horse);
   if (!breakfast) return 'lỗi';
   const session = await feedThenRun(F, ctx, setup, breakfast._id, 'cho ăn bữa sáng');
-  let done;
-  for (let i = 0; i < 60 && !done; i += 1) {
-    await sleep(10000);
-    const s = await read('trainer', `/training/sessions/${session._id}`);
-    if (s?.status === 'completed') done = s;
-  }
-  log(F, 'trainer', 'cảm biến chạy hết cự ly, buổi tập tự kết thúc', Boolean(done), done ? `${done.metrics?.distance} m, nhịp tim TB ${done.metrics?.avgHeartRate} bpm, tốc độ tối đa ${done.metrics?.maxSpeed} km/h` : 'sau 10 phút vẫn chưa kết thúc');
+  const done = await untilFinished(session._id);
+  log(F, 'trainer', 'cảm biến chạy hết cự ly, buổi tập tự kết thúc', Boolean(done), done ? metricsLine(done) : 'sau 10 phút vẫn chưa kết thúc');
   if (!done) return 'lỗi';
   await must(F, 'trainer', 'đánh giá buổi tập: 8/10', 'PATCH', `/training/sessions/${session._id}/evaluation`, {
     performanceRating: 8,
@@ -260,7 +354,8 @@ async function flowPass(ctx, F, setup) {
   const met = final?.outcome?.met === true;
   log(F, 'trainer', 'kết quả so với chỉ tiêu: đạt', met, final?.outcome?.summary || 'không có kết luận');
   await ownerSees(F, horse);
-  return met ? 'Đạt' : 'lỗi';
+  const canter = met ? 'Đạt' : 'lỗi';
+  return entry ? `${canter} · ${await trialThenDecide(F, setup, entry)}` : canter;
 }
 
 /** Breakfast time has passed unfed: the canter is refused, also with the trainer's reason. Returns the refused gate. */
@@ -270,17 +365,9 @@ async function refusedWhenUnfed(ctx, F, { horse, plan }) {
   const nutrition = ((await readinessAt(horse, at))?.gates || []).find((g) => g.key === 'nutrition');
   log(F, 'trainer', `bảng sẵn sàng cho buổi phi chậm ${hhmm(at)}: Dinh dưỡng đỏ`, nutrition?.status === 'blocked', nutrition?.detail);
   const body = { horse: horse._id, trainingPlan: plan._id, ...CANTER, scheduledAt: at.toISOString(), coachNote: 'Phi chậm 2400 m.' };
-  const refused = await call('trainer', 'POST', '/training/sessions', body);
-  log(F, 'trainer', 'lên lịch buổi phi chậm → hệ thống từ chối', refused.status === 409, `HTTP ${refused.status}: ${refused.message}`);
-  const overridden = await call('trainer', 'POST', '/training/sessions', { ...body, overrideReason: 'HLV vẫn muốn cho tập, sẽ theo dõi sát' });
-  log(F, 'trainer', 'ghi lý do để vẫn tạo → vẫn bị từ chối (ô đỏ không bỏ qua được)', overridden.status === 409, `HTTP ${overridden.status}: ${overridden.message}`);
-  return refused.status === 409 && overridden.status === 409 && nutrition?.status === 'blocked' ? nutrition : null;
-}
-
-async function flowBlocked(ctx, F, setup) {
-  const gate = await refusedWhenUnfed(ctx, F, setup);
-  log(F, '-', 'giữ nguyên ngựa này ở trạng thái bị chặn để demo trực tiếp', Boolean(gate));
-  return gate ? 'Bị chặn (lỡ bữa)' : 'lỗi';
+  const first = await refused(F, 'trainer', 'lên lịch buổi phi chậm → hệ thống từ chối', 'POST', '/training/sessions', body);
+  const again = await refused(F, 'trainer', 'ghi lý do để vẫn tạo → vẫn bị từ chối (ô đỏ không bỏ qua được)', 'POST', '/training/sessions', { ...body, overrideReason: 'HLV vẫn muốn cho tập, sẽ theo dõi sát' });
+  return first && again && nutrition?.status === 'blocked' ? nutrition : null;
 }
 
 async function flowFail(ctx, F, setup) {
@@ -292,12 +379,7 @@ async function flowFail(ctx, F, setup) {
   const session = await feedThenRun(F, ctx, setup, gate.taskId, 'cho ăn muộn bữa sáng (quá giờ)');
 
   // The horse struggles: the trainer stops it after the first sensor readings, well short of the distance.
-  let s;
-  for (let i = 0; i < 30; i += 1) {
-    await sleep(2000);
-    s = await read('trainer', `/training/sessions/${session._id}`);
-    if (s?.metrics?.sampleCount >= 1 || (s && s.status !== 'in_progress')) break;
-  }
+  const s = await firstReadings(session._id);
   if (s?.status === 'in_progress') {
     await must(F, 'trainer', 'ngựa thở gấp, bước rối — HLV kết thúc buổi sớm', 'POST', `/training/sessions/${session._id}/end`, {});
   }
@@ -316,7 +398,49 @@ async function flowFail(ctx, F, setup) {
     action: 'accept', scheduledFor: visit.toISOString(),
   });
   await ownerSees(F, horse);
-  return notMet ? 'Chưa đạt (dừng sớm)' : 'lỗi';
+  return notMet ? 'Chưa đạt (dừng sớm, chờ khám)' : 'lỗi';
+}
+
+/** Entered for the race, lame in its canter, an injury on the vet's record: the trial and the race are refused, so it is withdrawn. */
+async function flowInjured(ctx, F, setup) {
+  const { horse, plan } = setup;
+  const entry = await registerRace(F, horse);
+  const breakfast = await pendingBreakfast(F, horse);
+  if (!breakfast) return 'lỗi';
+  const session = await feedThenRun(F, ctx, setup, breakfast._id, 'cho ăn bữa sáng');
+  const s = await firstReadings(session._id);
+  if (s?.status === 'in_progress') {
+    await must(F, 'trainer', 'ngựa hụt bước, khập khiễng chân trước trái — HLV dừng buổi ngay', 'POST', `/training/sessions/${session._id}/end`, {});
+  }
+  await must(F, 'trainer', 'đánh giá buổi tập: 3/10', 'PATCH', `/training/sessions/${session._id}/evaluation`, {
+    performanceRating: 3,
+    trainerComment: 'Ngựa hụt bước ở vòng đầu, sau đó khập khiễng chân trước trái. Dừng ngay, chườm lạnh và gọi bác sĩ.',
+  });
+  const request = await must(F, 'trainer', 'gửi yêu cầu khám khẩn cho bác sĩ', 'POST', '/health/exam-requests', {
+    horse: horse._id, priority: 'high', reason: 'Khập khiễng chân trước trái sau khi hụt bước trong buổi phi chậm.',
+  }, 201);
+  await must(F, 'vet', 'bác sĩ nhận yêu cầu, khám ngay', 'PATCH', `/health/exam-requests/${request._id}`, {
+    action: 'accept', scheduledFor: slotAfter(new Date(), 15).toISOString(),
+  });
+  await must(F, 'vet', 'khám: viêm gân gấp chân trước trái độ 1 — chấn thương, nghỉ tập 2 tuần', 'POST', '/health/records', {
+    horse: horse._id,
+    diagnosis: 'Sưng nóng nhẹ vùng gân gấp chân trước trái, ngựa né chân khi bước. Viêm gân độ 1: chườm lạnh, băng ép, nghỉ tập 2 tuần rồi khám lại.',
+    resultStatus: 'injured', clearedLevel: 'none', vitalSigns: { temperatureC: 38.2, heartRate: 46 },
+  });
+  const at = slotAfter(new Date(), TRIAL_GAP);
+  const medical = ((await readinessAt(horse, at, 'high'))?.gates || []).find((g) => g.key === 'medical');
+  log(F, 'trainer', `bảng sẵn sàng cho buổi chạy thử ${hhmm(at)}: Y tế đỏ`, medical?.status === 'blocked', medical?.detail);
+  await refused(F, 'trainer', 'lên lịch chạy thử cho giải → hệ thống từ chối (chấn thương)', 'POST', '/training/sessions', {
+    horse: horse._id, trainingPlan: plan._id, ...TRIAL, raceEntry: entry._id, scheduledAt: at.toISOString(), coachNote: 'Chạy thử cho giải.',
+  });
+  await refused(F, 'trainer', 'xác nhận dự giải → bị chặn (bác sĩ ghi chấn thương)', 'POST', `/races/${entry._id}/decision`, {
+    decision: 'confirmed', reason: 'HLV vẫn muốn cho thi đấu',
+  });
+  await must(F, 'trainer', 'quyết định rút khỏi giải, ghi lý do', 'POST', `/races/${entry._id}/decision`, {
+    decision: 'withdrawn', reason: 'Viêm gân gấp chân trước trái, bác sĩ cho nghỉ tập 2 tuần — rút khỏi giải.',
+  });
+  await ownerSees(F, horse);
+  return 'Chấn thương → rút khỏi giải';
 }
 
 const results = [];
@@ -325,19 +449,24 @@ async function round(ctx, r, startAt) {
   const tag = `${ddmm()} R${r}`;
   const now = new Date();
   ctx.missedBreakfastAt = slotFloor(new Date(now.getTime() - minutes(45)));
-  const passF = `R${r} · Đạt`;
-  const failF = `R${r} · ${r === 1 ? 'Lỡ bữa' : 'Không đạt'}`;
-  const outcome = { r, start: hhmm(now), pass: 'lỗi', fail: 'lỗi' };
-  const runPass = async () => {
-    const setup = await setUpHorse(passF, `Test Demo ${tag} · Đạt`, `Test Demo ${tag}-A`, slotFloor(now), ctx.feed);
-    outcome.pass = await flowPass(ctx, passF, setup);
-  };
-  const runFail = async () => {
-    const setup = await setUpHorse(failF, `Test Demo ${tag} · ${r === 1 ? 'Lỡ bữa' : 'Không đạt'}`, `Test Demo ${tag}-B`, ctx.missedBreakfastAt, ctx.feed);
-    outcome.fail = await (r === 1 ? flowBlocked : flowFail)(ctx, failF, setup);
-  };
-  // Set up one after the other (the missed breakfast time is per round), then run side by side.
-  const runs = await Promise.allSettled([runFail(), runPass()]);
+  const outcome = { r, start: hhmm(now), pass: 'lỗi', fail: 'lỗi', injured: r === 1 ? 'lỗi' : '—' };
+  const flows = [
+    async () => {
+      const F = `R${r} · Đạt`;
+      outcome.pass = await flowPass(ctx, F, await setUpHorse(F, `Test Demo ${tag} · Đạt`, `Test Demo ${tag}-A`, slotFloor(now), ctx.feed), true);
+    },
+    async () => {
+      const F = `R${r} · Không đạt`;
+      outcome.fail = await flowFail(ctx, F, await setUpHorse(F, `Test Demo ${tag} · Không đạt`, `Test Demo ${tag}-B`, ctx.missedBreakfastAt, ctx.feed));
+    },
+  ];
+  if (r === 1) {
+    flows.push(async () => {
+      const F = `R${r} · Chấn thương`;
+      outcome.injured = await flowInjured(ctx, F, await setUpHorse(F, `Test Demo ${tag} · Chấn thương`, `Test Demo ${tag}-C`, slotFloor(now), ctx.feed));
+    });
+  }
+  const runs = await Promise.allSettled(flows.map((run) => run()));
   for (const run of runs) {
     if (run.status === 'rejected') {
       console.error(run.reason?.message || run.reason);
@@ -345,16 +474,44 @@ async function round(ctx, r, startAt) {
     }
   }
   results.push(outcome);
-  summary(`\n#### Lượt ${r} (bắt đầu ${outcome.start}): ${outcome.pass} · ${outcome.fail}\n\n${table(steps.filter((s) => s.flow.startsWith(`R${r} `)))}`);
+  summary(`\n#### Lượt ${r} (bắt đầu ${outcome.start}): ${outcome.pass} · ${outcome.fail}${r === 1 ? ` · ${outcome.injured}` : ''}\n\n${table(steps.filter((s) => s.flow.startsWith(`R${r} `)))}`);
+}
+
+// The race itself is not simulated: the horses that ran finish in the order of their trial (a trial
+// that met its targets first, then the faster pace), and the first three take prize money.
+const PRIZES = [30000000, 15000000, 8000000];
+const raceTime = (sec) => `${Math.floor(sec / 60)}:${(sec % 60).toFixed(2).padStart(5, '0')}`;
+async function raceResults(accounts) {
+  const P = 'Kết quả giải';
+  if (!(await wake())) {
+    log(P, '-', 'API trả lời health-check', false, 'không trả lời sau 4 phút');
+    return;
+  }
+  log(P, '-', 'API trả lời health-check', true, BASE);
+  if (!(await login(P, accounts, 'trainer'))) return;
+  const name = raceName(new Date());
+  const entries = ((await read('trainer', '/races')) || []).filter((e) => e.raceName === name);
+  log(P, 'trainer', `tìm giải "${name}" đua hôm nay`, entries.length > 0, `${entries.length} ngựa đăng ký`);
+  const runners = [];
+  for (const e of entries) {
+    const horse = e.horse?.name || e.horse;
+    if (e.status === 'withdrawn') log(P, 'trainer', `${horse}: đã rút khỏi giải`, true, e.decision?.reason || '');
+    else if (e.status === 'completed') log(P, 'trainer', `${horse}: đã có kết quả`, true, e.result);
+    else if (e.status !== 'confirmed') log(P, 'trainer', `${horse}: HLV chưa xác nhận tham gia — không thi đấu`, true, e.status);
+    else {
+      const trial = ((await read('trainer', `/races/${e._id}/trials`)) || []).find((t) => ['completed', 'evaluated'].includes(t.status));
+      runners.push({ e, horse, met: trial?.outcome?.met === true, speed: Number(trial?.metrics?.maxSpeed) || 0 });
+    }
+  }
+  runners.sort((a, b) => Number(b.met) - Number(a.met) || b.speed - a.speed);
+  for (const [i, r] of runners.entries()) {
+    const body = { position: i + 1, finishTime: raceTime(97.4 + i * 0.85 + (r.met ? 0 : 1.1)), prizeMoney: PRIZES[i] || 0 };
+    await must(P, 'trainer', `${r.horse}: hạng ${body.position}, ${body.finishTime}, tiền thưởng ${vnd(body.prizeMoney)}`, 'PATCH', `/races/${r.e._id}/results`, body);
+  }
 }
 
 async function main() {
-  const onlyDate = process.env.DEMO_ONLY_DATE;
   const today = new Date().toLocaleDateString('sv-SE');
-  if (onlyDate && onlyDate !== today) {
-    console.log(`Hôm nay ${today}, chỉ chạy ngày ${onlyDate}: bỏ qua.`);
-    return;
-  }
   let accounts;
   try {
     accounts = JSON.parse(process.env.DEMO_ACCOUNTS || '');
@@ -363,13 +520,38 @@ async function main() {
     summary(table(steps));
     return;
   }
+
+  if (process.env.DEMO_MODE === 'results' || process.env.DEMO_RESULT_DATE === today) {
+    if (!WRITE) {
+      console.log('Ngày đua: chỉ nhập kết quả khi DEMO_CONFIRM=write.');
+      return;
+    }
+    try {
+      await raceResults(accounts);
+    } finally {
+      summary(`### Kết quả giải · ${BASE}\n\n${table(steps)}`);
+    }
+    return;
+  }
+  const onlyDate = process.env.DEMO_ONLY_DATE;
+  if (onlyDate && onlyDate !== today) {
+    console.log(`Hôm nay ${today}, chỉ chạy ngày ${onlyDate}: bỏ qua.`);
+    return;
+  }
+
   const ctx = await preflight(accounts);
+  // A backup trigger later the same morning finds the first round already made and stops.
+  if (ctx && ((await read('manager', '/horses')) || []).some((h) => h.name === `Test Demo ${ddmm()} R1 · Đạt`)) {
+    log('Kiểm tra trước', 'manager', 'các lượt sáng nay đã chạy (đã có ngựa R1) — không chạy lại', true);
+    summary(`### Demo flows · ${BASE}\n\n${table(steps)}`);
+    return;
+  }
   summary(`### Demo flows · ${BASE}${WRITE ? '' : ' · chỉ kiểm tra trước, không ghi (DEMO_CONFIRM khác "write")'}\n\n${table(steps)}`);
   if (!ctx || !WRITE) return;
 
   const starts = [new Date()];
   for (let next = slotAfter(starts[0], ROUND_EVERY); next <= atClock(LAST_START); next = new Date(next.getTime() + minutes(ROUND_EVERY))) starts.push(next);
-  console.log(`${starts.length} lượt: ${starts.map(hhmm).join(', ')}`);
+  console.log(`${starts.length} lượt: ${starts.map(hhmm).join(', ')} · giải ${raceName(raceDay())}`);
   // Rounds run side by side; each one's breakfast and canter follow its own start.
   await Promise.allSettled(starts.map((at, i) => round({ ...ctx }, i + 1, at)));
 }
@@ -382,7 +564,7 @@ main()
   .finally(() => {
     if (results.length) {
       results.sort((a, b) => a.r - b.r);
-      summary(`\n### Tổng kết ${failed ? '— CÓ BƯỚC LỖI' : '— mọi bước đạt'}\n\n| Lượt | Bắt đầu | Ngựa "Đạt" | Ngựa "Không đạt" |\n|---|---|---|---|\n${results.map((o) => `| ${o.r} | ${o.start} | ${o.pass} | ${o.fail} |`).join('\n')}`);
+      summary(`\n### Tổng kết ${failed ? '— CÓ BƯỚC LỖI' : '— mọi bước đạt'}\n\n| Lượt | Bắt đầu | Ngựa "Đạt" (+ giải) | Ngựa "Không đạt" | Ngựa "Chấn thương" |\n|---|---|---|---|---|\n${results.map((o) => `| ${o.r} | ${o.start} | ${o.pass} | ${o.fail} | ${o.injured} |`).join('\n')}`);
     }
     if (failed) process.exitCode = 1;
   });
