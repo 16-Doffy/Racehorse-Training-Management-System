@@ -1,6 +1,6 @@
 # Chuồng trên sơ đồ: API cho các màn
 
-Từ 20/10/2026 chuồng không còn chỉ là chữ tự do. Manager lập **danh mục chuồng** theo khu (A-01, A-02, …, CL-01). Xếp ngựa thì chọn một chuồng trong danh mục. Bản mẫu giao diện (dãy chuồng 3D, sơ đồ khu): https://claude.ai/artifact/TJdbytRPox64uKA2DSXmBG
+Từ 20/10/2026 chuồng không còn chỉ là chữ tự do. Manager lập **danh mục chuồng** theo khu (A-01, A-02, …, CL-01). Xếp ngựa thì chọn một chuồng trong danh mục. Bản mẫu giao diện (khu chuồng 3D kiểu trang trại, sơ đồ theo tab, xem như từng vai trò): https://claude.ai/artifact/TJdbytRPox64uKA2DSXmBG
 
 Tất cả nằm dưới `/api/v1/stable`. Request/response chi tiết ở `/api-docs` (OpenAPI, nhóm "Stable (Groom)").
 
@@ -44,12 +44,26 @@ Tất cả nằm dưới `/api/v1/stable`. Request/response chi tiết ở `/api
 - Màu trạng thái gợi ý: `healthStatus` `eligible` xanh, `monitoring` vàng, `injured`/`quarantined` đỏ; chuồng trống xám; bảo trì gạch chéo.
 - `GET /stable/stalls` trả thêm `unplaced`: các ngựa (người gọi xem được) vẫn đang ở chuồng chữ tự do. Manager kéo chúng vào sơ đồ.
 
+## Mỗi vai trò thấy gì, làm được gì
+
+API đã áp dụng đúng bảng này: màn nào cũng gọi chung một route, server tự ẩn những gì vai trò đó không được xem.
+
+| Vai trò | Thấy chuồng (trống, có ngựa, bảo trì) | Thấy ngựa (tên, giống, người chăm sóc) | Thấy ngựa trong chuồng (3D) | Làm được |
+|---|---|---|---|---|
+| Quản lý CLB | Tất cả | Tất cả | Tất cả, có tên trên biển | Lập khu, thêm/bỏ chuồng, đặt bảo trì, xếp và đổi chuồng mọi ngựa |
+| HLV | Tất cả | Ngựa mình phụ trách | Ngựa mình có tên; ngựa khác là dáng ngựa chung, biển "CÓ NGỰA" | Xếp, đổi chuồng cho ngựa mình phụ trách (`POST /stable/assignments`) |
+| Bác sĩ | Tất cả | Ngựa mình phụ trách, ngựa chưa có bác sĩ, đã khám hoặc đang chờ khám | Như HLV | Chỉ xem; cần chuyển khu cách ly thì báo Quản lý |
+| Chủ ngựa | Tất cả | Chỉ ngựa của mình | Như HLV | Chỉ xem |
+| NV chăm sóc | Tất cả | Tất cả (biết chuồng bên cạnh) | App điện thoại: Tien quyết | Chỉ xem; mã chuồng trên từng việc |
+
+"Thấy chuồng" nghĩa là biết chuồng nào trống, có ngựa hay đang bảo trì. Với ngựa không được xem, API trả `occupant: { "hidden": true }`: màn hiện "Có ngựa", không tên, không người chăm sóc.
+
 ## Ai làm phần nào
 
 | Màn | Người | Việc |
 |---|---|---|
 | Manager: sơ đồ khu, xếp/đổi chuồng, bảo trì; chi tiết ngựa có chuồng 3D | Claude | đang làm |
-| HLV: chuồng 3D trong chi tiết ngựa, sơ đồ chỉ xem | Claude | đang làm |
+| HLV: chuồng 3D trong chi tiết ngựa, sơ đồ; xếp/đổi chuồng cho ngựa mình | Claude | đang làm |
 | Bác sĩ: ngựa chấn thương nổi đỏ trên sơ đồ; chuyển ngựa sang khu cách ly (`POST /stable/assignments` với chuồng `type: "isolation"`, cần quyền Manager/HLV hoặc nhờ Manager) | trunghieu | gọi `GET /stable/stalls` |
 | Chủ ngựa: chuồng của ngựa mình, có 3D | Quân | gọi `GET /stable/stalls/by-horse/:horseId`, dùng component chung khi có |
 | NV chăm sóc (app): mã chuồng trên từng việc, danh sách chuồng mình phụ trách | Tien | `stableBlock` đã là mã chuồng; lọc `GET /stable/stalls` theo `occupant.caretaker._id` |
