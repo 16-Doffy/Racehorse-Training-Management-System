@@ -1,662 +1,317 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Container, Row, Col, Card, Form, Button, Alert, Spinner, InputGroup } from 'react-bootstrap';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useRef, useState } from 'react';
+import { Button, Col, Form, Row } from 'react-bootstrap';
+import { useQuery } from '@tanstack/react-query';
 import { useSelector } from 'react-redux';
-import veterinarianApi from '../../api/veterinarianApi';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
-import ErrorAlert from '../../components/common/ErrorAlert';
-import { formatDateForInput } from '../../utils/formatDate';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import vetApi from '../../api/veterinarianApi';
+import useConfirm from '../../components/veterinarian/useConfirm';
+import { BusyButton, Callout, Choices, Field, HealthPill, LevelPill, LoadingBlock, PageHead, Section } from '../../components/veterinarian/ui';
+import { HEALTH_META, HEALTH_ORDER, LEVEL_META, LEVEL_ORDER, VITALS, clearanceOf, errorText, fmtDate, fromInputDate, horseFacts, idOf, toInputDate, vitalOff } from '../../components/veterinarian/vetFormat';
+import { message } from '../../lib/antdStatic';
+import { fileHref } from '../../lib/files';
+import { useExamRequests, useIncidents, useVetHorse, useVetRefresh } from '../../hooks/useVetData';
 
-export default function MedicalExaminationForm() {
-  const { horseId, id } = useParams(); // id is record id if editing
+const MAX_FILES = 10; // per exam (server: healthRecord.controller.js MAX_ATTACHMENTS)
+const PER_UPLOAD = 5; // per request (server: uploadMiddleware.js)
+const MAX_SIZE = 10 * 1024 * 1024;
+const FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'];
+const kb = (bytes) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+
+/** The exam form, once the horse (and, when editing, the exam) is loaded. */
+function ExamForm({ horse, record, presetLevel }) {
   const navigate = useNavigate();
-  const { user } = useSelector((state) => state.auth);
+  const user = useSelector((state) => state.auth.user);
+  const refresh = useVetRefresh();
+  const [confirm, confirmDialog] = useConfirm();
+  const requestsQ = useExamRequests();
+  const incidentsQ = useIncidents();
+  const fileInput = useRef(null);
+  const editing = Boolean(record);
+  const today = toInputDate(new Date());
+  const clearance = clearanceOf(horse);
 
-  const isEditMode = Boolean(id);
-  const fileInputRef = useRef(null);
-
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [date, setDate] = useState(() => (record ? toInputDate(record.date || record.createdAt) : today));
+  const [vitals, setVitals] = useState(() => Object.fromEntries(VITALS.map((v) => [v.key, record?.vitalSigns?.[v.key] ?? ''])));
+  const [diagnosis, setDiagnosis] = useState(record?.diagnosis || '');
+  const [resultStatus, setResultStatus] = useState(record?.resultStatus || horse.healthStatus || 'eligible');
+  const [clearedLevel, setClearedLevel] = useState(() => record?.clearedLevel || (LEVEL_META[presetLevel] ? presetLevel : ''));
+  const [notes, setNotes] = useState(record?.notes || '');
+  const [attachments, setAttachments] = useState(record?.attachments || []);
+  const [files, setFiles] = useState([]);
+  const [busy, setBusy] = useState(null); // 'save' | 'treat'
   const [error, setError] = useState(null);
-  const [successMessage, setSuccessMessage] = useState(null);
 
-  const [horses, setHorses] = useState([]);
-  const [existingAttachments, setExistingAttachments] = useState([]);
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const [deletingAttachmentId, setDeletingAttachmentId] = useState(null);
+  const openRequests = (requestsQ.data || []).filter((r) => idOf(r.horse) === horse._id);
+  const openIncidents = (incidentsQ.data || []).filter((t) => idOf(t.horse) === horse._id);
+  const back = `/veterinarian/horses/${horse._id}`;
 
-
-  const [formData, setFormData] = useState({
-    horse: horseId || '',
-    date: formatDateForInput(new Date()),
-    temperatureC: '',
-    heartRate: '',
-    respiratoryRate: '',
-    weightKg: '',
-    diagnosis: '',
-    resultStatus: 'eligible',
-    // Return-to-training assessment: how hard the horse may work from now on ('' = this exam says nothing about it).
-    clearedLevel: '',
-    symptoms: '',
-    notes: '',
-  });
-
-  const [validated, setValidated] = useState(false);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const horsesRes = await veterinarianApi.getHorses();
-        let loadedHorses = horsesRes.data || [];
-
-        if (isEditMode) {
-          const recRes = await veterinarianApi.getHealthRecordById(id);
-          const rec = recRes.data;
-          setExistingAttachments(rec.attachments || []);
-          const recHorseId = rec.horse?._id || rec.horse || '';
-          if (recHorseId && !loadedHorses.some((h) => h._id === recHorseId)) {
-            if (rec.horse && typeof rec.horse === 'object' && rec.horse.name) {
-              loadedHorses = [rec.horse, ...loadedHorses];
-            } else {
-              try {
-                const singleHorseRes = await veterinarianApi.getHorseById(recHorseId);
-                if (singleHorseRes?.data) loadedHorses = [singleHorseRes.data, ...loadedHorses];
-              } catch (_) {}
-            }
-          }
-          setFormData({
-            horse: recHorseId,
-            date: formatDateForInput(rec.date || rec.createdAt),
-            temperatureC: rec.vitalSigns?.temperatureC || '',
-            heartRate: rec.vitalSigns?.heartRate || '',
-            respiratoryRate: rec.vitalSigns?.respiratoryRate || '',
-            weightKg: rec.horse?.weightKg || '',
-            diagnosis: rec.diagnosis || '',
-            resultStatus: rec.resultStatus || 'eligible',
-            clearedLevel: rec.clearedLevel || '',
-            symptoms: '',
-            notes: rec.notes || '',
-          });
-        } else if (horseId) {
-          let targetHorse = loadedHorses.find((h) => h._id === horseId);
-          if (!targetHorse) {
-            try {
-              const singleHorseRes = await veterinarianApi.getHorseById(horseId);
-              if (singleHorseRes?.data) {
-                targetHorse = singleHorseRes.data;
-                loadedHorses = [targetHorse, ...loadedHorses];
-              }
-            } catch (e) {
-              console.warn('Could not fetch single horse by ID:', e);
-            }
-          }
-          if (targetHorse) {
-            setFormData((prev) => ({
-              ...prev,
-              horse: horseId,
-              weightKg: targetHorse.weightKg || '',
-              resultStatus: targetHorse.healthStatus || 'eligible',
-            }));
-          }
-        }
-        setHorses(loadedHorses);
-      } catch (err) {
-        setError(err?.message || 'Không thể tải thông tin hồ sơ khám.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [horseId, id, isEditMode]);
-
-  const handleFileChange = (e) => {
-    if (e.target.files) {
-      const filesArray = Array.from(e.target.files);
-      const totalCount = existingAttachments.length + selectedFiles.length + filesArray.length;
-      if (totalCount > 10) {
-        setError('Mỗi phiếu khám tối đa 10 tệp đính kèm.');
-        return;
-      }
-
-      for (const file of filesArray) {
-        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-        const isImage = file.type.startsWith('image/');
-
-        if (!isImage && !isPdf) {
-          setError(`Tệp "${file.name}" không được hỗ trợ. Chỉ chấp nhận ảnh hoặc tài liệu PDF.`);
-          return;
-        }
-
-        if (isImage && file.size > 5 * 1024 * 1024) {
-          setError(`Ảnh "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} MB) vượt quá giới hạn 5 MB.`);
-          return;
-        }
-
-        if (isPdf && file.size > 10 * 1024 * 1024) {
-          setError(`Tệp PDF "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} MB) vượt quá giới hạn 10 MB.`);
-          return;
-        }
-      }
-
-      setError(null);
-      setSelectedFiles((prev) => [...prev, ...filesArray]);
-    }
-  };
-
-  const handleClearSelectedFiles = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-    setSelectedFiles([]);
-  };
-
-  const handleRemoveSelectedFile = (index) => {
-    setSelectedFiles((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      if (next.length === 0 && fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      return next;
-    });
-  };
-
-
-  const handleDeleteExistingAttachment = async (attachmentId) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa tệp đính kèm này?')) return;
-    setDeletingAttachmentId(attachmentId);
-    try {
-      await veterinarianApi.deleteRecordAttachment(id, attachmentId);
-      setExistingAttachments((prev) => prev.filter((att) => att._id !== attachmentId));
-    } catch (err) {
-      setError(err?.response?.data?.message || err?.message || 'Lỗi khi xóa tệp đính kèm.');
-    } finally {
-      setDeletingAttachmentId(null);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const form = e.currentTarget;
-
-    if (form.checkValidity() === false) {
-      e.stopPropagation();
-      setValidated(true);
-      return;
-    }
-
-    if (!formData.horse) {
-      setError('Vui lòng chọn chiến mã cần khám bệnh.');
-      return;
-    }
-
-    if (!formData.diagnosis.trim()) {
-      setError('Vui lòng nhập chẩn đoán lâm sàng.');
-      return;
-    }
-
-    setSubmitting(true);
+  const addFiles = (list) => {
+    const picked = Array.from(list || []);
+    if (fileInput.current) fileInput.current.value = '';
+    if (attachments.length + files.length + picked.length > MAX_FILES) return setError(`Mỗi phiếu khám đính kèm tối đa ${MAX_FILES} tệp.`);
+    const bad = picked.find((f) => !FILE_TYPES.includes(f.type));
+    if (bad) return setError(`"${bad.name}": chỉ nhận ảnh (jpeg, png, webp, gif) hoặc PDF.`);
+    const big = picked.find((f) => f.size > MAX_SIZE);
+    if (big) return setError(`"${big.name}" (${kb(big.size)}) vượt quá 10 MB.`);
     setError(null);
+    return setFiles((prev) => [...prev, ...picked]);
+  };
 
-    const todayStr = formatDateForInput(new Date());
-    let examDate = new Date();
-    if (formData.date && formData.date !== todayStr) {
-      examDate = new Date(formData.date);
-    }
-
-    const payload = {
-      horse: formData.horse,
-      date: examDate,
-      diagnosis: formData.diagnosis.trim(),
-      resultStatus: formData.resultStatus,
-      clearedLevel: formData.clearedLevel || null,
-      vitalSigns: {
-        temperatureC: formData.temperatureC ? Number(formData.temperatureC) : undefined,
-        heartRate: formData.heartRate ? Number(formData.heartRate) : undefined,
-        respiratoryRate: formData.respiratoryRate ? Number(formData.respiratoryRate) : undefined,
-      },
-      notes: [formData.symptoms ? `Triệu chứng: ${formData.symptoms}` : '', formData.notes]
-        .filter(Boolean)
-        .join(' | '),
-    };
-
+  const removeAttachment = async (att) => {
+    const ok = await confirm({ title: 'Xóa tệp đính kèm', body: `Xóa "${att.name}" khỏi phiếu khám này?`, confirmLabel: 'Xóa', danger: true });
+    if (!ok) return;
     try {
-      let savedRecordId = id;
-      if (isEditMode) {
-        await veterinarianApi.updateHealthRecord(id, payload);
-      } else {
-        const createRes = await veterinarianApi.createHealthRecord(payload);
-        savedRecordId = createRes.data?._id;
-      }
-
-      // Upload selected files if any (POST /health/records/:id/attachments)
-      if (selectedFiles.length > 0 && savedRecordId) {
-        const formDataUpload = new FormData();
-        selectedFiles.forEach((f) => formDataUpload.append('files', f));
-        await veterinarianApi.uploadRecordAttachments(savedRecordId, formDataUpload);
-      }
-
-      setSuccessMessage(
-        isEditMode
-          ? 'Cập nhật hồ sơ khám bệnh và tệp đính kèm thành công!'
-          : 'Lập hồ sơ khám bệnh mới và tải tệp đính kèm thành công!'
-      );
-
-      setTimeout(() => {
-        navigate(`/veterinarian/horses/${formData.horse}`);
-      }, 1200);
+      await vetApi.deleteRecordAttachment(record._id, att._id);
+      setAttachments((prev) => prev.filter((a) => a._id !== att._id));
+      refresh();
     } catch (err) {
-      setError(err?.response?.data?.message || err?.message || 'Lỗi khi lưu hồ sơ khám bệnh.');
-      setSubmitting(false);
+      setError(errorText(err, 'Không xóa được tệp.'));
     }
   };
 
-  if (loading) {
-    return <LoadingSpinner text="Đang tải dữ liệu hồ sơ khám bệnh..." minHeight="400px" />;
-  }
+  const save = async (then) => {
+    if (!diagnosis.trim()) return setError('Nhập chẩn đoán / kết luận của lần khám.');
+    if (!date || date > today) return setError('Ngày khám không được ở tương lai.');
+    setBusy(then);
+    setError(null);
+    const vitalSigns = Object.fromEntries(VITALS.map((v) => [v.key, vitals[v.key] === '' || vitals[v.key] === null ? undefined : Number(vitals[v.key])]));
+    let when;
+    if (editing && date === toInputDate(record.date || record.createdAt)) when = record.date || record.createdAt;
+    else when = date === today ? new Date() : fromInputDate(date, '09:00');
+    const payload = { horse: horse._id, date: when, diagnosis: diagnosis.trim(), resultStatus, clearedLevel: clearedLevel || null, vitalSigns, notes: notes.trim() };
+    try {
+      const saved = editing ? await vetApi.updateHealthRecord(record._id, payload) : await vetApi.createHealthRecord(payload);
+      const recordId = saved?.data?._id || record?._id;
+      for (let i = 0; i < files.length; i += PER_UPLOAD) {
+        const form = new FormData();
+        files.slice(i, i + PER_UPLOAD).forEach((f) => form.append('files', f));
+        // eslint-disable-next-line no-await-in-loop
+        await vetApi.uploadRecordAttachments(recordId, form);
+      }
+      await refresh();
+      message.success(editing ? 'Đã cập nhật phiếu khám.' : `Đã lưu phiếu khám cho ${horse.name}.`);
+      navigate(then === 'treat' ? `/veterinarian/treatments/new?horseId=${horse._id}` : back);
+    } catch (err) {
+      setError(errorText(err, 'Không lưu được phiếu khám.'));
+      setBusy(null);
+    }
+    return undefined;
+  };
 
-  const selectedHorseObj = horses.find((h) => h._id === formData.horse);
+  const closes = [openRequests.length && `${openRequests.length} yêu cầu khám`, openIncidents.length && `${openIncidents.length} sự cố`].filter(Boolean);
 
   return (
-    <Container fluid className="p-0" style={{ maxWidth: '900px' }}>
-      <div className="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
-        <div>
-          <h3 className="fw-bold text-dark mb-1">
-            <i className="bi bi-clipboard2-pulse me-2 text-primary"></i>
-            {isEditMode ? 'Chỉnh Sửa Hồ Sơ Khám Bệnh' : 'Lập Hồ Sơ Khám Bệnh & Chẩn Đoán'}
-          </h3>
-          <p className="text-muted mb-0 small">
-            Ghi nhận các chỉ số sinh tồn, chẩn đoán triệu chứng và cập nhật trạng thái thể lực của chiến mã.
-          </p>
-        </div>
+    <div className="vet-ui" style={{ maxWidth: 920 }}>
+      <PageHead
+        back={{ label: horse.name, to: back }}
+        title={editing ? `Sửa phiếu khám · ${horse.name}` : `Phiếu khám · ${horse.name}`}
+        subtitle={
+          <span className="d-inline-flex flex-wrap align-items-center gap-2">
+            {horseFacts(horse)}
+            <HealthPill status={horse.healthStatus} />
+            {clearance.restricted && <LevelPill level={clearance.level} short />}
+          </span>
+        }
+      />
 
-        <Button
-          variant="outline-secondary"
-          size="sm"
-          onClick={() => navigate(formData.horse ? `/veterinarian/horses/${formData.horse}` : '/veterinarian/horses')}
-        >
-          <i className="bi bi-x-circle me-1"></i> Hủy / Quay lại
-        </Button>
-      </div>
+      {!editing && closes.length > 0 && (
+        <Callout tone="info" icon="bi-info-circle-fill" className="mb-3">
+          Lưu phiếu này sẽ trả lời {closes.join(' và ')} đang mở của {horse.name}
+          {openRequests[0]?.reason ? ` (“${openRequests[0].reason}”)` : ''}.
+        </Callout>
+      )}
 
-      {error && <ErrorAlert message={error} onRetry={() => setError(null)} />}
-      {successMessage && <Alert variant="success"><i className="bi bi-check-circle-fill me-2"></i> {successMessage}</Alert>}
+      <Form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          save('save');
+        }}
+      >
+        <section className="vet-card">
+          <div className="vet-card-body">
+            <Section title="Lần khám">
+              <Row className="g-3 align-items-end">
+                <Col sm={5} md={4}>
+                  <Field label="Ngày khám" required>
+                    <Form.Control type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} />
+                  </Field>
+                </Col>
+                <Col sm={7} md={8}>
+                  <div className="vet-muted pb-2">
+                    <i className="bi bi-person-badge me-1" aria-hidden="true" />
+                    {editing ? `Khám bởi ${record.examinedBy?.name || 'bác sĩ'}` : `Bác sĩ khám: ${user?.name || '—'}`}
+                  </div>
+                </Col>
+              </Row>
+            </Section>
 
-      <Card className="border-0 shadow-sm bg-white">
-        <Card.Body className="p-4">
-          <Form noValidate validated={validated} onSubmit={handleSubmit}>
-            {/* Row 1: Horse & Exam Date */}
-            <Row className="g-3 mb-3">
-              <Col xs={12} md={6}>
-                <Form.Group>
-                  <Form.Label className="fw-semibold">
-                    Chiến mã <span className="text-danger">*</span>
-                  </Form.Label>
-                  <Form.Select
-                    value={formData.horse}
-                    onChange={(e) => {
-                      const selHorse = horses.find((h) => h._id === e.target.value);
-                      setFormData({
-                        ...formData,
-                        horse: e.target.value,
-                        weightKg: selHorse?.weightKg || formData.weightKg,
-                      });
-                    }}
-                    required
-                    disabled={isEditMode || submitting}
-                  >
-                    <option value="">-- Chọn chiến mã khám bệnh --</option>
-                    {horses.map((h) => (
-                      <option key={h._id} value={h._id}>
-                        {h.name} (#{h._id.slice(-6).toUpperCase()}) - {h.breed || 'Chưa rõ'}
-                      </option>
-                    ))}
-                  </Form.Select>
-                  {horseId && formData.horse === horseId && (
-                    <Form.Text className="text-primary small mt-1 d-block fw-medium">
-                      <i className="bi bi-info-circle me-1"></i> Đang lập hồ sơ khám cho chiến mã theo yêu cầu khám bệnh.
-                    </Form.Text>
-                  )}
-                  <Form.Control.Feedback type="invalid">Vui lòng chọn chiến mã.</Form.Control.Feedback>
-                </Form.Group>
-              </Col>
-
-              <Col xs={12} md={3}>
-                <Form.Group>
-                  <Form.Label className="fw-semibold">
-                    Ngày khám <span className="text-danger">*</span>
-                  </Form.Label>
-                  <Form.Control
-                    type="date"
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    required
-                    disabled={submitting}
-                  />
-                </Form.Group>
-              </Col>
-
-              <Col xs={12} md={3}>
-                <Form.Group>
-                  <Form.Label className="fw-semibold">Bác sĩ khám</Form.Label>
-                  <Form.Control
-                    type="text"
-                    value={user?.name || 'Bác sĩ Thú y'}
-                    disabled
-                    readOnly
-                    className="bg-light"
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
-
-            <hr className="my-4 text-muted" />
-
-            {/* Row 2: Vital Signs */}
-            <h5 className="fw-bold text-primary mb-3">
-              <i className="bi bi-activity me-2"></i> Chỉ Số Sinh Tồn (Vital Signs)
-            </h5>
-
-            <Row className="g-3 mb-3">
-              <Col xs={12} sm={4}>
-                <Form.Group>
-                  <Form.Label className="fw-semibold">
-                    Thân nhiệt (°C) <span className="text-muted small">(Chuẩn: 37.5 - 38.5)</span>
-                  </Form.Label>
-                  <Form.Control
-                    type="number"
-                    step="0.1"
-                    placeholder="Ví dụ: 38.0"
-                    value={formData.temperatureC}
-                    onChange={(e) => setFormData({ ...formData, temperatureC: e.target.value })}
-                    disabled={submitting}
-                  />
-                </Form.Group>
-              </Col>
-
-              <Col xs={12} sm={4}>
-                <Form.Group>
-                  <Form.Label className="fw-semibold">
-                    Nhịp tim (bpm) <span className="text-muted small">(Nghỉ: 28 - 44)</span>
-                  </Form.Label>
-                  <Form.Control
-                    type="number"
-                    placeholder="Ví dụ: 36"
-                    value={formData.heartRate}
-                    onChange={(e) => setFormData({ ...formData, heartRate: e.target.value })}
-                    disabled={submitting}
-                  />
-                </Form.Group>
-              </Col>
-
-              <Col xs={12} sm={4}>
-                <Form.Group>
-                  <Form.Label className="fw-semibold">
-                    Nhịp thở (bpm) <span className="text-muted small">(Nghỉ: 8 - 16)</span>
-                  </Form.Label>
-                  <Form.Control
-                    type="number"
-                    placeholder="Ví dụ: 12"
-                    value={formData.respiratoryRate}
-                    onChange={(e) => setFormData({ ...formData, respiratoryRate: e.target.value })}
-                    disabled={submitting}
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
-
-            <hr className="my-4 text-muted" />
-
-            {/* Row 3: Symptoms, Diagnosis & Result Status */}
-            <h5 className="fw-bold text-primary mb-3">
-              <i className="bi bi-clipboard2-check me-2"></i> Kết Quả Chẩn Đoán & Đánh Giá Thể Lực
-            </h5>
-
-            <Row className="g-3 mb-3">
-              <Col xs={12}>
-                <Form.Group>
-                  <Form.Label className="fw-semibold">Triệu chứng lâm sàng ghi nhận</Form.Label>
-                  <Form.Control
-                    as="textarea"
-                    rows={2}
-                    placeholder="Ví dụ: Chân trái trước hơi sưng nóng, phản ứng khi sờ nắn; mắt có ghèn nhẹ..."
-                    value={formData.symptoms}
-                    onChange={(e) => setFormData({ ...formData, symptoms: e.target.value })}
-                    disabled={submitting}
-                  />
-                </Form.Group>
-              </Col>
-
-              <Col xs={12} md={8}>
-                <Form.Group>
-                  <Form.Label className="fw-semibold">
-                    Chẩn đoán bệnh lý / Kết luận <span className="text-danger">*</span>
-                  </Form.Label>
-                  <Form.Control
-                    type="text"
-                    placeholder="Ví dụ: Viêm gân cổ chân nhẹ do vận động cường độ cao"
-                    value={formData.diagnosis}
-                    onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
-                    required
-                    disabled={submitting}
-                  />
-                  <Form.Control.Feedback type="invalid">Vui lòng nhập chẩn đoán.</Form.Control.Feedback>
-                </Form.Group>
-              </Col>
-
-              <Col xs={12} md={4}>
-                <Form.Group>
-                  <Form.Label className="fw-semibold">
-                    Kết luận trạng thái sức khỏe <span className="text-danger">*</span>
-                  </Form.Label>
-                  <Form.Select
-                    value={formData.resultStatus}
-                    onChange={(e) => setFormData({ ...formData, resultStatus: e.target.value })}
-                    required
-                    disabled={submitting}
-                  >
-                    <option value="eligible">🟢 Đủ điều kiện (Eligible)</option>
-                    <option value="monitoring">🟡 Cần theo dõi (Monitoring)</option>
-                    <option value="injured">🔴 Chấn thương (Injured)</option>
-                    <option value="quarantined">⚫ Cách ly y tế (Quarantined)</option>
-                  </Form.Select>
-                </Form.Group>
-              </Col>
-
-              <Col xs={12} md={6}>
-                <Form.Group>
-                  <Form.Label className="fw-semibold">Mức vận động được phép (đánh giá trở lại tập)</Form.Label>
-                  <Form.Select
-                    value={formData.clearedLevel}
-                    onChange={(e) => setFormData({ ...formData, clearedLevel: e.target.value })}
-                    disabled={submitting}
-                  >
-                    <option value="">— Lần khám này không đánh giá mức tập —</option>
-                    <option value="none">🛑 Chưa được tập</option>
-                    <option value="light">🩹 Chỉ tập nhẹ</option>
-                    <option value="moderate">🟡 Tập tối đa cường độ vừa</option>
-                    <option value="high">🟢 Tập bình thường</option>
-                  </Form.Select>
-                  <Form.Text className="text-muted">
-                    Kết thúc điều trị chưa có nghĩa là được tập lại: ngựa giữ mức hạn chế cho tới khi bác sĩ chọn mức ở đây. Mức này áp dụng cho tới lần đánh giá sau.
-                  </Form.Text>
-                </Form.Group>
-              </Col>
-
-              <Col xs={12}>
-                <Form.Group>
-                  <Form.Label className="fw-semibold">Ghi chú & Chỉ định thêm của Bác sĩ</Form.Label>
-                  <Form.Control
-                    as="textarea"
-                    rows={3}
-                    placeholder="Ví dụ: Chườm lạnh 2 lần/ngày, hạn chế chạy nước đại, tái khám sau 3 ngày..."
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    disabled={submitting}
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
-
-            {/* Attachments Section (POST /health/records/:id/attachments) */}
-            <div className="mb-4 p-3 bg-light rounded border">
-              <div className="d-flex justify-content-between align-items-center mb-2">
-                <Form.Label className="fw-bold text-dark mb-0">
-                  <i className="bi bi-paperclip me-1 text-primary"></i>
-                  Tài Liệu Y Tế & Hình Ảnh Đính Kèm (Ảnh X-Quang, Kết Quả Xét Nghiệm, Đơn Thuốc Scan)
-                </Form.Label>
-                <span className="small text-muted">Tối đa 10 tệp (Ảnh tối đa 5MB, PDF tối đa 10MB)</span>
-              </div>
-
-              {/* Existing Attachments (if editing) */}
-              {existingAttachments.length > 0 && (
-                <div className="mb-3">
-                  <span className="small fw-bold text-muted d-block mb-1">Tệp đã đính kèm hiện tại:</span>
-                  <div className="d-flex flex-wrap gap-2">
-                    {existingAttachments.map((att) => (
-                      <div key={att._id} className="p-2 bg-white rounded border d-flex align-items-center gap-2">
-                        {att.contentType?.startsWith('image/') ? (
-                          <img
-                            src={att.url}
-                            alt={att.name}
-                            style={{ width: '32px', height: '32px', objectFit: 'cover' }}
-                            className="rounded"
+            <Section title="Chỉ số sinh tồn">
+              <Row className="g-3">
+                {VITALS.map((v) => {
+                  const off = vitalOff(v, vitals[v.key]);
+                  return (
+                    <Col key={v.key} xs={12} sm={4}>
+                      <Field label={v.label} hint={off ? <span className="vet-text-bad fw-semibold">Ngoài ngưỡng {v.min}–{v.max}</span> : `Chuẩn khi nghỉ ${v.min}–${v.max}`}>
+                        <div className={`vet-input-unit${off ? ' is-out-of-range' : ''}`}>
+                          <Form.Control
+                            type="number"
+                            inputMode="decimal"
+                            step={v.step}
+                            value={vitals[v.key]}
+                            onChange={(e) => setVitals((s) => ({ ...s, [v.key]: e.target.value }))}
+                            placeholder={v.placeholder}
                           />
-                        ) : (
-                          <i className="bi bi-file-earmark-pdf fs-4 text-danger"></i>
-                        )}
-                        <div className="small">
-                          <a
-                            href={att.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-decoration-none fw-semibold"
-                          >
-                            {att.name}
-                          </a>
-                          <div className="text-muted" style={{ fontSize: '11px' }}>
-                            {att.size ? `${Math.round(att.size / 1024)} KB` : ''}
-                          </div>
+                          <span className="vet-unit">{v.unit}</span>
                         </div>
-                        <Button
-                          variant="outline-danger"
-                          size="sm"
-                          className="py-1 px-2.5 ms-2 text-nowrap"
-                          onClick={() => handleDeleteExistingAttachment(att._id)}
-                          disabled={deletingAttachmentId === att._id}
-                          title="Xóa vĩnh viễn tệp đính kèm này"
-                        >
-                          {deletingAttachmentId === att._id ? (
-                            <Spinner size="sm" animation="border" />
-                          ) : (
-                            <>
-                              <i className="bi bi-trash me-1"></i> Xóa
-                            </>
-                          )}
-                        </Button>
+                      </Field>
+                    </Col>
+                  );
+                })}
+              </Row>
+            </Section>
 
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* File Input */}
-              <Form.Group className="mb-2">
-                <Form.Control
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/*,application/pdf"
-                  onChange={handleFileChange}
-                  disabled={submitting}
-                />
-                <Form.Text className="text-muted">
-                  Hỗ trợ hình ảnh (.jpg, .png - tối đa 5MB) và tài liệu PDF (tối đa 10MB). Tối đa 10 tệp/phiếu khám.
-                </Form.Text>
-              </Form.Group>
-
-
-
-              {/* Staged files for upload */}
-              {selectedFiles.length > 0 && (
-                <div className="mt-3">
-                  <div className="d-flex justify-content-between align-items-center mb-2">
-                    <span className="small fw-bold text-primary">
-                      <i className="bi bi-file-earmark-arrow-up me-1"></i>
-                      Tệp chuẩn bị tải lên ({selectedFiles.length}):
-                    </span>
-                    <Button
-                      variant="link"
-                      size="sm"
-                      className="text-danger p-0 text-decoration-none small"
-                      onClick={handleClearSelectedFiles}
-                    >
-                      <i className="bi bi-trash me-1"></i> Xóa tất cả
-                    </Button>
-                  </div>
-                  <div className="d-flex flex-column gap-2">
-                    {selectedFiles.map((file, idx) => (
-                      <div
-                        key={idx}
-                        className="p-2.5 bg-white rounded border d-flex justify-content-between align-items-center shadow-sm"
-                      >
-                        <div className="d-flex align-items-center gap-2 text-truncate me-2">
-                          <i
-                            className={
-                              file.type.startsWith('image/')
-                                ? 'bi bi-image text-info fs-5'
-                                : 'bi bi-file-earmark-pdf text-danger fs-5'
-                            }
-                          ></i>
-                          <div className="text-truncate">
-                            <div className="fw-semibold small text-truncate text-dark">{file.name}</div>
-                            <small className="text-muted">{Math.round(file.size / 1024)} KB</small>
-                          </div>
-                        </div>
-                        <Button
-                          variant="outline-danger"
-                          size="sm"
-                          className="py-1 px-2.5 text-nowrap"
-                          onClick={() => handleRemoveSelectedFile(idx)}
-                          title="Xóa tệp này"
-                        >
-                          <i className="bi bi-trash me-1"></i> Xóa
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-
-            {/* Actions */}
-            <div className="d-flex justify-content-end gap-2 pt-3 border-top">
-              <Button
-                variant="outline-secondary"
-                onClick={() => navigate(formData.horse ? `/veterinarian/horses/${formData.horse}` : '/veterinarian/horses')}
-                disabled={submitting}
-              >
-                Hủy bỏ
-              </Button>
-              <Button variant="primary" type="submit" disabled={submitting}>
-                {submitting ? (
-                  <>
-                    <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-1" />
-                    Đang lưu hồ sơ...
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-check2-circle me-1"></i> Lưu hồ sơ khám bệnh
-                  </>
+            <Section title="Kết luận">
+              <div className="d-flex flex-column gap-3">
+                <Field label="Chẩn đoán" required>
+                  <Form.Control value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} placeholder="VD: Viêm gân gấp nông chân trước trái" autoFocus={!editing} />
+                </Field>
+                <Field label="Tình trạng sức khỏe">
+                  <Choices
+                    value={resultStatus}
+                    onChange={setResultStatus}
+                    label="Tình trạng sức khỏe"
+                    options={HEALTH_ORDER.map((key) => ({ value: key, label: HEALTH_META[key].label, tone: HEALTH_META[key].tone, icon: HEALTH_META[key].icon }))}
+                  />
+                </Field>
+                <Field
+                  label="Mức vận động cho phép từ nay"
+                  hint={
+                    clearedLevel
+                      ? `Áp dụng ngay: buổi tập vượt mức bị hủy, HLV được báo. Giữ tới lần đánh giá sau.`
+                      : clearance.restricted
+                        ? `Ngựa đang bị hạn chế (${LEVEL_META[clearance.level].label.toLowerCase()}). Chọn một mức nếu lần khám này cho ngựa tập lại.`
+                        : 'Bỏ trống nếu lần khám này không đánh giá mức tập.'
+                  }
+                >
+                  <Choices
+                    value={clearedLevel}
+                    onChange={setClearedLevel}
+                    label="Mức vận động cho phép"
+                    options={[{ value: '', label: 'Không đánh giá' }, ...LEVEL_ORDER.map((key) => ({ value: key, label: LEVEL_META[key].label, tone: LEVEL_META[key].tone, icon: LEVEL_META[key].icon }))]}
+                  />
+                </Field>
+                {resultStatus === 'eligible' && !clearedLevel && clearance.restricted && (
+                  <Callout tone="watch" icon="bi-exclamation-triangle-fill">
+                    Kết luận “đủ điều kiện” nhưng chưa chọn mức vận động — ngựa vẫn giữ mức “{LEVEL_META[clearance.level].label.toLowerCase()}”.
+                  </Callout>
                 )}
-              </Button>
-            </div>
-          </Form>
-        </Card.Body>
-      </Card>
-    </Container>
+              </div>
+            </Section>
+
+            <Section title="Ghi chú & chỉ định">
+              <Form.Control as="textarea" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Triệu chứng, chỉ định thêm, hẹn tái khám…" />
+            </Section>
+
+            <Section
+              title={`Tệp đính kèm (${attachments.length + files.length}/${MAX_FILES})`}
+              extra={
+                <Button size="sm" variant="vet-outline" onClick={() => fileInput.current?.click()} disabled={attachments.length + files.length >= MAX_FILES}>
+                  <i className="bi bi-paperclip" aria-hidden="true" /> Thêm tệp
+                </Button>
+              }
+            >
+              <input ref={fileInput} type="file" multiple accept={FILE_TYPES.join(',')} hidden onChange={(e) => addFiles(e.target.files)} />
+              {attachments.length + files.length === 0 ? (
+                <div className="vet-small vet-faint">X-quang, kết quả xét nghiệm, đơn thuốc scan — ảnh hoặc PDF, tối đa 10 MB mỗi tệp.</div>
+              ) : (
+                <div className="d-flex flex-wrap gap-2">
+                  {attachments.map((att) => (
+                    <span key={att._id} className="vet-attachment">
+                      <a href={fileHref(att.url)} target="_blank" rel="noopener noreferrer">
+                        <i className={`bi ${att.contentType?.startsWith('image/') ? 'bi-image' : 'bi-file-earmark-pdf'}`} aria-hidden="true" />
+                        <span className="text-truncate">{att.name}</span>
+                      </a>
+                      <button type="button" onClick={() => removeAttachment(att)} title="Xóa tệp" aria-label={`Xóa ${att.name}`}>
+                        <i className="bi bi-x" aria-hidden="true" />
+                      </button>
+                    </span>
+                  ))}
+                  {files.map((f, i) => (
+                    <span key={`${f.name}-${i}`} className="vet-attachment" title="Tải lên khi lưu">
+                      <span className="d-inline-flex align-items-center gap-2" style={{ minWidth: 0 }}>
+                        <i className={`bi ${f.type.startsWith('image/') ? 'bi-image' : 'bi-file-earmark-pdf'} vet-faint`} aria-hidden="true" />
+                        <span className="text-truncate">{f.name}</span>
+                        <span className="vet-faint">{kb(f.size)}</span>
+                      </span>
+                      <button type="button" onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} title="Bỏ tệp" aria-label={`Bỏ ${f.name}`}>
+                        <i className="bi bi-x" aria-hidden="true" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </Section>
+
+            {error && (
+              <Callout tone="bad" icon="bi-exclamation-circle-fill" className="mt-3">
+                {error}
+              </Callout>
+            )}
+          </div>
+          <div className="vet-form-footer">
+            <Button variant="vet-ghost" className="me-auto" onClick={() => navigate(back)} disabled={Boolean(busy)}>
+              Hủy
+            </Button>
+            {!editing && (
+              <BusyButton variant="vet-outline" busy={busy === 'treat'} disabled={Boolean(busy)} onClick={() => save('treat')}>
+                Lưu & kê đơn
+              </BusyButton>
+            )}
+            <BusyButton type="submit" busy={busy === 'save'} disabled={Boolean(busy)}>
+              {editing ? 'Lưu thay đổi' : 'Lưu phiếu khám'}
+            </BusyButton>
+          </div>
+        </section>
+      </Form>
+      {editing && <div className="vet-small vet-faint mt-2">Lập ngày {fmtDate(record.createdAt)}.</div>}
+      {confirmDialog}
+    </div>
   );
+}
+
+export default function MedicalExaminationForm() {
+  const { horseId, id } = useParams();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const recordQ = useQuery({ queryKey: ['vet', 'record', id], queryFn: () => vetApi.getHealthRecordById(id).then((res) => res.data), enabled: Boolean(id) });
+  const targetHorse = horseId || idOf(recordQ.data?.horse);
+  const horseQ = useVetHorse(targetHorse);
+
+  if ((id && recordQ.isLoading) || (targetHorse && horseQ.isLoading)) {
+    return (
+      <div className="vet-ui" style={{ maxWidth: 920 }}>
+        <LoadingBlock rows={4} height={80} />
+      </div>
+    );
+  }
+  const problem = recordQ.error || horseQ.error || (!horseQ.data && 'Không tìm thấy ngựa cần khám.');
+  if (problem) {
+    return (
+      <div className="vet-ui" style={{ maxWidth: 920 }}>
+        <Callout
+          tone="bad"
+          icon="bi-exclamation-octagon"
+          action={
+            <Button size="sm" variant="vet-outline" onClick={() => navigate('/veterinarian/horses')}>
+              Về danh sách ngựa
+            </Button>
+          }
+        >
+          {errorText(problem, 'Không mở được phiếu khám.')}
+        </Callout>
+      </div>
+    );
+  }
+  return <ExamForm key={id || targetHorse} horse={horseQ.data} record={recordQ.data} presetLevel={params.get('level')} />;
 }

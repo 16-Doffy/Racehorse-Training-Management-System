@@ -1,612 +1,642 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Container, Row, Col, Card, Tabs, Tab, Button, Badge, Alert, Table, Dropdown, Modal, Form, Spinner } from 'react-bootstrap';
-import { useParams, useNavigate } from 'react-router-dom';
-import veterinarianApi from '../../api/veterinarianApi';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
-import ErrorAlert from '../../components/common/ErrorAlert';
-import HealthStatusBadge from '../../components/veterinarian/HealthStatusBadge';
-import MedicalHistory from '../../components/veterinarian/MedicalHistory';
-import InjuryList from '../../components/veterinarian/InjuryList';
-import MedicalScheduleList from '../../components/veterinarian/MedicalScheduleList';
-import TrainingLockModal from '../../components/veterinarian/TrainingLockModal';
-import Horse3DAnatomyViewer from '../../components/veterinarian/Horse3DAnatomyViewer';
+import { useMemo, useState } from 'react';
+import { Button, Spinner } from 'react-bootstrap';
+import { useSelector } from 'react-redux';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import vetApi from '../../api/veterinarianApi';
+import CareModal from '../../components/veterinarian/CareModal';
+import HorseInjuryViewer from '../../components/veterinarian/HorseInjuryViewer';
+import IncidentModal from '../../components/veterinarian/IncidentModal';
+import InjuryModal from '../../components/veterinarian/InjuryModal';
+import TrainingLevelModal from '../../components/veterinarian/TrainingLevelModal';
+import TreatmentCard from '../../components/veterinarian/TreatmentCard';
+import useConfirm from '../../components/veterinarian/useConfirm';
+import { deleteInjury, endTreatment, setInjuryStage } from '../../components/veterinarian/vetActions';
+import {
+  ActionMenu,
+  Callout,
+  DueChip,
+  EmptyNote,
+  HealthPill,
+  HorseAvatar,
+  LevelPill,
+  LoadingBlock,
+  Pill,
+  RecoveryStepper,
+  Tabs,
+  VetCard,
+  Vitals,
+} from '../../components/veterinarian/ui';
+import {
+  CARE_KINDS,
+  CARE_ORDER,
+  CLEARANCE_SOURCE,
+  LEVEL_META,
+  SEVERITY_META,
+  VITALS,
+  ago,
+  clearanceOf,
+  errorText,
+  fmtDate,
+  fmtDateTime,
+  horseFacts,
+  idOf,
+  isActiveInjury,
+  shortBodyPart,
+  vitalOff,
+} from '../../components/veterinarian/vetFormat';
 import Horse3D from '../../features/horses/horse3d/Horse3D';
-import { formatDate, calculateAge } from '../../utils/formatDate';
-import { TREATMENT_STATUS_CONFIG } from '../../utils/healthStatus';
+import { message } from '../../lib/antdStatic';
+import { fileHref } from '../../lib/files';
+import { useCareEvents, useCareOrders, useExamRequests, useHealthRecords, useIncidents, useInjuries, useTreatments, useVetHorse, useVetRefresh } from '../../hooks/useVetData';
+
+const TABS = ['overview', 'exams', 'treatments', 'injuries', 'care'];
+
+function VitalsLine({ vitalSigns }) {
+  const shown = VITALS.filter((v) => vitalSigns?.[v.key] !== undefined && vitalSigns?.[v.key] !== null && vitalSigns?.[v.key] !== '');
+  if (!shown.length) return null;
+  return (
+    <div className="vet-small d-flex flex-wrap gap-3 mt-1">
+      {shown.map((v) => (
+        <span key={v.key} className={vitalOff(v, vitalSigns[v.key]) ? 'vet-text-bad fw-semibold' : 'vet-muted'}>
+          {v.label} {vitalSigns[v.key]} {v.unit}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ClearedPill({ level }) {
+  if (!level) return null;
+  return (
+    <Pill tone={LEVEL_META[level].tone} icon="bi-speedometer2">
+      Cho phép: {LEVEL_META[level].label.toLowerCase()}
+    </Pill>
+  );
+}
+
+function OverviewTab({ horse, records, ongoing, progressOf, injuries, onTab, actions }) {
+  const latest = records[0];
+  const clearance = clearanceOf(horse);
+  const active = injuries.filter(isActiveInjury);
+  return (
+    <div className="vet-grid-2">
+      <div className="vet-stack">
+        <VetCard
+          title="Lần khám gần nhất"
+          icon="bi-clipboard2-pulse"
+          extra={
+            records.length > 1 && (
+              <button type="button" className="vet-link vet-small" onClick={() => onTab('exams')}>
+                Tất cả {records.length} lần khám
+              </button>
+            )
+          }
+        >
+          {latest ? (
+            <>
+              <div className="d-flex flex-wrap align-items-center gap-2 mb-1">
+                <HealthPill status={latest.resultStatus} />
+                <ClearedPill level={latest.clearedLevel} />
+                <span className="vet-small vet-faint">
+                  {fmtDate(latest.date || latest.createdAt)} · {latest.examinedBy?.name || 'Bác sĩ'} · {ago(latest.date || latest.createdAt)}
+                </span>
+              </div>
+              <div className="fw-semibold mb-3">{latest.diagnosis}</div>
+              <Vitals vitalSigns={latest.vitalSigns} />
+              {latest.notes && <div className="vet-muted mt-3" style={{ whiteSpace: 'pre-wrap' }}>{latest.notes}</div>}
+              {latest.attachments?.length > 0 && (
+                <button type="button" className="vet-link vet-small mt-2" onClick={() => onTab('exams')}>
+                  <i className="bi bi-paperclip" aria-hidden="true" /> {latest.attachments.length} tệp đính kèm
+                </button>
+              )}
+            </>
+          ) : (
+            <EmptyNote
+              icon="bi-clipboard2"
+              title="Chưa có phiếu khám"
+              action={
+                <Button size="sm" variant="vet" onClick={actions.examine}>
+                  Khám bệnh
+                </Button>
+              }
+            >
+              Ngựa cần một phiếu khám trước khi được xếp buổi tập nặng.
+            </EmptyNote>
+          )}
+        </VetCard>
+
+        <VetCard
+          title="Điều trị đang áp dụng"
+          icon="bi-capsule"
+          count={ongoing.length || null}
+          flush
+          extra={
+            <Button size="sm" variant="vet-outline" onClick={actions.prescribe}>
+              <i className="bi bi-plus-lg" aria-hidden="true" /> Kê đơn
+            </Button>
+          }
+        >
+          {ongoing.length === 0 ? (
+            <EmptyNote icon="bi-capsule" title="Không có điều trị đang áp dụng" />
+          ) : (
+            ongoing.map((t) => (
+              <TreatmentCard key={t._id} treatment={t} progress={progressOf(t._id)} onEdit={() => actions.editTreatment(t)} onEnd={() => actions.endTreatment(t)} onLevel={actions.changeLevel} />
+            ))
+          )}
+        </VetCard>
+      </div>
+
+      <div className="vet-stack">
+        <VetCard title="Mức vận động" icon="bi-speedometer2">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <LevelPill level={clearance.level} lg />
+          </div>
+          <div className="vet-muted mt-2">{clearance.restricted ? clearance.reason || CLEARANCE_SOURCE[clearance.source] : 'Không có hạn chế y tế — HLV xếp lịch bình thường.'}</div>
+          {clearance.restricted && (
+            <div className="vet-small vet-faint mt-1">
+              {CLEARANCE_SOURCE[clearance.source] && clearance.reason ? `${CLEARANCE_SOURCE[clearance.source]} · ` : ''}
+              {clearance.since ? `từ ${fmtDate(clearance.since)}` : ''}
+              {clearance.prescribedBy ? ` · ${clearance.prescribedBy}` : ''}
+            </div>
+          )}
+          <Button variant="vet-outline" size="sm" className="w-100 mt-3" onClick={actions.changeLevel}>
+            Đổi mức tập
+          </Button>
+        </VetCard>
+
+        <VetCard
+          title="Chấn thương đang theo dõi"
+          icon="bi-bandaid"
+          count={active.length || null}
+          flush
+          extra={
+            <button type="button" className="vet-link vet-small" onClick={() => actions.newInjury()}>
+              Ghi chấn thương
+            </button>
+          }
+        >
+          {active.length === 0 ? (
+            <EmptyNote icon="bi-shield-check" title="Không có chấn thương" />
+          ) : (
+            <div className="vet-list">
+              {active.map((m) => (
+                <div key={m._id} className="vet-row">
+                  <div className="vet-row-main">
+                    <div className="d-flex flex-wrap align-items-center gap-2">
+                      <span className="fw-semibold">{shortBodyPart(m.bodyPart)}</span>
+                      <Pill tone={SEVERITY_META[m.severity]?.tone}>{SEVERITY_META[m.severity]?.label || m.severity}</Pill>
+                    </div>
+                    <div className="mt-1">
+                      <RecoveryStepper value={m.recoveryStatus} onChange={(stage) => actions.injuryStage(m, stage)} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </VetCard>
+
+        <VetCard
+          title="Lịch chăm sóc"
+          icon="bi-calendar-check"
+          flush
+          extra={
+            <button type="button" className="vet-link vet-small" onClick={() => onTab('care')}>
+              Lịch sử
+            </button>
+          }
+        >
+          <div className="vet-list">
+            {CARE_ORDER.map((kind) => (
+              <div key={kind} className="vet-row">
+                <i className={`bi ${CARE_KINDS[kind].icon} vet-faint`} aria-hidden="true" />
+                <div className="vet-row-main fw-semibold">{CARE_KINDS[kind].label}</div>
+                <DueChip date={horse.careSchedule?.[CARE_KINDS[kind].field]} onClick={() => actions.care(kind)} title="Ghi nhận hoặc đổi ngày hẹn" />
+              </div>
+            ))}
+          </div>
+        </VetCard>
+      </div>
+    </div>
+  );
+}
+
+function ExamsTab({ records, onExamine, onEdit, onDeleteAttachment, deletingId }) {
+  return (
+    <VetCard
+      title="Phiếu khám"
+      icon="bi-clipboard2-pulse"
+      count={records.length || null}
+      flush
+      extra={
+        <Button size="sm" variant="vet" onClick={onExamine}>
+          <i className="bi bi-plus-lg" aria-hidden="true" /> Khám bệnh
+        </Button>
+      }
+    >
+      {records.length === 0 ? (
+        <EmptyNote icon="bi-clipboard2" title="Chưa có phiếu khám" />
+      ) : (
+        <div className="vet-list">
+          {records.map((r) => (
+            <div key={r._id} className="vet-row" style={{ alignItems: 'flex-start' }}>
+              <div className="vet-date-block" aria-hidden="true">
+                <span>{new Date(r.date || r.createdAt).getDate()}</span>
+                <small>Th{new Date(r.date || r.createdAt).getMonth() + 1}</small>
+              </div>
+              <div className="vet-row-main">
+                <div className="d-flex flex-wrap align-items-center gap-2">
+                  <span className="fw-semibold">{r.diagnosis}</span>
+                  <HealthPill status={r.resultStatus} />
+                  <ClearedPill level={r.clearedLevel} />
+                </div>
+                <VitalsLine vitalSigns={r.vitalSigns} />
+                {r.notes && <div className="vet-muted mt-1" style={{ whiteSpace: 'pre-wrap' }}>{r.notes}</div>}
+                {r.attachments?.length > 0 && (
+                  <div className="d-flex flex-wrap gap-2 mt-2">
+                    {r.attachments.map((att) => (
+                      <span key={att._id} className="vet-attachment">
+                        <a href={fileHref(att.url)} target="_blank" rel="noopener noreferrer" title={`Mở ${att.name}`}>
+                          <i className={`bi ${att.contentType?.startsWith('image/') ? 'bi-image' : 'bi-file-earmark-pdf'}`} aria-hidden="true" />
+                          <span className="text-truncate">{att.name}</span>
+                        </a>
+                        <button type="button" onClick={() => onDeleteAttachment(r, att)} disabled={deletingId === att._id} title="Xóa tệp" aria-label={`Xóa ${att.name}`}>
+                          {deletingId === att._id ? <Spinner animation="border" size="sm" /> : <i className="bi bi-x" aria-hidden="true" />}
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="vet-small vet-faint mt-1">
+                  {fmtDateTime(r.date || r.createdAt)} · {r.examinedBy?.name || 'Bác sĩ'}
+                </div>
+              </div>
+              <Button size="sm" variant="vet-ghost" onClick={() => onEdit(r)}>
+                Sửa
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </VetCard>
+  );
+}
+
+function InjuriesTab({ horse, injuries, onNew, onEdit, onStage, onDelete }) {
+  const sorted = [...injuries].sort((a, b) => Number(isActiveInjury(b)) - Number(isActiveInjury(a)) || new Date(b.createdAt) - new Date(a.createdAt));
+  return (
+    <div className="vet-grid-2 is-even">
+      <HorseInjuryViewer horse={horse} injuries={injuries.filter(isActiveInjury)} height={420} />
+      <VetCard
+        title="Chấn thương"
+        icon="bi-bandaid"
+        count={injuries.length || null}
+        flush
+        extra={
+          <Button size="sm" variant="vet" onClick={onNew}>
+            <i className="bi bi-plus-lg" aria-hidden="true" /> Ghi chấn thương
+          </Button>
+        }
+      >
+        {sorted.length === 0 ? (
+          <EmptyNote icon="bi-shield-check" title="Chưa ghi chấn thương nào" />
+        ) : (
+          <div className="vet-list">
+            {sorted.map((m) => (
+              <div key={m._id} className="vet-row" style={{ alignItems: 'flex-start' }}>
+                <div className="vet-row-main">
+                  <div className="d-flex flex-wrap align-items-center gap-2">
+                    <span className="fw-semibold" title={m.bodyPart}>
+                      {shortBodyPart(m.bodyPart)}
+                    </span>
+                    <Pill tone={SEVERITY_META[m.severity]?.tone}>{SEVERITY_META[m.severity]?.label || m.severity}</Pill>
+                  </div>
+                  {m.notes && <div className="vet-small vet-muted mt-1">{m.notes}</div>}
+                  <div className="mt-2">
+                    <RecoveryStepper value={m.recoveryStatus} onChange={(stage) => onStage(m, stage)} />
+                  </div>
+                  <div className="vet-small vet-faint mt-1">Ghi {fmtDate(m.createdAt)}</div>
+                </div>
+                <ActionMenu
+                  items={[
+                    { label: 'Sửa', icon: 'bi-pencil', onClick: () => onEdit(m) },
+                    { label: 'Xóa (ghi nhầm)', icon: 'bi-trash', onClick: () => onDelete(m), danger: true },
+                  ]}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </VetCard>
+    </div>
+  );
+}
+
+const DELETE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function CareTab({ horse, onCare, onDeleteEvent, userId }) {
+  const eventsQ = useCareEvents(horse._id);
+  // When the tab was opened: an entry can be undone within 24 hours of being made (server rule).
+  const [openedAt] = useState(() => Date.now());
+  const events = eventsQ.data || [];
+  return (
+    <div className="vet-stack">
+      <div className="vet-care-tiles">
+        {CARE_ORDER.map((kind) => (
+          <div key={kind} className="vet-card vet-care-tile">
+            <div className="d-flex align-items-center gap-2 fw-semibold">
+              <i className={`bi ${CARE_KINDS[kind].icon} vet-faint`} aria-hidden="true" />
+              {CARE_KINDS[kind].label}
+            </div>
+            <DueChip date={horse.careSchedule?.[CARE_KINDS[kind].field]} onClick={() => onCare(kind, 'due')} title="Đổi ngày hẹn" />
+            <Button size="sm" variant="vet-outline" onClick={() => onCare(kind, 'record')}>
+              {kind === 'exam' ? 'Đặt hạn / khám' : 'Ghi nhận đã làm'}
+            </Button>
+          </div>
+        ))}
+      </div>
+      <VetCard title="Lịch sử chăm sóc định kỳ" icon="bi-clock-history" count={events.length || null} flush>
+        {eventsQ.isLoading ? (
+          <LoadingBlock rows={2} height={44} />
+        ) : events.length === 0 ? (
+          <EmptyNote icon="bi-calendar2" title="Chưa ghi lần tiêm phòng, tẩy giun hay đóng móng nào" />
+        ) : (
+          <div className="vet-list">
+            {events.map((ev) => {
+              const meta = CARE_KINDS[ev.kind] || { label: ev.kind, icon: 'bi-check2' };
+              const own = !ev.performedBy?._id || !userId || String(ev.performedBy._id) === String(userId);
+              const recent = openedAt - new Date(ev.createdAt).getTime() <= DELETE_WINDOW_MS;
+              return (
+                <div key={ev._id} className="vet-row">
+                  <span className="vet-kind-icon vet-tone-neutral" aria-hidden="true">
+                    <i className={`bi ${meta.icon}`} />
+                  </span>
+                  <div className="vet-row-main">
+                    <div className="d-flex flex-wrap align-items-center gap-2">
+                      <span className="fw-semibold">{meta.label}</span>
+                      {ev.product && <span>{ev.product}</span>}
+                      {(ev.batchNumber || ev.dose) && <span className="vet-small vet-muted">{[ev.batchNumber && `Lô ${ev.batchNumber}`, ev.dose].filter(Boolean).join(' · ')}</span>}
+                    </div>
+                    <div className="vet-small vet-faint mt-1">
+                      {fmtDate(ev.date)} · {ev.performedBy?.name || 'Bác sĩ'}
+                      {ev.nextDue && <> · hẹn lần sau {fmtDate(ev.nextDue)}</>}
+                    </div>
+                    {ev.note && <div className="vet-small vet-muted mt-1">{ev.note}</div>}
+                  </div>
+                  {own && recent && (
+                    <Button size="sm" variant="vet-ghost" className="vet-icon-btn" onClick={() => onDeleteEvent(ev)} title="Xóa lần ghi này (trong 24 giờ)" aria-label="Xóa lần ghi này">
+                      <i className="bi bi-trash" aria-hidden="true" />
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </VetCard>
+    </div>
+  );
+}
 
 export default function HorseHealthDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const userId = useSelector((state) => state.auth.user?._id);
+  const refresh = useVetRefresh();
+  const [confirm, confirmDialog] = useConfirm();
+  const horseQ = useVetHorse(id);
+  const recordsQ = useHealthRecords(id);
+  const treatmentsQ = useTreatments(id);
+  const injuriesQ = useInjuries(id);
+  const requestsQ = useExamRequests();
+  const incidentsQ = useIncidents();
+  const ordersQ = useCareOrders();
+  const [dialog, setDialog] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
-  const [activeTab, setActiveTab] = useState('overview');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const tab = TABS.includes(params.get('tab')) ? params.get('tab') : 'overview';
+  const setTab = (next) =>
+    setParams(
+      (p) => {
+        const out = new URLSearchParams(p);
+        if (next === 'overview') out.delete('tab');
+        else out.set('tab', next);
+        return out;
+      },
+      { replace: true }
+    );
 
-  const [horse, setHorse] = useState(null);
-  const [records, setRecords] = useState([]);
-  const [treatments, setTreatments] = useState([]);
-  const [injuries, setInjuries] = useState([]);
+  const horse = horseQ.data;
+  const records = recordsQ.data || [];
+  const treatments = useMemo(() => [...(treatmentsQ.data || [])].sort((a, b) => Number(b.status === 'ongoing') - Number(a.status === 'ongoing')), [treatmentsQ.data]);
+  const ongoing = treatments.filter((t) => t.status === 'ongoing');
+  const injuries = injuriesQ.data || [];
+  const requests = (requestsQ.data || []).filter((r) => idOf(r.horse) === id);
+  const incidents = (incidentsQ.data || []).filter((t) => idOf(t.horse) === id);
+  const progressOf = (treatmentId) => (ordersQ.data || []).find((row) => row._id === treatmentId);
 
-  // Training lock modal state
-  const [showLockModal, setShowLockModal] = useState(false);
-
-  // Recovery clearance modal state
-  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
-  const [recoveryNote, setRecoveryNote] = useState(
-    'Khám tái khám: Chiến mã đã hoàn toàn hồi phục sức khỏe sau điều trị, đủ điều kiện tham gia huấn luyện và thi đấu.'
-  );
-  const [completeOngoingTreatment, setCompleteOngoingTreatment] = useState(true);
-  const [recovering, setRecovering] = useState(false);
-
-  const fetchHorseDetails = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [horseRes, recordsRes, treatmentsRes, injuriesRes] = await Promise.all([
-        veterinarianApi.getHorseById(id),
-        veterinarianApi.getHealthRecords({ horse: id }),
-        veterinarianApi.getTreatments({ horse: id }),
-        veterinarianApi.getInjuryMarkers({ horse: id }),
-      ]);
-
-      const horseData = horseRes.data;
-      const recordsData = recordsRes.data || [];
-      const treatmentsData = treatmentsRes.data || [];
-      const injuriesData = injuriesRes.data || [];
-
-      setHorse(horseData);
-      setRecords(recordsData);
-      setTreatments(treatmentsData);
-      setInjuries(injuriesData);
-    } catch (err) {
-      setError(err?.message || 'Không thể tải thông tin chi tiết sức khỏe ngựa.');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    fetchHorseDetails();
-  }, [fetchHorseDetails]);
-
-  if (loading) {
-    return <LoadingSpinner text="Đang tải hồ sơ sức khỏe chiến mã..." minHeight="450px" />;
-  }
-
-  if (error || !horse) {
+  if (horseQ.isLoading) {
     return (
-      <Container fluid className="p-0">
-        <ErrorAlert
-          message={error || 'Không tìm thấy thông tin chiến mã.'}
-          onRetry={fetchHorseDetails}
-        />
-        <Button variant="outline-primary" onClick={() => navigate('/veterinarian/horses')}>
-          <i className="bi bi-arrow-left me-1"></i> Quay lại danh sách
-        </Button>
-      </Container>
+      <div className="vet-ui">
+        <LoadingBlock rows={4} height={90} />
+      </div>
+    );
+  }
+  if (horseQ.isError || !horse) {
+    return (
+      <div className="vet-ui">
+        <Callout
+          tone="bad"
+          icon="bi-exclamation-octagon"
+          action={
+            <Button size="sm" variant="vet-outline" onClick={() => navigate('/veterinarian/horses')}>
+              Về danh sách
+            </Button>
+          }
+        >
+          {horseQ.error?.message || 'Không tìm thấy ngựa này, hoặc ngựa không thuộc phạm vi bạn phụ trách.'}
+        </Callout>
+      </div>
     );
   }
 
-  const latestRecord = records[0];
-  const activeTreatment = treatments.find((t) => t.isTrainingLocked || t.status === 'ongoing');
-  const trainingLevel = activeTreatment?.trainingLevel || (activeTreatment?.isTrainingLocked ? 'none' : 'high');
-  const isTrainingLocked = trainingLevel === 'none' || activeTreatment?.isTrainingLocked || false;
-  const activeInjuries = injuries.filter((i) => i.recoveryStatus !== 'recovered');
-
-  const TRAINING_LEVEL_LABELS = {
-    none: { label: 'Khóa tập hoàn toàn', variant: 'danger', icon: 'bi-slash-circle-fill' },
-    light: { label: 'Tập nhẹ (Đi dạo)', variant: 'warning', icon: 'bi-person-walking' },
-    moderate: { label: 'Tập vừa (Nước kiệu)', variant: 'info', icon: 'bi-speedometer2' },
-    high: { label: 'Bình thường (Đầy đủ)', variant: 'success', icon: 'bi-check-circle-fill' },
+  const clearance = clearanceOf(horse);
+  const close = () => setDialog(null);
+  const actions = {
+    examine: () => navigate(`/veterinarian/examinations/new/${id}`),
+    prescribe: () => navigate(`/veterinarian/treatments/new?horseId=${id}`),
+    editTreatment: (t) => navigate(`/veterinarian/treatments/${t._id}/edit`),
+    endTreatment: (t) => endTreatment({ ...t, horse }, { confirm, refresh }),
+    changeLevel: () => setDialog({ type: 'level' }),
+    newInjury: () => setDialog({ type: 'injury' }),
+    injuryStage: (m, stage) => setInjuryStage(m, stage, { refresh }),
+    care: (kind, mode = 'record') => setDialog({ type: 'care', kind, mode }),
   };
 
-  const defaultPhoto = 'https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=800&q=80';
-
-  const handleConfirmRecovery = async (e) => {
-    e?.preventDefault();
-    if (!horse?._id) return;
-    setRecovering(true);
+  const deleteAttachment = async (record, att) => {
+    const ok = await confirm({ title: 'Xóa tệp đính kèm', body: `Xóa "${att.name}" khỏi phiếu khám ngày ${fmtDate(record.date)}?`, confirmLabel: 'Xóa', danger: true });
+    if (!ok) return;
+    setDeletingId(att._id);
     try {
-      // 1. Create health record with eligible status
-      await veterinarianApi.createHealthRecord({
-        horse: horse._id,
-        diagnosis: recoveryNote.trim() || 'Khám tái khám: Chiến mã đã hoàn toàn bình phục sau điều trị, đủ điều kiện thi đấu.',
-        resultStatus: 'eligible',
-      });
-
-      // 2. Complete ongoing treatment if selected
-      if (completeOngoingTreatment && activeTreatment?._id) {
-        await veterinarianApi.updateTreatment(activeTreatment._id, {
-          status: 'completed',
-          trainingLevel: 'high',
-          isTrainingLocked: false,
-        });
-      }
-
-      setShowRecoveryModal(false);
-      await fetchHorseDetails();
+      await vetApi.deleteRecordAttachment(record._id, att._id);
+      message.success('Đã xóa tệp.');
+      await refresh();
     } catch (err) {
-      alert(err?.message || 'Có lỗi khi cập nhật trạng thái bình phục.');
+      message.error(errorText(err, 'Không xóa được tệp.'));
     } finally {
-      setRecovering(false);
+      setDeletingId(null);
     }
   };
 
-  const handleCompleteTreatment = async (treatmentId) => {
-    if (!window.confirm('Xác nhận đánh dấu hoàn thành đợt điều trị này?')) return;
+  const deleteCareEvent = async (ev) => {
+    const ok = await confirm({ title: 'Xóa lần ghi chăm sóc', body: 'Chỉ dùng khi ghi nhầm. Ngày hẹn lần sau đã đặt giữ nguyên — đổi lại trong lịch nếu cần.', confirmLabel: 'Xóa', danger: true });
+    if (!ok) return;
     try {
-      await veterinarianApi.updateTreatment(treatmentId, {
-        status: 'completed',
-        trainingLevel: 'high',
-        isTrainingLocked: false,
-      });
-      await fetchHorseDetails();
+      await vetApi.deleteCareEvent(id, ev._id);
+      message.success('Đã xóa lần ghi.');
+      await refresh();
     } catch (err) {
-      alert(err?.message || 'Không thể cập nhật đợt điều trị.');
+      message.error(errorText(err, 'Không xóa được.'));
     }
   };
 
   return (
-    <Container fluid className="p-0">
-      {/* Top Breadcrumb & Navigation */}
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <Button
-          variant="link"
-          className="p-0 text-decoration-none text-muted"
-          onClick={() => navigate('/veterinarian/horses')}
-        >
-          <i className="bi bi-arrow-left me-1"></i> Danh mục sức khỏe ngựa
-        </Button>
+    <div className="vet-ui">
+      <button type="button" className="vet-back" onClick={() => navigate('/veterinarian/horses')}>
+        <i className="bi bi-arrow-left" aria-hidden="true" /> Ngựa & hồ sơ
+      </button>
 
-        <div className="d-flex gap-2">
-          <Button
-            variant="outline-primary"
-            size="sm"
-            onClick={fetchHorseDetails}
-            title="Tải lại dữ liệu"
-          >
-            <i className="bi bi-arrow-clockwise"></i>
+      <div className="vet-card vet-horse-head">
+        <div className="vet-horse-visual">
+          {horse.photoUrl ? <HorseAvatar horse={horse} size={128} /> : <Horse3D breed={horse.breed} color={horse.color} height={140} compact />}
+        </div>
+        <div className="vet-horse-info">
+          <h1 className="vet-title" style={{ fontSize: 28 }}>
+            {horse.name}
+          </h1>
+          <div className="vet-muted">{horseFacts(horse) || 'Chưa có thông tin giống / tuổi'}</div>
+          <div className="vet-small vet-faint mt-1">
+            {[horse.owner?.name && `Chủ: ${horse.owner.name}`, horse.assignedTrainer?.name && `HLV: ${horse.assignedTrainer.name}`, horse.weightKg && `${horse.weightKg} kg`].filter(Boolean).join(' · ')}
+          </div>
+          <div className="d-flex flex-wrap gap-2 mt-3">
+            <HealthPill status={horse.healthStatus} lg />
+            <LevelPill level={clearance.level} lg />
+          </div>
+        </div>
+        <div className="vet-horse-actions">
+          <Button variant="vet-outline" onClick={actions.prescribe}>
+            <i className="bi bi-capsule" aria-hidden="true" /> Kê đơn
           </Button>
-
-          <Button
-            variant="success"
-            size="sm"
-            onClick={() => navigate(`/veterinarian/examinations/new/${horse._id}`)}
-          >
-            <i className="bi bi-clipboard2-pulse me-1"></i> Khám bệnh mới
+          <Button variant="vet" onClick={actions.examine}>
+            <i className="bi bi-clipboard2-pulse" aria-hidden="true" /> Khám bệnh
           </Button>
-
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={() => navigate(`/veterinarian/injuries/new?horseId=${horse._id}`)}
-          >
-            <i className="bi bi-bandaid me-1"></i> Ghi nhận chấn thương
-          </Button>
-
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => navigate(`/veterinarian/treatments?horseId=${horse._id}`)}
-          >
-            <i className="bi bi-capsule me-1"></i> Lập phác đồ điều trị
-          </Button>
-
-          <Button
-            variant={isTrainingLocked ? 'danger' : 'outline-primary'}
-            size="sm"
-            onClick={() => setShowLockModal(true)}
-          >
-            <i className={`bi ${TRAINING_LEVEL_LABELS[trainingLevel]?.icon || 'bi-speedometer2'} me-1`}></i>
-            Chỉ Định Mức Tập ({TRAINING_LEVEL_LABELS[trainingLevel]?.label || 'Bình thường'})
-          </Button>
+          <ActionMenu
+            size={null}
+            items={[
+              { label: 'Đổi mức tập', icon: 'bi-speedometer2', onClick: actions.changeLevel },
+              { label: 'Ghi chấn thương', icon: 'bi-bandaid', onClick: actions.newInjury },
+              { divider: true },
+              { label: 'Ghi tiêm phòng', icon: CARE_KINDS.vaccination.icon, onClick: () => actions.care('vaccination') },
+              { label: 'Ghi tẩy giun', icon: CARE_KINDS.deworming.icon, onClick: () => actions.care('deworming') },
+              { label: 'Ghi đóng móng', icon: CARE_KINDS.farrier.icon, onClick: () => actions.care('farrier') },
+              { divider: true },
+              { label: 'Làm mới', icon: 'bi-arrow-clockwise', onClick: refresh },
+            ]}
+          />
         </div>
       </div>
 
-      {/* Hero Card with Horse Overview */}
-      <Card className="border-0 shadow-sm mb-4 overflow-hidden bg-white">
-        <Card.Body className="p-4">
-          <Row className="g-4 align-items-center">
-            <Col xs={12} md={3} className="text-center text-md-start">
-              {/* No photo on file: the horse in 3D, in the breed and coat the Manager set. */}
-              {horse.photoUrl ? (
-                <img
-                  src={horse.photoUrl}
-                  alt={horse.name}
-                  className="img-fluid rounded shadow-sm object-fit-cover w-100"
-                  style={{ maxHeight: '200px' }}
-                  onError={(e) => {
-                    e.target.src = defaultPhoto;
-                  }}
-                />
-              ) : (
-                <Horse3D breed={horse.breed} color={horse.color} height={200} compact />
-              )}
-            </Col>
-
-            <Col xs={12} md={9}>
-              <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
-                <div>
-                  <h2 className="fw-bold text-dark mb-0">{horse.name}</h2>
-                  <div className="text-muted small">
-                    Mã định danh: <strong>#{horse._id}</strong>
-                  </div>
-                </div>
-
-                <div className="d-flex flex-wrap gap-2 align-items-center">
-                  <HealthStatusBadge status={horse.healthStatus} className="fs-6 px-3 py-2" />
-
-                  {activeTreatment && (
-                    <Badge
-                      bg={TRAINING_LEVEL_LABELS[trainingLevel]?.variant || 'secondary'}
-                      className="fs-6 px-3 py-2 d-flex align-items-center shadow-sm"
-                    >
-                      <i className={`bi ${TRAINING_LEVEL_LABELS[trainingLevel]?.icon || 'bi-speedometer'} me-1`}></i>
-                      Mức tập: {TRAINING_LEVEL_LABELS[trainingLevel]?.label || trainingLevel}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-
-              {isTrainingLocked && activeTreatment?.lockReason && (
-                <Alert variant="danger" className="py-2 mb-3 small">
-                  <strong><i className="bi bi-shield-exclamation me-1"></i> Lý do khóa tập y tế:</strong> {activeTreatment.lockReason}
-                </Alert>
-              )}
-
-              <Row className="g-3 pt-2 border-top">
-                <Col xs={6} sm={3}>
-                  <div className="text-muted small">Tuổi / Giới tính</div>
-                  <div className="fw-semibold text-dark">
-                    {calculateAge(horse.dob)} tuổi ({horse.color || 'Ngựa'})
-                  </div>
-                </Col>
-
-                <Col xs={6} sm={3}>
-                  <div className="text-muted small">Giống ngựa</div>
-                  <div className="fw-semibold text-dark">{horse.breed || 'Chưa cập nhật'}</div>
-                </Col>
-
-                <Col xs={6} sm={3}>
-                  <div className="text-muted small">Cân nặng hiện tại</div>
-                  <div className="fw-semibold text-primary">
-                    {horse.weightKg ? `${horse.weightKg} kg` : '-'}
-                  </div>
-                </Col>
-
-                <Col xs={6} sm={3}>
-                  <div className="text-muted small">Chủ sở hữu</div>
-                  <div className="fw-semibold text-dark">{horse.owner?.name || 'Thuộc CLB'}</div>
-                </Col>
-              </Row>
-            </Col>
-          </Row>
-        </Card.Body>
-      </Card>
-
-      {/* 5 Tabs Section */}
-      <Card className="border-0 shadow-sm bg-white">
-        <Card.Body className="p-3 p-md-4">
-          <Tabs
-            activeKey={activeTab}
-            onSelect={(k) => setActiveTab(k)}
-            className="mb-4 custom-nav-tabs"
-          >
-            {/* Tab 1: Overview */}
-            <Tab
-              eventKey="overview"
-              title={
-                <span>
-                  <i className="bi bi-info-circle me-1"></i> Tổng quan
-                </span>
-              }
-            >
-              <Row className="g-4">
-                <Col xs={12} md={6}>
-                  <Card className="h-100 border bg-light">
-                    <Card.Header className="bg-white fw-bold">
-                      <i className="bi bi-activity me-2 text-primary"></i>
-                      Chỉ Số Sinh Tồn Gần Nhất
-                    </Card.Header>
-                    <Card.Body>
-                      {latestRecord ? (
-                        <div>
-                          <Row className="g-3 text-center mb-3">
-                            <Col xs={4}>
-                              <div className="p-3 bg-white rounded shadow-sm">
-                                <div className="text-muted small">Thân nhiệt</div>
-                                <h4 className={`fw-bold mb-0 ${latestRecord.vitalSigns?.temperatureC > 38.5 ? 'text-danger' : 'text-primary'}`}>
-                                  {latestRecord.vitalSigns?.temperatureC ? `${latestRecord.vitalSigns.temperatureC} °C` : '-'}
-                                </h4>
-                                <small className="text-muted">Chuẩn: 37.5 - 38.5°C</small>
-                              </div>
-                            </Col>
-
-                            <Col xs={4}>
-                              <div className="p-3 bg-white rounded shadow-sm">
-                                <div className="text-muted small">Nhịp tim</div>
-                                <h4 className={`fw-bold mb-0 ${latestRecord.vitalSigns?.heartRate > 180 ? 'text-danger' : 'text-success'}`}>
-                                  {latestRecord.vitalSigns?.heartRate ? `${latestRecord.vitalSigns.heartRate} bpm` : '-'}
-                                </h4>
-                                <small className="text-muted">Nghỉ: 28-44 bpm</small>
-                              </div>
-                            </Col>
-
-                            <Col xs={4}>
-                              <div className="p-3 bg-white rounded shadow-sm">
-                                <div className="text-muted small">Nhịp thở</div>
-                                <h4 className="fw-bold mb-0 text-info">
-                                  {latestRecord.vitalSigns?.respiratoryRate ? `${latestRecord.vitalSigns.respiratoryRate} bpm` : '-'}
-                                </h4>
-                                <small className="text-muted">Nghỉ: 8-16 bpm</small>
-                              </div>
-                            </Col>
-                          </Row>
-
-                          <div className="p-3 bg-white rounded shadow-sm">
-                            <div className="d-flex justify-content-between">
-                              <span className="fw-semibold">Chẩn đoán lần khám gần nhất:</span>
-                              <span className="text-muted small">{formatDate(latestRecord.date || latestRecord.createdAt)}</span>
-                            </div>
-                            <div className="text-dark mt-1">{latestRecord.diagnosis}</div>
-                            {latestRecord.notes && (
-                              <div className="small text-muted mt-1">
-                                <em>Ghi chú: {latestRecord.notes}</em>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-center py-4 text-muted">
-                          <i className="bi bi-clipboard2-pulse fs-3 d-block mb-2"></i>
-                          Chưa có dữ liệu khám bệnh nào được ghi nhận.
-                        </div>
-                      )}
-                    </Card.Body>
-                  </Card>
-                </Col>
-
-                <Col xs={12} md={6}>
-                  <Card className="h-100 border bg-light">
-                    <Card.Header className="bg-white fw-bold">
-                      <i className="bi bi-bandaid me-2 text-danger"></i>
-                      Tình Trạng Chấn Thương & Lệnh Huấn Luyện
-                    </Card.Header>
-                    <Card.Body>
-                      <div className="mb-3 p-3 bg-white rounded shadow-sm">
-                        <div className="d-flex justify-content-between align-items-center">
-                          <span className="fw-semibold">Trạng thái khóa tập luyện:</span>
-                          {isTrainingLocked ? (
-                            <Badge bg="danger">🔴 ĐANG KHÓA TẬP</Badge>
-                          ) : (
-                            <Badge bg="success">🟢 BÌNH THƯỜNG</Badge>
-                          )}
-                        </div>
-                        {isTrainingLocked && (
-                          <div className="mt-2 small text-danger">
-                            <strong>Lý do:</strong> {activeTreatment?.lockReason}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="p-3 bg-white rounded shadow-sm">
-                        <div className="d-flex justify-content-between align-items-center mb-2">
-                          <span className="fw-semibold">Chấn thương đang theo dõi:</span>
-                          <Badge bg={activeInjuries.length > 0 ? 'danger' : 'success'} pill>
-                            {activeInjuries.length} điểm
-                          </Badge>
-                        </div>
-
-                        {activeInjuries.length > 0 ? (
-                          <ul className="list-unstyled mb-0 small">
-                            {activeInjuries.map((inj) => (
-                              <li key={inj._id} className="py-1 border-bottom d-flex justify-content-between">
-                                <span>
-                                  <strong>{inj.bodyPart}</strong> ({inj.severity})
-                                </span>
-                                <Badge bg="warning" text="dark">
-                                  {inj.recoveryStatus}
-                                </Badge>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <div className="text-success small">
-                            <i className="bi bi-check-circle me-1"></i> Không có chấn thương nào đang điều trị.
-                          </div>
-                        )}
-                      </div>
-                    </Card.Body>
-                  </Card>
-                </Col>
-              </Row>
-            </Tab>
-
-            {/* Tab 2: Medical History */}
-            <Tab
-              eventKey="history"
-              title={
-                <span>
-                  <i className="bi bi-clock-history me-1"></i> Lịch sử Khám bệnh ({records.length})
-                </span>
-              }
-            >
-              <MedicalHistory
-                records={records}
-                horseId={horse._id}
-                onNewExam={() => navigate(`/veterinarian/examinations/new/${horse._id}`)}
-                onRecordUpdated={fetchHorseDetails}
-              />
-
-            </Tab>
-
-            {/* Tab 3: Injuries & 3D Anatomy Model */}
-            <Tab
-              eventKey="injuries"
-              title={
-                <span>
-                  <i className="bi bi-bandaid me-1"></i> Chấn thương & Mô hình 3D ({injuries.length})
-                </span>
-              }
-            >
-              <div className="mb-4">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <h6 className="fw-bold mb-0 text-dark">
-                    <i className="bi bi-box me-1 text-danger"></i> Sơ Đồ Cơ/Xương 3D Trực Quan
-                  </h6>
-                  <span className="text-muted small">
-                    Nhấp vào điểm chấm đỏ/vàng trên mô hình để xem chi tiết tổn thương
-                  </span>
-                </div>
-                <Horse3DAnatomyViewer injuries={injuries} isInteractive={false} height="320px" />
-              </div>
-
-              <InjuryList
-                injuries={injuries}
-                horseId={horse._id}
-                onNewInjury={() => navigate(`/veterinarian/injuries/new?horseId=${horse._id}`)}
-                onDeleteInjury={async (markerId) => {
-                  try {
-                    await veterinarianApi.deleteInjuryMarker(markerId);
-                    fetchHorseDetails();
-                  } catch (err) {
-                    alert(err?.message || 'Không thể xóa điểm chấn thương.');
-                  }
-                }}
-              />
-            </Tab>
-
-            {/* Tab 4: Treatment & Prescriptions */}
-            <Tab
-              eventKey="treatment"
-              title={
-                <span>
-                  <i className="bi bi-capsule me-1"></i> Phác đồ & Đơn thuốc ({treatments.length})
-                </span>
-              }
-            >
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <h6 className="fw-bold mb-0">
-                  <i className="bi bi-prescription2 me-2 text-primary"></i>
-                  Danh Sách Phác Đồ Điều Trị & Đơn Thuốc
-                </h6>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => navigate(`/veterinarian/treatments?horseId=${horse._id}`)}
-                >
-                  <i className="bi bi-plus-circle me-1"></i> Lập Phác Đồ Mới
+      {(requests.length > 0 || incidents.length > 0) && (
+        <div className="d-flex flex-column gap-2 mt-3">
+          {requests.map((r) => (
+            <Callout key={r._id} tone="info" icon="bi-clipboard2-pulse">
+              <strong>{r.requestedBy?.name || 'HLV'}</strong> yêu cầu khám{r.reason ? `: ${r.reason}` : '.'}
+              {r.scheduledFor && <span className="vet-muted"> · hẹn {fmtDateTime(r.scheduledFor)}</span>}
+              <span className="vet-muted"> Lưu phiếu khám sẽ trả lời yêu cầu này.</span>
+            </Callout>
+          ))}
+          {incidents.map((t) => (
+            <Callout
+              key={t._id}
+              tone="bad"
+              icon="bi-exclamation-octagon-fill"
+              action={
+                <Button size="sm" variant="vet-outline" onClick={() => setDialog({ type: 'incident', task: t })}>
+                  Xử lý
                 </Button>
-              </div>
-
-              {treatments.length === 0 ? (
-                <div className="text-center py-4 bg-light rounded text-muted">
-                  <i className="bi bi-capsule fs-3 text-secondary d-block mb-2"></i>
-                  Chưa có phác đồ điều trị nào cho ngựa này.
-                </div>
-              ) : (
-                <div className="table-responsive">
-                  <Table hover bordered className="align-middle bg-white">
-                    <thead className="table-light">
-                      <tr>
-                        <th>Ngày bắt đầu</th>
-                        <th>Bác sĩ chỉ định</th>
-                        <th>Thuốc & Liều lượng</th>
-                        <th>Khóa tập</th>
-                        <th>Trạng thái</th>
-                        <th>Thời hạn</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {treatments.map((tr) => {
-                        const st = TREATMENT_STATUS_CONFIG[tr.status] || { label: tr.status, bg: 'secondary' };
-                        return (
-                          <tr key={tr._id}>
-                            <td className="fw-semibold">{formatDate(tr.startDate || tr.createdAt)}</td>
-                            <td>{tr.prescribedBy?.name || 'Bác sĩ Thú y'}</td>
-                            <td>
-                              {tr.medications?.length > 0 ? (
-                                <ul className="list-unstyled mb-0 small">
-                                  {tr.medications.map((m, idx) => (
-                                    <li key={idx} className="mb-1">
-                                      💊 <strong>{m.name}</strong>: {m.dosage} ({m.frequency || 'theo chỉ dẫn'})
-                                      {m.startDate && m.endDate && (
-                                        <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-                                          📅 Từ {formatDate(m.startDate)} đến {formatDate(m.endDate)}
-                                        </div>
-                                      )}
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <span className="text-muted small">Không kê thuốc</span>
-                              )}
-                            </td>
-                            <td>
-                              {tr.isTrainingLocked ? (
-                                <Badge bg="danger">🔴 KHÓA TẬP</Badge>
-                              ) : (
-                                <Badge bg="light" text="dark" className="border">
-                                  Bình thường
-                                </Badge>
-                              )}
-                            </td>
-                            <td>
-                              <Badge bg={st.bg} pill>
-                                {st.label}
-                              </Badge>
-                              {tr.status === 'ongoing' && (
-                                <Button
-                                  variant="outline-success"
-                                  size="sm"
-                                  className="ms-2 py-0 px-2 fw-semibold"
-                                  style={{ fontSize: '0.72rem' }}
-                                  onClick={() => handleCompleteTreatment(tr._id)}
-                                  title="Đánh dấu đã hoàn thành đợt điều trị"
-                                >
-                                  <i className="bi bi-check-lg me-1"></i>Xong
-                                </Button>
-                              )}
-                            </td>
-                            <td className="small text-muted">
-                              {tr.endDate ? `Đến ${formatDate(tr.endDate)}` : 'Đang tiến hành'}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </Table>
-                </div>
-              )}
-            </Tab>
-
-            {/* Tab 5: Medical Schedule */}
-            <Tab
-              eventKey="schedule"
-              title={
-                <span>
-                  <i className="bi bi-calendar-check me-1"></i> Lịch Y tế Định kỳ
-                </span>
               }
             >
-              <MedicalScheduleList horse={horse} onUpdated={fetchHorseDetails} />
-            </Tab>
-          </Tabs>
-        </Card.Body>
-      </Card>
+              <strong>{t.assignedTo?.name || 'Nhân viên chăm sóc'}</strong> báo sự cố {ago(t.incidentReport?.reportedAt || t.updatedAt)}: {t.incidentReport?.description}
+            </Callout>
+          ))}
+        </div>
+      )}
 
-      {/* Training Lock Modal */}
-      <TrainingLockModal
-        show={showLockModal}
-        onHide={() => setShowLockModal(false)}
-        horse={horse}
-        currentTreatment={activeTreatment}
-        onSuccess={() => {
-          fetchHorseDetails();
-        }}
-      />
+      <div className="mt-4">
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { key: 'overview', label: 'Tổng quan', icon: 'bi-grid' },
+            { key: 'exams', label: 'Phiếu khám', icon: 'bi-clipboard2-pulse', count: records.length },
+            { key: 'treatments', label: 'Điều trị', icon: 'bi-capsule', count: treatments.length },
+            { key: 'injuries', label: 'Chấn thương', icon: 'bi-bandaid', count: injuries.filter(isActiveInjury).length },
+            { key: 'care', label: 'Chăm sóc định kỳ', icon: 'bi-calendar-check' },
+          ]}
+        />
 
-    </Container>
+        {tab === 'overview' && <OverviewTab horse={horse} records={records} ongoing={ongoing} progressOf={progressOf} injuries={injuries} onTab={setTab} actions={actions} />}
+        {tab === 'exams' && (
+          <ExamsTab records={records} onExamine={actions.examine} onEdit={(r) => navigate(`/veterinarian/examinations/${r._id}/edit`)} onDeleteAttachment={deleteAttachment} deletingId={deletingId} />
+        )}
+        {tab === 'treatments' && (
+          <VetCard
+            title="Điều trị"
+            icon="bi-capsule"
+            count={treatments.length || null}
+            flush
+            extra={
+              <Button size="sm" variant="vet" onClick={actions.prescribe}>
+                <i className="bi bi-plus-lg" aria-hidden="true" /> Kê đơn
+              </Button>
+            }
+          >
+            {treatments.length === 0 ? (
+              <EmptyNote icon="bi-capsule" title="Chưa có điều trị nào" />
+            ) : (
+              treatments.map((t) => (
+                <TreatmentCard
+                  key={t._id}
+                  treatment={t}
+                  progress={progressOf(t._id)}
+                  awaitingReturn={clearance.source === 'awaiting_return' && String(clearance.treatment) === t._id}
+                  onEdit={() => actions.editTreatment(t)}
+                  onEnd={() => actions.endTreatment(t)}
+                  onLevel={actions.changeLevel}
+                />
+              ))
+            )}
+          </VetCard>
+        )}
+        {tab === 'injuries' && (
+          <InjuriesTab
+            horse={horse}
+            injuries={injuries}
+            onNew={actions.newInjury}
+            onEdit={(m) => setDialog({ type: 'injury', injury: m })}
+            onStage={actions.injuryStage}
+            onDelete={(m) => deleteInjury(m, { confirm, refresh })}
+          />
+        )}
+        {tab === 'care' && <CareTab horse={horse} onCare={actions.care} onDeleteEvent={deleteCareEvent} userId={userId} />}
+      </div>
+
+      {dialog?.type === 'level' && <TrainingLevelModal horse={horse} treatments={treatments} injuries={injuries} latestRecord={records[0] || null} onHide={close} onDone={refresh} />}
+      {dialog?.type === 'injury' && <InjuryModal horse={horse} injury={dialog.injury} injuries={injuries} onHide={close} onDone={refresh} />}
+      {dialog?.type === 'care' && <CareModal horse={horse} kind={dialog.kind} initialMode={dialog.mode} onHide={close} onDone={refresh} />}
+      {dialog?.type === 'incident' && <IncidentModal task={dialog.task} onHide={close} onDone={refresh} />}
+      {confirmDialog}
+    </div>
   );
 }

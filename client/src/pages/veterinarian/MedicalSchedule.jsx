@@ -1,424 +1,121 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Table, Badge, Button, Form, InputGroup, Modal, Spinner, Alert, Tabs, Tab } from 'react-bootstrap';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import veterinarianApi from '../../api/veterinarianApi';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
-import ErrorAlert from '../../components/common/ErrorAlert';
-import EmptyState from '../../components/common/EmptyState';
-import { formatDate, formatDateForInput } from '../../utils/formatDate';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
+import CareModal from '../../components/veterinarian/CareModal';
+import { Callout, DueChip, EmptyNote, FilterChips, HorseCell, LoadingBlock, SearchBox, VetCard } from '../../components/veterinarian/ui';
+import { CARE_KINDS, CARE_ORDER, dueInfo } from '../../components/veterinarian/vetFormat';
+import { useVetHorses, useVetRefresh } from '../../hooks/useVetData';
 
+const FILTERS = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'overdue', label: 'Quá hạn', tone: 'bad', match: (i) => i.key === 'overdue' },
+  { value: 'soon', label: 'Trong 7 ngày', tone: 'watch', match: (i) => i.key === 'today' || i.key === 'soon' },
+  { value: 'none', label: 'Chưa đặt lịch', match: (i) => i.key === 'none' },
+];
+
+/**
+ * Routine care for every horse at a glance: one row per horse, one cell per kind of care. A cell
+ * opens the same dialog everywhere — record that it was done (which sets the next date) or move it.
+ */
 export default function MedicalSchedule() {
   const navigate = useNavigate();
+  const refresh = useVetRefresh();
+  const horsesQ = useVetHorses();
+  const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  const [dialog, setDialog] = useState(null);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [horses, setHorses] = useState([]);
-
-  const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'vaccination' | 'deworming' | 'farrier'
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'overdue' | 'dueSoon' | 'upcoming'
-
-  // Edit Schedule Modal
-  const [selectedHorse, setSelectedHorse] = useState(null);
-  const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({
-    nextVaccinationDue: '',
-    nextDewormingDue: '',
-    nextFarrierDue: '',
-  });
-  const [saving, setSaving] = useState(false);
-
-  const fetchHorses = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await veterinarianApi.getHorses();
-      setHorses(res.data || []);
-    } catch (err) {
-      setError(err?.message || 'Không thể tải lịch y tế.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchHorses();
-  }, []);
-
-  const getStatusInfo = (dueDate) => {
-    if (!dueDate) return { key: 'none', label: 'Chưa đặt lịch', bg: 'secondary', diff: null };
-    const due = new Date(dueDate);
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const dueNorm = new Date(due);
-    dueNorm.setHours(0, 0, 0, 0);
-
-    const diffDays = Math.ceil((dueNorm - now) / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) {
-      return { key: 'overdue', label: `Quá hạn ${Math.abs(diffDays)} ngày`, bg: 'danger', isOverdue: true, diff: diffDays };
-    }
-    if (diffDays === 0) {
-      return { key: 'dueSoon', label: 'Đến hạn hôm nay', bg: 'warning', text: 'dark', isDueSoon: true, diff: diffDays };
-    }
-    if (diffDays <= 7) {
-      return { key: 'dueSoon', label: `Đến hạn trong ${diffDays} ngày`, bg: 'info', text: 'dark', isDueSoon: true, diff: diffDays };
-    }
-    return { key: 'upcoming', label: `Còn ${diffDays} ngày`, bg: 'success', isUpcoming: true, diff: diffDays };
-  };
-
-  const handleOpenEdit = (horse) => {
-    setSelectedHorse(horse);
-    const sched = horse.careSchedule || {};
-    setFormData({
-      nextExamDue: formatDateForInput(sched.nextExamDue),
-      nextVaccinationDue: formatDateForInput(sched.nextVaccinationDue),
-      nextDewormingDue: formatDateForInput(sched.nextDewormingDue),
-      nextFarrierDue: formatDateForInput(sched.nextFarrierDue),
-    });
-    setShowModal(true);
-  };
-
-  const handleQuickAdd7Days = async (horse, type = 'nextExamDue') => {
-    const next7Days = new Date();
-    next7Days.setDate(next7Days.getDate() + 7);
-    const dateStr = formatDateForInput(next7Days);
-
-    try {
-      await veterinarianApi.updateCareSchedule(horse._id, {
-        [type]: dateStr,
-      });
-      fetchHorses();
-    } catch (err) {
-      setError(err?.message || 'Lỗi khi cập nhật lịch khám định kỳ.');
-    }
-  };
-
-  const handleSaveSchedule = async (e) => {
-    e.preventDefault();
-    if (!selectedHorse) return;
-
-    setSaving(true);
-    try {
-      await veterinarianApi.updateCareSchedule(selectedHorse._id, {
-        nextExamDue: formData.nextExamDue || null,
-        nextVaccinationDue: formData.nextVaccinationDue || null,
-        nextDewormingDue: formData.nextDewormingDue || null,
-        nextFarrierDue: formData.nextFarrierDue || null,
-      });
-      setShowModal(false);
-      fetchHorses();
-    } catch (err) {
-      setError(err?.message || 'Lỗi khi cập nhật lịch chăm sóc.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Build flattened schedule rows
-  const scheduleRows = [];
-  horses.forEach((horse) => {
-    const sched = horse.careSchedule || {};
-    const items = [
-      {
-        type: 'periodicExam',
-        field: 'nextExamDue',
-        label: 'Khám định kỳ 7 ngày (Periodic Exam)',
-        icon: 'bi-stethoscope text-danger',
-        date: sched.nextExamDue,
-        notifiedAt: sched.examNotifiedAt,
-      },
-      {
-        type: 'vaccination',
-        field: 'nextVaccinationDue',
-        label: 'Tiêm phòng (Vaccination)',
-        icon: 'bi-eyedropper text-primary',
-        date: sched.nextVaccinationDue,
-        notifiedAt: sched.vaccinationNotifiedAt,
-      },
-      {
-        type: 'deworming',
-        field: 'nextDewormingDue',
-        label: 'Tẩy giun (Deworming)',
-        icon: 'bi-capsule text-success',
-        date: sched.nextDewormingDue,
-        notifiedAt: sched.dewormingNotifiedAt,
-      },
-      {
-        type: 'farrier',
-        field: 'nextFarrierDue',
-        label: 'Kiểm tra móng (Farrier Check)',
-        icon: 'bi-hammer text-dark',
-        date: sched.nextFarrierDue,
-        notifiedAt: sched.farrierNotifiedAt,
-      },
-    ];
-
-    items.forEach((item) => {
-      const status = getStatusInfo(item.date);
-      scheduleRows.push({
-        id: `${horse._id}-${item.type}`,
+  const rows = useMemo(
+    () =>
+      (horsesQ.data || []).map((horse) => ({
         horse,
-        ...item,
-        status,
-      });
-    });
-  });
+        cells: CARE_ORDER.map((kind) => {
+          const date = horse.careSchedule?.[CARE_KINDS[kind].field] || null;
+          return { kind, date, info: dueInfo(date) };
+        }),
+      })),
+    [horsesQ.data]
+  );
+  const allCells = rows.flatMap((r) => r.cells);
+  const active = FILTERS.find((f) => f.value === filter);
+  const q = query.trim().toLowerCase();
+  const shown = rows.filter((r) => (!q || r.horse.name?.toLowerCase().includes(q)) && (!active.match || r.cells.some((c) => active.match(c.info))));
 
-  const filteredRows = scheduleRows.filter((row) => {
-    const q = searchTerm.toLowerCase();
-    const matchesQuery =
-      row.horse.name?.toLowerCase().includes(q) ||
-      row.label?.toLowerCase().includes(q);
-
-    const matchesCategory = categoryFilter === 'all' || row.type === categoryFilter;
-
-    const matchesStatus =
-      statusFilter === 'all' ||
-      (statusFilter === 'overdue' && row.status.isOverdue) ||
-      (statusFilter === 'dueSoon' && row.status.isDueSoon) ||
-      (statusFilter === 'upcoming' && row.status.isUpcoming);
-
-    return matchesQuery && matchesCategory && matchesStatus;
-  });
-
-  if (loading) {
-    return <LoadingSpinner text="Đang tải lịch trình y tế & tiêm chủng..." minHeight="400px" />;
-  }
+  const open = (horse, cell) => setDialog({ horse, kind: cell.kind, mode: cell.info.key === 'none' ? 'due' : 'record' });
 
   return (
-    <Container fluid className="p-0">
-      <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-2 border-bottom gap-2">
-        <div>
-          <h2 className="fw-bold text-dark mb-1">
-            <i className="bi bi-calendar-check me-2 text-primary"></i>
-            Quản Lý Lịch Y Tế & Khám Định Kỳ (7 Ngày)
-          </h2>
-          <p className="text-muted mb-0 small">
-            Tạo và tự động hóa lịch khám bệnh định kỳ 7 ngày/lần, theo dõi vắc-xin, tẩy giun và kiểm tra móng cho chiến mã.
-          </p>
-        </div>
+    <div className="vet-ui">
+      <PageHeroBanner
+        eyebrow="TEAM 8 • Y TẾ & THÚ Y"
+        roleLabel="Bác sĩ Thú y"
+        title="Lịch chăm sóc định kỳ"
+        subtitle="Khám định kỳ, tiêm phòng, tẩy giun và đóng móng — bấm vào một ô để ghi nhận đã làm hoặc dời lịch."
+        stats={
+          allCells.length
+            ? [
+                { label: 'Quá hạn', value: allCells.filter((c) => c.info.key === 'overdue').length },
+                { label: 'Trong 7 ngày', value: allCells.filter((c) => c.info.key === 'today' || c.info.key === 'soon').length },
+              ]
+            : []
+        }
+      />
 
-        <Button variant="outline-primary" size="sm" onClick={fetchHorses}>
-          <i className="bi bi-arrow-clockwise me-1"></i> Làm mới
-        </Button>
+      <div className="vet-toolbar">
+        <SearchBox value={query} onChange={setQuery} placeholder="Tìm tên ngựa…" />
+        <FilterChips
+          value={filter}
+          onChange={setFilter}
+          options={FILTERS.map((f) => ({ value: f.value, label: f.label, tone: f.tone, count: f.match ? allCells.filter((c) => f.match(c.info)).length : undefined }))}
+        />
       </div>
 
-      {error && <ErrorAlert message={error} onRetry={fetchHorses} />}
-
-      {/* Filter Bar */}
-      <Card className="border-0 shadow-sm mb-4 bg-white">
-        <Card.Body className="p-3">
-          <Row className="g-3 align-items-center">
-            <Col xs={12} md={5}>
-              <InputGroup>
-                <InputGroup.Text className="bg-light">
-                  <i className="bi bi-search text-muted"></i>
-                </InputGroup.Text>
-                <Form.Control
-                  placeholder="Tìm theo tên chiến mã..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </InputGroup>
-            </Col>
-
-            <Col xs={6} md={3}>
-              <Form.Select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-              >
-                <option value="all">Tất cả hạng mục</option>
-                <option value="periodicExam">🩺 Khám định kỳ 7 ngày (Periodic Exam)</option>
-                <option value="vaccination">💉 Tiêm phòng (Vaccination)</option>
-                <option value="deworming">💊 Tẩy giun (Deworming)</option>
-                <option value="farrier">🔨 Đóng móng (Farrier)</option>
-              </Form.Select>
-            </Col>
-
-            <Col xs={6} md={4}>
-              <Form.Select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="all">Tất cả trạng thái đến hạn</option>
-                <option value="overdue">🔴 Quá hạn (Overdue)</option>
-                <option value="dueSoon">🟡 Đến hạn trong 7 ngày (Due Soon)</option>
-                <option value="upcoming">🟢 Sắp tới (Upcoming)</option>
-              </Form.Select>
-            </Col>
-          </Row>
-        </Card.Body>
-      </Card>
-
-      {/* Schedule Table */}
-      {filteredRows.length === 0 ? (
-        <EmptyState
-          icon="bi-calendar-x"
-          title="Không tìm thấy lịch y tế phù hợp"
-          message="Không có lịch chăm sóc nào khớp với tiêu chí tìm kiếm."
-        />
-      ) : (
-        <Card className="border-0 shadow-sm bg-white">
-          <Card.Body className="p-0">
-            <div className="table-responsive">
-              <Table hover className="align-middle mb-0">
-                <thead className="table-light">
-                  <tr>
-                    <th>Chiến mã</th>
-                    <th>Hạng mục y tế</th>
-                    <th>Hạn tiếp theo</th>
-                    <th>Trạng thái hạn</th>
-                    <th>Nhắc nhở gần nhất</th>
-                    <th className="text-center" style={{ width: '200px' }}>Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredRows.map((row) => (
-                    <tr key={row.id}>
-                      <td className="fw-bold">
-                        <span
-                          className="text-primary cursor-pointer"
-                          style={{ cursor: 'pointer' }}
-                          onClick={() => navigate(`/veterinarian/horses/${row.horse._id}`)}
-                        >
-                          {row.horse.name}
-                        </span>
-                        <small className="text-muted d-block">
-                          #{row.horse._id?.slice(-6).toUpperCase()}
-                        </small>
-                      </td>
-                      <td>
-                        <i className={`bi ${row.icon} me-2 fs-6`}></i>
-                        <span className="fw-semibold">{row.label}</span>
-                      </td>
-                      <td className="fw-semibold text-primary">
-                        {formatDate(row.date, 'Chưa đặt')}
-                      </td>
-                      <td>
-                        <Badge bg={row.status.bg} text={row.status.text} pill className="px-2 py-1">
-                          {row.status.label}
-                        </Badge>
-                      </td>
-                      <td className="small text-muted">
-                        {formatDate(row.notifiedAt, 'Chưa gửi')}
-                      </td>
-                      <td className="text-center">
-                        <div className="d-flex justify-content-center gap-1">
-                          <Button
-                            variant="outline-success"
-                            size="sm"
-                            onClick={() => handleQuickAdd7Days(row.horse, row.field)}
-                            title="Tự động đặt lịch khám lại sau 7 ngày"
-                          >
-                            +7 ngày
-                          </Button>
-                          <Button
-                            variant="outline-primary"
-                            size="sm"
-                            onClick={() => handleOpenEdit(row.horse)}
-                            title="Cập nhật hạn lịch cho ngựa này"
-                          >
-                            <i className="bi bi-pencil me-1"></i> Sửa
-                          </Button>
-                          <Button
-                            variant="outline-info"
-                            size="sm"
-                            onClick={() => navigate(`/veterinarian/horses/${row.horse._id}`)}
-                            title="Xem hồ sơ & Lịch sử chăm sóc thực tế"
-                          >
-                            <i className="bi bi-journal-medical"></i>
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </div>
-          </Card.Body>
-        </Card>
+      {horsesQ.isError && (
+        <Callout tone="bad" icon="bi-wifi-off" className="mb-3">
+          {horsesQ.error?.message || 'Không tải được lịch chăm sóc.'}
+        </Callout>
       )}
 
-      {/* Edit Schedule Modal */}
-      <Modal show={showModal} onHide={() => setShowModal(false)} centered>
-        <Form onSubmit={handleSaveSchedule}>
-          <Modal.Header closeButton={!saving}>
-            <Modal.Title className="fs-5">Cập Nhật Lịch Y Tế & Định Kỳ - {selectedHorse?.name}</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            <Form.Group className="mb-3">
-              <div className="d-flex justify-content-between align-items-center mb-1">
-                <Form.Label className="fw-semibold mb-0">
-                  <i className="bi bi-stethoscope me-1 text-danger"></i> Hạn Khám Sức Khỏe Định Kỳ (7 ngày)
-                </Form.Label>
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="p-0 text-decoration-none"
-                  onClick={() => {
-                    const next7Days = new Date();
-                    next7Days.setDate(next7Days.getDate() + 7);
-                    setFormData({ ...formData, nextExamDue: formatDateForInput(next7Days) });
-                  }}
-                >
-                  ➕ Đặt 7 ngày tới
-                </Button>
-              </div>
-              <Form.Control
-                type="date"
-                value={formData.nextExamDue}
-                onChange={(e) => setFormData({ ...formData, nextExamDue: e.target.value })}
-                disabled={saving}
-              />
-            </Form.Group>
+      <VetCard flush>
+        {horsesQ.isLoading ? (
+          <LoadingBlock rows={5} />
+        ) : shown.length === 0 ? (
+          <EmptyNote icon="bi-calendar2-check" title={filter === 'all' && !q ? 'Chưa có ngựa nào' : 'Không có lịch phù hợp'} />
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="vet-table">
+              <thead>
+                <tr>
+                  <th>Ngựa</th>
+                  {CARE_ORDER.map((kind) => (
+                    <th key={kind}>
+                      <i className={`bi ${CARE_KINDS[kind].icon} me-1`} aria-hidden="true" />
+                      {CARE_KINDS[kind].label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((r) => (
+                  <tr key={r.horse._id}>
+                    <td style={{ minWidth: 200 }}>
+                      <button type="button" className="border-0 bg-transparent p-0 text-start" onClick={() => navigate(`/veterinarian/horses/${r.horse._id}?tab=care`)} title="Mở hồ sơ ngựa">
+                        <HorseCell horse={r.horse} size={36} />
+                      </button>
+                    </td>
+                    {r.cells.map((cell) => (
+                      <td key={cell.kind} style={{ opacity: active.match && !active.match(cell.info) ? 0.4 : 1 }}>
+                        <DueChip date={cell.date} onClick={() => open(r.horse, cell)} title={`${CARE_KINDS[cell.kind].label} · ${r.horse.name}`} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </VetCard>
 
-            <Form.Group className="mb-3">
-              <Form.Label className="fw-semibold">
-                <i className="bi bi-eyedropper me-1 text-primary"></i> Hạn Tiêm Phòng Kế Tiếp
-              </Form.Label>
-              <Form.Control
-                type="date"
-                value={formData.nextVaccinationDue}
-                onChange={(e) => setFormData({ ...formData, nextVaccinationDue: e.target.value })}
-                disabled={saving}
-              />
-            </Form.Group>
-
-            <Form.Group className="mb-3">
-              <Form.Label className="fw-semibold">
-                <i className="bi bi-capsule me-1 text-success"></i> Hạn Tẩy Giun Kế Tiếp
-              </Form.Label>
-              <Form.Control
-                type="date"
-                value={formData.nextDewormingDue}
-                onChange={(e) => setFormData({ ...formData, nextDewormingDue: e.target.value })}
-                disabled={saving}
-              />
-            </Form.Group>
-
-            <Form.Group className="mb-3">
-              <Form.Label className="fw-semibold">
-                <i className="bi bi-hammer me-1 text-warning"></i> Hạn Kiểm Tra Móng (Farrier) Kế Tiếp
-              </Form.Label>
-              <Form.Control
-                type="date"
-                value={formData.nextFarrierDue}
-                onChange={(e) => setFormData({ ...formData, nextFarrierDue: e.target.value })}
-                disabled={saving}
-              />
-            </Form.Group>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowModal(false)} disabled={saving}>
-              Hủy
-            </Button>
-            <Button variant="primary" type="submit" disabled={saving}>
-              {saving ? <Spinner animation="border" size="sm" /> : 'Lưu Thay Đổi'}
-            </Button>
-          </Modal.Footer>
-        </Form>
-      </Modal>
-    </Container>
+      {dialog && <CareModal horse={dialog.horse} kind={dialog.kind} initialMode={dialog.mode} onHide={() => setDialog(null)} onDone={refresh} />}
+    </div>
   );
 }

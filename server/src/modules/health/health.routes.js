@@ -6,6 +6,7 @@ const { uploadMedicalFiles } = require('../../middlewares/uploadMiddleware');
 const recordCtrl = require('./healthRecord.controller');
 const treatmentCtrl = require('./treatment.controller');
 const markerCtrl = require('./injuryMarker.controller');
+const templateCtrl = require('./prescriptionTemplate.controller');
 
 router.use(protect);
 
@@ -33,6 +34,11 @@ router.get('/treatments/:id', treatmentCtrl.getTreatment);
 router.post('/treatments', authorize(ROLES.VETERINARIAN), treatmentCtrl.createTreatment);
 router.put('/treatments/:id', authorize(ROLES.VETERINARIAN), treatmentCtrl.updateTreatment);
 router.post('/treatments/:id/lock-training', authorize(ROLES.VETERINARIAN), treatmentCtrl.setTrainingLock);
+
+// Ready-made prescriptions per condition, picked in the vet's prescription form.
+router.get('/prescription-templates', authorize(ROLES.VETERINARIAN), templateCtrl.listTemplates);
+router.post('/prescription-templates', authorize(ROLES.VETERINARIAN), templateCtrl.saveTemplate);
+router.delete('/prescription-templates/:id', authorize(ROLES.VETERINARIAN), templateCtrl.deleteTemplate);
 
 // Injury markers (2D placeholder for the future 3D musculoskeletal viewer).
 router.get('/injury-markers', markerCtrl.listMarkers);

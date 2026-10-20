@@ -1,376 +1,164 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Form, InputGroup, Button, Table, Badge, Modal, Spinner, Alert } from 'react-bootstrap';
-import { useNavigate } from 'react-router-dom';
-import veterinarianApi from '../../api/veterinarianApi';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
-import ErrorAlert from '../../components/common/ErrorAlert';
-import EmptyState from '../../components/common/EmptyState';
-import Horse3DAnatomyViewer from '../../components/veterinarian/Horse3DAnatomyViewer';
-import { formatDate } from '../../utils/formatDate';
-import { INJURY_SEVERITY_CONFIG, RECOVERY_STATUS_CONFIG } from '../../utils/healthStatus';
+import { useMemo, useState } from 'react';
+import { Button } from 'react-bootstrap';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
+import InjuryModal from '../../components/veterinarian/InjuryModal';
+import useConfirm from '../../components/veterinarian/useConfirm';
+import { deleteInjury, setInjuryStage } from '../../components/veterinarian/vetActions';
+import { ActionMenu, Callout, EmptyNote, FilterChips, HealthPill, HorseCell, LevelPill, LoadingBlock, Pill, RecoveryStepper, SearchBox, VetCard } from '../../components/veterinarian/ui';
+import { SEVERITY_META, ago, clearanceOf, idOf, isActiveInjury, shortBodyPart } from '../../components/veterinarian/vetFormat';
+import { useInjuries, useVetHorses, useVetRefresh } from '../../hooks/useVetData';
 
+const SEVERITY_RANK = { severe: 0, moderate: 1, mild: 2 };
+
+/**
+ * Injuries across the vet's horses, grouped by horse, worst first. The stage of recovery moves with
+ * one click on its stepper; the 3D view of each horse's injuries is on the horse's page.
+ * ?new=1[&horseId=] opens the form, ?edit=<id> opens an injury (links from before this page).
+ */
 export default function InjuryManagement() {
   const navigate = useNavigate();
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [injuries, setInjuries] = useState([]);
-  const [horses, setHorses] = useState([]);
-
-  const [searchTerm, setSearchTerm] = useState('');
-  const [severityFilter, setSeverityFilter] = useState('all');
-  const [recoveryFilter, setRecoveryFilter] = useState('all');
-  const [sortAsc, setSortAsc] = useState(false);
-
-  // Quick edit modal for recovery status
-  const [selectedInjury, setSelectedInjury] = useState(null);
-  const [showStatusModal, setShowStatusModal] = useState(false);
-  const [newRecoveryStatus, setNewRecoveryStatus] = useState('in_treatment');
-  const [statusNotes, setStatusNotes] = useState('');
-  const [updating, setUpdating] = useState(false);
-
-  const fetchData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [injuriesRes, horsesRes] = await Promise.all([
-        veterinarianApi.getInjuryMarkers(),
-        veterinarianApi.getHorses(),
-      ]);
-
-      setInjuries(injuriesRes.data || []);
-      setHorses(horsesRes.data || []);
-    } catch (err) {
-      setError(err?.message || 'Không thể tải danh sách chấn thương.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const horseMap = {};
-  horses.forEach((h) => {
-    horseMap[h._id] = h;
+  const [params] = useSearchParams();
+  const refresh = useVetRefresh();
+  const [confirm, confirmDialog] = useConfirm();
+  const injuriesQ = useInjuries();
+  const horsesQ = useVetHorses();
+  const [status, setStatus] = useState('active');
+  const [query, setQuery] = useState('');
+  const [dialog, setDialog] = useState(() => {
+    if (params.get('edit')) return { type: 'edit', id: params.get('edit') };
+    if (params.get('new')) return { type: 'new', horseId: params.get('horseId') };
+    return null;
   });
 
-  const filteredInjuries = injuries
-    .filter((inj) => {
-      const horse = horseMap[inj.horse?._id || inj.horse];
-      const q = searchTerm.toLowerCase();
-      const matchesSearch =
-        horse?.name?.toLowerCase().includes(q) ||
-        inj.bodyPart?.toLowerCase().includes(q) ||
-        inj.notes?.toLowerCase().includes(q);
+  const horses = useMemo(() => horsesQ.data || [], [horsesQ.data]);
+  const injuries = useMemo(() => injuriesQ.data || [], [injuriesQ.data]);
+  const horseById = useMemo(() => new Map(horses.map((h) => [h._id, h])), [horses]);
+  const activeCount = injuries.filter(isActiveInjury).length;
 
-      const matchesSeverity = severityFilter === 'all' || inj.severity === severityFilter;
-      const matchesRecovery = recoveryFilter === 'all' || inj.recoveryStatus === recoveryFilter;
-
-      return matchesSearch && matchesSeverity && matchesRecovery;
-    })
-    .sort((a, b) => {
-      const dateA = new Date(a.createdAt || a.date).getTime();
-      const dateB = new Date(b.createdAt || b.date).getTime();
-      return sortAsc ? dateA - dateB : dateB - dateA;
-    });
-
-  const handleOpenStatusModal = (injury) => {
-    setSelectedInjury(injury);
-    setNewRecoveryStatus(injury.recoveryStatus || 'in_treatment');
-    setStatusNotes(injury.notes || '');
-    setShowStatusModal(true);
-  };
-
-  const handleUpdateStatus = async (e) => {
-    e.preventDefault();
-    if (!selectedInjury) return;
-
-    setUpdating(true);
-    try {
-      await veterinarianApi.updateInjuryMarker(selectedInjury._id, {
-        recoveryStatus: newRecoveryStatus,
-        notes: statusNotes,
-      });
-
-      // If marked recovered, check if any other active injuries remain for this horse
-      if (newRecoveryStatus === 'recovered') {
-        const horseId = selectedInjury.horse?._id || selectedInjury.horse;
-        const remainingActive = injuries.filter(
-          (inj) =>
-            inj._id !== selectedInjury._id &&
-            (inj.horse?._id || inj.horse)?.toString() === horseId?.toString() &&
-            inj.recoveryStatus !== 'recovered'
-        );
-
-        if (remainingActive.length === 0) {
-          // Auto-revert horse to eligible
-          await veterinarianApi.createHealthRecord({
-            horse: horseId,
-            diagnosis: 'Toàn bộ chấn thương đã bình phục hoàn toàn',
-            resultStatus: 'eligible',
-            date: new Date(),
-          });
-        }
-      }
-
-      setShowStatusModal(false);
-      fetchData();
-    } catch (err) {
-      setError(err?.message || 'Lỗi khi cập nhật trạng thái chấn thương.');
-    } finally {
-      setUpdating(false);
+  const q = query.trim().toLowerCase();
+  const groups = useMemo(() => {
+    const byHorse = new Map();
+    for (const m of injuries) {
+      if (status === 'active' && !isActiveInjury(m)) continue;
+      if (status === 'recovered' && isActiveInjury(m)) continue;
+      const horse = horseById.get(idOf(m.horse));
+      if (q && !(horse?.name?.toLowerCase().includes(q) || m.bodyPart?.toLowerCase().includes(q) || m.notes?.toLowerCase().includes(q))) continue;
+      const key = idOf(m.horse);
+      if (!byHorse.has(key)) byHorse.set(key, { horse, horseId: key, injuries: [] });
+      byHorse.get(key).injuries.push(m);
     }
-  };
+    const list = [...byHorse.values()];
+    list.forEach((g) => g.injuries.sort((a, b) => (SEVERITY_RANK[a.severity] ?? 3) - (SEVERITY_RANK[b.severity] ?? 3) || new Date(b.createdAt) - new Date(a.createdAt)));
+    return list.sort((a, b) => (SEVERITY_RANK[a.injuries[0].severity] ?? 3) - (SEVERITY_RANK[b.injuries[0].severity] ?? 3) || (a.horse?.name || '').localeCompare(b.horse?.name || ''));
+  }, [injuries, horseById, status, q]);
 
-  if (loading) {
-    return <LoadingSpinner text="Đang tải danh sách chấn thương toàn bộ CLB..." minHeight="400px" />;
-  }
+  const editing = dialog?.type === 'edit' ? injuries.find((m) => m._id === dialog.id) : dialog?.injury;
+  const close = () => setDialog(null);
 
   return (
-    <Container fluid className="p-0">
-      <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-2 border-bottom gap-2">
-        <div>
-          <h2 className="fw-bold text-dark mb-1">
-            <i className="bi bi-bandaid me-2 text-danger"></i>
-            Quản Lý Chấn Thương & Sơ Đồ Tổn Thương
-          </h2>
-          <p className="text-muted mb-0 small">
-            Theo dõi danh sách tổn thương cơ xương khớp, tiến độ hồi phục và điều trị của các chiến mã.
-          </p>
-        </div>
-
-        <div className="d-flex gap-2">
-          <Button variant="outline-primary" size="sm" onClick={fetchData}>
-            <i className="bi bi-arrow-clockwise me-1"></i> Làm mới
+    <div className="vet-ui">
+      <PageHeroBanner
+        eyebrow="TEAM 8 • Y TẾ & THÚ Y"
+        roleLabel="Bác sĩ Thú y"
+        title="Chấn thương"
+        subtitle="Tổn thương đang theo dõi và tiến độ hồi phục của từng ngựa."
+        stats={activeCount ? [{ label: 'Đang theo dõi', value: activeCount }, { label: 'Ngựa', value: new Set(injuries.filter(isActiveInjury).map((m) => idOf(m.horse))).size }] : []}
+        actionButton={
+          <Button variant="vet-hero" onClick={() => setDialog({ type: 'new' })}>
+            <i className="bi bi-plus-lg" aria-hidden="true" /> Ghi chấn thương
           </Button>
-          <Button variant="danger" size="sm" onClick={() => navigate('/veterinarian/injuries/new')}>
-            <i className="bi bi-plus-circle me-1"></i> Ghi nhận chấn thương mới
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
-      {error && <ErrorAlert message={error} onRetry={fetchData} />}
-
-      {/* 3D Musculoskeletal Model Overview */}
-      <div className="mb-4">
-        <Horse3DAnatomyViewer
-          injuries={filteredInjuries}
-          isInteractive={false}
-          height="300px"
+      <div className="vet-toolbar">
+        <SearchBox value={query} onChange={setQuery} placeholder="Tìm ngựa, vị trí tổn thương…" />
+        <FilterChips
+          value={status}
+          onChange={setStatus}
+          options={[
+            { value: 'active', label: 'Đang theo dõi', count: activeCount },
+            { value: 'recovered', label: 'Đã khỏi', count: injuries.length - activeCount },
+            { value: 'all', label: 'Tất cả', count: injuries.length },
+          ]}
         />
       </div>
 
-      {/* Filter Bar */}
-      <Card className="border-0 shadow-sm mb-4 bg-white">
-        <Card.Body className="p-3">
-          <Row className="g-3 align-items-center">
-            <Col xs={12} md={4}>
-              <InputGroup>
-                <InputGroup.Text className="bg-light">
-                  <i className="bi bi-search text-muted"></i>
-                </InputGroup.Text>
-                <Form.Control
-                  placeholder="Tìm theo tên ngựa, vị trí chấn thương..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </InputGroup>
-            </Col>
-
-            <Col xs={6} md={3}>
-              <Form.Select
-                value={severityFilter}
-                onChange={(e) => setSeverityFilter(e.target.value)}
-              >
-                <option value="all">Tất cả mức độ</option>
-                <option value="mild">Nhẹ (Mild)</option>
-                <option value="moderate">Trung bình (Moderate)</option>
-                <option value="severe">Nghiêm trọng (Severe)</option>
-              </Form.Select>
-            </Col>
-
-            <Col xs={6} md={3}>
-              <Form.Select
-                value={recoveryFilter}
-                onChange={(e) => setRecoveryFilter(e.target.value)}
-              >
-                <option value="all">Tất cả tiến độ</option>
-                <option value="new">Mới phát hiện</option>
-                <option value="in_treatment">Đang điều trị</option>
-                <option value="recovering">Đang hồi phục</option>
-                <option value="recovered">Đã bình phục</option>
-              </Form.Select>
-            </Col>
-
-            <Col xs={12} md={2} className="text-end">
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                className="w-100"
-                onClick={() => setSortAsc(!sortAsc)}
-              >
-                <i className={`bi bi-sort-numeric-${sortAsc ? 'down' : 'down-alt'} me-1`}></i>
-                {sortAsc ? 'Cũ nhất' : 'Mới nhất'}
-              </Button>
-            </Col>
-          </Row>
-        </Card.Body>
-      </Card>
-
-      {/* Injury Table */}
-      {filteredInjuries.length === 0 ? (
-        <EmptyState
-          icon="bi-shield-check"
-          title="Không tìm thấy bản ghi chấn thương nào"
-          message="Không có ca chấn thương nào khớp với tiêu chí tìm kiếm hoặc toàn bộ ngựa đang hoàn toàn khỏe mạnh."
-          actionLabel="Ghi nhận chấn thương"
-          onAction={() => navigate('/veterinarian/injuries/new')}
-        />
-      ) : (
-        <Card className="border-0 shadow-sm bg-white">
-          <Card.Body className="p-0">
-            <div className="table-responsive">
-              <Table hover className="align-middle mb-0">
-                <thead className="table-light">
-                  <tr>
-                    <th>Ngày ghi nhận</th>
-                    <th>Chiến mã</th>
-                    <th>Vị trí tổn thương</th>
-                    <th>Mức độ nghiêm trọng</th>
-                    <th>Tiến độ hồi phục</th>
-                    <th>Ghi chú & Chỉ định</th>
-                    <th className="text-center" style={{ width: '140px' }}>Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInjuries.map((injury) => {
-                    const horse = horseMap[injury.horse?._id || injury.horse];
-                    const sev = INJURY_SEVERITY_CONFIG[injury.severity] || { label: injury.severity, bg: 'secondary' };
-                    const rec = RECOVERY_STATUS_CONFIG[injury.recoveryStatus] || { label: injury.recoveryStatus, bg: 'secondary' };
-
-                    return (
-                      <tr key={injury._id}>
-                        <td className="fw-semibold text-primary">{formatDate(injury.createdAt || injury.date)}</td>
-                        <td>
-                          <div className="fw-bold text-dark">{horse?.name || 'Ngựa'}</div>
-                          <small className="text-muted">#{horse?._id?.slice(-6).toUpperCase()}</small>
-                        </td>
-                        <td>
-                          <div className="fw-bold">{injury.bodyPart}</div>
-                          {injury.coordinates && (
-                            <small className="text-muted">
-                              Tọa độ 2D: ({Math.round(injury.coordinates.x * 100)}%, {Math.round(injury.coordinates.y * 100)}%)
-                            </small>
-                          )}
-                        </td>
-                        <td>
-                          <Badge bg={sev.bg} text={sev.text || 'white'} pill className="px-2 py-1">
-                            {sev.label}
-                          </Badge>
-                        </td>
-                        <td>
-                          <Badge bg={rec.bg} pill className="px-2 py-1">
-                            {rec.label}
-                          </Badge>
-                        </td>
-                        <td className="small text-muted">{injury.notes || '-'}</td>
-                        <td className="text-center">
-                          <div className="d-flex justify-content-center gap-1">
-                            <Button
-                              variant="outline-primary"
-                              size="sm"
-                              title="Cập nhật tiến độ hồi phục"
-                              onClick={() => handleOpenStatusModal(injury)}
-                            >
-                              <i className="bi bi-pencil-square"></i>
-                            </Button>
-                            <Button
-                              variant="outline-secondary"
-                              size="sm"
-                              title="Xem hồ sơ ngựa"
-                              onClick={() => navigate(`/veterinarian/horses/${horse?._id}`)}
-                            >
-                              <i className="bi bi-eye"></i>
-                            </Button>
-                            <Button
-                              variant="outline-danger"
-                              size="sm"
-                              title="Xóa điểm chấn thương đánh nhầm"
-                              onClick={async () => {
-                                if (window.confirm('Bạn có chắc chắn muốn xóa điểm chấn thương đánh nhầm này?')) {
-                                  try {
-                                    await veterinarianApi.deleteInjuryMarker(injury._id);
-                                    fetchData();
-                                  } catch (err) {
-                                    alert(err?.message || 'Lỗi khi xóa điểm chấn thương.');
-                                  }
-                                }
-                              }}
-                            >
-                              <i className="bi bi-trash"></i>
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
-            </div>
-          </Card.Body>
-        </Card>
+      {injuriesQ.isError && (
+        <Callout tone="bad" icon="bi-wifi-off" className="mb-3">
+          {injuriesQ.error?.message || 'Không tải được danh sách chấn thương.'}
+        </Callout>
       )}
 
-      {/* Quick Status Update Modal */}
-      <Modal show={showStatusModal} onHide={() => setShowStatusModal(false)} centered>
-        <Form onSubmit={handleUpdateStatus}>
-          <Modal.Header closeButton={!updating}>
-            <Modal.Title className="fs-5">Cập Nhật Tiến Độ Chấn Thương</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            <div className="mb-3">
-              <div className="fw-bold">Vị trí tổn thương: <span className="text-danger">{selectedInjury?.bodyPart}</span></div>
-              <div className="small text-muted">Mức độ: <strong>{selectedInjury?.severity}</strong></div>
-            </div>
-
-            <Form.Group className="mb-3">
-              <Form.Label className="fw-semibold">Tiến độ hồi phục</Form.Label>
-              <Form.Select
-                value={newRecoveryStatus}
-                onChange={(e) => setNewRecoveryStatus(e.target.value)}
-                disabled={updating}
+      {injuriesQ.isLoading ? (
+        <VetCard flush>
+          <LoadingBlock rows={3} height={70} />
+        </VetCard>
+      ) : groups.length === 0 ? (
+        <VetCard>
+          <EmptyNote icon="bi-shield-check" title={status === 'active' && !q ? 'Không có chấn thương nào đang theo dõi' : 'Không có chấn thương phù hợp'} />
+        </VetCard>
+      ) : (
+        <div className="vet-stack">
+          {groups.map((g) => {
+            const clearance = clearanceOf(g.horse);
+            return (
+              <VetCard
+                key={g.horseId}
+                flush
+                title={
+                  <span className="d-inline-flex flex-wrap align-items-center gap-2">
+                    <HorseCell horse={g.horse || { name: 'Ngựa' }} size={34} sub={`${g.injuries.length} chấn thương`} />
+                  </span>
+                }
+                extra={
+                  <>
+                    {g.horse && <HealthPill status={g.horse.healthStatus} />}
+                    {clearance.restricted && <LevelPill level={clearance.level} short />}
+                    <Button size="sm" variant="vet-outline" onClick={() => navigate(`/veterinarian/horses/${g.horseId}?tab=injuries`)}>
+                      Xem trên mô hình 3D
+                    </Button>
+                  </>
+                }
               >
-                <option value="new">Mới phát hiện</option>
-                <option value="in_treatment">Đang điều trị</option>
-                <option value="recovering">Đang hồi phục</option>
-                <option value="recovered">Đã bình phục hoàn toàn</option>
-              </Form.Select>
-            </Form.Group>
+                <div className="vet-list">
+                  {g.injuries.map((m) => (
+                    <div key={m._id} className="vet-row" style={{ alignItems: 'flex-start' }}>
+                      <div className="vet-row-main">
+                        <div className="d-flex flex-wrap align-items-center gap-2">
+                          <span className="fw-semibold" title={m.bodyPart}>
+                            {shortBodyPart(m.bodyPart)}
+                          </span>
+                          <Pill tone={SEVERITY_META[m.severity]?.tone}>{SEVERITY_META[m.severity]?.label || m.severity}</Pill>
+                          <span className="vet-small vet-faint">ghi {ago(m.createdAt)}</span>
+                        </div>
+                        {m.notes && <div className="vet-small vet-muted vet-clamp-2 mt-1">{m.notes}</div>}
+                        <div className="mt-2">
+                          <RecoveryStepper value={m.recoveryStatus} onChange={(stage) => setInjuryStage(m, stage, { refresh })} />
+                        </div>
+                      </div>
+                      <ActionMenu
+                        items={[
+                          { label: 'Sửa', icon: 'bi-pencil', onClick: () => setDialog({ type: 'edit', id: m._id }) },
+                          { label: 'Xóa (ghi nhầm)', icon: 'bi-trash', onClick: () => deleteInjury(m, { confirm, refresh }), danger: true },
+                        ]}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </VetCard>
+            );
+          })}
+        </div>
+      )}
 
-            <Form.Group className="mb-3">
-              <Form.Label className="fw-semibold">Ghi chú theo dõi mới</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                placeholder="Cập nhật tình trạng vết sưng, phản ứng đi lại của ngựa..."
-                value={statusNotes}
-                onChange={(e) => setStatusNotes(e.target.value)}
-                disabled={updating}
-              />
-            </Form.Group>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowStatusModal(false)} disabled={updating}>
-              Hủy
-            </Button>
-            <Button variant="primary" type="submit" disabled={updating}>
-              {updating ? <Spinner animation="border" size="sm" /> : 'Lưu cập nhật'}
-            </Button>
-          </Modal.Footer>
-        </Form>
-      </Modal>
-    </Container>
+      {dialog?.type === 'new' && (
+        <InjuryModal defaultHorseId={dialog.horseId || ''} horses={horses} injuries={injuries} onHide={close} onDone={refresh} />
+      )}
+      {dialog?.type === 'edit' && editing && (
+        <InjuryModal injury={{ ...editing, horse: horseById.get(idOf(editing.horse)) || editing.horse }} horses={horses} injuries={injuries} onHide={close} onDone={refresh} />
+      )}
+      {confirmDialog}
+    </div>
   );
 }
