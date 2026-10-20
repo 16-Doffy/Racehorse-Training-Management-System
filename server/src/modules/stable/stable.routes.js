@@ -42,7 +42,9 @@ router.delete('/stalls/:id', authorize(ROLES.MANAGER), stallCtrl.retireStall);
 
 // Stable/stall assignment map.
 router.get('/assignments', assignmentCtrl.listAssignments);
-router.post('/assignments', authorize(ROLES.MANAGER, ROLES.HEAD_TRAINER), assignmentCtrl.upsertAssignment);
+// Only the Manager places horses and names their groom: it allocates stalls and staff for the whole
+// stable, which no other role sees in full. Others ask the Manager.
+router.post('/assignments', authorize(ROLES.MANAGER), assignmentCtrl.upsertAssignment);
 router.delete('/assignments/:id', authorize(ROLES.MANAGER), assignmentCtrl.deleteAssignment);
 
 module.exports = router;

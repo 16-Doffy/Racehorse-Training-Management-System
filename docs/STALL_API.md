@@ -18,7 +18,7 @@ Tất cả nằm dưới `/api/v1/stable`. Request/response chi tiết ở `/api
 | `POST /stable/stalls` | Manager | Tạo một chuồng: `{ zone: "CL", number: 1, type: "isolation" }` |
 | `PATCH /stable/stalls/:id` | Manager | Đổi tên/mục đích khu, loại, thứ tự; bảo trì `{ status: "maintenance", maintenanceNote }` |
 | `DELETE /stable/stalls/:id` | Manager | Ngừng dùng một chuồng trống (giữ lại mã) |
-| `POST /stable/assignments` | Manager, HLV | Xếp ngựa: `{ horse, stall: "<id chuồng>", assignedCaretaker }`. Vẫn nhận `stableBlock` như cũ |
+| `POST /stable/assignments` | Manager | Xếp ngựa: `{ horse, stall: "<id chuồng>", assignedCaretaker }`. Vẫn nhận `stableBlock` như cũ |
 
 ## Dữ liệu một chuồng
 
@@ -47,11 +47,12 @@ Tất cả nằm dưới `/api/v1/stable`. Request/response chi tiết ở `/api
 ## Mỗi vai trò thấy gì, làm được gì
 
 API đã áp dụng đúng bảng này: màn nào cũng gọi chung một route, server tự ẩn những gì vai trò đó không được xem.
+Chỉ Quản lý xếp và đổi chuồng (kèm người chăm sóc): đó là phân bổ chuồng và nhân sự cho cả trại, vai trò khác không thấy đủ. Từ 20/10/2026 HLV gọi `POST /stable/assignments` nhận 403.
 
 | Vai trò | Thấy chuồng (trống, có ngựa, bảo trì) | Thấy ngựa (tên, giống, người chăm sóc) | Thấy ngựa trong chuồng (3D) | Làm được |
 |---|---|---|---|---|
 | Quản lý CLB | Tất cả | Tất cả | Tất cả, có tên trên biển | Lập khu, thêm/bỏ chuồng, đặt bảo trì, xếp và đổi chuồng mọi ngựa |
-| HLV | Tất cả | Ngựa mình phụ trách | Ngựa mình có tên; ngựa khác là dáng ngựa chung, biển "CÓ NGỰA" | Xếp, đổi chuồng cho ngựa mình phụ trách (`POST /stable/assignments`) |
+| HLV | Tất cả | Ngựa mình phụ trách | Ngựa mình có tên; ngựa khác là dáng ngựa chung, biển "CÓ NGỰA" | Chỉ xem; cần đổi chuồng thì đề nghị Quản lý |
 | Bác sĩ | Tất cả | Ngựa mình phụ trách, ngựa chưa có bác sĩ, đã khám hoặc đang chờ khám | Như HLV | Chỉ xem; cần chuyển khu cách ly thì báo Quản lý |
 | Chủ ngựa | Tất cả | Chỉ ngựa của mình | Như HLV | Chỉ xem |
 | NV chăm sóc | Tất cả | Tất cả (biết chuồng bên cạnh) | App điện thoại: Tien quyết | Chỉ xem; mã chuồng trên từng việc |
@@ -63,8 +64,8 @@ API đã áp dụng đúng bảng này: màn nào cũng gọi chung một route,
 | Màn | Người | Việc |
 |---|---|---|
 | Manager: sơ đồ khu, xếp/đổi chuồng, bảo trì; chi tiết ngựa có chuồng 3D | Claude | đang làm |
-| HLV: chuồng 3D trong chi tiết ngựa, sơ đồ; xếp/đổi chuồng cho ngựa mình | Claude | đang làm |
-| Bác sĩ: ngựa chấn thương nổi đỏ trên sơ đồ; chuyển ngựa sang khu cách ly (`POST /stable/assignments` với chuồng `type: "isolation"`, cần quyền Manager/HLV hoặc nhờ Manager) | trunghieu | gọi `GET /stable/stalls` |
+| HLV: chuồng 3D trong chi tiết ngựa, sơ đồ chỉ xem | Claude | đang làm |
+| Bác sĩ: ngựa chấn thương nổi đỏ trên sơ đồ; đề nghị Quản lý chuyển ngựa sang khu cách ly (chuồng `type: "isolation"`) | trunghieu | gọi `GET /stable/stalls` |
 | Chủ ngựa: chuồng của ngựa mình, có 3D | Quân | gọi `GET /stable/stalls/by-horse/:horseId`, dùng component chung khi có |
 | NV chăm sóc (app): mã chuồng trên từng việc, danh sách chuồng mình phụ trách | Tien | `stableBlock` đã là mã chuồng; lọc `GET /stable/stalls` theo `occupant.caretaker._id` |
 

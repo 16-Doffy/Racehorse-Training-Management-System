@@ -41,6 +41,9 @@ test('stall catalogue and stable map against real MongoDB', { skip: !process.env
     assert.equal(saved.stableBlock, 'A-02', 'screens that show stableBlock keep working');
     assert.equal(String(saved.stall), String(a02._id));
 
+    // Only the Manager places horses, even the trainer's own (stalls and grooms are the Manager's to allocate).
+    assert.equal((await raw('trainer', 'POST', '/stable/assignments', { horse: horse._id, stall: a02._id })).status, 403);
+
     const taken = await raw('manager', 'POST', '/stable/assignments', { horse: stranger._id, stall: a02._id });
     assert.equal(taken.status, 409);
     assert.match(taken.body.message, /TEST Stall Horse/);
