@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { horsesApi } from './horsesApi';
+import { stallApi } from '../stable/stableApi';
 import { Pill } from './ownerUi';
 
 const HEALTH = { eligible: 'Đủ điều kiện', monitoring: 'Cần theo dõi', injured: 'Chấn thương', quarantined: 'Cách ly' };
@@ -15,15 +16,30 @@ const vnd = (n) => `${Number(n || 0).toLocaleString('vi-VN')} đ`;
 export default function OwnerHorseSummary() {
   const { data, isLoading } = useQuery({ queryKey: ['owner-summary'], queryFn: () => horsesApi.ownerSummary() });
   const rows = data?.data || [];
+  // Where each horse stands, from the stable map (one call for all of them; the server hides the horses that are not the owner's).
+  const { data: stallData } = useQuery({ queryKey: ['stalls'], queryFn: () => stallApi.map() });
+  const stallOfHorse = new Map();
+  (stallData?.data?.stalls || []).forEach((s) => {
+    const horseId = s.occupant?.horse?._id;
+    if (horseId) stallOfHorse.set(String(horseId), `Chuồng ${s.code}${s.zoneName ? ` · ${s.zoneName}` : ''}`);
+  });
+  (stallData?.data?.unplaced || []).forEach((u) => {
+    if (u.horse?._id) stallOfHorse.set(String(u.horse._id), `Chuồng ${u.stableBlock} (ghi tay)`);
+  });
   if (isLoading || !rows.length) return null;
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
       {rows.map((r) => (
         <div key={r.horse._id} className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col gap-2 min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <Link to={`/horses/${r.horse._id}`} className="text-base font-semibold text-gray-900">
-              {r.horse.name}
-            </Link>
+            <div className="min-w-0">
+              <Link to={`/horses/${r.horse._id}`} className="text-base font-semibold text-gray-900">
+                {r.horse.name}
+              </Link>
+              {stallData && (
+                <div className="text-xs text-gray-500">{stallOfHorse.get(String(r.horse._id)) || 'Chưa xếp chuồng'}</div>
+              )}
+            </div>
             <Pill className="!whitespace-normal max-w-full" tone={r.health.restricted ? 'warn' : !r.health.lastExam ? 'neutral' : 'good'}>
               {/* The default health status is not an assessment: say so until a vet has examined it. */}
               {r.health.lastExam ? HEALTH[r.health.status] || r.health.status : 'Chưa có hồ sơ khám'} · {r.health.clearance}

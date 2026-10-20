@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Select, Empty } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { horsesApi } from './horsesApi';
-import { stableAssignmentApi, dailyTaskApi } from '../stable/stableApi';
+import { dailyTaskApi } from '../stable/stableApi';
+import HorseStallCard from '../stable/HorseStallCard';
 import { feedingApi } from '../feeding/feedingApi';
-import { parseStableBlock, MEAL_ORDER, MEAL_CONFIG, getFeedTypeLabel, TASK_CONFIG, TASK_STATUS_CONFIG } from '../stable/groomConfig';
+import { MEAL_ORDER, MEAL_CONFIG, getFeedTypeLabel, TASK_CONFIG, TASK_STATUS_CONFIG } from '../stable/groomConfig';
 import dayjs from 'dayjs';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 
@@ -23,26 +24,12 @@ function SectionTitle({ children, extra }) {
   );
 }
 
-function Field({ label, children }) {
-  return (
-    <div>
-      <div className="text-[11px] text-gray-400 uppercase font-semibold tracking-wider mb-1">{label}</div>
-      {children}
-    </div>
-  );
-}
-
 export default function OwnerStablePage() {
   const [selectedHorse, setSelectedHorse] = useState(null);
 
   const { data: horsesData, isLoading: horsesLoading } = useQuery({
     queryKey: ['horses'],
     queryFn: () => horsesApi.list(),
-  });
-
-  const { data: assignmentsData } = useQuery({
-    queryKey: ['stable-assignments'],
-    queryFn: () => stableAssignmentApi.list(),
   });
 
   const { data: tasksData } = useQuery({
@@ -56,21 +43,12 @@ export default function OwnerStablePage() {
   });
 
   const myHorses = horsesData?.data || [];
-  const allAssignments = assignmentsData?.data || [];
   const allTasks = tasksData?.data || [];
   const allFeedings = feedingsData?.data || [];
-
-  const assignmentByHorseId = useMemo(() => {
-    const map = new Map();
-    allAssignments.forEach((a) => map.set(a.horse?._id || a.horse, a));
-    return map;
-  }, [allAssignments]);
 
   // Open on the owner's first horse, so the page is never an empty prompt.
   const activeHorseId = selectedHorse || myHorses[0]?._id || null;
   const selectedHorseObj = myHorses.find((h) => h._id === activeHorseId);
-  const stableAssignment = selectedHorseObj ? assignmentByHorseId.get(selectedHorseObj._id) : null;
-  const { block, stall } = parseStableBlock(stableAssignment?.stableBlock);
 
   // Daily Tasks for selected horse
   const horseTasks = activeHorseId
@@ -81,8 +59,6 @@ export default function OwnerStablePage() {
   const horseFeedings = activeHorseId
     ? allFeedings.filter((f) => f.horse?._id === activeHorseId || f.horse === activeHorseId)
     : [];
-
-  const caretaker = stableAssignment?.assignedCaretaker?.name;
 
   return (
     <div className="light-surface-box text-gray-800 font-sans">
@@ -106,33 +82,12 @@ export default function OwnerStablePage() {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Vị trí & người chăm sóc */}
-            <div className={CARD}>
-              <SectionTitle>Vị trí & người chăm sóc</SectionTitle>
-              <div className="flex flex-col gap-4">
-                <Field label="Khu vực chuồng">
-                  <div className="text-base font-semibold text-gray-900">
-                    {stableAssignment ? `${block} – ${stall}` : <span className="text-gray-400 font-normal">Chưa được xếp chuồng</span>}
-                  </div>
-                </Field>
-                <Field label="Nhân viên phụ trách">
-                  {caretaker ? (
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-700 text-sm font-semibold flex items-center justify-center">
-                        {caretaker.trim().charAt(0).toUpperCase()}
-                      </span>
-                      <span className="font-medium text-gray-900">{caretaker}</span>
-                    </div>
-                  ) : (
-                    <span className="text-gray-400">Chưa phân công</span>
-                  )}
-                </Field>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 gap-4">
+            {/* Where the horse stands (its stall in 3D, the zone, the groom): the stall API, as on the horse page. */}
+            <HorseStallCard horseId={activeHorseId} canManage={false} />
 
             {/* Công việc chăm sóc hôm nay */}
-            <div className={`lg:col-span-2 ${CARD}`}>
+            <div className={CARD}>
               <SectionTitle extra={<span className="text-xs text-gray-400">Hôm nay, {dayjs().format('DD/MM/YYYY')}</span>}>
                 Công việc chăm sóc
               </SectionTitle>

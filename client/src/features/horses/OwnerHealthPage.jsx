@@ -5,6 +5,10 @@ import { horsesApi } from './horsesApi';
 import { healthRecordApi, treatmentApi, injuryMarkerApi } from '../health/healthApi';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { TRAINING_LEVEL_META } from '../../constants/health';
+import HorseInjuryViewer from '../../components/veterinarian/HorseInjuryViewer';
+import { isActiveInjury } from '../../components/veterinarian/vetFormat';
+// The viewer is styled by the vet's stylesheet, whose rules all sit under .vet-ui (so loading it here changes nothing else).
+import '../../components/veterinarian/vet.css';
 import dayjs from 'dayjs';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import { FactRow, OwnerCard, Pill, StatStrip } from './ownerUi';
@@ -22,18 +26,23 @@ const TREATMENT_STATUS = {
   cancelled: { tone: 'neutral', label: 'Đã hủy' },
 };
 
+// As the server stores them (InjuryMarker: severity mild | moderate | severe; recoveryStatus new | in_treatment |
+// recovering | recovered), worded as on the vet's screens. The old keys stay for records written before.
 const SEVERITY = {
+  mild: { tone: 'info', label: 'Nhẹ' },
+  moderate: { tone: 'warn', label: 'Trung bình' },
+  severe: { tone: 'bad', label: 'Nặng' },
   minor: { tone: 'info', label: 'Nhẹ' },
-  moderate: { tone: 'warn', label: 'Vừa' },
-  severe: { tone: 'bad', label: 'Nghiêm trọng' },
   critical: { tone: 'bad', label: 'Nguy kịch' },
 };
 
 const RECOVERY = {
-  newly_reported: { tone: 'bad', label: 'Mới bị' },
-  treating: { tone: 'info', label: 'Đang điều trị' },
+  new: { tone: 'bad', label: 'Mới phát hiện' },
+  in_treatment: { tone: 'info', label: 'Đang điều trị' },
   recovering: { tone: 'warn', label: 'Đang hồi phục' },
   recovered: { tone: 'good', label: 'Đã khỏi' },
+  newly_reported: { tone: 'bad', label: 'Mới phát hiện' },
+  treating: { tone: 'info', label: 'Đang điều trị' },
 };
 
 const dateOrNone = (d) => (d ? dayjs(d).format('DD/MM/YYYY') : 'Chưa lên lịch');
@@ -257,6 +266,15 @@ export default function OwnerHealthPage() {
               locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có chấn thương" /> }}
             />
           </OwnerCard>
+
+          {/* Where the vet marked the injuries that are still open, on the horse in 3D (look only). */}
+          {horseInjuries.some(isActiveInjury) && (
+            <OwnerCard title="Vị trí chấn thương trên ngựa 3D">
+              <div className="vet-ui">
+                <HorseInjuryViewer horse={selectedHorseObj} injuries={horseInjuries.filter(isActiveInjury)} height={380} />
+              </div>
+            </OwnerCard>
+          )}
 
           {/* Vital Signs Chart */}
           {vitalChartData.length > 0 && (
