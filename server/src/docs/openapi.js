@@ -551,7 +551,41 @@ module.exports = {
       },
       StableAssignment: {
         type: 'object',
-        properties: { _id: { type: 'string' }, horse: { type: 'string' }, stableBlock: { type: 'string' }, assignedCaretaker: { type: 'string' } },
+        properties: {
+          _id: { type: 'string' },
+          horse: { type: 'string' },
+          stall: { type: 'string', nullable: true, description: 'A stall on the stable map (POST: give this or stableBlock). Null for older free-text assignments.' },
+          stableBlock: { type: 'string', description: 'The stall name shown on every screen: the stall code when stall is set. Free text that matches a stall code links that stall.' },
+          assignedCaretaker: { type: 'string' },
+        },
+      },
+      Stall: {
+        type: 'object',
+        properties: {
+          _id: { type: 'string' },
+          code: { type: 'string', example: 'A-03', description: 'On the nameplate; never changes.' },
+          zone: { type: 'string', example: 'A' },
+          zoneName: { type: 'string', example: 'Khu A' },
+          zonePurpose: { type: 'string', example: 'Ngựa đua chủ lực' },
+          type: { type: 'string', enum: ['standard', 'isolation', 'recovery'] },
+          order: { type: 'integer', description: 'Position in its zone; the map lays a zone out in two rows facing an aisle.' },
+          status: { type: 'string', enum: ['active', 'maintenance'] },
+          maintenanceNote: { type: 'string' },
+          maintenanceUntil: { type: 'string', format: 'date-time', nullable: true },
+          isActive: { type: 'boolean' },
+          occupied: { type: 'boolean' },
+          occupant: {
+            type: 'object', nullable: true,
+            description: 'Null when empty. { hidden: true } when the horse is not one this user may see (the stall shows as taken, without a name).',
+            properties: {
+              assignment: { type: 'string' },
+              horse: { type: 'object', properties: { _id: { type: 'string' }, name: { type: 'string' }, breed: { type: 'string' }, color: { type: 'string' }, healthStatus: { type: 'string' } } },
+              caretaker: { type: 'object', nullable: true, properties: { _id: { type: 'string' }, name: { type: 'string' } } },
+              since: { type: 'string', format: 'date-time' },
+              hidden: { type: 'boolean' },
+            },
+          },
+        },
       },
       FeedingSchedule: {
         type: 'object',
@@ -1545,7 +1579,21 @@ module.exports = {
     },
     '/stable/assignments': {
       get: { tags: ['Stable (Groom)'], summary: 'List stable/stall assignments', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/StableAssignment' } }) } },
-      post: { tags: ['Stable (Groom)'], summary: 'Create/update stall assignment for a horse (Manager, Head Trainer)', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/StableAssignment' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/StableAssignment' }), 403: responses[403] } },
+      post: { tags: ['Stable (Groom)'], summary: 'Create/update stall assignment for a horse (Manager, Head Trainer)', description: 'Body: { horse, stall | stableBlock, assignedCaretaker? }. 409 when the stall is taken, under maintenance or out of use.', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/StableAssignment' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/StableAssignment' }), 403: responses[403] } },
+    },
+    '/stable/stalls': {
+      get: { tags: ['Stable (Groom)'], summary: 'Stable map: stalls in zone order with who stands in each (any role)', description: 'Everyone sees the layout and which stalls are taken; the horse is named only when the user may see it (owner: own horses; trainer/vet: assigned). unplaced: visible horses whose stall is still free text, for the Manager to place. ?all=true (Manager) adds stalls taken out of use.', parameters: [{ name: 'all', in: 'query', schema: { type: 'boolean' } }], responses: { 200: responses[200]({ type: 'object', properties: { stalls: { type: 'array', items: { $ref: '#/components/schemas/Stall' } }, unplaced: { type: 'array', items: { type: 'object' } } } }) } },
+      post: { tags: ['Stable (Groom)'], summary: 'Create one stall (Manager)', description: 'Body: { zone, code | number, zoneName?, zonePurpose?, type?, order? }. code is <zone>-<number> (A-03); 409 when it exists.', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Stall' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/Stall' }), 400: responses[400], 403: responses[403], 409: responses[409] } },
+    },
+    '/stable/stalls/generate': {
+      post: { tags: ['Stable (Groom)'], summary: "Create a zone's stalls in one go (Manager)", description: 'Body: { zone, count (1–40), zoneName?, zonePurpose?, type? } → <zone>-01 … <zone>-<count>; existing codes are skipped and listed.', responses: { 201: responses[201]({ type: 'object', properties: { created: { type: 'array', items: { $ref: '#/components/schemas/Stall' } }, skipped: { type: 'array', items: { type: 'string' } } } }), 400: responses[400], 403: responses[403] } },
+    },
+    '/stable/stalls/by-horse/{horseId}': {
+      get: { tags: ['Stable (Groom)'], summary: "A horse's stall and caretaker (any role that may see the horse)", parameters: [idParam('horseId')], responses: { 200: responses[200]({ type: 'object', nullable: true, properties: { assignment: { type: 'string' }, stableBlock: { type: 'string' }, stall: { $ref: '#/components/schemas/Stall' }, caretaker: { type: 'object' }, since: { type: 'string', format: 'date-time' } } }), 403: responses[403] } },
+    },
+    '/stable/stalls/{id}': {
+      patch: { tags: ['Stable (Groom)'], summary: 'Edit a stall: zone name/purpose, type, order, maintenance (Manager)', description: 'status maintenance is refused (409) while a horse is in the stall; a stall under maintenance cannot be assigned. The code never changes.', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/Stall' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] } },
+      delete: { tags: ['Stable (Groom)'], summary: 'Take an empty stall out of use (Manager)', description: 'Kept with isActive false so its code stays reserved; 409 while a horse is in it.', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/Stall' }), 403: responses[403], 404: responses[404], 409: responses[409] } },
     },
     '/stable/assignments/{id}': {
       delete: { tags: ['Stable (Groom)'], summary: 'Remove stall assignment (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },

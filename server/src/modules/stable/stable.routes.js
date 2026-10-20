@@ -5,6 +5,7 @@ const { uploadIncidentImages } = require('../../middlewares/uploadMiddleware');
 const { ROLES } = require('../../constants/roles');
 const taskCtrl = require('./dailyTask.controller');
 const assignmentCtrl = require('./stableAssignment.controller');
+const stallCtrl = require('./stall.controller');
 
 router.use(protect);
 
@@ -30,6 +31,14 @@ router.post(
 // Incident reports as a list with a lifecycle: the groom files one, the vet picks it up and closes it.
 router.get('/incidents', taskCtrl.listIncidents);
 router.patch('/incidents/:id', authorize(ROLES.VETERINARIAN), taskCtrl.handleIncident);
+
+// The stall catalogue and stable map: everyone sees the layout, the Manager keeps it.
+router.get('/stalls', stallCtrl.listStalls);
+router.get('/stalls/by-horse/:horseId', stallCtrl.stallForHorse);
+router.post('/stalls', authorize(ROLES.MANAGER), stallCtrl.createStall);
+router.post('/stalls/generate', authorize(ROLES.MANAGER), stallCtrl.generateZone);
+router.patch('/stalls/:id', authorize(ROLES.MANAGER), stallCtrl.updateStall);
+router.delete('/stalls/:id', authorize(ROLES.MANAGER), stallCtrl.retireStall);
 
 // Stable/stall assignment map.
 router.get('/assignments', assignmentCtrl.listAssignments);
