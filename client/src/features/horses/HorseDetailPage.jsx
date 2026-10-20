@@ -39,6 +39,7 @@ import {
 import { horsesApi } from './horsesApi';
 import HorseTimeline from './HorseTimeline';
 import CareHistoryCard from './CareHistoryCard';
+import HorseStallCard from '../stable/HorseStallCard';
 import Horse3D from './horse3d/Horse3D';
 import { breedLabel, coatLabel } from './horse3d/horseBreeds';
 import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constants/health';
@@ -635,6 +636,9 @@ export default function HorseDetailPage() {
           </Card>
         </Col>
       </Row>
+
+      {/* Its stall: the zone's barn in 3D looking into it, the code and the groom. */}
+      <HorseStallCard horseId={horse._id} canManage={user?.role === ROLES.MANAGER} />
 
       <HorseTimeline horseId={horse._id} />
 

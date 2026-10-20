@@ -10,6 +10,9 @@ async function main() {
     const { horse } = await intake(ctx, 'TEST Browser Horse');
     // Papers and the club's valuation, for the Owner's horse page (the valuation is the Manager's and the owner's only).
     await ctx.api('manager', 'PUT', `/horses/${horse._id}`, { microchipNumber: '985112345678901', registrationNumber: 'TEST-REG-001', valuationVnd: 750000000 });
+    // A zone on the stable map with the horse in its first stall (stable map, horse stall card).
+    const zone = await ctx.api('manager', 'POST', '/stable/stalls/generate', { zone: 'A', count: 4, zoneName: 'Khu A', zonePurpose: 'TEST ngựa đua' }, 201);
+    await ctx.api('manager', 'POST', '/stable/assignments', { horse: horse._id, stall: zone.created[0]._id, assignedCaretaker: ctx.users.groom.id }, 201);
     const plan = await planFor(ctx, horse);
     await book(ctx, horse, plan);
     // A run that already happened, with its numbers, for the dashboard's fitness panel: a walk started now

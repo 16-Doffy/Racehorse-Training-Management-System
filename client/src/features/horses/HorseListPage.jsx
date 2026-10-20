@@ -9,6 +9,7 @@ import { useSelector } from 'react-redux';
 import dayjs from 'dayjs';
 import { horsesApi } from './horsesApi';
 import { usersApi } from '../admin/usersApi';
+import { stallApi } from '../stable/stableApi';
 import { ROLES } from '../../constants/roles';
 import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constants/health';
 import HorseNextStep from './HorseNextStep';
@@ -58,6 +59,12 @@ export default function HorseListPage() {
   const horses = data?.data || [];
   const { data: checklistData } = useQuery({ queryKey: ['horses', 'checklist'], queryFn: () => horsesApi.checklists(), enabled: showsNextStep });
   const checklistByHorse = new Map((checklistData?.data || []).map((c) => [String(c.horse._id), c]));
+  // The stall of each horse, from the stable map (a horse still on a free-text stall shows that text).
+  const { data: stallsData } = useQuery({ queryKey: ['stalls'], queryFn: () => stallApi.map(), enabled: showsNextStep });
+  const stallByHorse = new Map([
+    ...(stallsData?.data?.unplaced || []).map((u) => [String(u.horse._id), u.stableBlock]),
+    ...(stallsData?.data?.stalls || []).filter((st) => st.occupant?.horse).map((st) => [String(st.occupant.horse._id), st.code]),
+  ]);
   // The checklist is for the staff. The Owner's own view of whether a vet has seen each horse comes from the owner summary.
   const { data: ownerSummaryData } = useQuery({ queryKey: ['owner-summary'], queryFn: () => horsesApi.ownerSummary(), enabled: isOwner });
   const summaryByHorse = new Map((ownerSummaryData?.data || []).map((r) => [String(r.horse._id), r]));
@@ -246,6 +253,14 @@ export default function HorseListPage() {
   ];
 
   if (showsNextStep && view === 'active') {
+    columns.splice(1, 0, {
+      title: 'Chuồng',
+      key: 'stall',
+      render: (_, h) => {
+        const code = stallByHorse.get(String(h._id));
+        return code ? <span className="tabular-nums whitespace-nowrap">{code}</span> : <Tag>Chưa xếp</Tag>;
+      },
+    });
     columns.push({
       title: 'Bước tiếp theo',
       key: 'nextStep',

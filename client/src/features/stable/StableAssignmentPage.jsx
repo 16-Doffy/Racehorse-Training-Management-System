@@ -1,17 +1,17 @@
 import { useState } from 'react';
-import { Table, Button, Modal, Form, Select, Input, Tag, Alert, Popconfirm, Space, Empty } from 'antd';
+import { Table, Button, Modal, Form, Select, Input, InputNumber, Tag, Alert, Popconfirm, Space, Empty, Tabs, Card } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { EditOutlined, DeleteOutlined, HomeOutlined, PlusOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, HomeOutlined, PlusOutlined, AppstoreAddOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { stableAssignmentApi } from './stableApi';
+import { stableAssignmentApi, stallApi } from './stableApi';
 import { horsesApi } from '../horses/horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { ROLES } from '../../constants/roles';
 import { HEALTH_LABELS, HEALTH_COLORS } from '../../constants/health';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
-
-
+import StableMapBoard from './StableMapBoard';
+import { STALL_TYPE_LABELS } from './stall3d/stallStatus';
 
 /**
  * Manager assigns each horse a stall and the groom responsible for it.
@@ -19,16 +19,27 @@ import PageHeroBanner from '../../components/common/PageHeroBanner';
  * This was the missing link in the chain: the endpoints existed and the daily-task generator
  * depended on these records, but no screen had ever created one — so the only assignments in the
  * system came from the seed script, and a horse added through the UI would silently never get fed.
+ *
+ * The stable map (docs/STALL_API.md): zones of stalls laid out by the Manager, shown as a map and as
+ * the barn in 3D; a horse goes into an empty stall picked from that catalogue. Before any zone exists,
+ * the stall is typed as before.
  */
 export default function StableAssignmentPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [zoneOpen, setZoneOpen] = useState(false);
+  const [tab, setTab] = useState('map');
   const [form] = Form.useForm();
+  const [zoneForm] = Form.useForm();
   const queryClient = useQueryClient();
 
   const { data: assignmentsData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['stable-assignments'],
     queryFn: () => stableAssignmentApi.list(),
+  });
+  const { data: stallsData, isLoading: stallsLoading, isError: stallsError, refetch: refetchStalls } = useQuery({
+    queryKey: ['stalls'],
+    queryFn: () => stallApi.map(),
   });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const { data: groomsData } = useQuery({
@@ -37,15 +48,19 @@ export default function StableAssignmentPage() {
   });
 
   const assignments = assignmentsData?.data || [];
+  const stalls = stallsData?.data?.stalls || [];
+  const unplaced = stallsData?.data?.unplaced || [];
   const horses = horsesData?.data || [];
   const grooms = (groomsData?.data || []).filter((u) => u.isActive !== false);
 
   const assignedHorseIds = new Set(assignments.map((a) => a.horse?._id || a.horse));
   const unstabled = horses.filter((h) => !assignedHorseIds.has(h._id));
   const uncared = assignments.filter((a) => !a.assignedCaretaker);
+  const hasMap = stalls.length > 0;
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['stable-assignments'] });
+    queryClient.invalidateQueries({ queryKey: ['stalls'] });
     queryClient.invalidateQueries({ queryKey: ['daily-tasks-all'] });
   };
 
@@ -70,15 +85,57 @@ export default function StableAssignmentPage() {
     onError: (err) => message.error(err.message || 'Gỡ phân công thất bại.'),
   });
 
-  const openModal = (record, presetHorseId) => {
-    setEditing(record || null);
+  const maintenanceMutation = useMutation({
+    mutationFn: ({ stall, on }) => stallApi.update(stall._id, { status: on ? 'maintenance' : 'active' }),
+    onSuccess: (_, { stall, on }) => {
+      message.success(on ? `Chuồng ${stall.code} đang bảo trì.` : `Đã mở lại chuồng ${stall.code}.`);
+      invalidate();
+    },
+    onError: (err) => message.error(err.message || 'Không đổi được trạng thái chuồng.'),
+  });
+
+  const zoneMutation = useMutation({
+    mutationFn: (values) => stallApi.generateZone(values),
+    onSuccess: (res) => {
+      const made = res?.data?.created?.length || 0;
+      const skipped = res?.data?.skipped?.length || 0;
+      message.success(`Đã tạo ${made} chuồng${skipped ? `, bỏ qua ${skipped} mã đã có` : ''}.`);
+      invalidate();
+      setZoneOpen(false);
+      zoneForm.resetFields();
+      setTab('map');
+    },
+    onError: (err) => message.error(err.message || 'Không tạo được khu chuồng.'),
+  });
+
+  /** record: an assignment (table row) or { assignment, horse, caretaker, stall } from the map. */
+  const openModal = (record, presetHorseId, presetStall) => {
+    const normalized = record && (record.assignment
+      ? { _id: record.assignment, horse: record.horse, assignedCaretaker: record.caretaker, stall: record.stall }
+      : record);
+    setEditing(normalized || null);
     form.setFieldsValue({
-      horse: record ? record.horse?._id || record.horse : presetHorseId,
-      stableBlock: record?.stableBlock,
-      assignedCaretaker: record?.assignedCaretaker?._id || record?.assignedCaretaker,
+      horse: normalized ? normalized.horse?._id || normalized.horse : presetHorseId,
+      stall: presetStall?._id || normalized?.stall?._id || undefined,
+      stableBlock: normalized?.stableBlock,
+      assignedCaretaker: normalized?.assignedCaretaker?._id || normalized?.assignedCaretaker,
     });
     setOpen(true);
   };
+
+  // Stalls a horse can go into: in use, not under maintenance, empty (or the one it is in now).
+  const editingHorseId = editing?.horse?._id || editing?.horse;
+  const stallOptions = Object.values(
+    stalls
+      .filter((s) => s.status !== 'maintenance' && (!s.occupied || (editingHorseId && s.occupant?.horse?._id === editingHorseId)))
+      .reduce((groups, s) => {
+        (groups[s.zone] ||= { label: s.zoneName, options: [] }).options.push({
+          value: s._id,
+          label: `${s.code}${s.type !== 'standard' ? ` · ${STALL_TYPE_LABELS[s.type]}` : ''}`,
+        });
+        return groups;
+      }, {}),
+  );
 
   const columns = [
     {
@@ -99,10 +156,11 @@ export default function StableAssignmentPage() {
       title: 'Chuồng',
       dataIndex: 'stableBlock',
       key: 'stableBlock',
-      render: (v) => (
+      render: (v, r) => (
         <Space>
           <HomeOutlined className="text-gray-400" />
           {v}
+          {hasMap && !r.stall && <Tag>chưa có trên sơ đồ</Tag>}
         </Space>
       ),
     },
@@ -146,6 +204,41 @@ export default function StableAssignmentPage() {
     },
   ];
 
+  const busyId = (maintenanceMutation.isPending && maintenanceMutation.variables?.stall?._id) || (removeMutation.isPending && removeMutation.variables) || null;
+  const mapTab = stallsError ? (
+    <Alert
+      type="error"
+      showIcon
+      title="Chưa tải được sơ đồ chuồng"
+      action={<Button size="small" onClick={() => refetchStalls()}>Thử lại</Button>}
+    />
+  ) : hasMap ? (
+    <StableMapBoard
+      stalls={stalls}
+      unplaced={unplaced}
+      canManage
+      busyId={busyId}
+      onAssign={(stall) => openModal(null, undefined, stall)}
+      onEdit={(record) => openModal(record)}
+      onRemove={(id) => removeMutation.mutate(id)}
+      onMaintenance={(stall, on) => maintenanceMutation.mutate({ stall, on })}
+    />
+  ) : (
+    <Card loading={stallsLoading && !stallsData} className="!rounded-xl !border-[#E2D9C8]">
+      <Empty
+        description={
+          <div className="text-sm text-gray-600">
+            Chưa có sơ đồ chuồng. Tạo khu đầu tiên (ví dụ Khu A với 8 chuồng) để thấy cả khu dạng 3D và xếp ngựa bằng cách chọn chuồng trống.
+          </div>
+        }
+      >
+        <Button type="primary" icon={<AppstoreAddOutlined />} onClick={() => setZoneOpen(true)}>
+          Tạo khu chuồng
+        </Button>
+      </Empty>
+    </Card>
+  );
+
   return (
     <div>
       <PageHeroBanner
@@ -154,15 +247,20 @@ export default function StableAssignmentPage() {
         title="Phân công chuồng trại & nhân viên chăm sóc"
         subtitle="Mỗi ngựa cần một ô chuồng và một nhân viên chăm sóc phụ trách để hệ thống tự tạo việc cho ăn hằng ngày và kiểm tra điều kiện trước buổi tập."
         actionButton={
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => openModal(null)}
-            disabled={unstabled.length === 0}
-            className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
-          >
-            Xếp chuồng mới
-          </Button>
+          <Space wrap>
+            <Button icon={<AppstoreAddOutlined />} onClick={() => setZoneOpen(true)} className="!h-9 !rounded-lg font-semibold cursor-pointer">
+              Thêm khu chuồng
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => openModal(null)}
+              disabled={unstabled.length === 0}
+              className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
+            >
+              Xếp chuồng mới
+            </Button>
+          </Space>
         }
       />
 
@@ -232,23 +330,36 @@ export default function StableAssignmentPage() {
         />
       )}
 
-      <Table
-        rowKey="_id"
-        columns={columns}
-        dataSource={assignments}
-        loading={isLoading && !assignmentsData}
-        scroll={{ x: 'max-content' }}
-        locale={{
-          emptyText: (
-            <Empty description="Chưa xếp chuồng cho ngựa nào.">
-              {unstabled.length > 0 && (
-                <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openModal(null)}>
-                  Xếp chuồng mới
-                </Button>
-              )}
-            </Empty>
-          ),
-        }}
+      <Tabs
+        activeKey={tab}
+        onChange={setTab}
+        items={[
+          { key: 'map', label: 'Sơ đồ chuồng', children: mapTab },
+          {
+            key: 'list',
+            label: 'Danh sách',
+            children: (
+              <Table
+                rowKey="_id"
+                columns={columns}
+                dataSource={assignments}
+                loading={isLoading && !assignmentsData}
+                scroll={{ x: 'max-content' }}
+                locale={{
+                  emptyText: (
+                    <Empty description="Chưa xếp chuồng cho ngựa nào.">
+                      {unstabled.length > 0 && (
+                        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openModal(null)}>
+                          Xếp chuồng mới
+                        </Button>
+                      )}
+                    </Empty>
+                  ),
+                }}
+              />
+            ),
+          },
+        ]}
       />
 
       <Modal
@@ -262,7 +373,11 @@ export default function StableAssignmentPage() {
         confirmLoading={saveMutation.isPending}
         destroyOnHidden
       >
-        <Form form={form} layout="vertical" onFinish={(values) => saveMutation.mutate(values)}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={(values) => saveMutation.mutate(hasMap ? { horse: values.horse, stall: values.stall, assignedCaretaker: values.assignedCaretaker } : values)}
+        >
           <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>
             <Select
               disabled={Boolean(editing)}
@@ -277,14 +392,25 @@ export default function StableAssignmentPage() {
               }))}
             />
           </Form.Item>
-          <Form.Item
-            name="stableBlock"
-            label="Chuồng"
-            rules={[{ required: true, message: 'Nhập khu và số ô chuồng' }]}
-            extra="Ghi theo dạng “Block A - Stall 12” để sơ đồ chuồng trại nhóm đúng khu."
-          >
-            <Input placeholder="Block A - Stall 12" />
-          </Form.Item>
+          {hasMap ? (
+            <Form.Item
+              name="stall"
+              label="Chuồng"
+              rules={[{ required: true, message: 'Chọn một chuồng trống' }]}
+              extra="Chỉ hiện chuồng trống, không bảo trì. Thêm chuồng ở nút “Thêm khu chuồng”."
+            >
+              <Select showSearch optionFilterProp="label" placeholder="Chọn chuồng" options={stallOptions} notFoundContent="Hết chuồng trống" />
+            </Form.Item>
+          ) : (
+            <Form.Item
+              name="stableBlock"
+              label="Chuồng"
+              rules={[{ required: true, message: 'Nhập khu và số ô chuồng' }]}
+              extra="Chưa có sơ đồ chuồng: ghi tay theo dạng “A-12”, hoặc tạo khu ở nút “Thêm khu chuồng” để chọn từ sơ đồ."
+            >
+              <Input placeholder="A-12" />
+            </Form.Item>
+          )}
           <Form.Item
             name="assignedCaretaker"
             label="Nhân viên chăm sóc"
@@ -295,6 +421,41 @@ export default function StableAssignmentPage() {
               placeholder="Chưa gán"
               options={grooms.map((u) => ({ value: u._id, label: u.name }))}
             />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Thêm khu chuồng"
+        open={zoneOpen}
+        onCancel={() => setZoneOpen(false)}
+        onOk={() => zoneForm.submit()}
+        confirmLoading={zoneMutation.isPending}
+        okText="Tạo chuồng"
+        destroyOnHidden
+      >
+        <Form
+          form={zoneForm}
+          layout="vertical"
+          initialValues={{ count: 8, type: 'standard' }}
+          onFinish={(values) => zoneMutation.mutate({ ...values, zone: values.zone.trim().toUpperCase() })}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+            <Form.Item name="zone" label="Mã khu" rules={[{ required: true, pattern: /^[A-Za-z0-9]{1,4}$/, message: '1–4 chữ hoặc số, ví dụ A, B, CL' }]} extra="Mã chuồng sẽ là <mã khu>-01, -02…">
+              <Input placeholder="A" maxLength={4} />
+            </Form.Item>
+            <Form.Item name="count" label="Số chuồng" rules={[{ required: true }]}>
+              <InputNumber min={1} max={40} className="!w-full" />
+            </Form.Item>
+          </div>
+          <Form.Item name="zoneName" label="Tên khu" rules={[{ required: true, message: 'Ví dụ: Khu A' }]}>
+            <Input placeholder="Khu A" maxLength={60} />
+          </Form.Item>
+          <Form.Item name="zonePurpose" label="Dùng cho">
+            <Input placeholder="Ngựa đua chủ lực" maxLength={120} />
+          </Form.Item>
+          <Form.Item name="type" label="Loại chuồng">
+            <Select options={Object.entries(STALL_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
           </Form.Item>
         </Form>
       </Modal>
