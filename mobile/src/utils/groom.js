@@ -550,14 +550,81 @@ export function rationLine(item = {}) {
   return { label: linked ? item.type : feed.label, icon: feed.icon, amount, linked };
 }
 
-/** "Block A - Stall 12" -> { block: "Block A", stall: "Stall 12" } */
+// A stall on the Manager's stable map has a code: its zone (1-4 letters or digits) and its number,
+// "A-03", "CL-01". A horse placed on the map carries that code as its stableBlock.
+const STALL_CODE = /^([A-Z0-9]{1,4})-(\d{2,})$/;
+
+/**
+ * Where a stableBlock puts the horse. A stall code keeps the whole code as the stall and its zone as
+ * the block: "A-03" -> { block: "Khu A", stall: "A-03" }. Free text from before the map is split at
+ * its dash: "Block A - Stall 12" -> { block: "Block A", stall: "Stall 12" }.
+ */
 export function parseStableBlock(stableBlock = '') {
-  const match = stableBlock.match(/^(.*?)\s*-\s*(.+)$/);
-  if (!match) return { block: stableBlock || 'Khác', stall: stableBlock || '—' };
+  const text = String(stableBlock || '').trim();
+  const code = text.match(STALL_CODE);
+  if (code) return { block: `Khu ${code[1]}`, stall: text, zone: code[1] };
+  const match = text.match(/^(.*?)\s*-\s*(.+)$/);
+  if (!match) return { block: text || 'Khác', stall: text || '—' };
   return { block: match[1], stall: match[2] };
 }
 
+/** "Block A", "Khu A" and the zone of "A-03" are one area: compared without the word in front. */
+export function areaKey(block = '') {
+  return normalize(block).replace(/^(block|khu|day)\s+/, '');
+}
+
 export const refId = (ref) => (ref && typeof ref === 'object' ? ref._id : ref);
+
+// ---------- The stable map (GET /stable/stalls) ----------
+
+export const STALL_TYPES = {
+  standard: { label: 'Chuồng thường' },
+  isolation: { label: 'Chuồng cách ly', color: '#ea580c', bg: '#ffedd5' },
+  recovery: { label: 'Chuồng hồi phục', color: '#2563eb', bg: '#dbeafe' },
+};
+
+const STALL_STATES = {
+  maintenance: { key: 'maintenance', label: 'Bảo trì', color: '#b45309', bg: '#fef3c7' },
+  empty: { key: 'empty', label: 'Trống', color: '#9ca3af', bg: '#f3f4f6' },
+  taken: { key: 'taken', label: 'Có ngựa', color: '#6b7280', bg: '#f3f4f6' },
+};
+
+/**
+ * How a stall on the map stands: under maintenance, empty, or the health of the horse in it — the
+ * same colours as the horse's health everywhere else in the app. A horse the server hides from this
+ * user (`occupant: { hidden: true }`) is only "taken".
+ */
+export function stallState(stall) {
+  if (!stall || stall.status === 'maintenance') return stall ? STALL_STATES.maintenance : STALL_STATES.empty;
+  if (!stall.occupied || !stall.occupant) return STALL_STATES.empty;
+  const health = stall.occupant.horse?.healthStatus;
+  if (stall.occupant.hidden || !stall.occupant.horse) return STALL_STATES.taken;
+  return { key: health || 'eligible', ...(HEALTH_STATUS[health] || HEALTH_STATUS.eligible) };
+}
+
+/** The zones in the map's own order (the server sorts by zone, then position), each with its stalls. */
+export function groupZones(stalls = []) {
+  const zones = new Map();
+  for (const stall of stalls) {
+    if (!zones.has(stall.zone)) {
+      zones.set(stall.zone, { key: stall.zone, name: stall.zoneName || `Khu ${stall.zone}`, purpose: stall.zonePurpose || '', stalls: [] });
+    }
+    zones.get(stall.zone).stalls.push(stall);
+  }
+  return [...zones.values()];
+}
+
+/**
+ * The groom's own stalls: those whose horse they are the caretaker of, and their horses still on a
+ * free-text stall from before the map (`unplaced`), which the Manager has yet to put on it.
+ */
+export function myStallsOf(map, userId) {
+  const mine = (caretaker) => !!userId && String(refId(caretaker) || '') === String(userId);
+  return {
+    stalls: (map?.stalls || []).filter((s) => !s.occupant?.hidden && mine(s.occupant?.caretaker)),
+    unplaced: (map?.unplaced || []).filter((u) => mine(u.caretaker)),
+  };
+}
 
 /** Accent-insensitive contains, so searching "co kho" finds "Cỏ khô". */
 export function normalize(text = '') {

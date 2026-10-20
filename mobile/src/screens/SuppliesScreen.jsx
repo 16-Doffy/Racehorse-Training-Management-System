@@ -39,12 +39,14 @@ import { useInventory, useRefreshAll, useStableOverview } from '../hooks/useGroo
 import {
   INVENTORY_CATEGORY,
   approvedOf,
+  areaKey,
   formatDate,
   formatDateTime,
   formatStock,
   isOpenRequest,
   levelOf,
   matchesSearch,
+  parseStableBlock,
   refId,
   restockState,
 } from '../utils/groom';
@@ -55,10 +57,14 @@ import { colors, font, radius, spacing } from '../theme';
 
 const CATEGORY_ORDER = ['feed', 'medicine', 'equipment'];
 
-/** Items with no stableBlock are shared stock; otherwise they belong to a block like "Block A". */
+/**
+ * Items with no stableBlock are shared stock; otherwise they belong to a block like "Block A", which
+ * is the same area as "Khu A" and the zone of stall "A-03".
+ */
 function isInMyArea(item, myBlocks) {
   if (!item.stableBlock) return true;
-  return myBlocks.some((b) => item.stableBlock.toLowerCase().startsWith(b.toLowerCase()));
+  const area = areaKey(parseStableBlock(item.stableBlock).block);
+  return myBlocks.some((b) => areaKey(b) === area);
 }
 
 /**
