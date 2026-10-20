@@ -1,14 +1,25 @@
 name: Demo flows (live)
-# Demo rounds on the REAL club database (server/scripts/demoFlows.js). Each round: two new
-# "Test Demo" horses through every role — one fed, scheduled, trained to "Đạt mục tiêu" and
-# evaluated; one whose breakfast was missed, refused, fed late, stopped early ("Chưa đạt") and sent to
-# the vet. A round starts every 45 minutes from 05:00 until 08:00 (5 rounds); each one waits the
-# club's 90-minute digestion time, so the last finishes before 10:00. Runs once on the demo morning
-# and from the "Run workflow" button. Remove the schedule after the demo.
+# Demo rounds on the REAL club database (server/scripts/demoFlows.js). Each round: new "Test Demo"
+# horses through every role, each a different case — one fed, trained to "Đạt mục tiêu", evaluated,
+# then trial-run and confirmed for the demo race; one whose breakfast was missed, refused, fed late,
+# stopped early ("Chưa đạt") and sent to the vet; in round 1 one that goes lame, is found injured and is
+# withdrawn from the race. A round starts at once and another 45 minutes later (until 06:00). The next
+# day is race day: the trainer records the race's results. A second trigger each morning covers a late
+# or dropped schedule (GitHub delayed the 16/10 run by two hours); it stops when the work is done.
+# Remove the schedule after the demo.
 on:
   schedule:
-    - cron: '0 22 15 10 *' # 05:00 Vietnam time on 16/10 (22:00 UTC on 15/10)
+    - cron: '0 22 20 10 *' # 05:00 Vietnam time on 21/10: the rounds
+    - cron: '30 23 20 10 *' # 06:30 on 21/10: backup, skipped once round 1 exists
+    - cron: '0 23 21 10 *' # 06:00 on 22/10: race results
+    - cron: '0 2 22 10 *' # 09:00 on 22/10: backup, skipped once results exist
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'flows: các lượt ngựa (buổi sáng) · results: nhập kết quả giải đua hôm nay'
+        type: choice
+        options: [flows, results]
+        default: flows
 concurrency:
   group: demo-flows
   cancel-in-progress: false
@@ -28,12 +39,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run the demo rounds on the live API
+      - name: Run the demo rounds (or race day) on the live API
         run: node server/scripts/demoFlows.js
         env:
           DEMO_ACCOUNTS: ${{ secrets.DEMO_ACCOUNTS }}
           DEMO_CONFIRM: write
           DEMO_ROUND_EVERY_MIN: 45
-          DEMO_LAST_START: '08:00'
-          # The cron fires every 15/10; only the 2026 demo morning writes. The button always runs.
-          DEMO_ONLY_DATE: ${{ github.event_name == 'schedule' && '2026-10-16' || '' }}
+          DEMO_LAST_START: '06:00'
+          # The crons fire every year on these dates; only 2026 writes. The button runs what it is told.
+          DEMO_ONLY_DATE: ${{ github.event_name == 'schedule' && '2026-10-21' || '' }}
+          DEMO_RESULT_DATE: ${{ github.event_name == 'schedule' && '2026-10-22' || '' }}
+          DEMO_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || '' }}
