@@ -65,9 +65,8 @@ export default function ManagerQueueCard() {
 
   return (
     <Card
-      className="shadow-xs border-[#E5DEC9] border-t-2 border-t-[#0F5A43] rounded-xl overflow-hidden"
+      className="light-surface-box shadow-xs border-[#E5DEC9] border-t-2 border-t-[#0F5A43] rounded-xl overflow-hidden"
       styles={{ body: { padding: 0 }, title: { whiteSpace: 'normal', overflow: 'visible' }, header: { height: 'auto' } }}
-      headStyle={{ whiteSpace: 'normal' }}
       title={
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -96,7 +95,7 @@ export default function ManagerQueueCard() {
             >
               <div className="flex items-center gap-3.5 min-w-0 pr-4">
                 <span
-                  className="w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 transition-transform group-hover:scale-105"
+                  className="w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0"
                   style={{ background: tone.bg, color: tone.color }}
                 >
                   {r.icon}

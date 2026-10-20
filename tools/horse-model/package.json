@@ -1,0 +1,15 @@
+{
+  "name": "horse-model-tools",
+  "private": true,
+  "type": "module",
+  "description": "Makes client/public/models/horse-bare.glb from horse.glb (see strip-tack.mjs). Not part of the app build.",
+  "scripts": {
+    "strip-tack": "node strip-tack.mjs ../../client/public/models/horse.glb ../../client/public/models/horse-bare.glb"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.0.0",
+    "@gltf-transform/extensions": "^4.0.0",
+    "@gltf-transform/functions": "^4.0.0",
+    "meshoptimizer": "0.22.0"
+  }
+}

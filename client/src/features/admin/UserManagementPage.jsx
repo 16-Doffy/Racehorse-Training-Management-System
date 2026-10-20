@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Modal, Form, Select, Input, Tag, Switch, Popconfirm, Space } from 'antd';
+import { Table, Button, Typography, Modal, Form, Select, Input, Tag, Switch, Popconfirm, Space, Alert } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,7 +19,7 @@ export default function UserManagementPage() {
   const currentUserId = useSelector((state) => state.auth.user?._id);
   const editingSelf = editTarget && String(editTarget._id) === String(currentUserId);
 
-  const { data, isLoading } = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['users'] });
 
   const allUsers = data?.data || [];
@@ -100,36 +100,46 @@ export default function UserManagementPage() {
     {
       title: '',
       key: 'actions',
-      render: (_, record) => (
-        <Space>
-          <Button
-            type="primary"
-            size="small"
-            icon={<CheckOutlined />}
-            loading={decideMutation.isPending}
-            onClick={() =>
-              decideMutation.mutate({
-                id: record._id,
-                approve: true,
-                role: roleOverrides[record._id] ?? record.role,
-              })
-            }
-          >
-            Duyệt
-          </Button>
-          <Popconfirm
-            title="Từ chối tài khoản này?"
-            description="Người dùng sẽ không đăng nhập được."
-            okText="Từ chối"
-            cancelText="Huỷ"
-            onConfirm={() => decideMutation.mutate({ id: record._id, approve: false })}
-          >
-            <Button danger size="small" icon={<CloseOutlined />}>
-              Từ chối
+      render: (_, record) => {
+        const isCurrentDeciding = decideMutation.isPending && decideMutation.variables?.id === record._id;
+        return (
+          <Space>
+            <Button
+              type="primary"
+              size="small"
+              icon={<CheckOutlined />}
+              loading={isCurrentDeciding && decideMutation.variables?.approve === true}
+              disabled={isCurrentDeciding}
+              onClick={() =>
+                decideMutation.mutate({
+                  id: record._id,
+                  approve: true,
+                  role: roleOverrides[record._id] ?? record.role,
+                })
+              }
+            >
+              Duyệt
             </Button>
-          </Popconfirm>
-        </Space>
-      ),
+            <Popconfirm
+              title="Từ chối tài khoản này?"
+              description="Người dùng sẽ không đăng nhập được."
+              okText="Từ chối"
+              cancelText="Huỷ"
+              onConfirm={() => decideMutation.mutate({ id: record._id, approve: false })}
+            >
+              <Button
+                danger
+                size="small"
+                icon={<CloseOutlined />}
+                loading={isCurrentDeciding && decideMutation.variables?.approve === false}
+                disabled={isCurrentDeciding}
+              >
+                Từ chối
+              </Button>
+            </Popconfirm>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -177,55 +187,63 @@ export default function UserManagementPage() {
   return (
     <div>
       <PageHeroBanner
-        eyebrow="TEAM 8 • BAN ĐIỀU HÀNH & NHÂN SỰ"
-        roleLabel="Club Manager"
-        title="Quản Lý Nhân Sự & Phân Quyền (RBAC)"
-        subtitle="Duyệt tài khoản đăng ký mới, tạo tài khoản trực tiếp và phân quyền vai trò cho từng thành viên câu lạc bộ."
-        stats={[
-          { label: 'Tổng nhân sự', value: `${totalCount} người` },
-          { label: 'Đang hoạt động', value: `${activeCount} người` },
-          { label: 'Chờ duyệt', value: `${pendingCount} tài khoản` },
-          { label: 'Vô hiệu hóa', value: `${lockedCount} tài khoản` },
-        ]}
+        eyebrow="Quản trị nhân sự"
+        roleLabel="Quản lý CLB"
+        title="Nhân sự & phân quyền"
+        subtitle="Duyệt tài khoản đăng ký mới, tạo tài khoản trực tiếp và phân quyền vai trò cho thành viên câu lạc bộ."
         actionButton={
           <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => setCreateOpen(true)}
-            className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer shadow-md"
+            className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
           >
             Tạo tài khoản mới
           </Button>
         }
       />
 
-      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
-      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Nhân Sự</div>
-          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{totalCount} <span className="text-xs font-normal text-slate-500">tài khoản</span></div>
+      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Tổng nhân sự</div>
+          <div className="text-xl sm:text-2xl font-bold text-[#0F5A43] tabular-nums mt-1">{totalCount} <span className="text-xs font-normal text-slate-500">tài khoản</span></div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đang Hoạt Động</div>
-          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{activeCount} <span className="text-xs font-normal text-slate-500">người</span></div>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Đang hoạt động</div>
+          <div className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums mt-1">{activeCount} <span className="text-xs font-normal text-slate-500">người</span></div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chờ Duyệt Đăng Ký</div>
-          <div className={`text-xl font-bold tabular-nums mt-0.5 ${pendingCount > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Chờ duyệt đăng ký</div>
+          <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${pendingCount > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
             {pendingCount} <span className="text-xs font-normal text-slate-500">tài khoản</span>
           </div>
         </div>
-        <div className="px-3 py-1.5">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đã Vô Hiệu Hóa</div>
-          <div className={`text-xl font-bold tabular-nums mt-0.5 ${lockedCount > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Đã khóa</div>
+          <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${lockedCount > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
             {lockedCount} <span className="text-xs font-normal text-slate-500">tài khoản</span>
           </div>
         </div>
       </div>
 
+      {isError && (
+        <Alert
+          type="error"
+          showIcon
+          className="mb-4"
+          title="Chưa tải được danh sách nhân sự"
+          description={error?.message || 'Không thể lấy dữ liệu nhân sự lúc này.'}
+          action={
+            <Button size="small" onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
+      )}
+
       {pendingUsers.length > 0 && (
-        <div className="mb-6 rounded-xl border border-amber-200/80 bg-amber-50/30 p-4 shadow-xs">
-          <div className="flex items-center justify-between mb-2">
+        <div className="light-surface-box mb-6 rounded-xl border border-amber-200/80 bg-amber-50/30 p-4 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-1 mb-2">
             <span className="font-semibold text-amber-900 flex items-center gap-2 text-sm">
               <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -240,7 +258,7 @@ export default function UserManagementPage() {
             rowKey="_id"
             columns={pendingColumns}
             dataSource={pendingUsers}
-            loading={isLoading}
+            loading={isLoading && !data}
             pagination={false}
             scroll={{ x: 'max-content' }}
             size="small"
@@ -253,7 +271,7 @@ export default function UserManagementPage() {
         title={() => <span className="font-semibold">Nhân sự câu lạc bộ ({decidedUsers.length})</span>}
         columns={columns}
         dataSource={decidedUsers}
-        loading={isLoading}
+        loading={isLoading && !data}
         scroll={{ x: 'max-content' }}
         locale={{ emptyText: 'Chưa có tài khoản nào.' }}
       />

@@ -138,7 +138,7 @@ export default function TrainingSessionPage() {
   // form fields it depends on.
   const [draft, setDraft] = useState({});
 
-  const { data: sessionsData, isLoading } = useQuery({
+  const { data: sessionsData, isLoading, isError, error, refetch } = useQuery({
     // Re-fetches whenever the filter changes, letting the server do the filtering rather than
     // hiding rows client-side — keeps this consistent with every other list page in the app.
     queryKey: ['training-sessions', typeFilter, planFilter, horseFilter],
@@ -176,9 +176,9 @@ export default function TrainingSessionPage() {
   const horseOptions = (horsesData?.data || []).map((h) => ({
     value: h._id,
     label: lockedHorseIds.has(h._id)
-      ? `🔒 ${h.name} (đang bị khóa huấn luyện)`
+      ? `${h.name} (đang bị khóa huấn luyện)`
       : h.trainingClearance?.restricted
-        ? `🩹 ${h.name} (hồi phục — ${h.trainingClearance.label})`
+        ? `${h.name} (hồi phục — ${h.trainingClearance.label})`
         : h.name,
     disabled: lockedHorseIds.has(h._id),
   }));
@@ -689,10 +689,10 @@ export default function TrainingSessionPage() {
     <div>
       {preCheckModal}
       <PageHeroBanner
-        eyebrow="TEAM 8 • TÁC CHIẾN BUỔI TẬP & ĐÁNH GIÁ"
-        roleLabel="Head Trainer"
-        title="Buổi Tập & Đánh Giá Thể Lực Thời Gian Thực"
-        subtitle="Xếp lịch, kiểm tra điều kiện an toàn y tế, giám sát trực tiếp buổi tập và ghi nhận kết quả hiệu suất."
+        eyebrow="Lịch tập & đường đua"
+        roleLabel="HLV trưởng"
+        title="Buổi tập & đánh giá thể lực"
+        subtitle="Xếp lịch, kiểm tra sẵn sàng y tế và dinh dưỡng, giám sát trực tiếp buổi tập và ghi nhận đánh giá."
         stats={[
           { label: 'Tổng số buổi', value: `${allSessions.length} buổi` },
           { label: 'Hôm nay', value: `${allSessions.filter((s) => dayjs(s.scheduledAt).isSame(dayjs(), 'day')).length} buổi` },
@@ -703,7 +703,7 @@ export default function TrainingSessionPage() {
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => setCreateOpen(true)}
-            className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer shadow-md shrink-0"
+            className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer shrink-0"
           >
             Tạo buổi tập mới
           </Button>
@@ -711,12 +711,27 @@ export default function TrainingSessionPage() {
       />
 
       <Alert
-        className="!mb-4 border-emerald-200 bg-emerald-50/40 rounded-lg text-xs"
+        className="light-surface-box !mb-4 border-emerald-200 bg-emerald-50/40 rounded-lg text-xs"
         type="info"
         showIcon
         title="Quy trình: Xếp lịch, kiểm tra sẵn sàng, bắt đầu, kết thúc và đánh giá"
         description={`${precheckRuleText(policy)} Buổi lỡ giờ có thể xếp lại lịch. Khi buổi đang chạy, kết thúc hoặc dừng giữa chừng để bảo toàn số liệu.${policy.afternoonLightOnly ? ' Buổi chiều chỉ tập nhẹ.' : ''}`}
       />
+
+      {isError && (
+        <Alert
+          type="error"
+          showIcon
+          className="!mb-4"
+          title="Chưa tải được danh sách buổi tập"
+          description={error?.message || 'Không thể lấy dữ liệu buổi tập lúc này.'}
+          action={
+            <Button size="small" onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
+      )}
 
       {filteredPlan && (
         <Tag
@@ -812,7 +827,7 @@ export default function TrainingSessionPage() {
         rowKey="_id"
         columns={columns}
         dataSource={sessionsData?.data}
-        loading={isLoading}
+        loading={isLoading && !sessionsData}
         scroll={{ x: 'max-content' }}
         expandable={{
           expandedRowRender: (r) => (

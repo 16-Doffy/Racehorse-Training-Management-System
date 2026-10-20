@@ -17,11 +17,11 @@ import MissedMealsCard from './MissedMealsCard';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 
 const ROLE_WELCOME = {
-  head_trainer: 'Theo dõi tiến độ huấn luyện và thể lực toàn bộ chiến mã trong CLB.',
+  head_trainer: 'Theo dõi tiến độ huấn luyện, kiểm tra sẵn sàng và thể lực ngựa phụ trách.',
   veterinarian: 'Theo dõi sơ đồ sức khỏe và xử lý các trường hợp cần can thiệp y tế.',
   groom: 'Danh sách công việc chăm sóc hàng ngày của bạn nằm ở mục "Công việc Hàng ngày".',
   owner: 'Theo dõi tình trạng và thành tích của những chú ngựa bạn sở hữu.',
-  manager: 'Quản lý tổng thể nhân sự, danh mục và vận hành câu lạc bộ.',
+  manager: 'Điều phối nhân sự, danh mục ngựa, chuồng trại, kho vật tư và sổ thu chi.',
 };
 
 // Shared fallback dashboard for any role without a dedicated one (see RoleDashboard.jsx) —
@@ -60,16 +60,17 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Royal Equestrian Hero Banner: Team 8 WDP301 */}
       <PageHeroBanner
-        eyebrow="TEAM 8 • WDP301 EQUESTRIAN TMS"
+        eyebrow="Tổng quan vận hành"
         roleLabel={ROLE_LABELS[user?.role]}
         title={`Xin chào, ${user?.name}`}
         subtitle={ROLE_WELCOME[user?.role]}
         statusBadge={
-          <div className="px-3.5 py-2 rounded-xl bg-black/50 backdrop-blur-md border border-white/10 text-xs">
-            <div className="text-amber-200/70 text-[10px] uppercase tracking-wider font-semibold">Tác chiến CLB</div>
-            <div className="text-amber-300 font-bold font-mono mt-0.5">MÙA GIẢI DERBY 2026</div>
+          <div className="px-3.5 py-2 rounded-lg bg-white/5 border border-white/10 text-xs">
+            <div className="text-[#A7C4B5] text-[11px] font-medium">Sẵn sàng tập luyện</div>
+            <div className="text-[#FAF8F5] font-semibold tabular-nums mt-0.5">
+              {eligible}/{horses.length} ngựa đủ điều kiện
+            </div>
           </div>
         }
         actionButton={
@@ -77,7 +78,7 @@ export default function DashboardPage() {
             <Button
               type="primary"
               onClick={() => navigate('/training/sessions?new=1')}
-              className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold shadow-md flex items-center gap-2 cursor-pointer"
+              className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold flex items-center gap-2 cursor-pointer"
             >
               + Lập buổi tập mới
             </Button>
@@ -187,17 +188,19 @@ export default function DashboardPage() {
 
         {/* Right Column: Health, Alerts & Operational Guardrails (35% on desktop) */}
         <div className="lg:col-span-5 xl:col-span-4 space-y-5">
-          <div className="flex items-center justify-between pb-1 px-1">
-            <span className="guardrail-title text-[11px] font-bold tracking-wider uppercase text-[#0F5A43] flex items-center gap-1.5">
+          <div className="light-surface-box flex items-center justify-between pb-1 px-1">
+            <span className="guardrail-title text-xs font-semibold text-[#0F5A43] flex items-center gap-1.5">
               <span className="guardrail-dot w-1.5 h-1.5 rounded-full bg-[#0F5A43]" />
-              Giám Sát An Toàn &amp; Y Tế
+              An toàn tập luyện &amp; y tế
             </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#EAE1D2] text-slate-700 font-semibold">TÁC CHIẾN 24/7</span>
+            <span className="text-xs px-2 py-0.5 rounded bg-[#EAE1D2] text-slate-700 font-medium tabular-nums">
+              {restrictedHorses.length > 0 ? `${restrictedHorses.length} ngựa hạn chế` : 'Không có khóa tập'}
+            </span>
           </div>
 
           {/* Medical Clearance Alert: compact operational card */}
           {restrictedHorses.length > 0 && (
-            <div className="light-surface-box rounded-xl border border-amber-300/90 bg-gradient-to-br from-[#FFF9F0] to-[#FDF4E3] p-4 shadow-xs border-t-3 border-t-amber-600">
+            <div className="light-surface-box rounded-xl border border-amber-300/90 bg-[#FAF7F0] p-4 shadow-xs border-t-3 border-t-amber-600">
               <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-200/80">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />

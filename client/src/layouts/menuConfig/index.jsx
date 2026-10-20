@@ -18,6 +18,8 @@ import {
   CarryOutOutlined,
   WarningOutlined,
   BarChartOutlined,
+  AlertOutlined,
+  ToolOutlined,
 } from '@ant-design/icons';
 import { ROLES } from '../../constants/roles';
 
@@ -42,14 +44,16 @@ const MENUS = {
     { key: 'stable-tasks', icon: <HomeOutlined />, label: 'Chuồng trại & Chăm sóc', path: '/stable/tasks' },
     { key: 'races', icon: <TrophyOutlined />, label: 'Đăng ký Giải đua', path: '/races' },
   ],
+  // The vet's day: the queue first, then the horses, and one place each for treatments (the
+  // prescription and the training level live in the same form), injuries, routine care and the
+  // examination tools the vet keeps. Medicines are the groom's stock: the vet only prescribes them.
   [ROLES.VETERINARIAN]: [
-    { key: 'dashboard', icon: <DashboardOutlined />, label: 'Bảng Điều Khiển Thú Y', path: '/veterinarian' },
-    { key: 'horses', icon: <ProfileOutlined />, label: 'Sức Khỏe Chiến Mã', path: '/veterinarian/horses' },
-    { key: 'injuries', icon: <MedicineBoxOutlined />, label: 'Quản Lý Chấn Thương', path: '/veterinarian/injuries' },
-    { key: 'treatments', icon: <MedicineBoxOutlined />, label: 'Phác Đồ & Khóa Tập', path: '/veterinarian/treatments' },
-    { key: 'prescriptions', icon: <MedicineBoxOutlined />, label: 'Kê Đơn Thuốc', path: '/veterinarian/prescriptions' },
-    { key: 'inventory', icon: <ShoppingOutlined />, label: 'Vật Tư & Đề Xuất', path: '/veterinarian/inventory' },
-    { key: 'schedules', icon: <ScheduleOutlined />, label: 'Lịch Y Tế & Móng', path: '/veterinarian/schedules' },
+    { key: 'dashboard', icon: <CarryOutOutlined />, label: 'Việc hôm nay', path: '/veterinarian' },
+    { key: 'horses', icon: <ProfileOutlined />, label: 'Ngựa & hồ sơ', path: '/veterinarian/horses' },
+    { key: 'treatments', icon: <MedicineBoxOutlined />, label: 'Điều trị & đơn thuốc', path: '/veterinarian/treatments' },
+    { key: 'injuries', icon: <AlertOutlined />, label: 'Chấn thương', path: '/veterinarian/injuries' },
+    { key: 'schedules', icon: <CalendarOutlined />, label: 'Lịch chăm sóc', path: '/veterinarian/schedules' },
+    { key: 'inventory', icon: <ToolOutlined />, label: 'Dụng cụ khám', path: '/veterinarian/inventory' },
   ],
   // Groom / Stable Hand works from the Expo mobile app (/mobile), so the web menu only carries
   // the notice that points there.

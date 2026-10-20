@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Tag, Card, Select, Empty, Dropdown, Modal, Progress, Space } from 'antd';
+import { Table, Button, Typography, Tag, Card, Select, Empty, Dropdown, Modal, Progress, Space, Alert } from 'antd';
 import { PlusOutlined, CalendarOutlined, ScheduleOutlined, DownOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,7 +42,7 @@ function whereNow(plan) {
   return `Tuần ${p.week}/${p.totalWeeks} — ${PHASE_LABELS[plan.phase]}${phase ? ` (tuần ${p.phaseWeek}/${phase.weeks})` : ''}`;
 }
 
-function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, onOpenSessions }) {
+function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, updatingStatus, onOpenSessions }) {
   const p = plan.progress || {};
   const ps = p.phaseSessions || { planned: 0, completed: 0, met: 0 };
   return (
@@ -79,6 +79,7 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, onOpen
           <Select
             size="small"
             value={plan.status}
+            disabled={updatingStatus}
             style={{ width: 150 }}
             options={STATUS_CHOICES[plan.status].map((s) => ({ value: s, label: PLAN_STATUS_LABELS[s] }))}
             onChange={(status) => onStatus(plan, status)}
@@ -89,21 +90,37 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, onOpen
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Text strong>{whereNow(plan)}</Text>
-          <Space size={4} wrap>
+        </div>
+
+        <div className="light-surface-box grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] rounded-lg border border-[#E4DFD3] bg-[#FAF7F0] text-xs overflow-hidden">
+          <div className="px-3 py-2">
+            <div className="text-slate-500 font-medium mb-1">Cường độ</div>
             <Tag color={INTENSITY_COLORS[plan.intensity]} className="!m-0">
-              Cường độ {INTENSITY_LABELS[plan.intensity]}
+              {INTENSITY_LABELS[plan.intensity]}
             </Tag>
-            <Tag className="!m-0">{plan.weeklyVolumeKm} km/tuần</Tag>
-            <Tag className="!m-0">Cự ly thi đấu {plan.distanceTarget}m</Tag>
-            <Tag className="!m-0">Sáng {plan.sessionTime || '07:30'} · Chiều {plan.afternoonTime || '16:00'} (nếu có)</Tag>
-            <Tag className="!m-0">{SURFACE_LABELS[plan.surface]}</Tag>
-          </Space>
+          </div>
+          <div className="px-3 py-2">
+            <div className="text-slate-500 font-medium">Khối lượng tuần</div>
+            <div className="font-semibold text-gray-900 tabular-nums mt-1">{plan.weeklyVolumeKm} km/tuần</div>
+          </div>
+          <div className="px-3 py-2">
+            <div className="text-slate-500 font-medium">Cự ly &amp; mặt sân</div>
+            <div className="font-semibold text-gray-900 tabular-nums mt-1">
+              {plan.distanceTarget}m · {SURFACE_LABELS[plan.surface]}
+            </div>
+          </div>
+          <div className="px-3 py-2">
+            <div className="text-slate-500 font-medium">Khung giờ tập</div>
+            <div className="font-medium text-gray-800 tabular-nums mt-1">
+              Sáng {plan.sessionTime || '07:30'} · Chiều {plan.afternoonTime || '16:00'}
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <Text type="secondary" className="!text-xs uppercase tracking-wide">
-              Giai đoạn này
+            <Text type="secondary" className="!text-xs font-medium">
+              Tiến độ giai đoạn này
             </Text>
             <div className="mt-1 flex items-center gap-2">
               <Progress
@@ -122,8 +139,8 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, onOpen
             </Text>
           </div>
           <div>
-            <Text type="secondary" className="!text-xs uppercase tracking-wide">
-              Sắp tới
+            <Text type="secondary" className="!text-xs font-medium">
+              Buổi sắp tới
             </Text>
             {p.upcoming?.length ? (
               <div className="mt-1 flex flex-col gap-1">
@@ -175,7 +192,7 @@ export default function TrainingPlanPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const { data: plansData, isLoading } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
+  const { data: plansData, isLoading, isError, error, refetch } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const { data: racesData } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
   const lockedHorseIds = useLockedHorseIds();
@@ -265,7 +282,7 @@ export default function TrainingPlanPage() {
       key: 'dates',
       render: (_, r) => `${dayjs(r.startDate).format('DD/MM/YYYY')} – ${r.endDate ? dayjs(r.endDate).format('DD/MM/YYYY') : '…'}`,
     },
-    { title: 'Buổi đã tập', key: 'done', render: (_, r) => r.progress?.totalCompleted ?? 0 },
+    { title: 'Buổi đã tập', key: 'done', align: 'right', render: (_, r) => <span className="tabular-nums font-medium">{r.progress?.totalCompleted ?? 0}</span> },
     {
       title: 'Trạng thái',
       key: 'status',
@@ -292,55 +309,67 @@ export default function TrainingPlanPage() {
   return (
     <div>
       <PageHeroBanner
-        eyebrow="TEAM 8 • KẾ HOẠCH & GIÁO ÁN HUẤN LUYỆN"
-        roleLabel="Head Trainer"
-        title="Kế Hoạch Huấn Luyện & Chu Kỳ Phong Độ"
-        subtitle="Mỗi ngựa theo một chu kỳ hướng tới giải: Nền tảng → Sức mạnh → Tốc độ → Điểm rơi trước giải, rồi hồi phục. Xếp lịch buổi tập và kiểm soát tải trọng tuần."
-        stats={[
-          { label: 'Đang huấn luyện', value: `${totalActive} con` },
-          { label: 'Khóa y tế', value: `${lockedCount} con` },
-          { label: 'Mục tiêu giải đua', value: `${targetRaceCount} kế hoạch` },
-          { label: 'Tải trung bình', value: `${avgKm} km/tuần` },
-        ]}
+        eyebrow="Huấn luyện & chu kỳ"
+        roleLabel="HLV trưởng"
+        title="Kế hoạch huấn luyện"
+        subtitle="Mỗi ngựa theo một chu kỳ hướng tới giải: Nền tảng → Sức mạnh → Tốc độ → Điểm rơi trước giải, rồi hồi phục. Sinh lịch tuần và kiểm soát tải trọng."
         actionButton={
           <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => setWizardOpen(true)}
-            className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer shadow-md"
+            className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
           >
             Lập kế hoạch mới
           </Button>
         }
       />
 
-      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
-      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đang Huấn Luyện</div>
-          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{totalActive} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
+      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Đang huấn luyện</div>
+          <div className="text-xl sm:text-2xl font-bold text-[#0F5A43] tabular-nums mt-1">{totalActive} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Khóa Y Tế</div>
-          <div className={`text-xl font-bold tabular-nums mt-0.5 ${lockedCount > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Khóa y tế</div>
+          <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${lockedCount > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
             {lockedCount} <span className="text-xs font-normal text-slate-500">ngựa</span>
           </div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Mục Tiêu Giải Đua</div>
-          <div className="text-xl font-bold text-amber-700 tabular-nums mt-0.5">{targetRaceCount} <span className="text-xs font-normal text-slate-500">kế hoạch</span></div>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Mục tiêu giải đua</div>
+          <div className="text-xl sm:text-2xl font-bold text-amber-700 tabular-nums mt-1">{targetRaceCount} <span className="text-xs font-normal text-slate-500">kế hoạch</span></div>
         </div>
-        <div className="px-3 py-1.5">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tải Trọng Trung Bình</div>
-          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{avgKm} <span className="text-xs font-normal text-slate-500">km/tuần</span></div>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Tải trọng trung bình</div>
+          <div className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums mt-1">{avgKm} <span className="text-xs font-normal text-slate-500">km/tuần</span></div>
         </div>
       </div>
 
-      {isLoading ? (
+      {isError && (
+        <Alert
+          type="error"
+          showIcon
+          className="mb-4"
+          title="Chưa tải được danh sách kế hoạch huấn luyện"
+          description={error?.message || 'Không thể lấy dữ liệu kế hoạch lúc này.'}
+          action={
+            <Button size="small" onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
+      )}
+
+      {isLoading && !plansData ? (
         <Card loading />
       ) : active.length === 0 ? (
         <Card>
-          <Empty description='Chưa có ngựa nào đang theo kế hoạch. Bấm "Lập kế hoạch mới" để bắt đầu.' />
+          <Empty description='Chưa có ngựa nào đang theo kế hoạch. Bấm "Lập kế hoạch mới" để bắt đầu.'>
+            <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
+              Lập kế hoạch mới
+            </Button>
+          </Empty>
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -350,6 +379,7 @@ export default function TrainingPlanPage() {
               plan={plan}
               locked={lockedHorseIds.has(plan.horse?._id)}
               generating={generateMutation.isPending && generateMutation.variables?.plan._id === plan._id}
+              updatingStatus={statusMutation.isPending && statusMutation.variables?.id === plan._id}
               onGenerate={(p, which) => generateMutation.mutate({ plan: p, which })}
               onStatus={confirmStatus}
               onOpenSessions={(p) => navigate(`/training/sessions?plan=${p._id}`)}

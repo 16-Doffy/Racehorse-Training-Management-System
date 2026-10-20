@@ -5,6 +5,7 @@ const { uploadIncidentImages } = require('../../middlewares/uploadMiddleware');
 const { ROLES } = require('../../constants/roles');
 const taskCtrl = require('./dailyTask.controller');
 const assignmentCtrl = require('./stableAssignment.controller');
+const stallCtrl = require('./stall.controller');
 
 router.use(protect);
 
@@ -31,9 +32,19 @@ router.post(
 router.get('/incidents', taskCtrl.listIncidents);
 router.patch('/incidents/:id', authorize(ROLES.VETERINARIAN), taskCtrl.handleIncident);
 
+// The stall catalogue and stable map: everyone sees the layout, the Manager keeps it.
+router.get('/stalls', stallCtrl.listStalls);
+router.get('/stalls/by-horse/:horseId', stallCtrl.stallForHorse);
+router.post('/stalls', authorize(ROLES.MANAGER), stallCtrl.createStall);
+router.post('/stalls/generate', authorize(ROLES.MANAGER), stallCtrl.generateZone);
+router.patch('/stalls/:id', authorize(ROLES.MANAGER), stallCtrl.updateStall);
+router.delete('/stalls/:id', authorize(ROLES.MANAGER), stallCtrl.retireStall);
+
 // Stable/stall assignment map.
 router.get('/assignments', assignmentCtrl.listAssignments);
-router.post('/assignments', authorize(ROLES.MANAGER, ROLES.HEAD_TRAINER), assignmentCtrl.upsertAssignment);
+// Only the Manager places horses and names their groom: it allocates stalls and staff for the whole
+// stable, which no other role sees in full. Others ask the Manager.
+router.post('/assignments', authorize(ROLES.MANAGER), assignmentCtrl.upsertAssignment);
 router.delete('/assignments/:id', authorize(ROLES.MANAGER), assignmentCtrl.deleteAssignment);
 
 module.exports = router;

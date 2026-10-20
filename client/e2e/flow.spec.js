@@ -178,3 +178,30 @@ test('owner horse page keeps its header and pedigree readable on the dark canvas
   expect(await textIsDark(hero.getByText('Thành tích', { exact: true }))).toBe(true);
   expect(await textIsDark(page.getByText('Bản thân', { exact: true }))).toBe(true);
 });
+test('the Manager works the stable map: an empty stall offers a horse, a taken one the change, the 3D barn beside it', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await login(page, 'manager');
+  await page.goto('/admin/stables');
+  await expect(page.getByRole('tab', { name: 'Sơ đồ chuồng' })).toHaveAttribute('aria-selected', 'true');
+  const taken = page.getByRole('button', { name: /^A-01/ });
+  await expect(taken).toContainText('TEST Browser Horse');
+  await page.getByRole('button', { name: /^A-02/ }).click();
+  await expect(page.getByRole('button', { name: 'Xếp ngựa vào chuồng này' })).toBeVisible();
+  await taken.click();
+  await expect(page.getByRole('button', { name: 'Đổi chuồng / người chăm sóc' })).toBeVisible();
+  await expect(page.locator('canvas[aria-label="Khu chuồng ngựa 3D"]').first()).toBeVisible();
+  await page.goto(`/horses/${fixture.horseId}`);
+  await expect(page.getByText('Chuồng A-01')).toBeVisible();
+  await expect(page.getByText('Đổi chuồng trên sơ đồ')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+test('the trainer sees the horse stall and the stall column, without the Manager actions', async ({ page }) => {
+  await login(page, 'trainer');
+  await page.goto('/horses');
+  await expect(page.getByRole('columnheader', { name: 'Chuồng' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'A-01' })).toBeVisible();
+  await page.goto(`/horses/${fixture.horseId}`);
+  await expect(page.getByText('Chuồng A-01')).toBeVisible();
+  await expect(page.getByText('Đổi chuồng trên sơ đồ')).toHaveCount(0);
+});

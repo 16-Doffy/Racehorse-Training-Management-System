@@ -1,1063 +1,454 @@
-import React, { useState } from 'react';
-import { Container, Row, Col, Card, Button, Table, Badge, ProgressBar, Modal, Form } from 'react-bootstrap';
+import { useMemo, useState } from 'react';
+import { Button } from 'react-bootstrap';
+import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import {
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  Legend,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-} from 'recharts';
-import useVeterinarianData from '../../hooks/useVeterinarianData';
-import useSocket from '../../hooks/useSocket';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
-import ErrorAlert from '../../components/common/ErrorAlert';
-import HealthStatusBadge from '../../components/veterinarian/HealthStatusBadge';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
 import HealthAlert from '../../components/veterinarian/HealthAlert';
-import TrainingLockModal from '../../components/veterinarian/TrainingLockModal';
-import IncidentManagementModal from '../../components/veterinarian/IncidentManagementModal';
-import { formatDate, formatDateForInput } from '../../utils/formatDate';
-import { INJURY_SEVERITY_CONFIG } from '../../utils/healthStatus';
-import { INCIDENT_STATUS_META, INCIDENT_SEVERITY_META, INCIDENT_CATEGORY_META, incidentStatusOf } from '../../constants/care';
-import CareOrdersCard from '../../features/dashboard/CareOrdersCard';
-import veterinarianApi from '../../api/veterinarianApi';
+import CareModal from '../../components/veterinarian/CareModal';
+import ExamRequestModal from '../../components/veterinarian/ExamRequestModal';
+import HorsePickerModal from '../../components/veterinarian/HorsePickerModal';
+import IncidentModal from '../../components/veterinarian/IncidentModal';
+import { ActionMenu, Callout, EmptyNote, FilterChips, HorseAvatar, LevelPill, LoadingBlock, Pill, Progress, VetCard } from '../../components/veterinarian/ui';
+import {
+  CARE_KINDS,
+  CARE_ORDER,
+  CLEARANCE_SOURCE,
+  PRIORITY_META,
+  ago,
+  clearanceOf,
+  daysUntil,
+  dueInfo,
+  fmtDate,
+  fmtDateTime,
+  idOf,
+  incidentCategory,
+  incidentImages,
+  incidentSeverity,
+} from '../../components/veterinarian/vetFormat';
+import { incidentStatusOf } from '../../constants/care';
+import useSocket from '../../hooks/useSocket';
+import { useCareOrders, useClearances, useExamRequests, useIncidents, useVetHorses, useVetRefresh } from '../../hooks/useVetData';
 
-const STATUS_COLORS = {
-  eligible: '#198754',
-  monitoring: '#ffc107',
-  injured: '#dc3545',
-  quarantined: '#212529',
-};
+const KIND_FILTERS = [
+  { value: 'incident', label: 'Sự cố' },
+  { value: 'request', label: 'Yêu cầu khám' },
+  { value: 'clearance', label: 'Cần khám' },
+  { value: 'care', label: 'Chăm sóc định kỳ' },
+];
+// How far ahead routine care shows up in the queue.
+const CARE_AHEAD_DAYS = 3;
+
+const joinVi = (parts) => (parts.length > 1 ? `${parts.slice(0, -1).join(', ')} và ${parts[parts.length - 1]}` : parts[0]);
+
+/**
+ * Everything waiting for the vet, in one queue, most urgent first: groom incidents, exam requests,
+ * horses whose last exam no longer clears them, and routine care falling due. Each row has one main
+ * action; the rest sits in its "…" menu.
+ */
+function buildQueue({ horses, requests, incidents, clearances }) {
+  const items = [];
+  for (const task of incidents) {
+    const severity = task.incidentReport?.severity || 'medium';
+    items.push({ key: `incident-${task._id}`, kind: 'incident', horseId: idOf(task.horse), rank: severity === 'high' ? 0 : severity === 'medium' ? 2 : 4, at: task.incidentReport?.reportedAt || task.updatedAt, task });
+  }
+  for (const request of requests) {
+    items.push({ key: `request-${request._id}`, kind: 'request', horseId: idOf(request.horse), rank: PRIORITY_META[request.priority]?.rank ?? 2, at: request.createdAt, request });
+  }
+  // A horse already asked about is answered by the same exam: one row is enough.
+  const examWanted = new Set(requests.map((r) => idOf(r.horse)));
+  for (const row of clearances) {
+    const horseId = idOf(row.horse);
+    if (row.status === 'valid' || examWanted.has(horseId)) continue;
+    examWanted.add(horseId);
+    items.push({ key: `clearance-${horseId}`, kind: 'clearance', horseId, rank: row.status === 'due_soon' ? 5 : 3, at: row.lastExam?.date, clearance: row });
+  }
+  for (const horse of horses) {
+    for (const careKind of CARE_ORDER) {
+      const due = horse.careSchedule?.[CARE_KINDS[careKind].field];
+      if (!due || daysUntil(due) > CARE_AHEAD_DAYS) continue;
+      if (careKind === 'exam' && examWanted.has(horse._id)) continue;
+      items.push({ key: `care-${horse._id}-${careKind}`, kind: 'care', horseId: horse._id, rank: daysUntil(due) < 0 ? 4 : 6, at: due, careKind, due });
+    }
+  }
+  return items.sort((a, b) => a.rank - b.rank || new Date(a.at || 0) - new Date(b.at || 0));
+}
+
+function QueueRow({ icon, tone, horse, onOpenHorse, pills, text, meta, primary, secondary, menu }) {
+  return (
+    <div className="vet-row">
+      <span className={`vet-kind-icon vet-tone-${tone}`} aria-hidden="true">
+        <i className={`bi ${icon}`} />
+      </span>
+      <div className="vet-row-main">
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          <button type="button" className="vet-link vet-row-title" style={{ color: 'var(--vet-ink)' }} onClick={onOpenHorse}>
+            {horse?.name || 'Ngựa'}
+          </button>
+          {pills}
+        </div>
+        {text && <div className="vet-muted vet-clamp-2 mt-1">{text}</div>}
+        {meta && <div className="vet-small vet-faint mt-1">{meta}</div>}
+      </div>
+      <div className="vet-row-actions">
+        {secondary}
+        {primary}
+        <ActionMenu items={menu} />
+      </div>
+    </div>
+  );
+}
 
 export default function VeterinarianDashboard() {
   const navigate = useNavigate();
-  const {
-    loading,
-    error,
-    horses,
-    healthRecords,
-    treatments,
-    injuryMarkers,
-    notifications,
-    examRequests,
-    clearances,
-    incidents = [],
-    refreshData,
-  } = useVeterinarianData();
-
+  const user = useSelector((state) => state.auth.user);
+  const refresh = useVetRefresh();
+  const horsesQ = useVetHorses();
+  const requestsQ = useExamRequests();
+  const incidentsQ = useIncidents();
+  const clearancesQ = useClearances();
+  const ordersQ = useCareOrders();
   const { alerts, clearAlert, clearAllAlerts } = useSocket();
+  const [filter, setFilter] = useState('all');
+  const [dialog, setDialog] = useState(null);
 
-  // Incident Management State
-  const [selectedTaskForIncident, setSelectedTaskForIncident] = useState(null);
-  const [showIncidentModal, setShowIncidentModal] = useState(false);
+  const horses = useMemo(() => horsesQ.data || [], [horsesQ.data]);
+  const horseById = useMemo(() => new Map(horses.map((h) => [h._id, h])), [horses]);
+  const queue = useMemo(
+    () => buildQueue({ horses, requests: requestsQ.data || [], incidents: incidentsQ.data || [], clearances: clearancesQ.data || [] }),
+    [horses, requestsQ.data, incidentsQ.data, clearancesQ.data]
+  );
+  const counts = KIND_FILTERS.reduce((acc, k) => ({ ...acc, [k.value]: queue.filter((i) => i.kind === k.value).length }), {});
+  const shown = filter === 'all' ? queue : queue.filter((i) => i.kind === filter);
+  const restricted = horses.filter((h) => clearanceOf(h).restricted);
+  const orders = (ordersQ.data || []).filter((r) => r.tasks?.length || r.medications?.length || r.careInstructions);
+  const loading = horsesQ.isLoading || requestsQ.isLoading || incidentsQ.isLoading || clearancesQ.isLoading;
+  const failed = [horsesQ, requestsQ, incidentsQ, clearancesQ].find((q) => q.isError);
 
-  // Training Lock Modal State
-  const [selectedHorseForLock, setSelectedHorseForLock] = useState(null);
-  const [selectedTreatmentForLock, setSelectedTreatmentForLock] = useState(null);
-  const [showLockModal, setShowLockModal] = useState(false);
+  const close = () => setDialog(null);
+  const openHorse = (id) => navigate(`/veterinarian/horses/${id}`);
+  const examine = (id) => navigate(`/veterinarian/examinations/new/${id}`);
+  const horseOf = (item, fallback) => horseById.get(item.horseId) || fallback;
 
-  // Update Exam Request Modal State
-  const [selectedExamReq, setSelectedExamReq] = useState(null);
-  const [showExamModal, setShowExamModal] = useState(false);
-  const [examAction, setExamAction] = useState('accept'); // 'accept' | 'decline' | 'close'
-  const [examScheduledDate, setExamScheduledDate] = useState('');
-  const [examScheduledTime, setExamScheduledTime] = useState('');
-  const [examResolutionNote, setExamResolutionNote] = useState('');
-  const [examModalError, setExamModalError] = useState(null);
-  const [isUpdatingExam, setIsUpdatingExam] = useState(false);
+  const summary = [
+    counts.incident && `${counts.incident} sự cố`,
+    counts.request && `${counts.request} yêu cầu khám`,
+    counts.clearance && `${counts.clearance} ngựa cần khám`,
+    counts.care && `${counts.care} việc chăm sóc đến hạn`,
+  ].filter(Boolean);
+  const count = (status) => horses.filter((h) => h.healthStatus === status).length;
 
-  const parseDatePart = (date) => {
-    if (!date) return '';
-    const d = new Date(date);
-    if (!Number.isFinite(d.getTime())) return '';
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  };
-
-  const parseTimePart = (date) => {
-    if (!date) return '';
-    const d = new Date(date);
-    if (!Number.isFinite(d.getTime())) return '';
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-
-  const handleClearAppointment = () => {
-    setExamScheduledDate('');
-    setExamScheduledTime('');
-  };
-
-  const handleOpenAcceptExam = (req) => {
-    setSelectedExamReq(req);
-    setExamAction('accept');
-    setExamScheduledDate(parseDatePart(req.scheduledFor));
-    setExamScheduledTime(parseTimePart(req.scheduledFor));
-    setExamResolutionNote(req.resolutionNote || '');
-    setExamModalError(null);
-    setShowExamModal(true);
-  };
-
-  const handleOpenDeclineExam = (req) => {
-    setSelectedExamReq(req);
-    setExamAction('decline');
-    setExamScheduledDate('');
-    setExamScheduledTime('');
-    setExamResolutionNote('');
-    setExamModalError(null);
-    setShowExamModal(true);
-  };
-
-  const handleUpdateExamRequest = async () => {
-    if (!selectedExamReq) return;
-    setExamModalError(null);
-
-    let payload = {};
-    if (examAction === 'accept') {
-      payload = { action: 'accept' };
-      if (examScheduledDate) {
-        const timePart = examScheduledTime || '09:00';
-        const at = new Date(`${examScheduledDate}T${timePart}`);
-        if (!Number.isFinite(at.getTime())) {
-          setExamModalError('Ngày hoặc giờ hẹn khám không hợp lệ.');
-          return;
-        }
-        if (at < new Date(Date.now() - 5 * 60000)) {
-          setExamModalError('Thời gian hẹn khám phải ở tương lai.');
-          return;
-        }
-        payload.scheduledFor = at.toISOString();
-      } else if (examScheduledTime) {
-        setExamModalError('Vui lòng chọn ngày hẹn khám trước khi chọn giờ.');
-        return;
-      }
-      if (examResolutionNote.trim()) {
-        payload.note = examResolutionNote.trim();
-      }
-    } else if (examAction === 'decline') {
-      if (!examResolutionNote.trim()) {
-        setExamModalError('Vui lòng ghi lý do từ chối để người yêu cầu biết hướng xử lý.');
-        return;
-      }
-      payload = { action: 'decline', note: examResolutionNote.trim() };
-    } else {
-      payload = { status: 'done', resolutionNote: examResolutionNote.trim() };
+  const renderItem = (item) => {
+    if (item.kind === 'incident') {
+      const { task } = item;
+      const report = task.incidentReport || {};
+      const severity = incidentSeverity(report.severity);
+      const photos = incidentImages(report).length;
+      return (
+        <QueueRow
+          key={item.key}
+          icon="bi-exclamation-octagon"
+          tone={severity.tone}
+          horse={horseOf(item, task.horse)}
+          onOpenHorse={() => openHorse(item.horseId)}
+          pills={
+            <>
+              <Pill tone={severity.tone}>Sự cố · {severity.label}</Pill>
+              <Pill>{incidentCategory(report.category)}</Pill>
+              {incidentStatusOf(report) === 'acknowledged' && <Pill tone="info">Đã tiếp nhận</Pill>}
+            </>
+          }
+          text={report.description}
+          meta={`${task.assignedTo?.name || 'Nhân viên chăm sóc'} báo ${ago(report.reportedAt || task.updatedAt)}${photos ? ` · ${photos} ảnh` : ''}`}
+          primary={
+            <Button size="sm" variant="vet" onClick={() => setDialog({ type: 'incident', task })}>
+              Xử lý
+            </Button>
+          }
+          menu={[
+            { label: 'Khám ngựa này', icon: 'bi-clipboard2-pulse', onClick: () => examine(item.horseId) },
+            { label: 'Hồ sơ ngựa', icon: 'bi-journal-medical', onClick: () => openHorse(item.horseId) },
+          ]}
+        />
+      );
     }
-
-
-    setIsUpdatingExam(true);
-    try {
-      await veterinarianApi.updateExamRequest(selectedExamReq._id, payload);
-      setShowExamModal(false);
-      refreshData();
-    } catch (err) {
-      setExamModalError(err?.message || 'Không thể cập nhật yêu cầu khám.');
-    } finally {
-      setIsUpdatingExam(false);
+    if (item.kind === 'request') {
+      const { request } = item;
+      const priority = PRIORITY_META[request.priority] || PRIORITY_META.normal;
+      const accepted = Boolean(request.acceptedAt);
+      return (
+        <QueueRow
+          key={item.key}
+          icon="bi-clipboard2-pulse"
+          tone={request.priority === 'normal' ? 'info' : priority.tone}
+          horse={horseOf(item, request.horse)}
+          onOpenHorse={() => openHorse(item.horseId)}
+          pills={
+            <>
+              <Pill tone={request.priority === 'normal' ? 'info' : priority.tone}>Yêu cầu khám{request.priority !== 'normal' ? ` · ${priority.label}` : ''}</Pill>
+              {accepted ? (
+                <Pill tone="good" icon="bi-calendar-check">
+                  {request.scheduledFor ? `Hẹn ${fmtDateTime(request.scheduledFor)}` : 'Đã nhận'}
+                </Pill>
+              ) : (
+                <Pill>Chưa nhận</Pill>
+              )}
+            </>
+          }
+          text={request.reason}
+          meta={`${request.requestedBy?.name || 'HLV'} gửi ${ago(request.createdAt)}`}
+          secondary={
+            !accepted && (
+              <Button size="sm" variant="vet-outline" onClick={() => setDialog({ type: 'request', request, mode: 'accept' })}>
+                Nhận & hẹn
+              </Button>
+            )
+          }
+          primary={
+            <Button size="sm" variant="vet" onClick={() => examine(item.horseId)}>
+              Khám ngay
+            </Button>
+          }
+          menu={[
+            accepted && { label: 'Đổi lịch hẹn', icon: 'bi-calendar-event', onClick: () => setDialog({ type: 'request', request, mode: 'accept' }) },
+            { label: 'Từ chối yêu cầu', icon: 'bi-x-circle', onClick: () => setDialog({ type: 'request', request, mode: 'decline' }), danger: true },
+            { divider: true },
+            { label: 'Hồ sơ ngựa', icon: 'bi-journal-medical', onClick: () => openHorse(item.horseId) },
+          ]}
+        />
+      );
     }
-  };
-
-
-  // Statistics Calculations
-  const totalHorses = horses.length;
-  const eligibleHorses = horses.filter((h) => h.healthStatus === 'eligible').length;
-  const monitoringHorses = horses.filter((h) => h.healthStatus === 'monitoring').length;
-  const injuredHorses = horses.filter((h) => h.healthStatus === 'injured').length;
-  const quarantinedHorses = horses.filter((h) => h.healthStatus === 'quarantined').length;
-
-  // Chỉ tính ngựa đang có phác đồ điều trị ĐANG DIỄN RA (ongoing) bị khóa hoặc cấm tập (none),
-  // và ngựa đó phải thuộc danh sách ngựa đang quản lý
-  const activeHorseIdSet = new Set(horses.map((h) => (h._id || h).toString()));
-  const lockedTreatments = treatments.filter((t) => {
-    const horseId = (t.horse?._id || t.horse)?.toString();
-    const isOngoing = t.status === 'ongoing';
-    const isLocked = t.isTrainingLocked === true || t.trainingLevel === 'none';
-    return isOngoing && isLocked && activeHorseIdSet.has(horseId);
-  });
-  const lockedHorseIds = new Set(lockedTreatments.map((t) => (t.horse?._id || t.horse)?.toString()));
-  const lockedHorsesCount = lockedHorseIds.size;
-
-  const now = new Date();
-  const next7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-  const upcomingVaccinations = horses.filter((h) => {
-    const d = h.careSchedule?.nextVaccinationDue;
-    return d && new Date(d) <= next7Days;
-  }).length;
-
-  const upcomingDewormings = horses.filter((h) => {
-    const d = h.careSchedule?.nextDewormingDue;
-    return d && new Date(d) <= next7Days;
-  }).length;
-
-  const upcomingFarriers = horses.filter((h) => {
-    const d = h.careSchedule?.nextFarrierDue;
-    return d && new Date(d) <= next7Days;
-  }).length;
-
-  // Pie chart data
-  const healthDistributionData = [
-    { name: 'Đủ điều kiện', value: eligibleHorses, color: STATUS_COLORS.eligible },
-    { name: 'Cần theo dõi', value: monitoringHorses, color: STATUS_COLORS.monitoring },
-    { name: 'Chấn thương', value: injuredHorses, color: STATUS_COLORS.injured },
-    { name: 'Cách ly', value: quarantinedHorses, color: STATUS_COLORS.quarantined },
-  ].filter((d) => d.value > 0);
-
-  // Injury severity data
-  const injurySeverityCounts = injuryMarkers.reduce((acc, curr) => {
-    const sev = curr.severity || 'mild';
-    acc[sev] = (acc[sev] || 0) + 1;
-    return acc;
-  }, {});
-
-  const injuryBarData = [
-    { name: 'Nhẹ (Mild)', count: injurySeverityCounts.mild || 0, fill: '#0dcaf0' },
-    { name: 'Trung bình (Moderate)', count: injurySeverityCounts.moderate || 0, fill: '#ffc107' },
-    { name: 'Nghiêm trọng (Severe)', count: injurySeverityCounts.severe || 0, fill: '#dc3545' },
-  ];
-
-  const handleOpenLockModal = (horse) => {
-    const activeTreatment = treatments.find(
-      (t) =>
-        (t.horse?._id || t.horse)?.toString() === horse._id?.toString() &&
-        t.status === 'ongoing' &&
-        (t.isTrainingLocked || t.trainingLevel === 'none')
+    if (item.kind === 'clearance') {
+      const { clearance: c } = item;
+      const overdue = typeof c.ageDays === 'number' ? c.ageDays - (c.clearanceDays || 14) : 0;
+      const label = c.status === 'never' ? 'Chưa khám lần nào' : c.status === 'expired' ? `Quá hạn khám ${Math.max(overdue, 1)} ngày` : 'Sắp hết hạn khám';
+      const text =
+        c.status === 'never'
+          ? 'Cần một phiếu khám trước khi ngựa được xếp buổi tập nặng.'
+          : `Khám gần nhất ${fmtDate(c.lastExam?.date)}${c.lastExam?.diagnosis ? ` — ${c.lastExam.diagnosis}` : ''}. Phiếu khám có giá trị ${c.clearanceDays || 14} ngày.`;
+      return (
+        <QueueRow
+          key={item.key}
+          icon="bi-calendar2-x"
+          tone={c.status === 'due_soon' ? 'watch' : 'bad'}
+          horse={horseOf(item, c.horse)}
+          onOpenHorse={() => openHorse(item.horseId)}
+          pills={<Pill tone={c.status === 'due_soon' ? 'watch' : 'bad'}>{label}</Pill>}
+          text={text}
+          primary={
+            <Button size="sm" variant="vet" onClick={() => examine(item.horseId)}>
+              Khám
+            </Button>
+          }
+          menu={[{ label: 'Hồ sơ ngựa', icon: 'bi-journal-medical', onClick: () => openHorse(item.horseId) }]}
+        />
+      );
+    }
+    const horse = horseOf(item, null);
+    const meta = CARE_KINDS[item.careKind];
+    const info = dueInfo(item.due, CARE_AHEAD_DAYS);
+    return (
+      <QueueRow
+        key={item.key}
+        icon={meta.icon}
+        tone={info.tone}
+        horse={horse}
+        onOpenHorse={() => openHorse(item.horseId)}
+        pills={
+          <Pill tone={info.tone}>
+            {meta.label} · {info.rel.toLowerCase()}
+          </Pill>
+        }
+        meta={`Hạn ${fmtDate(item.due)}`}
+        primary={
+          item.careKind === 'exam' ? (
+            <Button size="sm" variant="vet" onClick={() => examine(item.horseId)}>
+              Khám
+            </Button>
+          ) : (
+            <Button size="sm" variant="vet" onClick={() => setDialog({ type: 'care', horse, kind: item.careKind, mode: 'record' })}>
+              Ghi nhận
+            </Button>
+          )
+        }
+        menu={[
+          { label: 'Dời ngày hẹn', icon: 'bi-calendar-event', onClick: () => setDialog({ type: 'care', horse, kind: item.careKind, mode: 'due' }) },
+          { label: 'Hồ sơ ngựa', icon: 'bi-journal-medical', onClick: () => openHorse(item.horseId) },
+        ]}
+      />
     );
-    setSelectedHorseForLock(horse);
-    setSelectedTreatmentForLock(activeTreatment || null);
-    setShowLockModal(true);
   };
-
-  if (loading) {
-    return <LoadingSpinner text="Đang tải dữ liệu Bảng Điều Khiển Bác Sĩ Thú Y..." minHeight="400px" />;
-  }
 
   return (
-    <Container fluid className="p-0">
-      {/* Realtime Floating Alerts */}
+    <div className="vet-ui">
       <HealthAlert alerts={alerts} onDismiss={clearAlert} onDismissAll={clearAllAlerts} />
 
-      {/* Header Banner */}
-      <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-2 border-bottom gap-2">
-        <div>
-          <h2 className="fw-bold text-dark mb-1">
-            <i className="bi bi-hospital me-2 text-primary"></i>
-            Bảng Điều Khiển Bác Sĩ Thú Y (Veterinarian Dashboard)
-          </h2>
-          <p className="text-muted mb-0 small">
-            Theo dõi tình trạng sức khỏe tổng quan, quản lý khám bệnh, phác đồ điều trị và khóa huấn luyện khẩn cấp.
-          </p>
-        </div>
+      <PageHeroBanner
+        eyebrow="TEAM 8 • Y TẾ & THÚ Y"
+        roleLabel="Bác sĩ Thú y"
+        title={`Xin chào, ${user?.name || 'Bác sĩ'}`}
+        subtitle={loading ? 'Đang tải việc hôm nay…' : summary.length ? `Hôm nay có ${joinVi(summary)} đang chờ bạn.` : 'Không có việc gấp — đàn ngựa đang ổn định.'}
+        stats={
+          horses.length
+            ? [
+                { label: 'Theo dõi', value: `${horses.length} ngựa` },
+                { label: 'Đủ điều kiện', value: count('eligible') },
+                { label: 'Hạn chế tập', value: restricted.length },
+                { label: 'Chấn thương', value: count('injured') },
+                { label: 'Cách ly', value: count('quarantined') },
+              ]
+            : []
+        }
+        actionButton={
+          <div className="d-flex flex-wrap gap-2">
+            <Button variant="vet-hero-outline" onClick={() => setDialog({ type: 'pick', purpose: 'treat' })}>
+              <i className="bi bi-capsule" aria-hidden="true" /> Kê đơn
+            </Button>
+            <Button variant="vet-hero" onClick={() => setDialog({ type: 'pick', purpose: 'exam' })}>
+              <i className="bi bi-clipboard2-pulse" aria-hidden="true" /> Khám bệnh
+            </Button>
+          </div>
+        }
+      />
 
-        <div className="d-flex gap-2">
-          <Button variant="outline-primary" size="sm" onClick={refreshData}>
-            <i className="bi bi-arrow-clockwise me-1"></i> Làm mới
-          </Button>
-          <Button variant="danger" size="sm" onClick={() => navigate('/veterinarian/injuries/new')}>
-            <i className="bi bi-bandaid me-1"></i> Báo cáo chấn thương
-          </Button>
-          <Button variant="primary" size="sm" onClick={() => navigate('/veterinarian/horses')}>
-            <i className="bi bi-clipboard2-pulse me-1"></i> Khám bệnh / Khóa tập
-          </Button>
-        </div>
-      </div>
+      {failed && (
+        <Callout
+          tone="bad"
+          icon="bi-wifi-off"
+          className="mb-3"
+          action={
+            <Button size="sm" variant="vet-outline" onClick={refresh}>
+              Thử lại
+            </Button>
+          }
+        >
+          {failed.error?.message || 'Không tải được dữ liệu.'}
+        </Callout>
+      )}
 
-      {error && <ErrorAlert message={error} onRetry={refreshData} />}
-
-      {/* Emergency Lock Alert Bar if any horse is locked */}
-      {lockedHorsesCount > 0 && (
-        <div className="alert alert-danger d-flex align-items-center justify-content-between shadow-sm mb-4">
-          <div className="d-flex align-items-center">
-            <i className="bi bi-exclamation-triangle-fill fs-3 me-3 text-danger"></i>
-            <div>
-              <strong className="fs-6">CẢNH BÁO: Có {lockedHorsesCount} chú ngựa đang bị KHÓA HUẤN LUYỆN KHẨN CẤP!</strong>
-              <div className="small text-muted">
-                Các chú ngựa này không được tham gia buổi tập cho đến khi Bác sĩ Thú y phê duyệt dỡ bỏ lệnh khóa.
-              </div>
+      <div className="vet-grid-2">
+        <VetCard
+          title="Việc cần xử lý"
+          icon="bi-list-check"
+          count={loading ? null : queue.length}
+          flush
+          extra={
+            <Button size="sm" variant="vet-ghost" className="vet-icon-btn" onClick={refresh} title="Làm mới" aria-label="Làm mới">
+              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+            </Button>
+          }
+        >
+          {queue.length > 0 && (
+            <div className="px-3 pt-3 pb-2">
+              <FilterChips
+                value={filter}
+                onChange={setFilter}
+                options={[{ value: 'all', label: 'Tất cả', count: queue.length }, ...KIND_FILTERS.filter((k) => counts[k.value]).map((k) => ({ ...k, count: counts[k.value] }))]}
+              />
             </div>
-          </div>
-          <Button variant="outline-danger" size="sm" onClick={() => navigate('/veterinarian/horses?lock=locked')}>
-            Xem danh sách bị khóa
-          </Button>
-        </div>
-      )}
+          )}
+          {loading ? (
+            <LoadingBlock rows={4} height={64} />
+          ) : shown.length === 0 ? (
+            <EmptyNote icon="bi-check2-circle" title="Không còn việc nào chờ xử lý">
+              Sự cố, yêu cầu khám và lịch chăm sóc mới sẽ hiện ở đây.
+            </EmptyNote>
+          ) : (
+            <div className="vet-list">{shown.map(renderItem)}</div>
+          )}
+        </VetCard>
 
-      {/* Pending Exam Requests */}
-      {examRequests && examRequests.filter(req => req.status === 'pending').length > 0 && (
-        <div className="alert alert-warning shadow-sm mb-4">
-          <div className="d-flex align-items-center mb-2 border-bottom border-warning pb-2">
-            <i className="bi bi-envelope-exclamation-fill fs-4 me-2 text-warning"></i>
-            <strong className="fs-6">Hàng Đợi Khám Bệnh ({examRequests.filter(req => req.status === 'pending').length} yêu cầu chờ xử lý)</strong>
-          </div>
-          <div className="d-flex flex-column gap-2 mt-2">
-            {examRequests.filter(req => req.status === 'pending').map((req) => {
-              const isAccepted = Boolean(req.acceptedAt);
-              return (
-                <div key={req._id} className="d-flex flex-wrap justify-content-between align-items-center bg-white p-3 rounded border border-warning-subtle gap-2">
-                  <div className="flex-grow-1">
-                    <div className="d-flex flex-wrap align-items-center gap-2">
-                      <strong className="fs-6">{req.horse?.name || 'Ngựa'}</strong>
-                      <span className="text-muted small">Yêu cầu bởi: {req.requestedBy?.name || 'HLV'}</span>
-                      <span className={`badge ${req.priority === 'urgent' ? 'bg-danger' : req.priority === 'high' ? 'bg-warning text-dark' : 'bg-secondary'}`}>
-                        {req.priority === 'urgent' ? 'Khẩn cấp' : req.priority === 'high' ? 'Ưu tiên cao' : 'Bình thường'}
-                      </span>
-                      {isAccepted ? (
-                        <span className="badge bg-success-subtle text-success border border-success">
-                          <i className="bi bi-check-circle me-1"></i>
-                          Bác sĩ {req.acceptedBy?.name || ''} đã nhận
-                        </span>
-                      ) : (
-                        <span className="badge bg-warning-subtle text-dark border border-warning">
-                          <i className="bi bi-hourglass-split me-1"></i> Chờ tiếp nhận
-                        </span>
-                      )}
-                    </div>
-                    {req.reason && (
-                      <div className="small text-muted mt-1">
-                        <strong>Lý do:</strong> {req.reason}
-                      </div>
-                    )}
-                    {isAccepted && req.scheduledFor && (
-                      <div className="small text-primary fw-semibold mt-1">
-                        <i className="bi bi-calendar-event me-1"></i>
-                        Hẹn khám lúc: {new Date(req.scheduledFor).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })}
-                        {req.resolutionNote && <span className="text-secondary fw-normal ms-1">({req.resolutionNote})</span>}
-                      </div>
-                    )}
-                  </div>
-                  <div className="d-flex flex-wrap gap-2">
-                    <Button
-                      variant={isAccepted ? 'outline-primary' : 'success'}
-                      size="sm"
-                      onClick={() => handleOpenAcceptExam(req)}
-                    >
-                      <i className={`bi ${isAccepted ? 'bi-clock-history' : 'bi-calendar-check'} me-1`}></i>
-                      {isAccepted ? 'Đổi lịch hẹn' : 'Nhận & Hẹn giờ'}
-                    </Button>
-                    <Button
-                      variant="outline-danger"
-                      size="sm"
-                      onClick={() => handleOpenDeclineExam(req)}
-                    >
-                      <i className="bi bi-x-circle me-1"></i> Từ chối
-                    </Button>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => navigate(`/veterinarian/examinations/new/${req.horse?._id || req.horse}`)}
-                    >
-                      <i className="bi bi-stethoscope me-1"></i> Khám ngay
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Clearance Queue */}
-      {clearances && clearances.length > 0 && (
-        <div className="alert alert-info shadow-sm mb-4">
-          <div className="d-flex align-items-center mb-2 border-bottom border-info pb-2">
-            <i className="bi bi-clipboard2-check-fill fs-4 me-2 text-info"></i>
-            <strong className="fs-6">Hàng Đợi Giấy Khám / Đánh Giá Phục Hồi ({clearances.length} ngựa cần tái khám)</strong>
-          </div>
-          <div className="d-flex flex-column gap-2 mt-2">
-            {clearances.map((item, idx) => {
-              const horse = item.horse || item; // Handle both schemas
-              const status = item.status || 'expired';
-              const ageDays = item.ageDays;
-              const clearanceDays = item.clearanceDays || 14;
-              const validUntil = item.validUntil;
-              const lastExam = item.lastExam;
-
-              let reasonBadge = null;
-              let reasonText = '';
-
-              if (status === 'never' || !lastExam) {
-                reasonBadge = <Badge bg="dark" className="me-2">Chưa khám bao giờ</Badge>;
-                reasonText = 'Chú ngựa này chưa có hồ sơ khám bệnh nào trong hệ thống.';
-              } else if (status === 'expired') {
-                const overdueDays = typeof ageDays === 'number' && ageDays > clearanceDays ? ageDays - clearanceDays : (ageDays || 0);
-                reasonBadge = <Badge bg="danger" className="me-2">Quá hạn {overdueDays} ngày</Badge>;
-                reasonText = `Lần khám gần nhất: ${formatDate(lastExam.date || lastExam.createdAt)} (${ageDays} ngày trước). Giấy khám đã hết hạn ngày ${formatDate(validUntil)}.`;
-              } else if (status === 'due_soon') {
-                const remainingDays = typeof ageDays === 'number' ? Math.max(0, clearanceDays - ageDays) : 0;
-                reasonBadge = <Badge bg="warning" text="dark" className="me-2">Sắp hết hạn ({remainingDays} ngày còn lại)</Badge>;
-                reasonText = `Lần khám gần nhất: ${formatDate(lastExam.date || lastExam.createdAt)}. Giấy khám sắp hết hạn ngày ${formatDate(validUntil)}.`;
-              } else {
-                reasonBadge = <Badge bg="success" className="me-2">Đạt tiêu chuẩn</Badge>;
-                reasonText = `Lần khám gần nhất: ${formatDate(lastExam.date || lastExam.createdAt)}.`;
-              }
-
-              return (
-                <div key={horse._id || idx} className="d-flex justify-content-between align-items-center bg-white p-2.5 rounded border border-info-subtle">
-                  <div>
-                    <div className="d-flex align-items-center mb-1">
-                      <strong className="fs-6 me-2">{horse.name || 'Ngựa'}</strong>
-                      {reasonBadge}
-                    </div>
-                    <div className="small text-muted">
-                      {reasonText}
-                    </div>
-                  </div>
-                  <div className="d-flex gap-2">
-                    <Button variant="primary" size="sm" onClick={() => navigate(`/veterinarian/examinations/new/${horse._id}`)}>
-                      <i className="bi bi-stethoscope me-1"></i> Lập hồ sơ khám
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* 8 Metric Summary Cards */}
-      <Row className="g-3 mb-4">
-        <Col xs={12} sm={6} md={3}>
-          <Card className="border-0 shadow-sm h-100 bg-white border-start border-primary border-4">
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-center">
-                <div>
-                  <span className="text-muted small text-uppercase fw-semibold">Tổng số ngựa</span>
-                  <h3 className="fw-bold mb-0 text-primary mt-1">{totalHorses}</h3>
-                </div>
-                <div className="bg-primary-subtle text-primary p-3 rounded-circle">
-                  <i className="bi bi-ticket-detailed fs-4"></i>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col xs={12} sm={6} md={3}>
-          <Card className="border-0 shadow-sm h-100 bg-white border-start border-success border-4">
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-center">
-                <div>
-                  <span className="text-muted small text-uppercase fw-semibold">Đủ điều kiện</span>
-                  <h3 className="fw-bold mb-0 text-success mt-1">{eligibleHorses}</h3>
-                </div>
-                <div className="bg-success-subtle text-success p-3 rounded-circle">
-                  <i className="bi bi-check-circle-fill fs-4"></i>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col xs={12} sm={6} md={3}>
-          <Card className="border-0 shadow-sm h-100 bg-white border-start border-warning border-4">
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-center">
-                <div>
-                  <span className="text-muted small text-uppercase fw-semibold">Cần theo dõi</span>
-                  <h3 className="fw-bold mb-0 text-warning mt-1">{monitoringHorses}</h3>
-                </div>
-                <div className="bg-warning-subtle text-warning p-3 rounded-circle">
-                  <i className="bi bi-eye-fill fs-4"></i>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col xs={12} sm={6} md={3}>
-          <Card className="border-0 shadow-sm h-100 bg-white border-start border-danger border-4">
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-center">
-                <div>
-                  <span className="text-muted small text-uppercase fw-semibold">Chấn thương / Cách ly</span>
-                  <h3 className="fw-bold mb-0 text-danger mt-1">{injuredHorses + quarantinedHorses}</h3>
-                </div>
-                <div className="bg-danger-subtle text-danger p-3 rounded-circle">
-                  <i className="bi bi-bandaid-fill fs-4"></i>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col xs={12} sm={6} md={3}>
-          <Card className="border-0 shadow-sm h-100 bg-white border-start border-danger border-4">
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-center">
-                <div>
-                  <span className="text-muted small text-uppercase fw-semibold">Khóa huấn luyện</span>
-                  <h3 className="fw-bold mb-0 text-danger mt-1">{lockedHorsesCount}</h3>
-                </div>
-                <div className="bg-danger-subtle text-danger p-3 rounded-circle">
-                  <i className="bi bi-lock-fill fs-4"></i>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col xs={12} sm={6} md={3}>
-          <Card className="border-0 shadow-sm h-100 bg-white border-start border-info border-4">
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-center">
-                <div>
-                  <span className="text-muted small text-uppercase fw-semibold">Lịch tiêm phòng (7 ngày)</span>
-                  <h3 className="fw-bold mb-0 text-info mt-1">{upcomingVaccinations}</h3>
-                </div>
-                <div className="bg-info-subtle text-info p-3 rounded-circle">
-                  <i className="bi bi-eyedropper fs-4"></i>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col xs={12} sm={6} md={3}>
-          <Card className="border-0 shadow-sm h-100 bg-white border-start border-secondary border-4">
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-center">
-                <div>
-                  <span className="text-muted small text-uppercase fw-semibold">Lịch tẩy giun (7 ngày)</span>
-                  <h3 className="fw-bold mb-0 text-secondary mt-1">{upcomingDewormings}</h3>
-                </div>
-                <div className="bg-secondary-subtle text-secondary p-3 rounded-circle">
-                  <i className="bi bi-capsule fs-4"></i>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col xs={12} sm={6} md={3}>
-          <Card className="border-0 shadow-sm h-100 bg-white border-start border-dark border-4">
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-center">
-                <div>
-                  <span className="text-muted small text-uppercase fw-semibold">Kiểm tra móng (7 ngày)</span>
-                  <h3 className="fw-bold mb-0 text-dark mt-1">{upcomingFarriers}</h3>
-                </div>
-                <div className="bg-dark-subtle text-dark p-3 rounded-circle">
-                  <i className="bi bi-hammer fs-4"></i>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Visual Charts Section */}
-      <Row className="g-3 mb-4">
-        <Col xs={12} lg={6}>
-          <Card className="border-0 shadow-sm h-100">
-            <Card.Header className="bg-white py-3 border-0">
-              <h5 className="fw-bold mb-0">
-                <i className="bi bi-pie-chart-fill me-2 text-primary"></i>
-                Phân Bố Tình Trạng Sức Khỏe (Health Distribution)
-              </h5>
-            </Card.Header>
-            <Card.Body style={{ height: '300px' }}>
-              {healthDistributionData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={healthDistributionData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={95}
-                      innerRadius={45}
-                      paddingAngle={3}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    >
-                      {healthDistributionData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="d-flex align-items-center justify-content-center h-100 text-muted">
-                  Chưa có dữ liệu phân bố sức khỏe
-                </div>
-              )}
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col xs={12} lg={6}>
-          <Card className="border-0 shadow-sm h-100">
-            <Card.Header className="bg-white py-3 border-0">
-              <h5 className="fw-bold mb-0">
-                <i className="bi bi-bar-chart-fill me-2 text-danger"></i>
-                Thống Kê Chấn Thương Theo Mức Độ
-              </h5>
-            </Card.Header>
-            <Card.Body style={{ height: '300px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={injuryBarData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="count" name="Số ca" radius={[4, 4, 0, 0]}>
-                    {injuryBarData.map((entry, index) => (
-                      <Cell key={`cell-bar-${index}`} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Today's Care Orders & Doses - Realtime tracking */}
-      <div className="mb-4">
-        <CareOrdersCard />
-      </div>
-
-      {/* Groom Reported Incidents Section */}
-      <Card className="border-0 shadow-sm mb-4 bg-white border-start border-danger border-4">
-        <Card.Header className="bg-white py-3 d-flex justify-content-between align-items-center">
-          <div>
-            <h5 className="fw-bold mb-0 text-danger">
-              <i className="bi bi-shield-exclamation me-2"></i>
-              Sự Cố Chuồng Trại & Sức Khỏe Do Nhân Viên Báo Cáo
-            </h5>
-            <small className="text-muted">
-              Tiếp nhận và xử lý các sự cố phát sinh trong quá trình chăm sóc của Groom (GET/PATCH /stable/incidents)
-            </small>
-          </div>
-          <Badge bg={incidents.filter((t) => incidentStatusOf(t.incidentReport) !== 'resolved').length > 0 ? 'danger' : 'success'}>
-            {incidents.filter((t) => incidentStatusOf(t.incidentReport) !== 'resolved').length > 0
-              ? `${incidents.filter((t) => incidentStatusOf(t.incidentReport) !== 'resolved').length} sự cố cần xử lý`
-              : 'Tất cả sự cố đã xử lý'}
-          </Badge>
-        </Card.Header>
-        <Card.Body className="p-0">
-          <div className="table-responsive">
-            <Table hover className="align-middle mb-0">
-              <thead className="table-light">
-                <tr>
-                  <th>Chiến mã</th>
-                  <th>Nhân viên báo (Groom)</th>
-                  <th>Loại sự cố</th>
-                  <th>Mức độ</th>
-                  <th>Mô tả sự cố</th>
-                  <th>Thời gian</th>
-                  <th>Trạng thái</th>
-                  <th className="text-center" style={{ width: '130px' }}>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {incidents.slice(0, 6).map((task) => {
-                  const ir = task.incidentReport;
-                  const st = incidentStatusOf(ir);
-                  const sevMeta = INCIDENT_SEVERITY_META[ir?.severity] || { label: ir?.severity || 'Nhẹ', color: 'gold' };
-                  const catMeta = INCIDENT_CATEGORY_META[ir?.category] || { label: ir?.category || 'Chưa phân loại', bg: 'secondary' };
+        <div className="vet-stack">
+          <VetCard title="Hạn chế tập luyện" icon="bi-lock" count={horsesQ.isLoading ? null : restricted.length} flush>
+            {horsesQ.isLoading ? (
+              <LoadingBlock rows={2} height={44} />
+            ) : restricted.length === 0 ? (
+              <EmptyNote icon="bi-unlock" title="Không ngựa nào bị hạn chế tập" />
+            ) : (
+              <div className="vet-list">
+                {restricted.map((h) => {
+                  const c = clearanceOf(h);
                   return (
-                    <tr key={task._id} className={st === 'open' ? 'table-danger-subtle' : ''}>
-                      <td className="fw-bold text-primary">
-                        {task.horse?.name || 'Chiến mã'}
-                      </td>
-                      <td>
-                        <i className="bi bi-person me-1 text-muted"></i>
-                        {task.assignedTo?.name || 'Nhân viên chăm sóc'}
-                      </td>
-                      <td>
-                        <Badge bg={catMeta.bg || 'secondary'}>
-                          {catMeta.label}
-                        </Badge>
-                        {task.taskType && (
-                          <small className="text-muted d-block" style={{ fontSize: '11px' }}>
-                            {task.taskType}
-                          </small>
-                        )}
-                      </td>
-                      <td>
-                        <Badge bg={sevMeta.color === 'red' ? 'danger' : sevMeta.color === 'orange' ? 'warning' : 'info'}>
-                          {sevMeta.label}
-                        </Badge>
-                      </td>
-                      <td className="small" style={{ maxWidth: '300px' }}>
-                        <div className="text-truncate" title={ir?.description}>
-                          {ir?.description || '-'}
+                    <div key={h._id} className="vet-row is-clickable" role="button" tabIndex={0} onClick={() => openHorse(h._id)} onKeyDown={(e) => e.key === 'Enter' && openHorse(h._id)}>
+                      <HorseAvatar horse={h} size={34} />
+                      <div className="vet-row-main">
+                        <div className="d-flex flex-wrap align-items-center gap-2">
+                          <span className="vet-row-title">{h.name}</span>
+                          <LevelPill level={c.level} short />
                         </div>
-                        {ir?.photos?.length > 0 && (
-                          <span className="badge bg-secondary-subtle text-secondary me-1 mt-1">
-                            <i className="bi bi-camera me-1"></i>{ir.photos.length} ảnh
-                          </span>
-                        )}
-                        {ir?.response && (
-                          <div className="text-success small text-truncate mt-1">
-                            <i className="bi bi-check2 me-1"></i>BS: {ir.response}
-                          </div>
-                        )}
-                      </td>
-                      <td className="small">
-                        {ir?.occurredAt && (
-                          <div className="fw-semibold text-danger" title="Thời điểm phát hiện sự cố">
-                            <i className="bi bi-clock-history me-1"></i>Xảy ra: {formatDate(ir.occurredAt)}
-                          </div>
-                        )}
-                        <div className="text-muted" title="Thời điểm nhân viên gửi báo cáo">
-                          <i className="bi bi-send me-1"></i>Báo: {formatDate(ir?.reportedAt || task.updatedAt)}
-                        </div>
-                      </td>
-                      <td>
-                        <Badge bg={st === 'resolved' ? 'success' : st === 'acknowledged' ? 'warning' : 'danger'}>
-                          {INCIDENT_STATUS_META[st]?.label || st}
-                        </Badge>
-                      </td>
-                      <td className="text-center">
-                        <Button
-                          variant={st === 'resolved' ? 'outline-secondary' : 'danger'}
-                          size="sm"
-                          onClick={() => {
-                            setSelectedTaskForIncident(task);
-                            setShowIncidentModal(true);
-                          }}
-                        >
-                          {st === 'resolved' ? (
-                            <>
-                              <i className="bi bi-eye me-1"></i>Xem
-                            </>
-                          ) : (
-                            <>
-                              <i className="bi bi-wrench-adjustable me-1"></i>Xử lý
-                            </>
-                          )}
-                        </Button>
-                      </td>
-                    </tr>
+                        <div className="vet-small vet-muted vet-clamp-1">{c.reason || CLEARANCE_SOURCE[c.source] || ''}</div>
+                      </div>
+                      <i className="bi bi-chevron-right vet-faint" aria-hidden="true" />
+                    </div>
                   );
                 })}
-                {incidents.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="text-center py-4 text-muted">
-                      <i className="bi bi-check-circle-fill text-success fs-4 d-block mb-1"></i>
-                      Hiện không có sự cố nào được nhân viên báo cáo.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </Table>
-          </div>
-        </Card.Body>
-      </Card>
-
-      {/* Recent Medical Records and Care Schedules */}
-      <Row className="g-3">
-        <Col xs={12} lg={7}>
-          <Card className="border-0 shadow-sm">
-            <Card.Header className="bg-white py-3 d-flex justify-content-between align-items-center">
-              <h5 className="fw-bold mb-0">
-                <i className="bi bi-journal-medical me-2 text-primary"></i>
-                Hồ Sơ Khám Bệnh Gần Đây
-              </h5>
-              <Button variant="link" size="sm" onClick={() => navigate('/veterinarian/horses')}>
-                Xem tất cả
-              </Button>
-            </Card.Header>
-            <Card.Body className="p-0">
-              <div className="table-responsive">
-                <Table hover className="align-middle mb-0">
-                  <thead className="table-light">
-                    <tr>
-                      <th>Ngựa</th>
-                      <th>Ngày khám</th>
-                      <th>Chẩn đoán</th>
-                      <th>Kết luận</th>
-                      <th>Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {healthRecords.slice(0, 5).map((rec) => (
-                      <tr key={rec._id}>
-                        <td className="fw-bold">
-                          {rec.horse?.name || 'Ngựa'}
-                          <small className="text-muted d-block">
-                            #{rec.horse?._id?.slice(-6).toUpperCase() || ''}
-                          </small>
-                        </td>
-                        <td className="small">{formatDate(rec.date || rec.createdAt)}</td>
-                        <td className="small">{rec.diagnosis}</td>
-                        <td>
-                          <HealthStatusBadge status={rec.resultStatus} />
-                        </td>
-                        <td>
-                          <Button
-                            variant="outline-primary"
-                            size="sm"
-                            onClick={() => navigate(`/veterinarian/horses/${rec.horse?._id || rec.horse}`)}
-                          >
-                            <i className="bi bi-eye"></i>
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                    {healthRecords.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="text-center py-4 text-muted">
-                          Chưa có hồ sơ khám bệnh nào.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </Table>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col xs={12} lg={5}>
-          <Card className="border-0 shadow-sm">
-            <Card.Header className="bg-white py-3 d-flex justify-content-between align-items-center">
-              <h5 className="fw-bold mb-0">
-                <i className="bi bi-calendar-event me-2 text-warning"></i>
-                Lịch Trình Y Tế Sắp Tới
-              </h5>
-              <Button variant="link" size="sm" onClick={() => navigate('/veterinarian/schedules')}>
-                Xem tất cả
-              </Button>
-            </Card.Header>
-            <Card.Body className="p-0">
-              <div className="table-responsive">
-                <Table hover className="align-middle mb-0">
-                  <thead className="table-light">
-                    <tr>
-                      <th>Ngựa</th>
-                      <th>Hạng mục</th>
-                      <th>Hạn</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {horses
-                      .filter((h) => h.careSchedule?.nextVaccinationDue || h.careSchedule?.nextDewormingDue || h.careSchedule?.nextFarrierDue)
-                      .slice(0, 5)
-                      .map((h) => {
-                        const sched = h.careSchedule;
-                        return (
-                          <tr key={h._id}>
-                            <td className="fw-semibold">
-                              {h.name}
-                            </td>
-                            <td className="small">
-                              {sched?.nextVaccinationDue && (
-                                <div><i className="bi bi-eyedropper text-primary me-1"></i> Tiêm phòng</div>
-                              )}
-                              {sched?.nextDewormingDue && (
-                                <div><i className="bi bi-capsule text-success me-1"></i> Tẩy giun</div>
-                              )}
-                              {sched?.nextFarrierDue && (
-                                <div><i className="bi bi-hammer text-dark me-1"></i> Móng</div>
-                              )}
-                            </td>
-                            <td className="small fw-semibold text-primary">
-                              {formatDate(
-                                sched?.nextVaccinationDue || sched?.nextDewormingDue || sched?.nextFarrierDue
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    {horses.length === 0 && (
-                      <tr>
-                        <td colSpan={3} className="text-center py-4 text-muted">
-                          Chưa có lịch trình y tế nào.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </Table>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-
-      <TrainingLockModal
-        show={showLockModal}
-        onHide={() => setShowLockModal(false)}
-        horse={selectedHorseForLock}
-        currentTreatment={selectedTreatmentForLock}
-        onSuccess={() => {
-          refreshData();
-        }}
-      />
-
-      {/* Groom Reported Incident Management Modal */}
-      <IncidentManagementModal
-        show={showIncidentModal}
-        onHide={() => {
-          setShowIncidentModal(false);
-          setSelectedTaskForIncident(null);
-        }}
-        task={selectedTaskForIncident}
-        onSuccess={() => {
-          refreshData();
-        }}
-      />
-
-      {/* Update Exam Request Modal */}
-      <Modal show={showExamModal} onHide={() => setShowExamModal(false)} centered>
-        <Form onSubmit={(e) => { e.preventDefault(); handleUpdateExamRequest(); }}>
-          <Modal.Header closeButton>
-            <Modal.Title className="fs-6 fw-bold">
-              {examAction === 'accept' ? (
-                <>
-                  <i className="bi bi-calendar-check me-2 text-success"></i>
-                  Tiếp Nhận & Hẹn Giờ Khám — {selectedExamReq?.horse?.name || 'Chiến mã'}
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-x-circle me-2 text-danger"></i>
-                  Từ Chối Yêu Cầu Khám — {selectedExamReq?.horse?.name || 'Chiến mã'}
-                </>
-              )}
-            </Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            {examModalError && (
-              <Alert variant="danger" className="py-2 small">
-                {examModalError}
-              </Alert>
-            )}
-
-            {selectedExamReq?.reason && (
-              <div className="mb-3 p-2.5 bg-light rounded border small">
-                <strong>Lý do từ người gửi ({selectedExamReq.requestedBy?.name || 'HLV'}):</strong>
-                <div className="text-secondary mt-1">{selectedExamReq.reason}</div>
               </div>
             )}
+          </VetCard>
 
-            {examAction === 'accept' ? (
-              <>
-                <div className="mb-3 p-3 bg-light rounded border">
-                  <div className="d-flex justify-content-between align-items-center mb-2">
-                    <Form.Label className="fw-semibold mb-0">
-                      <i className="bi bi-calendar-event me-1 text-primary"></i>
-                      Lịch Hẹn Khám (Tùy chọn)
-                    </Form.Label>
-                    {(examScheduledDate || examScheduledTime) && (
-                      <Button
-                        variant="outline-danger"
-                        size="sm"
-                        className="py-0 px-2"
-                        style={{ fontSize: '12px' }}
-                        onClick={handleClearAppointment}
-                        title="Xóa ngày và giờ hẹn khám"
-                      >
-                        <i className="bi bi-trash me-1"></i> Xóa hẹn
-                      </Button>
-                    )}
-                  </div>
-
-                  <Row className="g-2">
-                    <Col xs={12} sm={7}>
-                      <Form.Group>
-                        <Form.Label className="small text-muted mb-1">Ngày hẹn khám</Form.Label>
-                        <Form.Control
-                          type="date"
-                          min={formatDateForInput(new Date())}
-                          value={examScheduledDate}
-                          onChange={(e) => setExamScheduledDate(e.target.value)}
-                        />
-                      </Form.Group>
-                    </Col>
-                    <Col xs={12} sm={5}>
-                      <Form.Group>
-                        <Form.Label className="small text-muted mb-1">Giờ hẹn khám</Form.Label>
-                        <div className="d-flex gap-1">
-                          <Form.Control
-                            type="time"
-                            value={examScheduledTime}
-                            onChange={(e) => setExamScheduledTime(e.target.value)}
-                          />
-                          {(examScheduledDate || examScheduledTime) && (
-                            <Button
-                              variant="outline-danger"
-                              onClick={handleClearAppointment}
-                              title="Xóa ngày giờ hẹn"
-                            >
-                              <i className="bi bi-x-lg"></i>
-                            </Button>
-                          )}
-                        </div>
-                      </Form.Group>
-                    </Col>
-                  </Row>
-                  <Form.Text className="text-muted d-block mt-1" style={{ fontSize: '11px' }}>
-                    Ngày và giờ đã được tách riêng. Bấm nút xóa bên cạnh để hủy đặt lịch hẹn nếu cần.
-                  </Form.Text>
-                </div>
-
-
-                <Form.Group className="mb-3">
-                  <Form.Label className="fw-semibold">Ghi chú phản hồi / Dặn dò</Form.Label>
-                  <Form.Control
-                    as="textarea"
-                    rows={3}
-                    value={examResolutionNote}
-                    onChange={(e) => setExamResolutionNote(e.target.value)}
-                    placeholder="Ví dụ: Đã nhận, chuẩn bị sẵn ngựa ở khu chuồng A lúc 15:00..."
-                  />
-                </Form.Group>
-              </>
+          <VetCard
+            title="Y lệnh hôm nay"
+            icon="bi-capsule"
+            count={ordersQ.isLoading ? null : orders.length}
+            flush
+            extra={
+              <button type="button" className="vet-link vet-small" onClick={() => navigate('/veterinarian/treatments')}>
+                Điều trị
+              </button>
+            }
+          >
+            {ordersQ.isLoading ? (
+              <LoadingBlock rows={2} height={44} />
+            ) : orders.length === 0 ? (
+              <EmptyNote icon="bi-capsule" title="Hôm nay không có y lệnh cần theo dõi" />
             ) : (
-              <Form.Group className="mb-3">
-                <Form.Label className="fw-semibold">
-                  Lý do từ chối khám <span className="text-danger">*</span>
-                </Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={3}
-                  value={examResolutionNote}
-                  onChange={(e) => setExamResolutionNote(e.target.value)}
-                  placeholder="Bắt buộc ghi rõ lý do để HLV / Manager biết hướng xử lý..."
-                  required
-                />
-                <Form.Text className="text-muted" style={{ fontSize: '11px' }}>
-                  Thông báo sẽ được gửi trực tiếp tới người yêu cầu kèm lý do này.
-                </Form.Text>
-              </Form.Group>
+              <div className="vet-list">
+                {orders.map((row) => {
+                  const p = row.progress || {};
+                  const horseId = idOf(row.horse);
+                  return (
+                    <div key={row._id} className="vet-row is-clickable" role="button" tabIndex={0} onClick={() => openHorse(horseId)} onKeyDown={(e) => e.key === 'Enter' && openHorse(horseId)}>
+                      <HorseAvatar horse={horseById.get(horseId) || row.horse} size={34} />
+                      <div className="vet-row-main">
+                        <div className="d-flex align-items-center justify-content-between gap-2">
+                          <span className="vet-row-title text-truncate">{row.horse?.name || 'Ngựa'}</span>
+                          <span className="vet-small vet-tnum vet-muted">{p.total ? `${p.done}/${p.total} đã làm` : 'Chưa có việc'}</span>
+                        </div>
+                        {p.total > 0 && (
+                          <div className="mt-1">
+                            <Progress value={p.done} max={p.total} tone={p.missed || p.notDone ? 'bad' : 'good'} />
+                          </div>
+                        )}
+                        {(p.missed > 0 || p.notDone > 0 || !p.total) && (
+                          <div className={`vet-small mt-1 ${p.total ? 'vet-text-bad' : 'vet-faint'}`}>
+                            {!p.total
+                              ? 'Hôm nay không còn liều nào: đã qua giờ cho thuốc, hoặc ngựa chưa có người chăm sóc phụ trách.'
+                              : [p.missed && `${p.missed} bỏ lỡ`, p.notDone && `${p.notDone} không cho được`].filter(Boolean).join(' · ')}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowExamModal(false)} disabled={isUpdatingExam}>
-              Hủy
-            </Button>
-            <Button
-              variant={examAction === 'accept' ? 'success' : 'danger'}
-              type="submit"
-              disabled={isUpdatingExam}
-            >
-              {isUpdatingExam ? (
-                <>
-                  <Spinner animation="border" size="sm" className="me-1" />
-                  Đang lưu...
-                </>
-              ) : examAction === 'accept' ? (
-                <>
-                  <i className="bi bi-check2-circle me-1"></i> Xác nhận nhận yêu cầu
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-x-circle me-1"></i> Xác nhận từ chối
-                </>
-              )}
-            </Button>
-          </Modal.Footer>
-        </Form>
-      </Modal>
-    </Container>
+          </VetCard>
+        </div>
+      </div>
+
+      {dialog?.type === 'request' && <ExamRequestModal request={dialog.request} mode={dialog.mode} onHide={close} onDone={refresh} />}
+      {dialog?.type === 'incident' && <IncidentModal task={dialog.task} onHide={close} onDone={refresh} />}
+      {dialog?.type === 'care' && dialog.horse && <CareModal horse={dialog.horse} kind={dialog.kind} initialMode={dialog.mode} onHide={close} onDone={refresh} />}
+      {dialog?.type === 'pick' && (
+        <HorsePickerModal
+          title={dialog.purpose === 'exam' ? 'Khám ngựa nào?' : 'Kê đơn cho ngựa nào?'}
+          horses={horses}
+          onHide={close}
+          onPick={(h) => {
+            close();
+            navigate(dialog.purpose === 'exam' ? `/veterinarian/examinations/new/${h._id}` : `/veterinarian/treatments/new?horseId=${h._id}`);
+          }}
+        />
+      )}
+    </div>
   );
 }

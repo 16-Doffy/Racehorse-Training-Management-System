@@ -1,10 +1,11 @@
 /**
  * Where on the 3D horse a vet's injury mark goes.
  *
- * The vet marks an injury on a side view of a horse (web: components/veterinarian/
- * Horse3DAnatomyViewer.jsx, an 861×1024 picture with the head on the left) and the server keeps
- * { x, y } normalised against that picture (InjuryMarker.coordinates). On it the horse runs from
- * the nose at about x 0.00 to the tail at 0.97, and from the ears at y 0.00 to the hooves at 0.95.
+ * The server keeps { x, y } for every mark (InjuryMarker.coordinates), on a side view of a horse:
+ * the nose at about x 0.00 to the tail at 0.97, the ears at y 0.00 to the hooves at 0.95. Marks used
+ * to be made on a side picture; the web now marks them on this same 3D horse
+ * (client/src/components/veterinarian/HorseInjuryViewer.jsx) and also keeps the exact point on the
+ * skin, or the organ inside (InjuryMarker.location3d), with { x, y } worked out the same way.
  * A mark becomes two numbers any horse model can use: how far along the body (0 = nose, 1 = tail)
  * and how high (0 = ground, 1 = top of the head). Which side of the horse is not recorded, so the
  * point sits in the middle of the body and shows through.

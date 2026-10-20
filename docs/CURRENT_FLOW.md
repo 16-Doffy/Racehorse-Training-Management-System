@@ -97,16 +97,29 @@ API: `/feeding`, `/stable/tasks`, `/stable/my-care-plan`.
 
 ## 5. Bác sĩ đánh giá và điều trị
 
-**Vet — Sức Khỏe Chiến Mã, Phác Đồ & Khóa Tập, Kê Đơn Thuốc.**
+**Vet — Việc hôm nay, Ngựa & hồ sơ, Điều trị & đơn thuốc, Chấn thương, Lịch chăm sóc,
+Dụng cụ khám.**
 
-1. Khám từ hồ sơ ngựa/hàng chờ yêu cầu khám; ghi chỉ số, kết luận, ảnh/PDF nếu cần.
-   Yêu cầu khám có thể được **nhận + hẹn giờ** (vẫn mở tới khi có hồ sơ khám) hoặc
-   **từ chối kèm lý do**; người yêu cầu được báo (`PATCH /health/exam-requests/:id` `action`).
-   Tiêm phòng/tẩy giun/đóng móng ghi từng lần (`/horses/:id/care-events`, vắc-xin/thuốc,
-   số lô, liều); `nextDue` dời lịch nhắc. Hiện trên dòng thời gian của ngựa.
-2. Chọn **Mức vận động được phép** (`clearedLevel`) trong hồ sơ khám.
-3. Nếu cần điều trị, lập phác đồ/y lệnh: mức tập, thuốc, lượng dùng, giờ/liều.
-   Thuốc liên kết kho được trừ khi Groom thực hiện liều, không phải lúc kê đơn.
+1. **Việc hôm nay** gom mọi việc chờ bác sĩ, khẩn trước: sự cố Groom báo, yêu cầu khám,
+   ngựa chưa khám/quá hạn khám, tiêm phòng/tẩy giun/đóng móng/khám định kỳ đến hạn.
+   Mỗi dòng một nút chính (Xử lý, Khám ngay, Ghi nhận), thao tác phụ trong menu "…".
+2. Khám từ hồ sơ ngựa/hàng chờ; ghi chỉ số, kết luận, ảnh/PDF nếu cần. Phiếu khám báo trước
+   yêu cầu khám/sự cố nào sẽ được đóng khi lưu. Yêu cầu khám có thể được **nhận + hẹn giờ**
+   (vẫn mở tới khi có hồ sơ khám) hoặc **từ chối kèm lý do**; người yêu cầu được báo
+   (`PATCH /health/exam-requests/:id` `action`). Tiêm phòng/tẩy giun/đóng móng ghi từng lần
+   (`/horses/:id/care-events`, vắc-xin/thuốc, số lô, liều); `nextDue` dời lịch nhắc.
+3. Chọn **Mức vận động được phép** (`clearedLevel`) trong hồ sơ khám, hoặc dùng **Đổi mức tập**
+   ở hồ sơ ngựa: hạ mức đặt trên phác đồ đang chạy; nâng mức là đánh giá cho tập lại (lưu thành
+   phiếu khám có `clearedLevel`).
+4. Nếu cần điều trị, **kê đơn** ở một form duy nhất: mức tập, thuốc (liều, đường dùng, giờ), y lệnh
+   chăm sóc. Có **toa mẫu** theo bệnh/chấn thương để điền sẵn rồi sửa; bác sĩ lưu được toa của mình
+   (`/health/prescription-templates`). Bác sĩ chỉ kê đơn: **thuốc là kho của Groom**, kho trừ khi
+   Groom thực hiện liều, không phải lúc kê đơn. Trang kho của bác sĩ chỉ còn **dụng cụ khám**
+   (đơn vị cái/bộ/chiếc/đôi), đề xuất bổ sung như cũ.
+5. **Chấn thương** đánh dấu trên mô hình ngựa 3D (bản không yên cương): bấm lên da để ghi vị trí,
+   tên vùng và bên trái/phải tự điền; lớp **Bên trong** chọn cơ quan (tim, phổi, dạ dày, ruột, thận…,
+   vị trí ước lượng theo giải phẫu). Lưu trong `location3d` (`layer` `surface`/`internal`); `coordinates`
+   vẫn ghi để app Groom đặt điểm như trước.
 
 | Mức | Ý nghĩa |
 |---|---|
@@ -124,7 +137,8 @@ hạn chế y tế sẽ dừng giữa chừng, giữ số đo. Buổi bị chặ
 kiện thay đổi. Không tự khôi phục booking đã hủy: HLV xem lại lịch, sinh/tạo buổi
 mới. Giải đã xác nhận có thể bị đánh dấu cần xem lại.
 
-API: `/health/records`, `/health/treatments`, `/health/exam-requests`, `/health/clearances`.
+API: `/health/records`, `/health/treatments`, `/health/exam-requests`, `/health/clearances`,
+`/health/injury-markers`, `/health/prescription-templates`.
 
 ## 6. Đăng ký giải và lập kế hoạch
 

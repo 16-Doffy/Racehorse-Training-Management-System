@@ -21,6 +21,18 @@ export const incidentApi = {
   handle: (taskId, payload) => axiosClient.patch(`/stable/incidents/${taskId}`, payload),
 };
 
+// The stall catalogue and stable map (docs/STALL_API.md). Everyone reads; the Manager keeps the layout.
+export const stallApi = {
+  /** { stalls, unplaced }: every stall in zone order with who stands in it, plus horses on a free-text stall. */
+  map: (params) => axiosClient.get('/stable/stalls', { params }),
+  forHorse: (horseId) => axiosClient.get(`/stable/stalls/by-horse/${horseId}`),
+  create: (payload) => axiosClient.post('/stable/stalls', payload),
+  /** { zone, count, zoneName?, zonePurpose?, type? } → <zone>-01 … <zone>-<count>. */
+  generateZone: (payload) => axiosClient.post('/stable/stalls/generate', payload),
+  update: (id, payload) => axiosClient.patch(`/stable/stalls/${id}`, payload),
+  retire: (id) => axiosClient.delete(`/stable/stalls/${id}`),
+};
+
 export const stableAssignmentApi = {
   list: () => axiosClient.get('/stable/assignments'),
   upsert: (payload) => axiosClient.post('/stable/assignments', payload),

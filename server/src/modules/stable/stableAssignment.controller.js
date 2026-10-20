@@ -1,4 +1,6 @@
+const mongoose = require('mongoose');
 const StableAssignment = require('../../models/StableAssignment');
+const Stall = require('../../models/Stall');
 const DailyTask = require('../../models/DailyTask');
 const User = require('../../models/User');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -24,6 +26,7 @@ const listAssignments = asyncHandler(async (req, res) => {
   const assignments = await StableAssignment.find(filter)
     .populate('horse', 'name healthStatus')
     .populate('assignedCaretaker', 'name')
+    .populate('stall', 'code zone zoneName type status')
     .sort({ stableBlock: 1 });
   return ok(res, assignments, 'Stable assignments fetched.');
 });
@@ -38,11 +41,23 @@ const listAssignments = asyncHandler(async (req, res) => {
  */
 const upsertAssignment = asyncHandler(async (req, res) => {
   const { horse, stableBlock, assignedCaretaker } = req.body;
-  if (!horse || !stableBlock) return fail(res, 'horse và stableBlock là bắt buộc.', 400);
+  if (!horse || (!stableBlock && !req.body.stall)) return fail(res, 'horse và chuồng (stall hoặc stableBlock) là bắt buộc.', 400);
   if (!(await canAccessHorse(req.user, horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
 
-  const block = String(stableBlock).trim();
-  const occupied = await StableAssignment.findOne({ stableBlock: block, horse: { $ne: horse } }).populate('horse', 'name');
+  // A stall on the map (`stall`), or free text as before; text that matches a stall's code is that stall.
+  let stall = null;
+  if (req.body.stall) {
+    if (!mongoose.isValidObjectId(req.body.stall)) return fail(res, 'Chuồng không hợp lệ.', 400);
+    stall = await Stall.findById(req.body.stall);
+    if (!stall) return fail(res, 'Không tìm thấy chuồng.', 404);
+  } else {
+    stall = await Stall.findOne({ code: String(stableBlock).trim().toUpperCase() });
+  }
+  if (stall && !stall.isActive) return fail(res, `Chuồng ${stall.code} đã ngừng sử dụng.`, 409);
+  if (stall && stall.status === 'maintenance') return fail(res, `Chuồng ${stall.code} đang bảo trì${stall.maintenanceNote ? ` (${stall.maintenanceNote})` : ''} — chọn chuồng khác.`, 409);
+
+  const block = stall ? stall.code : String(stableBlock).trim();
+  const occupied = await StableAssignment.findOne({ $or: [{ stableBlock: block }, ...(stall ? [{ stall: stall._id }] : [])], horse: { $ne: horse } }).populate('horse', 'name');
   if (occupied) return fail(res, `Chuồng "${block}" đang có ngựa ${occupied.horse?.name || 'khác'}.`, 409);
 
   if (assignedCaretaker) {
@@ -53,7 +68,7 @@ const upsertAssignment = asyncHandler(async (req, res) => {
   const previous = await StableAssignment.findOne({ horse }).select('assignedCaretaker');
   const assignment = await StableAssignment.findOneAndUpdate(
     { horse },
-    { horse, stableBlock: block, assignedCaretaker: assignedCaretaker || null },
+    { horse, stableBlock: block, stall: stall ? stall._id : null, assignedCaretaker: assignedCaretaker || null },
     { new: true, upsert: true, runValidators: true }
   );
 
@@ -99,7 +114,7 @@ const upsertAssignment = asyncHandler(async (req, res) => {
     action: 'stableAssignment.save',
     targetModel: 'StableAssignment',
     targetId: assignment._id,
-    metadata: { stableBlock: block, caretakerChanged: changedCaretaker },
+    metadata: { stableBlock: block, stall: stall ? stall.code : null, caretakerChanged: changedCaretaker },
   });
   return created(res, assignment, 'Stable assignment saved.');
 });

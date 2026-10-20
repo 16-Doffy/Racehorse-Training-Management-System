@@ -76,8 +76,9 @@ export default function MainLayout() {
   const activePreset = CANVAS_PRESETS[canvasKey] || CANVAS_PRESETS.sand_bone;
   const currentTheme = getForestTheme(canvasKey);
   const isDarkCanvas = canvas && canvasKey === DARK_CANVAS;
+  const isStaff = FULL_DARK_ROLES.includes(user?.role);
   // The staff's pages go fully dark; the Owner's pages keep their light panels.
-  const staffDark = isDarkCanvas && FULL_DARK_ROLES.includes(user?.role);
+  const staffDark = isDarkCanvas && isStaff;
   // The vet's Bootstrap pages use Bootstrap's own dark mode, recoloured to the forest palette below.
   const bootstrapDark = isDarkCanvas && BOOTSTRAP_ROLES.includes(user?.role);
 
@@ -121,21 +122,26 @@ export default function MainLayout() {
   };
 
   const layout = (
-    <Layout className={forest ? `forest-layout${canvas ? ' is-canvas' : ''}${isDarkCanvas ? ' is-dark-canvas' : ''}${staffDark ? ' staff-dark' : ''}` : undefined} style={{ height: '100vh', ...pageBgStyle }}>
+    <Layout className={forest ? `forest-layout${canvas ? ' is-canvas' : ''}${isDarkCanvas ? ' is-dark-canvas' : ''}${staffDark ? ' staff-dark' : ''}` : undefined} style={{ height: '100vh', overflow: 'hidden', ...pageBgStyle }}>
       {/* SIDEBAR */}
       <Sider
         theme={forest ? 'dark' : 'light'}
         collapsible
         collapsed={siderCollapsed}
         onCollapse={(value) => dispatch(siderCollapsedSet(value))}
+        onBreakpoint={(broken) => dispatch(siderCollapsedSet(broken))}
         breakpoint="md"
         width={260}
         className={forest ? `custom-sider${canvas ? ' canvas-sider' : ''}` : '!bg-white border-r border-gray-200 custom-sider'}
         trigger={null}
       >
         {/* Logo Area: Team 8 WDP301 for Canvas (Manager/Head Trainer); Horseshoe for Veterinarian; Appstore for others */}
-        <div className={`h-20 flex items-center px-4 shrink-0 pt-3 ${forest ? 'border-b border-white/10' : 'border-b border-gray-100'}`}>
-          {canvas ? (
+        <div className={`${isStaff ? 'h-16' : 'h-20 pt-3'} flex items-center px-4 shrink-0 ${forest ? 'border-b border-white/10' : 'border-b border-gray-100'}`}>
+          {isStaff ? (
+            <div className="w-9 h-9 rounded-lg bg-[#0B291E] border border-[#D4AF37]/35 flex items-center justify-center mr-3 shrink-0">
+              <Team8LogoCrest />
+            </div>
+          ) : canvas ? (
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/25 via-emerald-950/60 to-amber-700/35 border border-amber-400/50 flex items-center justify-center mr-3 shrink-0 shadow-md">
               <Team8LogoCrest />
             </div>
@@ -145,7 +151,16 @@ export default function MainLayout() {
             <AppstoreFilled className="text-xl mr-2 text-gray-800" />
           )}
           {!siderCollapsed && (
-            canvas ? (
+            isStaff ? (
+              <div className="flex flex-col min-w-0">
+                <span className="font-semibold text-[15px] tracking-tight text-[#FAF8F5] leading-tight truncate" style={{ fontFamily: "'Lora', Georgia, serif" }}>
+                  Racehorse TMS
+                </span>
+                <span className="text-[11px] font-medium text-[#A7C4B5] truncate mt-0.5">
+                  Quản lý câu lạc bộ
+                </span>
+              </div>
+            ) : canvas ? (
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="font-bold text-sm tracking-wider uppercase text-amber-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]" style={{ fontFamily: "'Lora', Georgia, serif" }}>
@@ -168,10 +183,14 @@ export default function MainLayout() {
         </div>
 
         {/* Menu Section */}
-        <div className={`flex-1 overflow-y-auto mt-4 custom-sidebar-menu ${canvas ? 'px-2 is-canvas-menu is-forest' : forest ? 'px-2 is-forest' : 'px-3 is-light'} min-h-0`}>
+        <div className={`flex-1 overflow-y-auto ${isStaff ? 'mt-3' : 'mt-4'} custom-sidebar-menu ${canvas ? `px-2 is-canvas-menu is-forest${isStaff ? ' is-staff-menu' : ''}` : forest ? 'px-2 is-forest' : 'px-3 is-light'} min-h-0`}>
           {!siderCollapsed && (
             <div
-              className={`px-3 text-xs font-semibold mb-2 uppercase ${forest ? 'tracking-wider' : 'text-gray-400'}`}
+              className={
+                isStaff
+                  ? `px-3 text-xs font-medium mb-1.5 ${forest ? '' : 'text-gray-500'}`
+                  : `px-3 text-xs font-semibold mb-2 uppercase ${forest ? 'tracking-wider' : 'text-gray-400'}`
+              }
               style={forest ? { color: FOREST.siderMuted } : undefined}
             >
               {forest ? MENU_SECTION_LABEL[user?.role] : 'Dashboards'}
@@ -237,7 +256,7 @@ export default function MainLayout() {
       </Sider>
 
       {/* MAIN CONTENT AREA */}
-      <Layout style={{ ...pageBgStyle, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <Layout style={{ ...pageBgStyle, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0 }}>
         <div className="flex justify-between items-center px-4 pt-3 md:px-8 md:pt-4 shrink-0 bg-transparent">
           {canvas ? (
             <Segmented
@@ -254,7 +273,7 @@ export default function MainLayout() {
           <AlertBell />
         </div>
         <Content
-          style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
+          style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto', overflowX: 'hidden' }}
           className="p-4 md:px-8 md:pb-8 relative"
         >
           <Outlet />
@@ -360,6 +379,13 @@ export default function MainLayout() {
           border: 1px solid rgba(212, 175, 55, 0.4) !important;
           border-left: 3px solid #D4AF37 !important;
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+        }
+        .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected {
+          background: none !important;
+          background-color: rgba(212, 175, 55, 0.14) !important;
+          border: 1px solid rgba(212, 175, 55, 0.3) !important;
+          border-left: 3px solid #D4AF37 !important;
+          box-shadow: none !important;
         }
         .custom-sidebar-menu.is-canvas-menu .ant-menu-item-selected span {
           color: #F8E7B2 !important;
@@ -781,12 +807,16 @@ export default function MainLayout() {
         .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-rose-900"], [class~="text-red-600"], [class~="text-red-700"]) { color: #FDA4AF !important; }
         .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"], [class~="text-sky-700"], [class~="text-cyan-600"], [class~="text-cyan-700"]) { color: #93C5FD !important; }
         .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-white"], [class~="!bg-white"], [class~="bg-gray-100"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-50/80"], [class~="bg-slate-50"], [class~="bg-slate-50/80"], [class~="bg-[#FFFDF8]"], [class~="bg-[#FAF7F0]"], [class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"]) { background-color: rgba(255, 255, 255, 0.05) !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-emerald-100"], [class~="bg-emerald-50"], [class~="bg-emerald-50/20"], [class~="bg-emerald-50/60"], [class~="bg-green-50"]) { background-color: rgba(16, 185, 129, 0.14) !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-orange-50"], [class~="bg-orange-100"], [class~="bg-yellow-50"], [class~="bg-amber-50"], [class~="bg-amber-50/30"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/90"]) { background-color: rgba(245, 158, 11, 0.14) !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-emerald-100"], [class~="bg-emerald-50"], [class~="bg-emerald-50/20"], [class~="bg-emerald-50/40"], [class~="bg-emerald-50/60"], [class~="bg-green-50"]) { background-color: rgba(16, 185, 129, 0.14) !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-orange-50"], [class~="bg-orange-100"], [class~="bg-yellow-50"], [class~="bg-amber-50"], [class~="bg-amber-50/20"], [class~="bg-amber-50/30"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/90"]) { background-color: rgba(245, 158, 11, 0.14) !important; }
         .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-rose-50"], [class~="bg-rose-100"], [class~="bg-red-50"], [class~="bg-red-100"]) { background-color: rgba(244, 63, 94, 0.14) !important; }
         .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-blue-50"], [class~="bg-blue-50/60"], [class~="bg-blue-100"], [class~="bg-cyan-50"], [class~="bg-sky-50"]) { background-color: rgba(59, 130, 246, 0.16) !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="border-amber-200/50"], [class~="border-emerald-200/60"], [class~="divide-[#EFE8DA]"], [class~="divide-gray-100"]) { border-color: rgba(212, 175, 55, 0.18) !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="hover:bg-rose-50/40"], [class~="hover:bg-gray-50/40"], [class~="hover:bg-emerald-50/50"], [class~="hover:bg-amber-50/50"], [class~="hover:!bg-amber-50"], [class~="hover:bg-gray-50"]):hover { background-color: rgba(255, 255, 255, 0.07) !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="border-amber-200"], [class~="border-amber-200/50"], [class~="border-amber-200/80"], [class~="border-emerald-200"], [class~="border-emerald-200/60"], [class~="divide-[#EFE8DA]"], [class~="divide-[#E4DFD3]"], [class~="divide-gray-100"]) { border-color: rgba(212, 175, 55, 0.18) !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box:is([class~="divide-[#E4DFD3]"], [class~="divide-[#EFE8DA]"], [class~="divide-gray-100"]) > *,
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="divide-[#E4DFD3]"], [class~="divide-[#EFE8DA]"], [class~="divide-amber-200/50"], [class~="divide-gray-100"]) > * { border-color: rgba(212, 175, 55, 0.18) !important; }
+        .forest-layout.is-dark-canvas.staff-dark .staff-revenue-text { color: #6EE7B7 !important; }
+        .forest-layout.is-dark-canvas.staff-dark .staff-cost-text { color: #FDA4AF !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="hover:bg-rose-50/40"], [class~="hover:bg-gray-50/40"], [class~="hover:bg-emerald-50/40"], [class~="hover:bg-emerald-50/50"], [class~="hover:bg-amber-50/50"], [class~="hover:!bg-amber-50"], [class~="hover:bg-gray-50"], [class~="hover:bg-[#F2ECE0]"]):hover { background-color: rgba(255, 255, 255, 0.07) !important; }
         /* Item codes (<code>, inventory): Bootstrap's pink is too faint on the warm cards and on the dark ones. */
         .forest-layout.is-canvas code { color: #0F5A43 !important; }
         .forest-layout.is-dark-canvas.staff-dark code { color: #F6D57A !important; background-color: rgba(255, 255, 255, 0.06) !important; }

@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './ProtectedRoute';
 import MainLayout from '../layouts/MainLayout';
 import LoginPage from '../features/auth/LoginPage';
@@ -19,8 +19,8 @@ import HorseHealthDetail from '../pages/veterinarian/HorseHealthDetail';
 import MedicalExaminationForm from '../pages/veterinarian/MedicalExaminationForm';
 import InjuryManagement from '../pages/veterinarian/InjuryManagement';
 import InjuryForm from '../pages/veterinarian/InjuryForm';
-import TreatmentPlanForm from '../pages/veterinarian/TreatmentPlanForm';
-import PrescriptionForm from '../pages/veterinarian/PrescriptionForm';
+import TreatmentsPage from '../pages/veterinarian/TreatmentsPage';
+import TreatmentForm from '../pages/veterinarian/TreatmentForm';
 import MedicalSchedule from '../pages/veterinarian/MedicalSchedule';
 import MedicalInventoryPage from '../pages/veterinarian/MedicalInventoryPage';
 import StableAssignPage from '../features/stable/StableAssignPage';
@@ -74,15 +74,17 @@ export default function AppRouter() {
             <Route path="/veterinarian/injuries" element={<InjuryManagement />} />
             <Route path="/veterinarian/injuries/new" element={<InjuryForm />} />
             <Route path="/veterinarian/injuries/:id/edit" element={<InjuryForm />} />
-            <Route path="/veterinarian/treatments" element={<TreatmentPlanForm />} />
-            <Route path="/veterinarian/treatments/:id/edit" element={<TreatmentPlanForm />} />
-            <Route path="/veterinarian/prescriptions" element={<PrescriptionForm />} />
+            {/* One place for treatments and prescriptions: the list, and one form to write or edit one. */}
+            <Route path="/veterinarian/treatments" element={<TreatmentsPage />} />
+            <Route path="/veterinarian/treatments/new" element={<TreatmentForm />} />
+            <Route path="/veterinarian/treatments/:id/edit" element={<TreatmentForm />} />
+            <Route path="/veterinarian/prescriptions" element={<Navigate to="/veterinarian/treatments" replace />} />
             <Route path="/veterinarian/inventory" element={<MedicalInventoryPage />} />
             <Route path="/veterinarian/schedules" element={<MedicalSchedule />} />
 
             {/* Legacy alias paths */}
             <Route path="/health/records" element={<HorseHealthList />} />
-            <Route path="/health/treatments" element={<TreatmentPlanForm />} />
+            <Route path="/health/treatments" element={<TreatmentsPage />} />
           </Route>
 
           {/* Groom / Stable Hand has no web screens: that role runs in the Expo app under /mobile. */}
