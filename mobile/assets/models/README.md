@@ -27,3 +27,10 @@ Texture thân (`M_Body`) và bờm/đuôi (`M_Hair`) là ảnh xám, nên app t�
 `coatMaterials` (`src/three/horseModel.js`).
 
 Web dùng bản sao của file này ở `client/public/models/horse.glb`. Thay mô hình thì chép đè cả hai file.
+
+## Bản không yên cương cho bác sĩ
+Bản đồ chấn thương 3D của bác sĩ (web) dùng `client/public/models/horse-bare.glb`: chính mô hình này đã
+bỏ yên và dây cương (vật liệu `M_Saddle1`, `M_Saddle2`), giữ nguyên khung xương, hoạt ảnh và đơn vị — để
+khám và đánh dấu được vùng lưng, đầu. Dòng ghi công trên web ghi rõ "bản đã bỏ yên cương" (CC BY-NC
+yêu cầu nêu việc chỉnh sửa). Thay `horse.glb` thì tạo lại bản này bằng `tools/horse-model/strip-tack.mjs`
+(hướng dẫn chạy ở đầu file).

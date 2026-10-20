@@ -62,7 +62,25 @@ async function syncHorseHealthStatus(horseId) {
   }
 }
 
-const MARKER_FIELDS = ['horse', 'healthRecord', 'bodyPart', 'coordinates', 'severity', 'recoveryStatus', 'notes'];
+const MARKER_FIELDS = ['horse', 'healthRecord', 'bodyPart', 'coordinates', 'location3d', 'severity', 'recoveryStatus', 'notes'];
+
+const finite = (v) => typeof v === 'number' && Number.isFinite(v);
+const isVector = (v) => v && finite(v.x) && finite(v.y) && finite(v.z);
+const vectorOf = (v) => ({ x: v.x, y: v.y, z: v.z });
+
+/**
+ * The place on the 3D horse, when sent: { position, normal?, layer? } (layer 'surface' — on the skin —
+ * or 'internal' — an organ inside). null clears it. Returns an error message or null.
+ */
+function locationProblem(body) {
+  if (body.location3d === undefined || body.location3d === null) return null;
+  const { position, normal, layer = 'surface' } = body.location3d;
+  if (!isVector(position)) return 'Vị trí trên mô hình 3D không hợp lệ.';
+  if (normal !== undefined && normal !== null && !isVector(normal)) return 'Hướng bề mặt trên mô hình 3D không hợp lệ.';
+  if (!['surface', 'internal'].includes(layer)) return 'Lớp vị trí chỉ là "surface" (ngoài da) hoặc "internal" (bên trong).';
+  body.location3d = { position: vectorOf(position), ...(normal ? { normal: vectorOf(normal) } : {}), layer };
+  return null;
+}
 
 const listMarkers = asyncHandler(async (req, res) => {
   const filter = {};
@@ -74,6 +92,8 @@ const listMarkers = asyncHandler(async (req, res) => {
 
 const createMarker = asyncHandler(async (req, res) => {
   const body = pick(req.body, MARKER_FIELDS);
+  const problem = locationProblem(body);
+  if (problem) return fail(res, problem, 400);
   if (!(await canAccessHorse(req.user, body.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
 
   const marker = await InjuryMarker.create({ ...body, markedBy: req.user._id });
@@ -100,6 +120,8 @@ const updateMarker = asyncHandler(async (req, res) => {
 
   // A marker stays on the horse it was placed on.
   const { horse, ...changes } = pick(req.body, MARKER_FIELDS);
+  const problem = locationProblem(changes);
+  if (problem) return fail(res, problem, 400);
   Object.assign(marker, changes);
   await marker.save();
   await syncHorseHealthStatus(marker.horse);
