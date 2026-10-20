@@ -63,10 +63,21 @@ Chỉ Quản lý xếp và đổi chuồng (kèm người chăm sóc): đó là 
 
 | Màn | Người | Việc |
 |---|---|---|
-| Manager: sơ đồ khu, xếp/đổi chuồng, bảo trì; chi tiết ngựa có chuồng 3D | Claude | đang làm |
-| HLV: chuồng 3D trong chi tiết ngựa, sơ đồ chỉ xem | Claude | đang làm |
+| Manager: sơ đồ khu, xếp/đổi chuồng, bảo trì; chi tiết ngựa có chuồng 3D | Claude | xong (`/admin/stables`, chi tiết ngựa) |
+| HLV: chuồng 3D trong chi tiết ngựa, cột Chuồng ở danh sách ngựa | Claude | xong |
 | Bác sĩ: ngựa chấn thương nổi đỏ trên sơ đồ; đề nghị Quản lý chuyển ngựa sang khu cách ly (chuồng `type: "isolation"`) | trunghieu | gọi `GET /stable/stalls` |
 | Chủ ngựa: chuồng của ngựa mình, có 3D | Quân | gọi `GET /stable/stalls/by-horse/:horseId`, dùng component chung khi có |
 | NV chăm sóc (app): mã chuồng trên từng việc, danh sách chuồng mình phụ trách | Tien | `stableBlock` đã là mã chuồng; lọc `GET /stable/stalls` theo `occupant.caretaker._id` |
 
-Component 3D dùng chung (`Stall3D`) sẽ nằm ở `client/src/features/stable/`. Màn web nào cũng gắn được: truyền vào một chuồng (dữ liệu như trên) là hiện chuồng có biển tên, đèn trạng thái và con ngựa bên trong.
+## Gắn vào màn web của bạn
+
+Các component sẵn trong `client/src/features/stable/`:
+
+- `HorseStallCard`: thẻ "Chuồng" của một ngựa (3D khu chuồng nhìn vào chuồng của nó, mã, khu, người chăm sóc).
+  `<HorseStallCard horseId={horse._id} canManage={false} />`. Hợp cho màn chủ ngựa, màn bác sĩ.
+- `stall3d/Stall3D`: chỉ cảnh 3D. `<Stall3D stalls={stallsCuaMotKhu} focusCode="A-03" onSelect={(code) => …} height={360} />`.
+  `stalls` lấy từ `GET /stable/stalls` (lọc theo `zone`); three.js chỉ tải khi component hiện lên.
+- `StableMapBoard`: sơ đồ khu + 3D + thông tin chuồng. `canManage={false}` cho vai trò chỉ xem.
+- API client: `stallApi` trong `stableApi.js` (`map`, `forHorse`, …).
+
+App điện thoại (Tien) không dùng được component web này. `stableBlock` đã là mã chuồng, `GET /stable/stalls` cho cả sơ đồ.
