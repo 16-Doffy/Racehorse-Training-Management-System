@@ -712,6 +712,15 @@ export default function MainLayout() {
           color: #123326 !important;
           border-color: #E5DEC9 !important;
         }
+        /* The card title has its own cream rule for dark cards; inside a light box it stays dark.
+           Not for the staff's dark pages (.staff-dark): they colour their own light boxes. */
+        .forest-layout.is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head .ant-card-head-title,
+        .forest-layout.is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head h1,
+        .forest-layout.is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head h2,
+        .forest-layout.is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head h3,
+        .forest-layout.is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head h4 {
+          color: #123326 !important;
+        }
         .forest-layout.is-dark-canvas .light-surface-box .ant-table-tbody > tr > td {
           border-bottom-color: #EFE9DB !important;
         }

@@ -161,6 +161,42 @@ test('owner horse page shows the papers and the valuation', async ({ page }) => 
   await expect(papers.getByText('TEST-REG-001')).toBeVisible();
   await expect(papers.getByText('750.000.000 ₫')).toBeVisible();
 });
+test('owner horse page shows the horse in its stall, with no way to move it', async ({ page }) => {
+  await login(page, 'owner');
+  await page.goto(`/horses/${fixture.horseId}`);
+  // The fixture puts the horse in the first stall of zone A.
+  const stall = page.locator('.ant-card', { hasText: 'Chuồng A-01' });
+  await expect(stall).toBeVisible();
+  await expect(stall.getByText('Khu A · TEST ngựa đua', { exact: true })).toBeVisible();
+  // Placing and moving horses is the Manager's: the owner gets no link to the stable map.
+  await expect(page.getByText('Đổi chuồng trên sơ đồ')).toHaveCount(0);
+});
+test('owner stable page reads the stall from the stable map, not from the old free-text code', async ({ page }) => {
+  await login(page, 'owner');
+  await page.goto('/owner/stable');
+  await expect(page.locator('.ant-card', { hasText: 'Chuồng A-01' })).toBeVisible();
+  // The stall code A-01 used to be split at the dash and shown as "A – 01".
+  await expect(page.getByText('A – 01')).toHaveCount(0);
+});
+test('owner dashboard says where each horse stands', async ({ page }) => {
+  await login(page, 'owner');
+  // The fixture horse is in stall A-01 of Khu A (stable map).
+  await expect(page.getByText('Chuồng A-01 · Khu A', { exact: true })).toBeVisible();
+});
+test('owner stable page keeps the stall card title readable on the dark canvas', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('wdp301_canvas_theme', 'peak_equestrian_dark'));
+  await login(page, 'owner');
+  await page.goto('/owner/stable');
+  const title = page.locator('.ant-card-head-title', { hasText: 'Chuồng A-01' });
+  await expect(title).toBeVisible();
+  // The card sits in a light panel: its title must stay dark, not turn cream like the dark cards' titles.
+  expect(await textIsDark(title)).toBe(true);
+});
+test('owner cannot open the stable map of the Manager', async ({ page }) => {
+  await login(page, 'owner');
+  await page.goto('/admin/stables');
+  await expect(page).toHaveURL(/\/403$/);
+});
 test('the trainer sees the horse papers but not the valuation', async ({ page }) => {
   await login(page, 'trainer');
   await page.goto(`/horses/${fixture.horseId}`);

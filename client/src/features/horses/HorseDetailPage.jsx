@@ -329,6 +329,10 @@ export default function HorseDetailPage() {
                 <PedigreeTree horse={lineageTree} />
               </Card>
             </Col>
+            {/* Where the horse stands: its stall in 3D. The Owner only looks; moving a horse is the Manager's. */}
+            <Col xs={24}>
+              <HorseStallCard horseId={horse._id} canManage={false} />
+            </Col>
           </Row>
         ),
       },
