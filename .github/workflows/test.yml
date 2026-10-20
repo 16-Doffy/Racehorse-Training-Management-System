@@ -11,7 +11,8 @@ on:
   workflow_dispatch:
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest started moving to Ubuntu 26 on 19/10/2026 and the MongoDB replica set step failed there.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       TZ: Asia/Ho_Chi_Minh
@@ -59,7 +60,7 @@ jobs:
   # LIVE_MANAGER_PASSWORD are set; without them it only wakes the server and checks health.
   live-smoke:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
