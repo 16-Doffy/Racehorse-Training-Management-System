@@ -615,13 +615,14 @@ export function groupZones(stalls = []) {
 }
 
 /**
- * The groom's own stalls: those whose horse they are the caretaker of, and their horses still on a
- * free-text stall from before the map (`unplaced`), which the Manager has yet to put on it.
+ * The groom's own stalls: those the Manager gave them (`caretaker`, empty stalls too) or whose horse
+ * they look after, and their horses still on a free-text stall from before the map (`unplaced`), which
+ * the Manager has yet to put on it.
  */
 export function myStallsOf(map, userId) {
   const mine = (caretaker) => !!userId && String(refId(caretaker) || '') === String(userId);
   return {
-    stalls: (map?.stalls || []).filter((s) => !s.occupant?.hidden && mine(s.occupant?.caretaker)),
+    stalls: (map?.stalls || []).filter((s) => mine(s.caretaker) || (!s.occupant?.hidden && mine(s.occupant?.caretaker))),
     unplaced: (map?.unplaced || []).filter((u) => mine(u.caretaker)),
   };
 }

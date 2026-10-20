@@ -7,6 +7,8 @@ const { runTransaction, operationError } = require('../../utils/transaction');
 const { logAction } = require('../audit/audit.service');
 const { getScopedHorseIds, isHorseInScope, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { ROLES } = require('../../constants/roles');
+const { CARETAKER_FIELDS, caretakerProblem } = require('./caretaker');
+const { setStallCaretaker } = require('./stallCaretaker.service');
 
 const { STALL_TYPES, STALL_STATUSES, ZONE_KEY } = Stall;
 const MAX_ZONE_STALLS = 40;
@@ -40,7 +42,24 @@ async function occupants(user, stallIds) {
   return { byStall, scoped };
 }
 
-const stallJson = (stall, occupant) => ({
+// Who looks after the whole stable (the Manager and the grooms) see every stall's groom; the other roles
+// only the groom of a horse they may see.
+const SEES_STALL_GROOMS = new Set([ROLES.MANAGER, ROLES.GROOM]);
+
+/**
+ * The stall's groom as { _id, name, inactive? }. A stall given a groom before they lost their account
+ * (locked, or moved to another role) says so; a stall from before stalls had grooms shows the groom of
+ * the horse standing in it.
+ */
+function stallCaretaker(stall, occupant, user) {
+  if (user && !SEES_STALL_GROOMS.has(user.role)) return occupant && !occupant.hidden ? occupant.caretaker || null : null;
+  const own = stall.caretaker;
+  if (own && own.name !== undefined) return { _id: own._id, name: own.name, ...(caretakerProblem(own) ? { inactive: true } : {}) };
+  if (own) return { _id: own };
+  return occupant && !occupant.hidden ? occupant.caretaker || null : null;
+}
+
+const stallJson = (stall, occupant, user) => ({
   _id: stall._id,
   code: stall.code,
   zone: stall.zone,
@@ -54,6 +73,7 @@ const stallJson = (stall, occupant) => ({
   isActive: stall.isActive,
   occupied: Boolean(occupant),
   occupant: occupant || null,
+  caretaker: stallCaretaker(stall, occupant, user),
 });
 
 /**
@@ -63,7 +83,7 @@ const stallJson = (stall, occupant) => ({
  */
 const listStalls = asyncHandler(async (req, res) => {
   const filter = req.query.all === 'true' && req.user.role === ROLES.MANAGER ? {} : { isActive: true };
-  const stalls = await Stall.find(filter).sort({ zone: 1, order: 1, code: 1 });
+  const stalls = await Stall.find(filter).sort({ zone: 1, order: 1, code: 1 }).populate('caretaker', CARETAKER_FIELDS);
   const { byStall, scoped } = await occupants(req.user, stalls.map((s) => s._id));
   const legacy = await StableAssignment.find({ $or: [{ stall: null }, { stall: { $exists: false } }] })
     .populate('horse', 'name breed color healthStatus isArchived')
@@ -71,7 +91,7 @@ const listStalls = asyncHandler(async (req, res) => {
   const unplaced = legacy
     .filter((a) => a.horse && !a.horse.isArchived && isHorseInScope(scoped, a.horse._id))
     .map((a) => ({ assignment: a._id, horse: horseCard(a.horse), stableBlock: a.stableBlock, caretaker: a.assignedCaretaker ? { _id: a.assignedCaretaker._id, name: a.assignedCaretaker.name } : null }));
-  return ok(res, { stalls: stalls.map((s) => stallJson(s, byStall.get(String(s._id)))), unplaced }, 'Stalls fetched.');
+  return ok(res, { stalls: stalls.map((s) => stallJson(s, byStall.get(String(s._id)), req.user)), unplaced }, 'Stalls fetched.');
 });
 
 /** GET /stable/stalls/by-horse/:horseId — the horse's stall and caretaker, for its detail page (any role that may see the horse). */
@@ -145,12 +165,23 @@ const generateZone = asyncHandler(async (req, res) => {
   if (!Number.isInteger(count) || count < 1 || count > MAX_ZONE_STALLS) return fail(res, `Số chuồng phải từ 1 đến ${MAX_ZONE_STALLS}.`, 400);
   const { zone } = values;
   const codes = Array.from({ length: count }, (_, i) => stallCode(zone, i + 1));
-  const existing = new Set((await Stall.find({ code: { $in: codes } }).select('code')).map((s) => s.code));
+  const found = await Stall.find({ code: { $in: codes } }).select('code isActive');
+  const existing = new Set(found.filter((s) => s.isActive).map((s) => s.code));
+  // Stalls taken out of use keep their codes; laying the zone out again brings them back, as new.
+  const retired = found.filter((s) => !s.isActive).map((s) => s.code);
   const shared = { zone, zoneName: values.zoneName, zonePurpose: values.zonePurpose, type: values.type };
-  const docs = codes.map((code, i) => ({ ...shared, code, order: i })).filter((d) => !existing.has(d.code));
+  const docs = codes.map((code, i) => ({ ...shared, code, order: i })).filter((d) => !existing.has(d.code) && !retired.includes(d.code));
   const made = docs.length ? await Stall.insertMany(docs) : [];
-  await logAction({ actorId: req.user._id, action: 'stall.generate', targetModel: 'Stall', metadata: { zone, created: made.length, skipped: existing.size } });
-  return created(res, { created: made.map((s) => stallJson(s)), skipped: [...existing] }, `${made.length} stalls created.`);
+  if (retired.length) {
+    const reset = Object.fromEntries(Object.entries(shared).filter(([, value]) => value !== undefined));
+    await Stall.updateMany(
+      { code: { $in: retired } },
+      { $set: { ...reset, isActive: true, status: 'active', maintenanceNote: '', maintenanceUntil: null, caretaker: null } }
+    );
+  }
+  const back = retired.length ? await Stall.find({ code: { $in: retired } }) : [];
+  await logAction({ actorId: req.user._id, action: 'stall.generate', targetModel: 'Stall', metadata: { zone, created: made.length, reopened: back.length, skipped: existing.size } });
+  return created(res, { created: [...made, ...back].map((s) => stallJson(s)), skipped: [...existing] }, `${made.length + back.length} stalls created.`);
 });
 
 /** PATCH /stable/stalls/:id (Manager) — zone name/purpose, type, order, maintenance. The code never changes (it is on the nameplate). */
@@ -196,4 +227,180 @@ const retireStall = asyncHandler(async (req, res) => {
   return ok(res, stallJson(stall), 'Stall taken out of use.');
 });
 
-module.exports = { listStalls, stallForHorse, createStall, generateZone, updateStall, retireStall };
+/** { caretaker: <groom id> | null } from the body, checked. Returns { caretaker } or { error }. */
+function readCaretaker(body = {}) {
+  if (!Object.prototype.hasOwnProperty.call(body, 'caretaker')) return { error: 'Gửi caretaker: id nhân viên chăm sóc, hoặc null để bỏ người phụ trách.' };
+  const caretaker = body.caretaker || null;
+  if (caretaker && !mongoose.isValidObjectId(caretaker)) return { error: 'Nhân viên chăm sóc không hợp lệ.' };
+  return { caretaker };
+}
+
+/** The given stalls as the map shows them to this user, with their grooms and occupants. */
+async function stallsAsMap(user, stallIds) {
+  const stalls = await Stall.find({ _id: { $in: stallIds } }).sort({ zone: 1, order: 1, code: 1 }).populate('caretaker', CARETAKER_FIELDS);
+  const { byStall } = await occupants(user, stallIds);
+  return stalls.map((s) => stallJson(s, byStall.get(String(s._id)), user));
+}
+
+/**
+ * PUT /stable/stalls/:id/caretaker (Manager) — { caretaker: <groom id> | null }. The stall's groom; the
+ * horse standing in it goes to them too, with its unfinished feeds and care orders.
+ */
+const setCaretakerOfStall = asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return fail(res, 'Không tìm thấy chuồng.', 404);
+  const { caretaker, error } = readCaretaker(req.body);
+  if (error) return fail(res, error, 400);
+  const { stalls, moved } = await setStallCaretaker({ stallId: req.params.id, caretaker });
+  await logAction({
+    actorId: req.user._id,
+    action: 'stall.caretaker',
+    targetModel: 'Stall',
+    targetId: stalls[0]._id,
+    metadata: { code: stalls[0].code, caretaker, horsesMoved: moved.length },
+  });
+  const [stall] = await stallsAsMap(req.user, stalls.map((s) => s._id));
+  return ok(res, stall, caretaker ? 'Stall caretaker set.' : 'Stall caretaker removed.');
+});
+
+/** The zone key from the URL ("a" → "A"), or null when it is not one. */
+const zoneParam = (value) => {
+  const zone = String(value || '').trim().toUpperCase();
+  return ZONE_KEY.test(zone) ? zone : null;
+};
+
+const stallNumber = (code) => Number(String(code).split('-')[1]) || 0;
+const idsOf = (value) => (Array.isArray(value) ? value : []).map(String);
+
+/**
+ * PUT /stable/zones/:zone (Manager) — the zone dialog in one go:
+ *   { zoneName?, zonePurpose?, remove?: [stall ids], add?: n, type? }
+ * In one transaction: the name and purpose on every stall of the zone; the listed stalls out of use,
+ * only while they are empty (409 names the horses); and n stalls added after the zone's highest number,
+ * of `type`, without a groom yet (a code taken out of use before comes
+ * back as new). The key itself (A) is part of the stall codes on the nameplates, so it never changes.
+ * Returns { zone, removed: [codes], added: [codes], stalls }.
+ */
+const editZone = asyncHandler(async (req, res) => {
+  const zone = zoneParam(req.params.zone);
+  if (!zone) return fail(res, 'Mã khu không hợp lệ.', 400);
+  const body = req.body || {};
+  const names = {};
+  if (body.zoneName !== undefined) {
+    names.zoneName = String(body.zoneName || '').trim().slice(0, 60);
+    if (!names.zoneName) return fail(res, 'Tên khu không được để trống.', 400);
+  }
+  if (body.zonePurpose !== undefined) names.zonePurpose = String(body.zonePurpose || '').trim().slice(0, 120);
+  const remove = idsOf(body.remove);
+  if (remove.some((id) => !mongoose.isValidObjectId(id))) return fail(res, 'Chuồng cần bỏ không hợp lệ.', 400);
+  const add = body.add === undefined || body.add === null || body.add === '' ? 0 : Number(body.add);
+  if (!Number.isInteger(add) || add < 0 || add > MAX_ZONE_STALLS) return fail(res, `Số chuồng thêm từ 0 đến ${MAX_ZONE_STALLS}.`, 400);
+  if (body.type !== undefined && body.type !== null && !STALL_TYPES.includes(body.type)) {
+    return fail(res, 'Loại chuồng: standard (thường), isolation (cách ly) hoặc recovery (hồi phục).', 400);
+  }
+  if (!Object.keys(names).length && !remove.length && !add) return fail(res, 'Không có gì để sửa.', 400);
+
+  const result = await runTransaction(async (session) => {
+    const inZone = await Stall.find({ zone, isActive: true }).session(session);
+    if (!inZone.length) throw operationError(404, `Không có chuồng nào trong khu ${zone}.`);
+    const removing = inZone.filter((s) => remove.includes(String(s._id)));
+    if (removing.length !== new Set(remove).size) throw operationError(400, 'Có chuồng cần bỏ không thuộc khu này (hoặc đã bỏ rồi).');
+    const keep = inZone.filter((s) => !remove.includes(String(s._id)));
+    if (!keep.length && !add) throw operationError(400, 'Không bỏ hết chuồng của khu — muốn bỏ cả khu thì dùng Xoá khu.');
+    if (keep.length + add > MAX_ZONE_STALLS) throw operationError(400, `Một khu tối đa ${MAX_ZONE_STALLS} chuồng.`);
+
+    // The stalls to take out: written first (Stall.claim), so a horse placed at the same moment either
+    // lands first (and this is refused) or meets the stall gone.
+    for (const stall of removing) {
+      // eslint-disable-next-line no-await-in-loop
+      await Stall.claim({ _id: stall._id }, session);
+    }
+    if (removing.length) {
+      const horses = await StableAssignment.find({ stall: { $in: removing.map((s) => s._id) } }).populate('horse', 'name').session(session);
+      if (horses.length) {
+        const list = horses.map((a) => `${a.horse?.name || 'ngựa'} (${a.stableBlock})`).join(', ');
+        throw operationError(409, `Còn ${horses.length} ngựa: ${list} — chuyển ngựa sang chuồng khác trước khi bỏ chuồng.`);
+      }
+      await Stall.updateMany({ _id: { $in: removing.map((s) => s._id) } }, { $set: { isActive: false } }, { session });
+    }
+    if (Object.keys(names).length) await Stall.updateMany({ zone, isActive: true }, { $set: names }, { session });
+
+    const added = [];
+    if (add) {
+      const sample = keep[0] || inZone[0];
+      // A new stall has no groom yet: the Manager gives each stall its groom.
+      const shared = {
+        zone,
+        zoneName: names.zoneName ?? sample.zoneName,
+        zonePurpose: names.zonePurpose ?? sample.zonePurpose,
+        type: body.type || sample.type || 'standard',
+        caretaker: null,
+      };
+      // After the highest number in the zone, the stalls being taken out included, so a stall taken
+      // out now is not the one added back.
+      let number = Math.max(0, ...inZone.map((s) => stallNumber(s.code)));
+      while (added.length < add) {
+        number += 1;
+        const code = stallCode(zone, number);
+        // eslint-disable-next-line no-await-in-loop
+        const old = await Stall.findOne({ code }).session(session);
+        if (old?.isActive) continue;
+        const fresh = { ...shared, order: number - 1, status: 'active', maintenanceNote: '', maintenanceUntil: null, isActive: true };
+        if (old) {
+          Object.assign(old, fresh);
+          // eslint-disable-next-line no-await-in-loop
+          await old.save({ session });
+        } else {
+          // eslint-disable-next-line no-await-in-loop
+          await Stall.create([{ ...fresh, code }], { session });
+        }
+        added.push(code);
+      }
+    }
+    return { removed: removing.map((s) => s.code).sort(), added };
+  });
+
+  await logAction({ actorId: req.user._id, action: 'stall.zoneEdit', targetModel: 'Stall', metadata: { zone, ...names, ...result } });
+  const ids = (await Stall.find({ zone, isActive: true }).select('_id')).map((s) => s._id);
+  return ok(res, { zone, ...result, stalls: await stallsAsMap(req.user, ids) }, 'Zone updated.');
+});
+
+/**
+ * DELETE /stable/zones/:zone (Manager) — takes every stall of the zone out of use, only while none of
+ * them has a horse (409 names them). The codes stay reserved: laying the zone out again brings the
+ * stalls back. Written stall by stall first (Stall.claim), so a horse placed at the same moment either
+ * lands first (and this is refused) or meets the zone gone.
+ */
+const retireZone = asyncHandler(async (req, res) => {
+  const zone = zoneParam(req.params.zone);
+  if (!zone) return fail(res, 'Mã khu không hợp lệ.', 400);
+  const codes = await runTransaction(async (session) => {
+    const ids = (await Stall.find({ zone, isActive: true }).select('_id').session(session)).map((s) => s._id);
+    if (!ids.length) throw operationError(404, `Không có chuồng nào trong khu ${zone}.`);
+    const claimed = [];
+    for (const id of ids) {
+      // eslint-disable-next-line no-await-in-loop
+      claimed.push(await Stall.claim({ _id: id }, session));
+    }
+    const horses = await StableAssignment.find({ stall: { $in: ids } }).populate('horse', 'name').session(session);
+    if (horses.length) {
+      const list = horses.map((a) => `${a.horse?.name || 'ngựa'} (${a.stableBlock})`).join(', ');
+      throw operationError(409, `Khu ${zone} còn ${horses.length} ngựa: ${list} — chuyển ngựa sang chuồng khác trước khi xoá khu.`);
+    }
+    await Stall.updateMany({ _id: { $in: ids } }, { $set: { isActive: false } }, { session });
+    return claimed.map((s) => s.code).sort();
+  });
+  await logAction({ actorId: req.user._id, action: 'stall.zoneRetire', targetModel: 'Stall', metadata: { zone, stalls: codes } });
+  return ok(res, { zone, retired: codes }, 'Zone taken out of use.');
+});
+
+module.exports = {
+  listStalls,
+  stallForHorse,
+  createStall,
+  generateZone,
+  updateStall,
+  retireStall,
+  setCaretakerOfStall,
+  editZone,
+  retireZone,
+};

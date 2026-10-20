@@ -3,7 +3,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
-import { Badge, Card, ChipRow, EmptyState, HorseAvatar, LoadError, Loading, ProgressBar, Row, SearchInput, Segments } from '../components/ui';
+import { Badge, Card, ChipRow, EmptyState, LoadError, Loading, ProgressBar, Row, SearchInput, Segments } from '../components/ui';
 import { useRefreshAll, useStableOverview, useStalls, useTasks, useTreatments } from '../hooks/useGroomData';
 import {
   HEALTH_STATUS,
@@ -32,9 +32,10 @@ const GRID_GAP = 8;
 
 /**
  * The stable as the Manager laid it out (GET /stable/stalls). "Chuồng của tôi" is the groom's working
- * list: each stall they look after, by zone, with what the horse in it needs today. "Sơ đồ toàn trại"
- * is the whole map, zone by zone, empty stalls and stalls under maintenance included, so the groom
- * knows who stands next door. Only the Manager places horses; this screen only shows.
+ * list: each stall they look after, by zone, with what the horse in it needs today. "Khu của tôi" is
+ * the map of the zones they work in, every stall of them (empty, under maintenance, a colleague's), so
+ * the groom knows who stands next door; the rest of the stable only gets a line. Only the Manager
+ * places horses and gives stalls; this screen only shows.
  */
 export default function StableMapScreen({ navigation }) {
   const [view, setView] = useState('mine');
@@ -44,7 +45,7 @@ export default function StableMapScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [gridWidth, setGridWidth] = useState(0);
 
-  const { stalls, zones, unplaced, myStalls, myUnplaced, isLoading, isError, refetch } = useStalls();
+  const { stalls, zones, myStalls, myUnplaced, isLoading, isError, refetch } = useStalls();
   const { horseById, lockedHorseIds } = useStableOverview();
   const { tasks } = useTasks();
   const { treatments } = useTreatments();
@@ -81,20 +82,27 @@ export default function StableMapScreen({ navigation }) {
   const attention = [...myStalls.map((s) => s.occupant?.horse), ...myUnplaced.map((u) => u.horse)].filter(
     (h) => h && h.healthStatus && h.healthStatus !== 'eligible'
   ).length;
-  const occupied = stalls.filter((s) => s.occupied).length;
 
-  // The working list: the groom's stalls by zone, narrowed by health and search.
+  // The groom's own stalls on the map: those given to them, empty ones included.
+  const myStallIds = useMemo(() => new Set(myStalls.map((s) => s._id)), [myStalls]);
+
+  // The working list: the groom's stalls by zone, narrowed by health and search. An empty stall has no
+  // health, so a health filter leaves it out.
   const keep = (horse, text) => {
-    if (health !== 'all' && (horse?.healthStatus || 'eligible') !== health) return false;
+    if (health !== 'all' && (!horse || (horse.healthStatus || 'eligible') !== health)) return false;
     return matchesSearch(`${horse?.name || ''} ${text}`, search);
   };
   const myZones = groupZones(myStalls.filter((s) => keep(s.occupant?.horse, `${s.code} ${s.zoneName || ''}`)));
   const myLoose = myUnplaced.filter((u) => keep(u.horse, u.stableBlock || ''));
 
-  const shownZones = zoneFilter === 'all' ? zones : zones.filter((z) => z.key === zoneFilter);
+  // "Khu của tôi": only the zones the groom has a stall in, each in full so they know who stands next
+  // door. The rest of the stable is someone else's work; it only gets a line.
+  const myZoneList = zones.filter((z) => z.stalls.some((s) => myStallIds.has(s._id)));
+  const otherZones = zones.filter((z) => !myZoneList.includes(z));
+  const shownZones = zoneFilter === 'all' ? myZoneList : myZoneList.filter((z) => z.key === zoneFilter);
   const zoneChips = [
-    { value: 'all', label: 'Tất cả khu', count: stalls.length },
-    ...zones.map((z) => ({ value: z.key, label: z.name, count: z.stalls.length })),
+    { value: 'all', label: 'Tất cả khu của tôi' },
+    ...myZoneList.map((z) => ({ value: z.key, label: z.name, count: z.stalls.length })),
   ];
 
   const openHorse = (horse) => {
@@ -191,6 +199,32 @@ export default function StableMapScreen({ navigation }) {
     );
   };
 
+  // A stall given to the groom with no horse in it yet (or under maintenance): kept ready, nothing to do.
+  const emptyStallCard = (stall) => {
+    const maintenance = stall.status === 'maintenance';
+    const type = STALL_TYPES[stall.type];
+    return (
+      <Card key={stall._id} style={[styles.stall, styles.stallEmpty]}>
+        <Row style={{ gap: spacing.md, alignItems: 'center' }}>
+          <View style={[styles.plate, styles.plateEmpty]}>
+            <Text style={[styles.plateCode, { color: colors.forest }]} numberOfLines={1} adjustsFontSizeToFit>
+              {stall.code}
+            </Text>
+          </View>
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={[font.h3, { color: colors.textMuted }]}>{maintenance ? 'Đang bảo trì' : 'Chuồng trống'}</Text>
+            <Text style={font.small} numberOfLines={2}>
+              {maintenance
+                ? stall.maintenanceNote || 'Không xếp ngựa vào được cho tới khi sửa xong.'
+                : 'Bạn phụ trách chuồng này. Ngựa xếp vào đây sẽ do bạn chăm sóc.'}
+            </Text>
+            {type?.color ? <Badge label={type.label} color={type.color} bg={type.bg} style={{ alignSelf: 'flex-start' }} /> : null}
+          </View>
+        </Row>
+      </Card>
+    );
+  };
+
   const zoneHeader = (zone, right) => (
     <Row style={{ justifyContent: 'space-between', paddingHorizontal: spacing.xs, gap: spacing.sm }}>
       <Row style={{ gap: 6, flex: 1 }}>
@@ -211,7 +245,7 @@ export default function StableMapScreen({ navigation }) {
   const tile = (stall) => {
     const state = stallState(stall);
     const horse = stall.occupant?.horse;
-    const mine = !!horse && myHorseIds.has(refId(horse));
+    const mine = myStallIds.has(stall._id) || (!!horse && myHorseIds.has(refId(horse)));
     const type = STALL_TYPES[stall.type];
     const maintenance = state.key === 'maintenance';
     const name = horse?.name || (stall.occupied ? 'Có ngựa' : maintenance ? 'Bảo trì' : 'Trống');
@@ -284,14 +318,14 @@ export default function StableMapScreen({ navigation }) {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <AppHeader
         title="Chuồng trại"
-        subtitle={`${myCount} chuồng của tôi · ${occupied}/${stalls.length} chuồng có ngựa${attention ? ` · ${attention} cần chú ý` : ''}`}
+        subtitle={`${myCount} chuồng của tôi${myZoneList.length ? ` · ${myZoneList.map((z) => z.name).join(', ')}` : ''}${attention ? ` · ${attention} cần chú ý` : ''}`}
       />
 
       <View style={styles.toolbar}>
         <Segments
           options={[
             { value: 'mine', label: 'Chuồng của tôi', icon: 'stall', count: myCount },
-            { value: 'map', label: 'Sơ đồ toàn trại', icon: 'stable' },
+            { value: 'map', label: 'Khu của tôi', icon: 'stable' },
           ]}
           value={view}
           onChange={setView}
@@ -301,9 +335,9 @@ export default function StableMapScreen({ navigation }) {
             <SearchInput value={search} onChange={setSearch} placeholder="Tìm ngựa, mã chuồng, khu..." />
             <ChipRow options={HEALTH_FILTERS} value={health} onChange={setHealth} size="sm" />
           </>
-        ) : (
+        ) : myZoneList.length > 1 ? (
           <ChipRow options={zoneChips} value={zoneFilter} onChange={setZoneFilter} size="sm" />
-        )}
+        ) : null}
       </View>
 
       <ScrollView
@@ -331,13 +365,15 @@ export default function StableMapScreen({ navigation }) {
                 <View key={zone.key} style={{ gap: spacing.sm }}>
                   {zoneHeader(zone, `${zone.stalls.length} chuồng`)}
                   {zone.stalls.map((s) =>
-                    horseCard({
-                      key: s._id,
-                      horse: s.occupant?.horse,
-                      plate: s.code,
-                      place: s.occupant?.since ? `Ở đây từ ${formatDate(s.occupant.since)}` : null,
-                      typeKey: s.type,
-                    })
+                    s.occupant?.horse
+                      ? horseCard({
+                          key: s._id,
+                          horse: s.occupant.horse,
+                          plate: s.code,
+                          place: s.occupant.since ? `Ở đây từ ${formatDate(s.occupant.since)}` : null,
+                          typeKey: s.type,
+                        })
+                      : emptyStallCard(s)
                   )}
                 </View>
               ))}
@@ -354,48 +390,29 @@ export default function StableMapScreen({ navigation }) {
               )}
             </>
           )
-        ) : stalls.length === 0 ? (
+        ) : myZoneList.length === 0 ? (
           <Card>
-            <EmptyState icon="stall" text="Trại chưa có sơ đồ chuồng" hint="Quản lý CLB lập các khu và chuồng trên web." />
+            <EmptyState
+              icon="stall"
+              text={stalls.length ? 'Bạn chưa được giao chuồng nào trên sơ đồ' : 'Trại chưa có sơ đồ chuồng'}
+              hint={stalls.length ? 'Quản lý CLB giao từng chuồng cho bạn trên web.' : 'Quản lý CLB lập các khu và chuồng trên web.'}
+            />
           </Card>
         ) : (
           <>
             {legend}
             {shownZones.map((zone) => (
               <Card key={zone.key} style={styles.zone}>
-                {zoneHeader(zone, `${zone.stalls.filter((s) => s.occupied).length}/${zone.stalls.length} có ngựa`)}
+                {zoneHeader(zone, `${zone.stalls.filter((s) => myStallIds.has(s._id)).length}/${zone.stalls.length} chuồng của tôi`)}
                 <View style={styles.grid} onLayout={(e) => setGridWidth(Math.floor(e.nativeEvent.layout.width))}>
                   {zone.stalls.map(tile)}
                 </View>
               </Card>
             ))}
-            {zoneFilter === 'all' && unplaced.length > 0 && (
-              <Card style={styles.zone}>
-                {zoneHeader({ name: 'Chưa có trên sơ đồ', purpose: 'chuồng ghi tay' }, `${unplaced.length} ngựa`)}
-                {unplaced.map((u) => {
-                  const status = HEALTH_STATUS[u.horse?.healthStatus] || HEALTH_STATUS.eligible;
-                  const mine = myHorseIds.has(refId(u.horse));
-                  return (
-                    <Pressable
-                      key={u.assignment || refId(u.horse)}
-                      accessibilityRole="button"
-                      onPress={() => openHorse(u.horse)}
-                      style={({ pressed }) => [styles.looseRow, pressed && { opacity: 0.7 }]}
-                    >
-                      <HorseAvatar name={u.horse?.name} size={32} tone={mine ? 'forest' : 'gold'} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={font.h3} numberOfLines={1}>
-                          {u.horse?.name || 'Không rõ'}
-                        </Text>
-                        <Text style={font.small} numberOfLines={1}>
-                          {[u.stableBlock, mine ? 'Của tôi' : u.caretaker?.name].filter(Boolean).join(' · ')}
-                        </Text>
-                      </View>
-                      <Badge label={status.label} color={status.color} bg={status.bg} dot />
-                    </Pressable>
-                  );
-                })}
-              </Card>
+            {zoneFilter === 'all' && otherZones.length > 0 && (
+              <Text style={[font.small, { textAlign: 'center', paddingHorizontal: spacing.lg }]}>
+                Trại còn {otherZones.length} khu khác ({otherZones.map((z) => z.name).join(', ')}) do người khác phụ trách.
+              </Text>
             )}
           </>
         )}
@@ -430,6 +447,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   plateLoose: { backgroundColor: colors.graySoft },
+  plateEmpty: { backgroundColor: colors.goldSoft },
+  stallEmpty: { borderStyle: 'dashed', borderColor: colors.border, backgroundColor: colors.cream },
   plateCode: { color: colors.gold, fontWeight: '800', fontSize: 15, letterSpacing: 0.3 },
   zone: { padding: spacing.md, gap: spacing.md },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
@@ -452,12 +471,4 @@ const styles = StyleSheet.create({
   tileCode: { fontSize: 13, fontWeight: '800', color: colors.forest, letterSpacing: 0.3 },
   tileName: { fontSize: 12, fontWeight: '700', color: colors.text },
   tileMeta: { fontSize: 10.5, color: colors.textMuted },
-  looseRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSoft,
-  },
 });

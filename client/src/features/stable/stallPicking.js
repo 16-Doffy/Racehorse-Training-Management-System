@@ -7,6 +7,11 @@ import { groupZones } from './stall3d/stallStatus';
 
 const idOf = (ref) => String(ref?._id || ref || '');
 
+/** The id of the groom who looks after a stall (Stall.caretaker), when they still can; else null. */
+export function stallGroom(stall) {
+  return stall?.caretaker?._id && !stall.caretaker.inactive ? String(stall.caretaker._id) : null;
+}
+
 /** A stall the horse can go into: in use, not under maintenance, empty — or the one it stands in now. */
 export function isPickable(stall, horseId) {
   if (!stall || stall.status === 'maintenance' || stall.isActive === false) return false;
@@ -19,20 +24,27 @@ export function zonesWithRoom(stalls, horseId) {
 }
 
 /**
- * How many horses each groom looks after now, and in which zones: { [groomId]: { count, zones: Set } }.
- * `exceptHorseId` leaves out the horse being placed, so moving it does not count it twice.
+ * What each groom looks after now: { [groomId]: { stalls, count, zones: Set } } — the stalls given to
+ * them (empty ones too), the horses in their care, and the zones. `exceptHorseId` leaves out the horse
+ * being placed, so moving it does not count it twice.
  */
 export function caretakerLoad(stalls = [], unplaced = [], exceptHorseId) {
   const load = {};
-  const add = (caretaker, horse, zone) => {
-    const id = idOf(caretaker);
-    if (!id || (exceptHorseId && idOf(horse) === String(exceptHorseId))) return;
-    load[id] ||= { count: 0, zones: new Set() };
-    load[id].count += 1;
-    if (zone) load[id].zones.add(zone);
-  };
-  stalls.forEach((s) => s.occupant?.caretaker && add(s.occupant.caretaker, s.occupant.horse, s.zone));
-  unplaced.forEach((u) => u.caretaker && add(u.caretaker, u.horse, null));
+  const entry = (id) => (load[id] ||= { stalls: 0, count: 0, zones: new Set() });
+  stalls.forEach((s) => {
+    const groom = idOf(s.caretaker);
+    if (groom) {
+      entry(groom).stalls += 1;
+      entry(groom).zones.add(s.zone);
+    }
+    const horse = s.occupant?.horse;
+    const horseGroom = idOf(s.occupant?.caretaker);
+    if (horse && horseGroom && !(exceptHorseId && idOf(horse) === String(exceptHorseId))) entry(horseGroom).count += 1;
+  });
+  unplaced.forEach((u) => {
+    const groom = idOf(u.caretaker);
+    if (groom && !(exceptHorseId && idOf(u.horse) === String(exceptHorseId))) entry(groom).count += 1;
+  });
   return load;
 }
 

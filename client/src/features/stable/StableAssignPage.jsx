@@ -31,7 +31,7 @@ import {
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { dailyTaskApi, incidentApi } from './stableApi';
+import { dailyTaskApi, incidentApi, stallApi } from './stableApi';
 import { horsesApi } from '../horses/horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { feedingApi } from '../feeding/feedingApi';
@@ -85,6 +85,16 @@ function TaskList() {
     queryKey: ['users', ROLES.GROOM],
     queryFn: () => usersApi.list({ role: ROLES.GROOM }),
   });
+  // Where each horse stands and who looks after that stall: a job for a horse goes to that groom unless
+  // the trainer picks someone else (the feeds, care orders and post-session care already do).
+  const { data: stallsData } = useQuery({ queryKey: ['stalls'], queryFn: () => stallApi.map() });
+  const stallOfHorse = new Map([
+    ...(stallsData?.data?.unplaced || []).map((u) => [String(u.horse?._id), { code: u.stableBlock, caretaker: u.caretaker }]),
+    ...(stallsData?.data?.stalls || [])
+      .filter((s) => s.occupant?.horse)
+      .map((s) => [String(s.occupant.horse._id), { code: s.code, caretaker: s.occupant.caretaker || s.caretaker }]),
+  ]);
+  const pickedHorseStall = stallOfHorse.get(String(Form.useWatch('horse', form) || ''));
 
   const saveMutation = useMutation({
     mutationFn: ({ id, payload }) => (id ? dailyTaskApi.update(id, payload) : dailyTaskApi.create(payload)),
@@ -366,9 +376,26 @@ function TaskList() {
           }
         >
           <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>
-            <Select options={(horsesData?.data || []).map((h) => ({ value: h._id, label: h.name }))} />
+            <Select
+              options={(horsesData?.data || []).map((h) => ({ value: h._id, label: h.name }))}
+              onChange={(id) => {
+                const groom = stallOfHorse.get(String(id))?.caretaker?._id;
+                if (groom) form.setFieldValue('assignedTo', groom);
+              }}
+            />
           </Form.Item>
-          <Form.Item name="assignedTo" label="Nhân viên chăm sóc" rules={[{ required: true }]}>
+          <Form.Item
+            name="assignedTo"
+            label="Nhân viên chăm sóc"
+            rules={[{ required: true }]}
+            extra={
+              pickedHorseStall?.caretaker?.name
+                ? `Mặc định là người chăm sóc chuồng ${pickedHorseStall.code}: ${pickedHorseStall.caretaker.name}.`
+                : pickedHorseStall
+                  ? `Chuồng ${pickedHorseStall.code} chưa có người chăm sóc — chọn người làm việc này.`
+                  : undefined
+            }
+          >
             <Select options={(groomsData?.data || []).map((u) => ({ value: u._id, label: u.name }))} />
           </Form.Item>
           <Form.Item name="taskType" label="Loại công việc" rules={[{ required: true }]}>

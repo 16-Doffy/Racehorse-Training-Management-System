@@ -1,5 +1,5 @@
-import { useRef } from 'react';
-import { Form, Input, InputNumber, Modal } from 'antd';
+import { useRef, useState } from 'react';
+import { Form, Input, InputNumber, Modal, Select } from 'antd';
 import { HomeOutlined, MedicineBoxOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
 import { message } from '../../lib/antdStatic';
@@ -158,6 +158,130 @@ export default function ZoneModal({ open, stalls = [], onClose, onCreated }) {
             </>
           ) : (
             <div className="text-sm sp-muted">Nhập mã khu và số chuồng để xem trước các mã chuồng sẽ tạo.</div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+
+const numberOf = (code) => Number(String(code).split('-')[1]) || 0;
+
+/**
+ * Everything about one zone, saved at once (PUT /stable/zones/:zone): its name and what it is for, its
+ * stalls — an empty one is tapped to take it out, a taken one is locked with its horse — and new stalls
+ * after its highest number, of a chosen type. The page mounts it afresh for each zone (key).
+ */
+export function ZoneEditModal({ zone, saving, onClose, onSave }) {
+  const [form] = Form.useForm();
+  const [removing, setRemoving] = useState([]);
+  const [add, setAdd] = useState(0);
+  const [type, setType] = useState(zone?.stalls[0]?.type || 'standard');
+  if (!zone) return <Modal open={false} />;
+
+  const highest = Math.max(0, ...zone.stalls.map((s) => numberOf(s.code)));
+  const newCodes = Array.from({ length: add }, (_, i) => `${zone.key}-${String(highest + i + 1).padStart(2, '0')}`);
+  const left = zone.stalls.length - removing.length + add;
+  const toggle = (stall) => setRemoving((ids) => (ids.includes(stall._id) ? ids.filter((id) => id !== stall._id) : [...ids, stall._id]));
+  const removedCodes = zone.stalls.filter((s) => removing.includes(s._id)).map((s) => s.code);
+  const changes = [
+    removedCodes.length ? `bỏ ${removedCodes.length} chuồng (${removedCodes.join(', ')})` : null,
+    add ? `thêm ${add} chuồng (${newCodes.join(', ')})` : null,
+  ].filter(Boolean);
+
+  return (
+    <Modal
+      title={`Sửa ${zone.name}`}
+      open
+      onCancel={onClose}
+      onOk={() => form.submit()}
+      okText="Lưu thay đổi"
+      okButtonProps={{ disabled: left < 1 }}
+      confirmLoading={saving}
+      destroyOnHidden
+      width={640}
+    >
+      <div className="stall-ui">
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{ zoneName: zone.name, zonePurpose: zone.purpose || '' }}
+          onFinish={(values) =>
+            onSave({ zoneName: values.zoneName, zonePurpose: values.zonePurpose, remove: removing, add, ...(add ? { type } : {}) })
+          }
+        >
+          <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
+            <Form.Item name="zoneName" label="Tên khu" rules={[{ required: true, whitespace: true, message: 'Nhập tên khu' }]} className="!mb-3">
+              <Input maxLength={60} placeholder="Khu A" />
+            </Form.Item>
+            <Form.Item name="zonePurpose" label="Dùng cho" className="!mb-3">
+              <Input maxLength={120} placeholder="VD: Ngựa đua chủ lực" />
+            </Form.Item>
+          </div>
+        </Form>
+
+        <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
+          <span className="text-sm font-medium sp-ink">Chuồng trong khu</span>
+          <span className="text-xs sp-muted">Bấm chuồng trống để bỏ, bấm lại để giữ. Chuồng có ngựa thì giữ nguyên.</span>
+        </div>
+        <div className="sp-box mb-3">
+          <div className="sp-codes">
+            {zone.stalls.map((s) => {
+              const going = removing.includes(s._id);
+              const what = s.status === 'maintenance' ? 'bảo trì' : s.occupied ? s.occupant?.horse?.name || 'có ngựa' : 'trống';
+              return (
+                <button
+                  key={s._id}
+                  type="button"
+                  disabled={s.occupied}
+                  aria-pressed={going}
+                  onClick={() => toggle(s)}
+                  className={`sp-code sp-chip ${going ? 'is-going' : s.occupied ? 'is-locked' : 'is-kept'}`}
+                  title={s.occupied ? `Còn ngựa ${what} — chuyển ngựa đi trước khi bỏ chuồng` : going ? 'Sẽ bỏ — bấm để giữ lại' : 'Bấm để bỏ chuồng này'}
+                >
+                  {s.code} <span className="sp-chip-what">· {what}</span>
+                  {!s.occupied && <span className="sp-chip-x" aria-hidden="true">{going ? '↺' : '×'}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mb-1.5 text-sm font-medium sp-ink">Thêm chuồng mới</div>
+        <div className="sp-box">
+          <div className="flex flex-wrap items-center gap-3">
+            <InputNumber min={0} max={Math.max(0, 40 - (zone.stalls.length - removing.length))} precision={0} value={add} onChange={(v) => setAdd(Number(v) || 0)} aria-label="Số chuồng thêm" />
+            <span className="text-sm sp-muted">chuồng, loại</span>
+            <Select
+              size="middle"
+              className="min-w-[160px]"
+              value={type}
+              onChange={setType}
+              disabled={!add}
+              options={Object.entries(STALL_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+            />
+          </div>
+          {add > 0 && (
+            <div className="sp-codes mt-2.5">
+              {newCodes.map((code) => (
+                <span key={code} className="sp-code" title="Mới">
+                  {code}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-3 text-sm sp-ink">
+          {left < 1 ? (
+            <span style={{ color: '#b91c1c' }}>Khu phải còn ít nhất một chuồng — muốn bỏ cả khu thì dùng “Xoá khu”.</span>
+          ) : changes.length ? (
+            <>
+              Khi lưu: {changes.join(' · ')}. Khu còn <b>{left}</b> chuồng.
+            </>
+          ) : (
+            <span className="sp-muted">Khu có {zone.stalls.length} chuồng. Mã khu {zone.key} nằm trên biển chuồng nên không đổi.</span>
           )}
         </div>
       </div>

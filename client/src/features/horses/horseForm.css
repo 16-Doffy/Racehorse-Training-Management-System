@@ -1,0 +1,90 @@
+/* The horse form (HorseFormModal): the summary beside the 3D horse, light on the sand canvas and dark
+   on the dark one. The modal renders on <body>, where MainLayout's body.wdp-dark-portals class says
+   which canvas is on. */
+.hf-ui {
+  --hf-stage: 200px;
+  --hf-surface: #faf7f0;
+  --hf-border: #e5dec9;
+  --hf-ink: #1f2a24;
+  --hf-muted: #5f6b64;
+  --hf-faint: #8a8578;
+  --hf-accent: #0f5a43;
+}
+body.wdp-dark-portals .hf-ui {
+  --hf-surface: rgba(255, 255, 255, 0.04);
+  --hf-border: rgba(212, 175, 55, 0.22);
+  --hf-ink: #f4f1e8;
+  --hf-muted: rgba(230, 237, 232, 0.78);
+  --hf-faint: rgba(230, 237, 232, 0.55);
+  --hf-accent: #f6d57a;
+}
+.hf-ui .hf-summary {
+  border: 1px solid var(--hf-border);
+  border-radius: 14px;
+  background: var(--hf-surface);
+  padding: 12px;
+}
+.hf-ui .hf-name {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1.2;
+  color: var(--hf-ink);
+  overflow-wrap: anywhere;
+}
+.hf-ui .hf-name.is-empty {
+  color: var(--hf-faint);
+}
+.hf-ui .hf-muted {
+  color: var(--hf-muted);
+}
+.hf-ui .hf-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 5px 12px;
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--hf-border);
+  font-size: 12.5px;
+}
+.hf-ui .hf-facts dt {
+  color: var(--hf-faint);
+  font-weight: 500;
+}
+.hf-ui .hf-facts dd {
+  margin: 0;
+  color: var(--hf-ink);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hf-ui .hf-facts dd.is-empty {
+  color: var(--hf-faint);
+  font-weight: 400;
+}
+.hf-ui .hf-section-title {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hf-faint);
+}
+.hf-ui .hf-tab-error {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: #dc2626;
+  vertical-align: middle;
+}
+@media (max-width: 767px) {
+  .hf-ui {
+    --hf-stage: 150px;
+  }
+  .hf-ui .hf-facts {
+    display: none;
+  }
+}

@@ -260,3 +260,56 @@ body.wdp-dark-portals .stall-ui {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+/* Stalls about to leave the map (trim): red, and stronger when a horse still stands in one. */
+.stall-ui .sp-code.is-going {
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+  text-decoration: line-through;
+}
+.stall-ui .sp-code.is-going.is-blocked {
+  background: rgba(220, 38, 38, 0.16);
+  text-decoration: none;
+  outline: 1px solid rgba(220, 38, 38, 0.45);
+}
+body.wdp-dark-portals .stall-ui .sp-code.is-going {
+  color: #fca5a5;
+}
+/* Stall chips in the zone dialog: a button per stall — kept, going (tap again to keep), or locked by
+   the horse in it. */
+.stall-ui button.sp-chip {
+  appearance: none;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.stall-ui .sp-chip.is-kept {
+  background: var(--sp-tile);
+  color: var(--sp-ink);
+  border-color: var(--sp-border);
+}
+.stall-ui .sp-chip.is-kept:hover {
+  border-color: #dc2626;
+}
+.stall-ui .sp-chip.is-locked {
+  background: var(--sp-taken);
+  color: var(--sp-muted);
+  border-color: var(--sp-border);
+  cursor: not-allowed;
+}
+.stall-ui .sp-chip .sp-chip-what {
+  font-weight: 400;
+  opacity: 0.8;
+}
+.stall-ui .sp-chip .sp-chip-x {
+  margin-left: 2px;
+  font-weight: 700;
+  opacity: 0.7;
+}
+.stall-ui .sp-chip:focus-visible {
+  outline: 2px solid var(--sp-ring);
+  outline-offset: 1px;
+}

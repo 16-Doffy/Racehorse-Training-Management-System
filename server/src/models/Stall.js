@@ -24,6 +24,9 @@ const stallSchema = new mongoose.Schema(
     maintenanceUntil: { type: Date, default: null },
     // A stall taken out of use leaves the map; its code stays reserved.
     isActive: { type: Boolean, default: true },
+    // The groom who looks after this stall, empty or not: their app lists it, and a horse placed here
+    // gets them as its caretaker (StableAssignment.assignedCaretaker follows this field).
+    caretaker: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
 );

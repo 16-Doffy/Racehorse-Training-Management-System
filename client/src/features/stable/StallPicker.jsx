@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Select } from 'antd';
 import { STALL_STATES, STALL_TYPE_LABELS, stallState } from './stall3d/stallStatus';
-import { caretakerLoad, isPickable, zoneCaretaker, zonesWithRoom } from './stallPicking';
+import { caretakerLoad, isPickable, stallGroom, zoneCaretaker, zonesWithRoom } from './stallPicking';
 import './stallPicker.css';
 
 /**
@@ -92,6 +92,7 @@ export function StallPicker({ stalls = [], value, onChange, horseId, allowClear 
                 {' '}
                 · {picked.zoneName}
                 {picked.type && picked.type !== 'standard' ? ` · ${STALL_TYPE_LABELS[picked.type]}` : ''}
+                {picked.caretaker?.name ? ` · ${picked.caretaker.name} chăm sóc` : ' · chưa có người chăm sóc'}
               </span>
             </span>
           ) : (
@@ -109,17 +110,22 @@ export function StallPicker({ stalls = [], value, onChange, horseId, allowClear 
 }
 
 /**
- * The groom for a horse, each with how many horses they look after now and where, plus the one who
- * already looks after most of the stall's zone as a one-click suggestion.
+ * The groom for a horse, each with how many horses they look after now and where. The picked stall's
+ * own groom is offered first (the horse placed there is theirs); without one, the groom who already
+ * looks after most of the zone. Picking someone else makes them the stall's groom.
  */
-export function CaretakerSelect({ grooms = [], stalls = [], unplaced = [], zone, horseId, value, onChange, id }) {
+export function CaretakerSelect({ grooms = [], stalls = [], unplaced = [], stall, horseId, value, onChange, id }) {
   const load = caretakerLoad(stalls, unplaced, horseId);
-  const suggestion = zoneCaretaker(stalls, zone, horseId);
+  const own = stallGroom(stall);
+  const suggestion = own
+    ? { _id: own, name: stall.caretaker.name, own: true }
+    : zoneCaretaker(stalls, stall?.zone, horseId);
   const options = grooms.map((g) => {
     const mine = load[String(g._id)];
-    return { value: g._id, label: g.name, count: mine?.count || 0, zones: [...(mine?.zones || [])] };
+    return { value: g._id, label: g.name, stalls: mine?.stalls || 0, count: mine?.count || 0, zones: [...(mine?.zones || [])] };
   });
   const offer = suggestion && String(suggestion._id) !== String(value || '') && options.some((o) => String(o.value) === suggestion._id);
+  const changesStall = own && value && String(value) !== own;
 
   return (
     <div className="stall-ui">
@@ -137,19 +143,26 @@ export function CaretakerSelect({ grooms = [], stalls = [], unplaced = [], zone,
           <div className="flex items-center justify-between gap-3">
             <span className="truncate">{o.data.label}</span>
             <span className="shrink-0 text-xs opacity-70 tabular-nums">
-              {o.data.count ? `${o.data.count} ngựa${o.data.zones.length ? ` · khu ${o.data.zones.join(', ')}` : ''}` : 'chưa có ngựa'}
+              {o.data.stalls || o.data.count
+                ? [o.data.stalls ? `${o.data.stalls} chuồng` : null, `${o.data.count} ngựa`, o.data.zones.length ? `khu ${o.data.zones.join(', ')}` : null]
+                    .filter(Boolean)
+                    .join(' · ')
+                : 'chưa có chuồng'}
             </span>
           </div>
         )}
       />
       {offer ? (
         <div className="mt-1.5 text-xs sp-muted">
-          Gợi ý:{' '}
+          {suggestion.own ? `Chuồng ${stall.code} do ` : 'Gợi ý: '}
           <button type="button" className="sp-link font-semibold sp-ink" onClick={() => onChange?.(suggestion._id)}>
             {suggestion.name}
-          </button>{' '}
-          đang chăm {suggestion.count} ngựa ở khu này.
+          </button>
+          {suggestion.own ? ' phụ trách.' : ` đang chăm ${suggestion.count} ngựa ở khu này.`}
         </div>
+      ) : null}
+      {changesStall ? (
+        <div className="mt-1.5 text-xs sp-muted">Người này sẽ thành người chăm sóc của chuồng {stall.code}, thay cho {stall.caretaker.name}.</div>
       ) : null}
     </div>
   );

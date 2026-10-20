@@ -295,6 +295,8 @@ test('the stable map: the colour of a stall, its zones in order, and the groom\'
     stall('A-04', null, { status: 'maintenance', maintenanceNote: 'Thay sàn' }),
     stall('CL-01', { horse: horse('Sương Mai', 'quarantined'), caretaker: mine }, { zoneName: 'Khu cách ly', type: 'isolation' }),
     stall('CL-02', { hidden: true }),
+    // An empty stall the Manager gave this groom: theirs before any horse is in it.
+    stall('A-06', null, { caretaker: mine }),
   ];
 
   assert.equal(stallState(stalls[0]).key, 'eligible');
@@ -304,14 +306,14 @@ test('the stable map: the colour of a stall, its zones in order, and the groom\'
   assert.equal(stallState(stalls[5]).key, 'taken', 'a horse the server hides is only "taken"');
 
   const zones = groupZones(stalls);
-  assert.deepEqual(zones.map((z) => [z.key, z.name, z.stalls.length]), [['A', 'Khu A', 4], ['CL', 'Khu cách ly', 2]]);
+  assert.deepEqual(zones.map((z) => [z.key, z.name, z.stalls.length]), [['A', 'Khu A', 5], ['CL', 'Khu cách ly', 2]]);
 
   const unplaced = [
     { assignment: 'a-1', horse: horse('Gió Bấc'), stableBlock: 'Block B - Stall 2', caretaker: mine },
     { assignment: 'a-2', horse: horse('Phi Vân'), stableBlock: 'Block B - Stall 3', caretaker: other },
   ];
   const my = myStallsOf({ stalls, unplaced }, GROOM);
-  assert.deepEqual(my.stalls.map((s) => s.code), ['A-01', 'CL-01']);
+  assert.deepEqual(my.stalls.map((s) => s.code), ['A-01', 'CL-01', 'A-06']);
   assert.deepEqual(my.unplaced.map((u) => u.horse.name), ['Gió Bấc']);
   assert.deepEqual(myStallsOf({ stalls, unplaced }, undefined), { stalls: [], unplaced: [] }, 'nobody signed in owns nothing');
 });

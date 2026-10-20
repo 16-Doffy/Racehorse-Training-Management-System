@@ -585,6 +585,13 @@ module.exports = {
               hidden: { type: 'boolean' },
             },
           },
+          caretaker: {
+            type: 'object', nullable: true,
+            description:
+              "The stall's groom, empty stall or not: their app lists it, and the horse in it has them as caretaker. The Manager and grooms see every stall's groom; " +
+              "other roles only the groom of a horse they may see. inactive: the account was locked or moved to another role. A stall from before stalls had grooms shows the groom of its horse.",
+            properties: { _id: { type: 'string' }, name: { type: 'string' }, inactive: { type: 'boolean' } },
+          },
         },
       },
       FeedingSchedule: {
@@ -1579,7 +1586,7 @@ module.exports = {
     },
     '/stable/assignments': {
       get: { tags: ['Stable (Groom)'], summary: 'List stable/stall assignments', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/StableAssignment' } }) } },
-      post: { tags: ['Stable (Groom)'], summary: 'Create/update stall assignment for a horse (Manager)', description: 'Body: { horse, stall | stableBlock, assignedCaretaker? }. 404 when the horse or the stall does not exist; 409 when the horse is archived or the stall is taken, under maintenance or out of use. Placements, maintenance, retiring a stall and archiving a horse at the same moment are serialized: one goes through, the other gets the 409.', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/StableAssignment' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/StableAssignment' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] } },
+      post: { tags: ['Stable (Groom)'], summary: 'Create/update stall assignment for a horse (Manager)', description: 'Body: { horse, stall | stableBlock, assignedCaretaker? }. On a stall of the map, the horse gets the stall\'s groom when assignedCaretaker is left out, and a named assignedCaretaker becomes the stall\'s groom. 404 when the horse or the stall does not exist; 409 when the horse is archived or the stall is taken, under maintenance or out of use. Placements, maintenance, retiring a stall and archiving a horse at the same moment are serialized: one goes through, the other gets the 409.', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/StableAssignment' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/StableAssignment' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] } },
     },
     '/stable/stalls': {
       get: { tags: ['Stable (Groom)'], summary: 'Stable map: stalls in zone order with who stands in each (any role)', description: 'Everyone sees the layout and which stalls are taken; the horse is named only when the user may see it (owner: own horses; trainer/vet: assigned). unplaced: visible horses whose stall is still free text, for the Manager to place. ?all=true (Manager) adds stalls taken out of use.', parameters: [{ name: 'all', in: 'query', schema: { type: 'boolean' } }], responses: { 200: responses[200]({ type: 'object', properties: { stalls: { type: 'array', items: { $ref: '#/components/schemas/Stall' } }, unplaced: { type: 'array', items: { type: 'object' } } } }) } },
@@ -1594,6 +1601,38 @@ module.exports = {
     '/stable/stalls/{id}': {
       patch: { tags: ['Stable (Groom)'], summary: 'Edit a stall: zone name/purpose, type, order, maintenance (Manager)', description: 'status maintenance is refused (409) while a horse is in the stall; a stall under maintenance cannot be assigned. The code never changes.', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/Stall' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] } },
       delete: { tags: ['Stable (Groom)'], summary: 'Take an empty stall out of use (Manager)', description: 'Kept with isActive false so its code stays reserved; 409 while a horse is in it.', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/Stall' }), 403: responses[403], 404: responses[404], 409: responses[409] } },
+    },
+    '/stable/stalls/{id}/caretaker': {
+      put: {
+        tags: ['Stable (Groom)'],
+        summary: "Give a stall its groom, or none (Manager)",
+        description:
+          'Body { caretaker: <groom id> | null }. The horse in the stall gets that groom too: its unfinished feeds, post-session care and care orders move over (tasks a trainer gave someone by hand stay), ' +
+          'the new groom gets today\'s feeds and is notified, the previous one is told. 400 when caretaker is missing or not an active groom.',
+        parameters: [idParam('id')],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['caretaker'], properties: { caretaker: { type: 'string', nullable: true } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/Stall' }), 400: responses[400], 403: responses[403], 404: responses[404] },
+      },
+    },
+    '/stable/zones/{zone}': {
+      put: {
+        tags: ['Stable (Groom)'],
+        summary: 'Edit a zone in one save: name, stalls taken out, stalls added (Manager)',
+        description:
+          'Body { zoneName?, zonePurpose?, remove?: [stall ids], add?: n, type? }, in one transaction. The listed stalls of the zone are taken out of use, only while they are empty (409 names the horses, and nothing of the save happens). ' +
+          'n stalls are added after the highest number of the zone (the ones taken out included), of type, without a groom yet (the Manager gives each stall its groom); a code taken out of use before comes back as new. ' +
+          'The key never changes: it is part of the stall codes on the nameplates. 400 for an empty name, nothing to change, a stall of another zone, or taking out every stall (DELETE the zone instead); 404 when the zone has no stall.',
+        parameters: [{ name: 'zone', in: 'path', required: true, schema: { type: 'string', example: 'A' } }],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { zoneName: { type: 'string' }, zonePurpose: { type: 'string' }, remove: { type: 'array', items: { type: 'string' } }, add: { type: 'integer', minimum: 0, maximum: 40 }, type: { type: 'string', enum: ['standard', 'isolation', 'recovery'] } } } } } },
+        responses: { 200: responses[200]({ type: 'object', properties: { zone: { type: 'string' }, removed: { type: 'array', items: { type: 'string' } }, added: { type: 'array', items: { type: 'string' } }, stalls: { type: 'array', items: { $ref: '#/components/schemas/Stall' } } } }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+      delete: {
+        tags: ['Stable (Groom)'],
+        summary: 'Take a whole zone out of use (Manager)',
+        description: 'Only while none of its stalls has a horse (409 names them). The codes stay reserved: POST /stable/stalls/generate for the zone again brings the stalls back, as new. Returns { zone, retired: [codes] }.',
+        parameters: [{ name: 'zone', in: 'path', required: true, schema: { type: 'string', example: 'A' } }],
+        responses: { 200: responses[200]({ type: 'object', properties: { zone: { type: 'string' }, retired: { type: 'array', items: { type: 'string' } } } }), 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
     },
     '/stable/assignments/{id}': {
       delete: { tags: ['Stable (Groom)'], summary: 'Remove stall assignment (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
