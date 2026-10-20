@@ -17,6 +17,7 @@ import {
   DatePicker,
   Switch,
   Segmented,
+  Alert,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
 import {
@@ -281,7 +282,7 @@ function ReceiveModal({ item, request = null, onClose }) {
 
 export default function InventoryPage() {
   const queryClient = useQueryClient();
-  const { data, isLoading } = useQuery({ queryKey: ['inventory'], queryFn: () => inventoryApi.list() });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['inventory'], queryFn: () => inventoryApi.list() });
   const items = data?.data || [];
   const { data: forecastData } = useQuery({ queryKey: ['inventory-forecast'], queryFn: () => inventoryApi.forecast() });
   const forecastById = new Map((forecastData?.data || []).map((f) => [String(f._id), f]));
@@ -428,7 +429,7 @@ export default function InventoryPage() {
           </div>
         ),
       },
-      { title: 'Tồn kho', key: 'quantity', render: (_, r) => <span className="whitespace-nowrap">{stockText(r)}</span> },
+      { title: 'Tồn kho', key: 'quantity', align: 'right', render: (_, r) => <span className="whitespace-nowrap tabular-nums font-medium">{stockText(r)}</span> },
       {
         title: 'Trạng thái',
         key: 'status',
@@ -463,7 +464,7 @@ export default function InventoryPage() {
             },
           ]
         : []),
-      { title: 'Tối thiểu', key: 'reorderLevel', render: (_, r) => (r.reorderLevel ? `${r.reorderLevel} ${r.unit}` : '—') },
+      { title: 'Tối thiểu', key: 'reorderLevel', align: 'right', render: (_, r) => <span className="tabular-nums">{r.reorderLevel ? `${r.reorderLevel} ${r.unit}` : '—'}</span> },
       ...(consumable
         ? [
             {
@@ -471,13 +472,14 @@ export default function InventoryPage() {
               key: 'pack',
               render: (_, r) => (r.packUnit && r.packSize ? `1 ${r.packUnit} = ${r.packSize} ${r.unit}` : '—'),
             },
-            { title: 'Hạn dùng', key: 'expiry', render: (_, r) => (r.expiryDate ? dayjs(r.expiryDate).format('DD/MM/YYYY') : '—') },
+            { title: 'Hạn dùng', key: 'expiry', render: (_, r) => <span className="tabular-nums">{r.expiryDate ? dayjs(r.expiryDate).format('DD/MM/YYYY') : '—'}</span> },
           ]
         : []),
       {
         title: 'Đơn giá',
         key: 'price',
-        render: (_, r) => (r.price ? `${vnd(r.price)}/${r.packUnit || r.unit}` : '—'),
+        align: 'right',
+        render: (_, r) => <span className="tabular-nums">{r.price ? `${vnd(r.price)}/${r.packUnit || r.unit}` : '—'}</span>,
       },
       { title: 'Khu vực', dataIndex: 'stableBlock', key: 'stableBlock', render: (v) => v || 'Kho chung' },
       {
@@ -533,7 +535,7 @@ export default function InventoryPage() {
             rowKey="_id"
             columns={columnsFor(c.key)}
             dataSource={rows}
-            loading={isLoading}
+            loading={isLoading && !data}
             scroll={{ x: 'max-content' }}
             pagination={{ pageSize: 20, hideOnSinglePage: true }}
             locale={{ emptyText: `Chưa có ${c.label.toLowerCase()} nào. Bấm "Thêm ${c.label.toLowerCase()}" để tạo.` }}
@@ -552,55 +554,63 @@ export default function InventoryPage() {
   return (
     <div>
       <PageHeroBanner
-        eyebrow="TEAM 8 • KHO HẬU CẦN & VẬT TƯ"
-        roleLabel="Club Manager"
-        title="Kho Vật Tư, Thức Ăn & Dược Phẩm"
-        subtitle="Danh mục kho theo từng phân loại: Khẩu phần và đơn thuốc tự động khấu trừ kho. Quản lý đề xuất nhập hàng và duyệt đặt hàng."
-        stats={[
-          { label: 'Tổng danh mục', value: `${totalItemsCount} mặt hàng` },
-          { label: 'Cảnh báo tồn', value: outOfStockCount > 0 ? `${outOfStockCount} hết` : `${lowStockCount} sắp hết` },
-          { label: 'Chờ duyệt', value: `${pendingRequestsCount} đề xuất` },
-          { label: 'Chờ nhận hàng', value: `${awaitingDeliveryCount} đơn` },
-        ]}
+        eyebrow="Hậu cần & tồn kho"
+        roleLabel="Quản lý CLB"
+        title="Kho thức ăn, thuốc & dụng cụ"
+        subtitle="Theo dõi tồn kho theo từng nhóm; khẩu phần và đơn thuốc tự trừ kho khi nhân viên thực hiện. Duyệt đề xuất mua thêm và ghi nhận hàng về."
         actionButton={
           <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => setEditing({ __category: tab })}
-            className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer shadow-md"
+            className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
           >
             Thêm vật tư mới
           </Button>
         }
       />
 
-      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
-      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Danh Mục</div>
-          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{totalItemsCount} <span className="text-xs font-normal text-slate-500">mặt hàng</span></div>
+      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Tổng danh mục</div>
+          <div className="text-xl sm:text-2xl font-bold text-[#0F5A43] tabular-nums mt-1">{totalItemsCount} <span className="text-xs font-normal text-slate-500">mặt hàng</span></div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Cảnh Báo Tồn Kho</div>
-          <div className={`text-xl font-bold tabular-nums mt-0.5 ${outOfStockCount > 0 ? 'text-rose-600' : lowStockCount > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
-            {outOfStockCount > 0 ? `${outOfStockCount} hết hàng` : lowStockCount > 0 ? `${lowStockCount} sắp hết` : 'An toàn'}
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Cảnh báo tồn kho</div>
+          <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${outOfStockCount > 0 ? 'text-rose-600' : lowStockCount > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
+            {outOfStockCount > 0 ? `${outOfStockCount} hết hàng` : lowStockCount > 0 ? `${lowStockCount} sắp hết` : 'Đủ dùng'}
           </div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chờ Duyệt Mua</div>
-          <div className={`text-xl font-bold tabular-nums mt-0.5 ${pendingRequestsCount > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Chờ duyệt mua</div>
+          <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${pendingRequestsCount > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
             {pendingRequestsCount} <span className="text-xs font-normal text-slate-500">đề xuất</span>
           </div>
         </div>
-        <div className="px-3 py-1.5">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chờ Giao Nhận</div>
-          <div className="text-xl font-bold text-sky-700 tabular-nums mt-0.5">{awaitingDeliveryCount} <span className="text-xs font-normal text-slate-500">đơn đã duyệt</span></div>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Chờ nhận hàng</div>
+          <div className="text-xl sm:text-2xl font-bold text-sky-700 tabular-nums mt-1">{awaitingDeliveryCount} <span className="text-xs font-normal text-slate-500">đơn đã duyệt</span></div>
         </div>
       </div>
 
+      {isError && (
+        <Alert
+          type="error"
+          showIcon
+          className="mb-4"
+          title="Chưa tải được danh mục kho"
+          description={error?.message || 'Không thể lấy dữ liệu tồn kho lúc này.'}
+          action={
+            <Button size="small" onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
+      )}
+
       {pendingRequests.length > 0 && (
-        <div className="mb-6 rounded-xl border border-amber-200/80 bg-amber-50/30 p-4 shadow-xs">
-          <div className="flex items-center justify-between mb-2">
+        <div className="light-surface-box mb-6 rounded-xl border border-amber-200/80 bg-amber-50/30 p-4 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-1 mb-2">
             <span className="font-semibold text-amber-900 flex items-center gap-2 text-sm">
               <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -615,7 +625,7 @@ export default function InventoryPage() {
             rowKey="key"
             columns={requestColumns}
             dataSource={pendingRequests}
-            loading={isLoading}
+            loading={isLoading && !data}
             pagination={false}
             scroll={{ x: 'max-content' }}
             size="small"

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Typography, Tag, Select, DatePicker, Button, Tooltip, Space } from 'antd';
+import { Table, Typography, Tag, Select, DatePicker, Button, Tooltip, Space, Alert } from 'antd';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -118,7 +118,7 @@ export default function AuditLogPage() {
     from: filters.range?.[0]?.startOf('day').toISOString(),
     to: filters.range?.[1]?.endOf('day').toISOString(),
   };
-  const { data, isFetching } = useQuery({ queryKey: ['audit-logs', params], queryFn: () => auditApi.list(params), placeholderData: keepPreviousData });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['audit-logs', params], queryFn: () => auditApi.list(params), placeholderData: keepPreviousData });
   const { data: facetsData } = useQuery({ queryKey: ['audit-logs', 'facets'], queryFn: () => auditApi.facets() });
   const facets = facetsData?.data || { actions: [], targetModels: [], actors: [] };
   const items = data?.data?.items || [];
@@ -184,30 +184,24 @@ export default function AuditLogPage() {
   return (
     <div>
       <PageHeroBanner
-        eyebrow="TEAM 8 • NHẬT KÝ & KIỂM TOÁN VẬN HÀNH"
-        roleLabel="Club Manager"
-        title="Nhật Ký Thao Tác Hệ Thống (Audit Log)"
-        subtitle="Truy vết toàn vẹn lịch sử vận hành: Ai đã làm gì, thời điểm nào, trên đối tượng nào. Tra cứu dữ liệu bảo mật và kiểm toán."
-        stats={[
-          { label: 'Tổng thao tác', value: `${totalLogs.toLocaleString('vi-VN')} lượt` },
-          { label: 'Nhân sự thao tác', value: `${totalActors} người` },
-          { label: 'Phân hệ nghiệp vụ', value: `${totalFamilies} nhóm` },
-        ]}
+        eyebrow="Kiểm toán hệ thống"
+        roleLabel="Quản lý CLB"
+        title="Nhật ký thao tác hệ thống"
+        subtitle="Truy vết lịch sử vận hành: người thực hiện, thời điểm, loại thao tác và đối tượng tác động."
       />
 
-      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
-      <div className="light-surface-box grid grid-cols-2 md:grid-cols-3 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Thao Tác Ghi Nhận</div>
-          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{totalLogs.toLocaleString('vi-VN')} <span className="text-xs font-normal text-slate-500">nhật ký</span></div>
+      <div className="light-surface-box grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Tổng thao tác ghi nhận</div>
+          <div className="text-xl sm:text-2xl font-bold text-[#0F5A43] tabular-nums mt-1">{totalLogs.toLocaleString('vi-VN')} <span className="text-xs font-normal text-slate-500">nhật ký</span></div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Nhân Sự Thao Tác</div>
-          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{totalActors} <span className="text-xs font-normal text-slate-500">người</span></div>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Nhân sự thao tác</div>
+          <div className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums mt-1">{totalActors} <span className="text-xs font-normal text-slate-500">người</span></div>
         </div>
-        <div className="px-3 py-1.5">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Phân Hệ Nghiệp Vụ</div>
-          <div className="text-xl font-bold text-slate-700 tabular-nums mt-0.5">{totalFamilies} <span className="text-xs font-normal text-slate-500">nhóm việc</span></div>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Phân hệ nghiệp vụ</div>
+          <div className="text-xl sm:text-2xl font-bold text-slate-700 tabular-nums mt-1">{totalFamilies} <span className="text-xs font-normal text-slate-500">nhóm việc</span></div>
         </div>
       </div>
 
@@ -256,11 +250,26 @@ export default function AuditLogPage() {
         </Space>
       </div>
 
+      {isError && (
+        <Alert
+          type="error"
+          showIcon
+          className="mb-4"
+          title="Chưa tải được nhật ký thao tác"
+          description={error?.message || 'Không thể lấy dữ liệu nhật ký lúc này.'}
+          action={
+            <Button size="small" onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
+      )}
+
       <Table
         rowKey="_id"
         columns={columns}
         dataSource={items}
-        loading={isFetching}
+        loading={isLoading && !data}
         scroll={{ x: 'max-content' }}
         pagination={{ current: page, pageSize: PAGE_SIZE, total, showSizeChanger: false, onChange: setPage, showTotal: (t) => `${t} thao tác` }}
         locale={{ emptyText: anyFilter ? 'Không có thao tác nào khớp bộ lọc.' : 'Chưa có thao tác nào.' }}

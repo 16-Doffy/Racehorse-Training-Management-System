@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Typography, Row, Col, Statistic, DatePicker, Empty, Segmented, Tag, Table } from 'antd';
+import { Card, Typography, Row, Col, Statistic, DatePicker, Empty, Segmented, Tag, Table, Alert, Button } from 'antd';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, ResponsiveContainer, Legend } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -194,7 +194,7 @@ export default function ReportsOverviewPage() {
     return { from: dayjs().subtract(days, 'day').startOf('day').toISOString(), to: dayjs().endOf('day').toISOString() };
   })();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['reports-overview', params.from, params.to],
     queryFn: () => reportsApi.overview(params),
   });
@@ -211,15 +211,10 @@ export default function ReportsOverviewPage() {
   return (
     <div>
       <PageHeroBanner
-        eyebrow="TEAM 8 • BÁO CÁO & PHÂN TÍCH VẬN HÀNH"
-        roleLabel="Club Manager"
-        title="Báo Cáo Tổng Quan & Hiệu Quả Câu Lạc Bộ"
-        subtitle="Tổng hợp dữ liệu toàn diện: Hiệu quả giáo án huấn luyện, kiểm soát chi phí vận hành, doanh thu thi đấu và giải thưởng."
-        stats={[
-          { label: 'Tổng buổi tập', value: `${training?.totalSessions ?? 0} buổi` },
-          { label: 'Điểm phong độ TB', value: `${training?.avgPerformanceRating ?? '—'}/10` },
-          { label: 'Chi phí vận hành', value: formatVnd(cost?.total) },
-        ]}
+        eyebrow="Báo cáo tổng hợp"
+        roleLabel="Quản lý CLB"
+        title="Báo cáo vận hành & tài chính"
+        subtitle="Tổng hợp kết quả huấn luyện, chi phí vận hành theo hạng mục, doanh thu giải thưởng và mức độ phối hợp chăm sóc."
       />
 
       {/* Filters in one row above the charts. */}
@@ -240,31 +235,45 @@ export default function ReportsOverviewPage() {
         />
       </div>
 
-      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
-      <div className="light-surface-box grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Buổi Tập</div>
-          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{training?.totalSessions ?? 0} <span className="text-xs font-normal text-slate-500">buổi</span></div>
+      {isError && (
+        <Alert
+          type="error"
+          showIcon
+          className="mb-4"
+          title="Chưa tải được báo cáo vận hành"
+          description={error?.message || 'Không thể lấy dữ liệu báo cáo lúc này.'}
+          action={
+            <Button size="small" onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
+      )}
+
+      <div className="light-surface-box grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs">
+        <div className="p-3.5 sm:p-4 min-w-0">
+          <div className="text-xs font-medium text-slate-600">Tổng buổi tập</div>
+          <div className="text-base sm:text-lg xl:text-xl font-bold text-[#0F5A43] tabular-nums mt-1">{training?.totalSessions ?? 0} <span className="text-xs font-normal text-slate-500">buổi</span></div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Điểm Phong Độ TB</div>
-          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">
+        <div className="p-3.5 sm:p-4 min-w-0">
+          <div className="text-xs font-medium text-slate-600">Điểm phong độ TB</div>
+          <div className="text-base sm:text-lg xl:text-xl font-bold text-slate-800 tabular-nums mt-1">
             {training?.avgPerformanceRating ?? '—'} <span className="text-xs font-normal text-slate-500">{training?.avgPerformanceRating != null ? '/ 10' : ''}</span>
           </div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đạt Mục Tiêu</div>
-          <div className="text-xl font-bold text-emerald-700 tabular-nums mt-0.5">
+        <div className="p-3.5 sm:p-4 min-w-0">
+          <div className="text-xs font-medium text-slate-600">Đạt mục tiêu</div>
+          <div className="text-base sm:text-lg xl:text-xl font-bold text-emerald-700 tabular-nums mt-1">
             {training?.targetsMet ?? 0} <span className="text-xs font-normal text-slate-500">/ {(training?.targetsMet ?? 0) + (training?.targetsMissed ?? 0)}</span>
           </div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chi Phí Vận Hành</div>
-          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{formatVnd(cost?.total)}</div>
+        <div className="p-3.5 sm:p-4 min-w-0">
+          <div className="text-xs font-medium text-slate-600">Chi phí vận hành</div>
+          <div className="text-base sm:text-lg xl:text-xl font-bold text-slate-800 tabular-nums mt-1 break-words leading-snug">{formatVnd(cost?.total)}</div>
         </div>
-        <div className="px-3 py-1.5">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Lợi Nhuận (Net)</div>
-          <div className={`text-xl font-bold tabular-nums mt-0.5 ${profit >= 0 ? 'text-[#0F5A43]' : 'text-rose-600'}`}>{formatVnd(profit)}</div>
+        <div className="p-3.5 sm:p-4 min-w-0 sm:col-span-2 xl:col-span-1">
+          <div className="text-xs font-medium text-slate-600">Lợi nhuận ròng</div>
+          <div className={`text-base sm:text-lg xl:text-xl font-bold tabular-nums mt-1 break-words leading-snug ${profit >= 0 ? 'text-[#0F5A43]' : 'text-rose-600'}`}>{formatVnd(profit)}</div>
         </div>
       </div>
 
@@ -311,7 +320,7 @@ export default function ReportsOverviewPage() {
       </Row>
 
       {/* Whether the hand-offs between the three operational roles actually complete. */}
-      <Card title="Phối hợp HLV – Bác sĩ – Nhân viên chăm sóc" className="mt-4" loading={isLoading}>
+      <Card title="Phối hợp HLV – Bác sĩ – Nhân viên chăm sóc" className="mt-4" loading={isLoading && !data}>
         <Typography.Paragraph type="secondary" className="!text-xs !mb-3">
           Sự cố do nhân viên chăm sóc báo phải được bác sĩ kết luận; y lệnh của bác sĩ phải được chuồng trại
           thực hiện. Sự cố tồn đọng hoặc y lệnh bị bỏ dở là chỗ quy trình đang đứt.
@@ -356,7 +365,7 @@ export default function ReportsOverviewPage() {
       <Card
         title={`Buổi tập vẫn chạy dù có cảnh báo (${overrides?.count ?? 0})`}
         className="mt-4"
-        loading={isLoading}
+        loading={isLoading && !data}
       >
         <Typography.Paragraph type="secondary" className="!text-xs !mb-3">
           Huấn luyện viên có quyền quyết định cuối cùng, nhưng phải nêu lý do. Nếu con số này cao

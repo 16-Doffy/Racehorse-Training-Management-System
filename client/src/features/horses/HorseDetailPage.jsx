@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
@@ -13,7 +13,6 @@ import {
   Row,
   Col,
   Empty,
-  Statistic,
   Timeline,
   Badge,
   Avatar,
@@ -22,12 +21,12 @@ import {
   Form,
   Input,
   Select,
+  Alert,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { HORSE_SEX_LABELS, formatVnd } from '../../constants/horse';
 import {
   UserOutlined,
-  HeartOutlined,
   TrophyOutlined,
   CalendarOutlined,
   MedicineBoxOutlined,
@@ -42,14 +41,15 @@ import HorseTimeline from './HorseTimeline';
 import CareHistoryCard from './CareHistoryCard';
 import Horse3D from './horse3d/Horse3D';
 import { breedLabel, coatLabel } from './horse3d/horseBreeds';
-import { TRAINING_LEVEL_META } from '../../constants/health';
+import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constants/health';
 import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
 import { trainingSessionApi } from '../training/trainingApi';
-import { ROLES } from '../../constants/roles';
+import { ROLES, ROLE_LABELS } from '../../constants/roles';
+import PageHeroBanner from '../../components/common/PageHeroBanner';
 import dayjs from 'dayjs';
 import { SESSION_STATUS_LABELS, SESSION_BADGE_STATUS } from '../training/sessionStatus';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
 const STATUS_CONFIG = {
   eligible: { color: 'green', icon: <CheckCircleOutlined />, label: '🟢 Sẵn sàng thi đấu', bg: '#f6ffed' },
@@ -69,36 +69,36 @@ function calcAge(dob) {
   return months > 0 ? `${years} tuổi ${months} tháng` : `${years} tuổi`;
 }
 
-/** Pedigree Tree component — displays 3 levels using existing sire/dam data */
-function PedigreeTree({ horse }) {
-  const PedigreeNode = ({ data, level = 0, label }) => {
-    if (!data) {
-      return (
-        <div
-          className="border border-dashed border-gray-300 rounded px-3 py-2 text-center"
-          style={{ minWidth: 140 }}
-        >
-          <Text type="secondary" className="text-xs">{label}</Text>
-          <div className="text-gray-400 text-xs">Chưa cập nhật</div>
-        </div>
-      );
-    }
+function PedigreeNode({ data, level = 0, label }) {
+  if (!data) {
     return (
       <div
-        className="border rounded px-3 py-2 text-center light-surface-box"
-        style={{
-          minWidth: 140,
-          background: level === 0 ? '#e6f7ff' : level === 1 ? '#f0f5ff' : '#fafafa',
-          borderColor: level === 0 ? '#91d5ff' : '#d9d9d9',
-        }}
+        className="border border-dashed border-gray-300 rounded-lg px-3 py-2 text-center"
+        style={{ minWidth: 140 }}
       >
         <Text type="secondary" className="text-xs">{label}</Text>
-        <div className="font-semibold text-sm">{data.name || 'N/A'}</div>
-        {data.breed && <div className="text-xs text-gray-500">{data.breed}</div>}
+        <div className="text-gray-400 text-xs">Chưa cập nhật</div>
       </div>
     );
-  };
+  }
+  return (
+    <div
+      className="border rounded-lg px-3 py-2 text-center light-surface-box"
+      style={{
+        minWidth: 140,
+        background: level === 0 ? '#e6f7ff' : level === 1 ? '#f0f5ff' : '#fafafa',
+        borderColor: level === 0 ? '#91d5ff' : '#d9d9d9',
+      }}
+    >
+      <Text type="secondary" className="text-xs">{label}</Text>
+      <div className="font-semibold text-sm">{data.name || 'N/A'}</div>
+      {data.breed && <div className="text-xs text-gray-500">{data.breed}</div>}
+    </div>
+  );
+}
 
+/** Pedigree Tree component — displays 3 levels using existing sire/dam data */
+function PedigreeTree({ horse, clean = false }) {
   return (
     <div className="overflow-x-auto">
       <div className="flex items-center gap-2 min-w-fit">
@@ -107,21 +107,21 @@ function PedigreeTree({ horse }) {
           <PedigreeNode data={horse} level={0} label="Bản thân" />
         </div>
 
-        <div className="text-gray-300 text-2xl">→</div>
+        <div className="text-gray-300 text-xl select-none" aria-hidden="true">→</div>
 
         {/* Level 1: Sire & Dam */}
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
-            <PedigreeNode data={horse.sire} level={1} label="🐴 Bố (Sire)" />
-            <div className="text-gray-300 text-lg">→</div>
+            <PedigreeNode data={horse.sire} level={1} label={clean ? 'Bố (Sire)' : '🐴 Bố (Sire)'} />
+            <div className="text-gray-300 text-lg select-none" aria-hidden="true">→</div>
             <div className="flex flex-col gap-2">
               <PedigreeNode data={horse.sire?.sire} level={2} label="Ông nội" />
               <PedigreeNode data={horse.sire?.dam} level={2} label="Bà nội" />
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <PedigreeNode data={horse.dam} level={1} label="🐴 Mẹ (Dam)" />
-            <div className="text-gray-300 text-lg">→</div>
+            <PedigreeNode data={horse.dam} level={1} label={clean ? 'Mẹ (Dam)' : '🐴 Mẹ (Dam)'} />
+            <div className="text-gray-300 text-lg select-none" aria-hidden="true">→</div>
             <div className="flex flex-col gap-2">
               <PedigreeNode data={horse.dam?.sire} level={2} label="Ông ngoại" />
               <PedigreeNode data={horse.dam?.dam} level={2} label="Bà ngoại" />
@@ -135,14 +135,13 @@ function PedigreeTree({ horse }) {
 
 export default function HorseDetailPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const isOwner = user?.role === ROLES.OWNER;
   const canRequestExam = user?.role === ROLES.HEAD_TRAINER || user?.role === ROLES.MANAGER;
   const [examModalOpen, setExamModalOpen] = useState(false);
   const [examForm] = Form.useForm();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['horses', id],
     queryFn: () => horsesApi.getOne(id),
   });
@@ -186,14 +185,48 @@ export default function HorseDetailPage() {
     .filter((s) => (s.horse?._id || s.horse) === id)
     .sort((a, b) => new Date(b.scheduledAt) - new Date(a.scheduledAt));
 
-  if (isLoading || !horse) return null;
+  if (isOwner && (isLoading || !horse)) return null;
+
+  if (!isOwner && isLoading && !horse) {
+    return (
+      <div className="space-y-4">
+        <Card loading className="!rounded-xl !border-[#E2D9C8]" />
+        <Card loading className="!rounded-xl !border-[#E2D9C8]" />
+      </div>
+    );
+  }
+
+  if (!isOwner && isError && !horse) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        title="Chưa tải được hồ sơ ngựa"
+        description={error?.message || 'Không thể lấy dữ liệu hồ sơ ngựa lúc này.'}
+        action={
+          <Button size="small" onClick={() => refetch()}>
+            Thử lại
+          </Button>
+        }
+      />
+    );
+  }
+
+  if (!horse) {
+    return <Empty description="Không tìm thấy hồ sơ ngựa" />;
+  }
 
   const statusCfg = STATUS_CONFIG[horse.healthStatus] || {};
 
   const achievementColumns = [
-    { title: 'Giải đua', dataIndex: 'race', key: 'race' },
+    { title: 'Giải đua', dataIndex: 'race', key: 'race', render: (v) => <span className="font-medium">{v}</span> },
     { title: 'Kết quả', dataIndex: 'result', key: 'result' },
-    { title: 'Ngày', dataIndex: 'date', key: 'date', render: (d) => dayjs(d).format('DD/MM/YYYY') },
+    {
+      title: 'Ngày',
+      dataIndex: 'date',
+      key: 'date',
+      render: (d) => <span className="tabular-nums text-xs text-slate-600">{d ? dayjs(d).format('DD/MM/YYYY') : '—'}</span>,
+    },
   ];
 
   const sessionColumns = [
@@ -507,53 +540,90 @@ export default function HorseDetailPage() {
     );
   }
 
-  // Non-owner view: original layout
+  // Non-owner view: staff layout (HLV, Manager, Vet)
+  const clearanceLevel = horse.trainingClearance?.level || 'high';
   return (
-    <div>
+    <div className="space-y-4">
       <Breadcrumb
-        className="mb-4"
-        items={[{ title: <Link to="/horses">Danh sách Ngựa</Link> }, { title: horse.name }]}
+        items={[{ title: <Link to="/horses">Danh sách đàn ngựa</Link> }, { title: horse.name }]}
       />
-      <div className="flex justify-between items-center mb-2">
-        <Title level={3} className="!mb-0">{horse.name}</Title>
-        {canRequestExam && (
-          <Button icon={<MedicineBoxOutlined />} onClick={() => setExamModalOpen(true)}>
-            Yêu cầu bác sĩ kiểm tra
-          </Button>
-        )}
-      </div>
 
-      <Row gutter={[16, 16]} className="mb-4">
+      <PageHeroBanner
+        eyebrow="Hồ sơ lý lịch & phả hệ"
+        roleLabel={ROLE_LABELS[user?.role] || 'Nhân sự CLB'}
+        title={horse.name}
+        subtitle={`${breedLabel(horse.breed)} · ${HORSE_SEX_LABELS[horse.sex] || '—'} · ${calcAge(horse.dob) || 'Chưa rõ tuổi'}`}
+        stats={[
+          {
+            label: 'Sức khỏe',
+            value: HEALTH_LABELS[horse.healthStatus] || horse.healthStatus,
+          },
+          {
+            label: 'Mức cho phép tập',
+            value: TRAINING_LEVEL_META[clearanceLevel]?.label || clearanceLevel,
+          },
+          {
+            label: 'Chủ sở hữu',
+            value: horse.owner?.name || 'CLB sở hữu',
+          },
+        ]}
+        actionButton={
+          canRequestExam ? (
+            <Button
+              type="primary"
+              icon={<MedicineBoxOutlined />}
+              onClick={() => setExamModalOpen(true)}
+              className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
+            >
+              Yêu cầu bác sĩ kiểm tra
+            </Button>
+          ) : null
+        }
+      />
+
+      <Row gutter={[16, 16]}>
         {/* The horse in 3D, in the breed and coat the Manager set — the same horse its groom sees. */}
         <Col xs={24} lg={9}>
-          <Horse3D breed={horse.breed} color={horse.color} height={300} />
+          <Horse3D breed={horse.breed} color={horse.color} height={310} />
         </Col>
         <Col xs={24} lg={15}>
-          <Card className="h-full" title="Hồ sơ lý lịch">
-            <Descriptions column={2} bordered size="small">
+          <Card className="h-full !rounded-xl !border-[#E2D9C8]" title="Hồ sơ lý lịch">
+            <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
               <Descriptions.Item label="Giống">{breedLabel(horse.breed)}</Descriptions.Item>
               <Descriptions.Item label="Màu lông">{coatLabel(horse.color)}</Descriptions.Item>
               <Descriptions.Item label="Giới tính">{HORSE_SEX_LABELS[horse.sex] || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Số vi mạch">{horse.microchipNumber || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Số đăng ký">{horse.registrationNumber || '—'}</Descriptions.Item>
-              {/* Sent only to the Manager and the owner. */}
-              {'valuationVnd' in horse && <Descriptions.Item label="Định giá">{formatVnd(horse.valuationVnd)}</Descriptions.Item>}
-              <Descriptions.Item label="Ngày sinh">
-                {horse.dob ? new Date(horse.dob).toLocaleDateString() : '—'}
+              <Descriptions.Item label="Số vi mạch">
+                <span className="font-mono tabular-nums text-xs">{horse.microchipNumber || '—'}</span>
               </Descriptions.Item>
-              <Descriptions.Item label="Cân nặng">{horse.weightKg ? `${horse.weightKg} kg` : '—'}</Descriptions.Item>
+              <Descriptions.Item label="Số đăng ký">
+                <span className="font-mono tabular-nums text-xs">{horse.registrationNumber || '—'}</span>
+              </Descriptions.Item>
+              {/* Sent only to the Manager and the owner. */}
+              {'valuationVnd' in horse && (
+                <Descriptions.Item label="Định giá">
+                  <span className="tabular-nums font-semibold">{formatVnd(horse.valuationVnd)}</span>
+                </Descriptions.Item>
+              )}
+              <Descriptions.Item label="Ngày sinh">
+                <span className="tabular-nums">
+                  {horse.dob ? `${dayjs(horse.dob).format('DD/MM/YYYY')} (${calcAge(horse.dob)})` : '—'}
+                </span>
+              </Descriptions.Item>
+              <Descriptions.Item label="Cân nặng">
+                <span className="tabular-nums">{horse.weightKg ? `${horse.weightKg} kg` : '—'}</span>
+              </Descriptions.Item>
               <Descriptions.Item label="Chủ sở hữu">{horse.owner?.name || '—'}</Descriptions.Item>
               <Descriptions.Item label="Trạng thái sức khỏe">
-                <Tag color={STATUS_CONFIG[horse.healthStatus]?.color}>
-                  {STATUS_CONFIG[horse.healthStatus]?.label || horse.healthStatus}
+                <Tag color={HEALTH_COLORS[horse.healthStatus]}>
+                  {HEALTH_LABELS[horse.healthStatus] || horse.healthStatus}
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="Tập luyện" span={2}>
-                <Tag color={TRAINING_LEVEL_META[horse.trainingClearance?.level || 'high']?.color}>
-                  {TRAINING_LEVEL_META[horse.trainingClearance?.level || 'high']?.label}
+                <Tag color={TRAINING_LEVEL_META[clearanceLevel]?.color}>
+                  {TRAINING_LEVEL_META[clearanceLevel]?.label}
                 </Tag>
                 {horse.trainingClearance?.restricted && (
-                  <span className="text-gray-500 text-sm">
+                  <span className="text-slate-600 text-xs ml-1">
                     {horse.trainingClearance.reason ? `${horse.trainingClearance.reason} — ` : ''}
                     theo phác đồ của bác sĩ {horse.trainingClearance.prescribedBy || ''}
                     {horse.trainingClearance.since ? ` từ ${dayjs(horse.trainingClearance.since).format('DD/MM')}` : ''}. Hết hạn chế khi bác sĩ
@@ -568,21 +638,33 @@ export default function HorseDetailPage() {
 
       <HorseTimeline horseId={horse._id} />
 
-      <Card className="mb-4" title="Dòng dõi (Pedigree)" loading={lineageLoading}>
-        <PedigreeTree horse={lineageTree} />
+      <Card
+        className="!rounded-xl !border-[#E2D9C8]"
+        title="Dòng dõi (Pedigree)"
+        loading={lineageLoading && !lineageDataResp}
+      >
+        <PedigreeTree horse={lineageTree} clean />
       </Card>
 
-      <Card title="Lịch sử thành tích thi đấu" className="mb-4">
+      <Card title="Lịch sử thành tích thi đấu" className="!rounded-xl !border-[#E2D9C8]">
         <Table
           rowKey={(r) => `${r.race}-${r.date}`}
           columns={achievementColumns}
           dataSource={horse.achievements}
           pagination={false}
-          locale={{ emptyText: 'Chưa có thành tích' }}
+          scroll={{ x: 'max-content' }}
+          locale={{
+            emptyText: (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="Chưa ghi nhận thành tích thi đấu chính thức"
+              />
+            ),
+          }}
         />
       </Card>
 
-      <div className="mb-4">
+      <div>
         <CareHistoryCard horseId={horse._id} />
       </div>
 

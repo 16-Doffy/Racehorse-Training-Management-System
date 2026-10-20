@@ -200,7 +200,7 @@ export default function RacePage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const { data, isLoading } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const { data: trialsData } = useQuery({
@@ -219,7 +219,7 @@ export default function RacePage() {
     return {
       value: h._id,
       disabled: grounded || recovering,
-      label: grounded ? `🔒 ${h.name} (bác sĩ đang khóa / chấn thương)` : recovering ? `🩹 ${h.name} (đang hồi phục)` : h.name,
+      label: grounded ? `${h.name} (bác sĩ đang khóa / chấn thương)` : recovering ? `${h.name} (đang hồi phục)` : h.name,
     };
   });
 
@@ -371,55 +371,71 @@ export default function RacePage() {
   return (
     <div>
       <PageHeroBanner
-        eyebrow="TEAM 8 • ĐẤU TRƯỜNG & GIẢI ĐUA"
-        roleLabel="Head Trainer"
-        title="Đăng Ký & Quản Lý Giải Đua Kỵ Binh"
-        subtitle="Đăng ký ngựa, lập kế hoạch hướng tới giải đấu, quyết định tham gia dựa trên chạy thử và sức khỏe, nhập kết quả thi đấu."
-        stats={[
-          { label: 'Đã đăng ký', value: `${registeredCount} giải` },
-          { label: 'Đã xác nhận', value: `${confirmedCount} con` },
-          { label: 'Sắp diễn ra', value: `${upcomingCount} giải` },
-          { label: 'Đã hoàn thành', value: `${completedCount} giải` },
-        ]}
+        eyebrow="Thi đấu & giải thưởng"
+        roleLabel="HLV trưởng"
+        title="Đăng ký & quản lý giải đua"
+        subtitle="Đăng ký ngựa dự giải, theo dõi buổi chạy thử gắn với giải, quyết định tham gia hoặc rút lui và ghi nhận kết quả chính thức."
         actionButton={
           <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => setOpen(true)}
-            className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer shadow-md"
+            className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
           >
             Đăng ký giải mới
           </Button>
         }
       />
 
-      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
-      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đã Đăng Ký</div>
-          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{registeredCount} <span className="text-xs font-normal text-slate-500">giải</span></div>
+      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Đã đăng ký</div>
+          <div className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums mt-1">{registeredCount} <span className="text-xs font-normal text-slate-500">giải</span></div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đã Xác Nhận Đi Đua</div>
-          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{confirmedCount} <span className="text-xs font-normal text-slate-500">chiến mã</span></div>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Đã xác nhận tham gia</div>
+          <div className="text-xl sm:text-2xl font-bold text-[#0F5A43] tabular-nums mt-1">{confirmedCount} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Sắp Diễn Ra</div>
-          <div className="text-xl font-bold text-amber-700 tabular-nums mt-0.5">{upcomingCount} <span className="text-xs font-normal text-slate-500">giải</span></div>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Sắp diễn ra</div>
+          <div className="text-xl sm:text-2xl font-bold text-amber-700 tabular-nums mt-1">{upcomingCount} <span className="text-xs font-normal text-slate-500">giải</span></div>
         </div>
-        <div className="px-3 py-1.5">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đã Hoàn Thành</div>
-          <div className="text-xl font-bold text-slate-600 tabular-nums mt-0.5">{completedCount} <span className="text-xs font-normal text-slate-500">giải</span></div>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Đã hoàn thành</div>
+          <div className="text-xl sm:text-2xl font-bold text-slate-600 tabular-nums mt-1">{completedCount} <span className="text-xs font-normal text-slate-500">giải</span></div>
         </div>
       </div>
+
+      {isError && (
+        <Alert
+          type="error"
+          showIcon
+          className="mb-4"
+          title="Chưa tải được danh sách giải đua"
+          description={error?.message || 'Không thể lấy dữ liệu giải đua lúc này.'}
+          action={
+            <Button size="small" onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
+      )}
 
       <Table
         rowKey="_id"
         columns={columns}
         dataSource={data?.data}
-        loading={isLoading}
+        loading={isLoading && !data}
         scroll={{ x: 'max-content' }}
-        locale={{ emptyText: <Empty description='Chưa có giải đua nào được đăng ký. Nhấn "Đăng ký giải mới" để bắt đầu.' /> }}
+        locale={{
+          emptyText: (
+            <Empty description='Chưa có giải đua nào được đăng ký. Nhấn "Đăng ký giải mới" để bắt đầu.'>
+              <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+                Đăng ký giải mới
+              </Button>
+            </Empty>
+          ),
+        }}
       />
 
       <Modal

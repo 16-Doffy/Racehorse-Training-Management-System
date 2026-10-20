@@ -42,10 +42,10 @@ export default function OpenIncidentsCard() {
       }
     >
       {tasks.length === 0 ? (
-        <div className="light-surface-box py-5 px-4 text-center rounded-xl bg-emerald-50/60 border border-emerald-200/60 my-1 flex items-center justify-center gap-2.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse shrink-0" />
-          <span className="text-xs font-semibold text-emerald-950">
-            Hệ thống an toàn · Không có sự cố phát sinh từ chuồng trại
+        <div className="light-surface-box py-4 px-4 text-center rounded-xl bg-emerald-50/60 border border-emerald-200/60 my-1 flex items-center justify-center gap-2.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />
+          <span className="text-xs font-medium text-emerald-950">
+            Chưa có sự cố nào đang mở từ chuồng trại
           </span>
         </div>
       ) : (

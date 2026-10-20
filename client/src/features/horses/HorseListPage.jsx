@@ -54,7 +54,7 @@ export default function HorseListPage() {
     if (!current || current === coatValueOfBreed(breedValue)) form.setFieldValue('color', coatValueOfBreed(next) || undefined);
   };
 
-  const { data, isLoading } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const horses = data?.data || [];
   const { data: checklistData } = useQuery({ queryKey: ['horses', 'checklist'], queryFn: () => horsesApi.checklists(), enabled: showsNextStep });
   const checklistByHorse = new Map((checklistData?.data || []).map((c) => [String(c.horse._id), c]));
@@ -325,15 +325,15 @@ export default function HorseListPage() {
     <div className={isOwner ? 'owner-ui' : undefined}>
       {showsNextStep || isOwner ? (
       <PageHeroBanner
-        eyebrow="TEAM 8 • QUẢN LÝ ĐÀN CHIẾN MÃ"
-        roleLabel={isManager ? 'Club Manager' : isOwner ? 'Horse Owner' : 'Head Trainer'}
-        title={isManager ? 'Danh Mục & Quản Lý Chiến Mã' : isOwner ? 'Chiến Mã Của Tôi' : 'Danh Sách Chiến Mã Phụ Trách'}
+        eyebrow={isOwner ? 'TEAM 8 • QUẢN LÝ ĐÀN CHIẾN MÃ' : 'Hồ sơ & danh mục ngựa'}
+        roleLabel={isManager ? 'Quản lý CLB' : isOwner ? 'Horse Owner' : 'HLV trưởng'}
+        title={isManager ? 'Danh mục & quản lý đàn ngựa' : isOwner ? 'Chiến Mã Của Tôi' : 'Danh sách ngựa phụ trách'}
         subtitle={
           isManager
-            ? 'Thêm/sửa hồ sơ ngựa và phân công Huấn luyện viên, Bác sĩ thú y phụ trách toàn diện.'
+            ? 'Cập nhật hồ sơ lý lịch và phân công huấn luyện viên, bác sĩ thú y phụ trách từng ngựa.'
             : isOwner
               ? 'Hồ sơ, sức khỏe và người phụ trách của từng chiến mã bạn sở hữu.'
-              : 'Theo dõi thể trạng, lịch sử thi đấu và phân bổ kế hoạch tác chiến cho từng chiến mã.'
+              : 'Theo dõi thể trạng, mức độ cho phép tập luyện và bước chuẩn bị tiếp theo của từng ngựa.'
         }
         stats={[
           { label: 'Tổng đàn', value: `${horses.length} con` },
@@ -342,11 +342,11 @@ export default function HorseListPage() {
         ]}
         actionButton={
           isManager ? (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 icon={<DownloadOutlined />}
                 onClick={() => downloadFile('/export/horses', `danh-sach-ngua-${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => message.error(e.message || 'Xuất file thất bại.'))}
-                className="!bg-white/10 hover:!bg-white/20 !border-white/20 !text-white"
+                className="!h-9 !rounded-lg !bg-white/10 hover:!bg-white/15 !border-white/20 !text-white"
               >
                 Xuất CSV
               </Button>
@@ -354,7 +354,7 @@ export default function HorseListPage() {
                 type="primary"
                 icon={<PlusOutlined />}
                 onClick={openCreate}
-                className="!bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer"
+                className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
               >
                 Thêm ngựa mới
               </Button>
@@ -368,32 +368,46 @@ export default function HorseListPage() {
         </Title>
       )}
 
-      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
       {showsNextStep && (
-        <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
-          <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Đàn Ngựa</div>
-            <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{horses.length} <span className="text-xs font-normal text-slate-500">chiến mã</span></div>
+        <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
+          <div className="p-3.5 sm:p-4">
+            <div className="text-xs font-medium text-slate-600">Tổng đàn ngựa</div>
+            <div className="text-xl sm:text-2xl font-bold text-[#0F5A43] tabular-nums mt-1">{horses.length} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
           </div>
-          <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đủ Điều Kiện Tập</div>
-            <div className="text-xl font-bold text-emerald-700 tabular-nums mt-0.5">{readyCount} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
-            {unexaminedCount > 0 && <div className="text-[11px] text-slate-500">{unexaminedCount} ngựa chưa khám</div>}
+          <div className="p-3.5 sm:p-4">
+            <div className="text-xs font-medium text-slate-600">Đủ điều kiện tập</div>
+            <div className="text-xl sm:text-2xl font-bold text-emerald-700 tabular-nums mt-1">{readyCount} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
+            {unexaminedCount > 0 && <div className="text-[11px] text-slate-500 mt-0.5">{unexaminedCount} ngựa chưa khám</div>}
           </div>
-          <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Theo Dõi Y Tế</div>
-            <div className={`text-xl font-bold tabular-nums mt-0.5 ${watchCount > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+          <div className="p-3.5 sm:p-4">
+            <div className="text-xs font-medium text-slate-600">Theo dõi y tế</div>
+            <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${watchCount > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
               {watchCount} <span className="text-xs font-normal text-slate-500">ngựa</span>
             </div>
-            {restrictedCount > 0 && <div className="text-[11px] text-slate-500">{restrictedCount} ngựa bị hạn chế tập</div>}
+            {restrictedCount > 0 && <div className="text-[11px] text-slate-500 mt-0.5">{restrictedCount} ngựa bị hạn chế tập</div>}
           </div>
-          <div className="px-3 py-1.5">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{isManager ? 'Khuyết Phụ Trách' : 'Chưa Có Kế Hoạch'}</div>
-            <div className={`text-xl font-bold tabular-nums mt-0.5 ${gapCount > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+          <div className="p-3.5 sm:p-4">
+            <div className="text-xs font-medium text-slate-600">{isManager ? 'Khuyết phụ trách' : 'Chưa có kế hoạch'}</div>
+            <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${gapCount > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
               {gapCount} <span className="text-xs font-normal text-slate-500">ngựa</span>
             </div>
           </div>
         </div>
+      )}
+
+      {!isOwner && isError && (
+        <Alert
+          className="mb-3"
+          type="error"
+          showIcon
+          title="Chưa tải được danh sách đàn ngựa"
+          description={error?.message || 'Không thể lấy dữ liệu đàn ngựa lúc này.'}
+          action={
+            <Button size="small" onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
       )}
 
       {incomplete.length > 0 && (
@@ -414,26 +428,34 @@ export default function HorseListPage() {
       )}
 
       {isManager && (
-        <Segmented
-          className="!mb-3"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: 'active', label: `Đang quản lý (${horses.length})` },
-            { value: 'archived', label: 'Đã ngừng quản lý' },
-          ]}
-        />
+        <div className="mb-3 max-w-full overflow-x-auto">
+          <Segmented
+            size="small"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'active', label: `Đang quản lý (${horses.length})` },
+              { value: 'archived', label: 'Đã ngừng quản lý' },
+            ]}
+          />
+        </div>
       )}
 
       <Table
         rowKey="_id"
         columns={columns}
         dataSource={view === 'archived' ? archivedHorses : horses}
-        loading={view === 'archived' ? archivedLoading : isLoading}
+        loading={view === 'archived' ? archivedLoading && !archivedData : isLoading && !data}
         scroll={{ x: 'max-content' }}
         locale={{
           emptyText: isManager ? (
-            'Chưa có ngựa nào trong danh mục. Nhấn "Thêm ngựa mới" để bắt đầu.'
+            <Empty description='Chưa có ngựa nào trong danh mục. Nhấn "Thêm ngựa mới" để bắt đầu.'>
+              {view === 'active' && (
+                <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openCreate}>
+                  Thêm ngựa mới
+                </Button>
+              )}
+            </Empty>
           ) : (
             <Empty
               description={

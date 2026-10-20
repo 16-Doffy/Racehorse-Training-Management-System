@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Button, Modal, Form, Select, Input, Tag, Alert, Popconfirm, Space } from 'antd';
+import { Table, Button, Modal, Form, Select, Input, Tag, Alert, Popconfirm, Space, Empty } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { EditOutlined, DeleteOutlined, HomeOutlined, PlusOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
@@ -26,7 +26,7 @@ export default function StableAssignmentPage() {
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
 
-  const { data: assignmentsData, isLoading } = useQuery({
+  const { data: assignmentsData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['stable-assignments'],
     queryFn: () => stableAssignmentApi.list(),
   });
@@ -131,7 +131,13 @@ export default function StableAssignmentPage() {
             cancelText="Huỷ"
             onConfirm={() => removeMutation.mutate(r._id)}
           >
-            <Button size="small" danger icon={<DeleteOutlined />}>
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              loading={removeMutation.isPending && removeMutation.variables === r._id}
+              disabled={removeMutation.isPending && removeMutation.variables === r._id}
+            >
               Gỡ
             </Button>
           </Popconfirm>
@@ -143,47 +149,41 @@ export default function StableAssignmentPage() {
   return (
     <div>
       <PageHeroBanner
-        eyebrow="TEAM 8 • VẬN HÀNH CHUỒNG TRẠI"
-        roleLabel="Club Manager"
-        title="Phân Bổ Chuồng Trại & Nhân Viên Chăm Sóc"
-        subtitle="Mỗi con ngựa cần một chuồng và một nhân viên chăm sóc phụ trách. Căn cứ tự tạo việc cho ăn hàng ngày và điều kiện xếp lịch tập."
-        stats={[
-          { label: 'Tổng đàn', value: `${horses.length} con` },
-          { label: 'Đã xếp chuồng', value: `${assignments.length} ô` },
-          { label: 'Chưa xếp chuồng', value: `${unstabled.length} con` },
-        ]}
+        eyebrow="Vận hành chuồng trại"
+        roleLabel="Quản lý CLB"
+        title="Phân công chuồng trại & nhân viên chăm sóc"
+        subtitle="Mỗi ngựa cần một ô chuồng và một nhân viên chăm sóc phụ trách để hệ thống tự tạo việc cho ăn hằng ngày và kiểm tra điều kiện trước buổi tập."
         actionButton={
           <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => openModal(null)}
             disabled={unstabled.length === 0}
-            className="!h-10 !px-4 !rounded-xl !bg-gradient-to-r !from-amber-600 !to-amber-700 hover:!from-amber-500 hover:!to-amber-600 !border-amber-400/40 !text-white font-semibold cursor-pointer shadow-md"
+            className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
           >
             Xếp chuồng mới
           </Button>
         }
       />
 
-      {/* KPI Ribbon - Mẫu 1 Prestige British Racing */}
-      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5 p-3 rounded-xl bg-white border border-[#E4DFD3] shadow-xs">
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tổng Đàn Ngựa</div>
-          <div className="text-xl font-bold text-[#0F5A43] tabular-nums mt-0.5">{horses.length} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
+      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Tổng đàn ngựa</div>
+          <div className="text-xl sm:text-2xl font-bold text-[#0F5A43] tabular-nums mt-1">{horses.length} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Đã Xếp Chuồng</div>
-          <div className="text-xl font-bold text-slate-800 tabular-nums mt-0.5">{assignments.length} <span className="text-xs font-normal text-slate-500">ô chuồng</span></div>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Đã xếp chuồng</div>
+          <div className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums mt-1">{assignments.length} <span className="text-xs font-normal text-slate-500">ô chuồng</span></div>
         </div>
-        <div className="px-3 py-1.5 border-r border-[#E4DFD3] last:border-r-0">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chưa Xếp Chuồng</div>
-          <div className={`text-xl font-bold tabular-nums mt-0.5 ${unstabled.length > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Chưa xếp chuồng</div>
+          <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${unstabled.length > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
             {unstabled.length} <span className="text-xs font-normal text-slate-500">ngựa</span>
           </div>
         </div>
-        <div className="px-3 py-1.5">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chưa Có Caretaker</div>
-          <div className={`text-xl font-bold tabular-nums mt-0.5 ${uncared.length > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+        <div className="p-3.5 sm:p-4">
+          <div className="text-xs font-medium text-slate-600">Chưa gán người chăm sóc</div>
+          <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${uncared.length > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
             {uncared.length} <span className="text-xs font-normal text-slate-500">chuồng</span>
           </div>
         </div>
@@ -217,13 +217,38 @@ export default function StableAssignmentPage() {
         />
       )}
 
+      {isError && (
+        <Alert
+          type="error"
+          showIcon
+          className="!mb-3"
+          title="Chưa tải được danh sách phân công chuồng trại"
+          description={error?.message || 'Không thể lấy dữ liệu phân công chuồng lúc này.'}
+          action={
+            <Button size="small" onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
+      )}
+
       <Table
         rowKey="_id"
         columns={columns}
         dataSource={assignments}
-        loading={isLoading}
+        loading={isLoading && !assignmentsData}
         scroll={{ x: 'max-content' }}
-        locale={{ emptyText: 'Chưa xếp chuồng cho ngựa nào.' }}
+        locale={{
+          emptyText: (
+            <Empty description="Chưa xếp chuồng cho ngựa nào.">
+              {unstabled.length > 0 && (
+                <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openModal(null)}>
+                  Xếp chuồng mới
+                </Button>
+              )}
+            </Empty>
+          ),
+        }}
       />
 
       <Modal
