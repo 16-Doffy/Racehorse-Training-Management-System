@@ -4,7 +4,7 @@ Duy cập nhật (Claude soạn). Đọc mục 1 trước: có một việc cầ
 
 ## 1. Việc cần làm sáng 21/10: đưa code mới lên `main`
 
-Code mới đã nằm trên nhánh `NDuy` (2 commit: `a5bcbbd` server, `6507e13` web), chưa lên `main`. Lên `main` thì Render tự deploy lại server. Không deploy lúc máy đang tự chạy demo trên web thật, nên phải chờ.
+Code mới đã nằm trên nhánh `NDuy` (`a5bcbbd` server, `6507e13` web; NDuy đã gộp sẵn PR #9 của Quân), chưa lên `main`. Lên `main` thì Render tự deploy lại server. Không deploy lúc máy đang tự chạy demo trên web thật, nên phải chờ.
 
 **Khi nào:** sau 10:00 ngày 21/10, và chỉ khi trên GitHub → tab **Actions** → **Demo flows (live)** không còn lượt nào đang chạy (biểu tượng vàng). Nếu còn thì chờ nó xong.
 
@@ -29,12 +29,13 @@ Có lỗi thì báo Duy, đừng sửa thẳng trên `main`.
 
 ### Kéo NDuy về nhánh mình để code tiếp (ví dụ nhánh Tien)
 
-Làm được, không cần chờ:
+Làm được, không cần chờ. Commit (hoặc stash) việc đang dở trước khi pull:
 ```
 git checkout Tien
 git pull origin NDuy
 ```
-- Nhánh `Tien` trên GitHub đang trùng với `main` cũ (`b37b521`), nên lệnh trên chỉ tua nhánh tới, không có xung đột. Đã ghép thử nhánh Quân (`feature-horse-owner`) với NDuy lúc 01:00 ngày 21/10: cũng sạch.
+- Nhánh `Tien` trên GitHub đang trùng với `main` cũ (`b37b521`), nên lệnh trên chỉ tua nhánh tới, không có xung đột.
+- Làm xong, trước khi merge vào `main`: chạy `git pull origin main` để lấy `main` mới nhất về nhánh mình (sửa xung đột nếu có, ngay trên nhánh mình), chạy test (`npm run test:mobile`; sửa web thì thêm `npm run test:ui`), rồi merge vào `main` như bình thường.
 - Thứ tự sau đó: NDuy lên `main` trước (mục trên), nhánh của bạn merge vào `main` sau. Git nhận ra các commit của NDuy đã có sẵn ở cả hai bên, nên chỉ báo xung đột nếu bạn sửa trùng đúng những dòng Duy vừa sửa.
 - Các file Duy vừa sửa (để ý nếu bạn cũng đụng vào):
   - `client/e2e/flow.spec.js`;
@@ -73,7 +74,7 @@ git pull origin NDuy
 | Người | Màn | Việc | Dùng gì |
 |---|---|---|---|
 | trunghieu | Bác sĩ | Ngựa chấn thương nổi đỏ trên sơ đồ chuồng; cần chuyển ngựa sang khu cách ly thì báo Quản lý | `GET /stable/stalls`; component `HorseStallCard` gắn vào chi tiết ngựa |
-| Quân | Chủ ngựa | Đã làm trên nhánh `feature-horse-owner` (`a2792dc`, `a9fb352`: ngựa trong chuồng ở trang ngựa và trang chuồng, mã chuồng trên dashboard). Còn lại: merge vào `main` sau khi NDuy lên | `HorseStallCard`, `GET /stable/stalls/by-horse/:id` |
+| Quân | Chủ ngựa | Đã merge vào `main` (PR #9, 00:52 ngày 21/10): ngựa trong chuồng ở trang ngựa và trang chuồng, mã chuồng trên dashboard. PR #9 merge kiểu squash, nên code tiếp trên `feature-horse-owner` thì chạy `git pull origin main` trước | `HorseStallCard`, `GET /stable/stalls/by-horse/:id` |
 | Tien | App NV chăm sóc | Danh sách "chuồng của tôi"; mã chuồng đã có sẵn trong `stableBlock` của từng việc | lọc `GET /stable/stalls` theo `occupant.caretaker._id` |
 
 Component dùng chung nằm ở `client/src/features/stable/` (`HorseStallCard`, `Stall3D`, `StableMapBoard`, `stallApi`). Cách gắn: xem [STALL_API.md](STALL_API.md), mục "Gắn vào màn web của bạn".
