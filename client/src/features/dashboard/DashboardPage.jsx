@@ -67,9 +67,10 @@ export default function DashboardPage() {
         subtitle={ROLE_WELCOME[user?.role]}
         statusBadge={
           <div className="px-3.5 py-2 rounded-lg bg-white/5 border border-white/10 text-xs">
-            <div className="text-[#A7C4B5] text-[11px] font-medium">Sẵn sàng tập luyện</div>
+            {/* The vet's side only (healthy, examined, no restriction): a session still has its own checks. */}
+            <div className="text-[#A7C4B5] text-[11px] font-medium">Bác sĩ cho tập</div>
             <div className="text-[#FAF8F5] font-semibold tabular-nums mt-0.5">
-              {eligible}/{horses.length} ngựa đủ điều kiện
+              {eligible}/{horses.length} ngựa
             </div>
           </div>
         }
@@ -121,7 +122,7 @@ export default function DashboardPage() {
           <div className="text-2xl sm:text-3xl font-bold tracking-tight text-emerald-700 tabular-nums">
             {eligible}
           </div>
-          <div className="text-[11px] text-emerald-800 font-medium mt-1">Đã khám &amp; sẵn sàng vào giáo án</div>
+          <div className="text-[11px] text-emerald-800 font-medium mt-1">Đã khám, không bị hạn chế tập</div>
         </button>
 
         <button

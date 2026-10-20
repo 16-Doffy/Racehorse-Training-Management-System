@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Select, Input, InputNumber, Tag, Alert, Popconfirm, Space, Empty, Tabs, Card } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { EditOutlined, DeleteOutlined, HomeOutlined, PlusOutlined, AppstoreAddOutlined } from '@ant-design/icons';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { stableAssignmentApi, stallApi } from './stableApi';
 import { horsesApi } from '../horses/horsesApi';
@@ -32,6 +32,7 @@ export default function StableAssignmentPage() {
   const [form] = Form.useForm();
   const [zoneForm] = Form.useForm();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const { data: assignmentsData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['stable-assignments'],
@@ -55,6 +56,18 @@ export default function StableAssignmentPage() {
 
   const assignedHorseIds = new Set(assignments.map((a) => a.horse?._id || a.horse));
   const unstabled = horses.filter((h) => !assignedHorseIds.has(h._id));
+  // Where each horse is now: shown in the picker, and its caretaker goes along when it moves. Saving
+  // updates the horse's one assignment (the server upserts by horse), so picking a horse that already
+  // has a stall moves it — every horse that came in before the map has a hand-written stall.
+  const assignmentByHorse = new Map(assignments.map((a) => [String(a.horse?._id || a.horse), a]));
+  const whereNow = (a) => (!a ? 'chưa có chuồng' : a.stall?.code ? `đang ở ${a.stall.code}` : `chuồng ghi tay ${a.stableBlock}`);
+  const placeOrder = (h) => { const a = assignmentByHorse.get(String(h._id)); return !a ? 0 : a.stall ? 2 : 1; };
+  const pickedNow = assignmentByHorse.get(String(Form.useWatch('horse', form)));
+  const moveNote = pickedNow
+    ? pickedNow.stall?.code
+      ? `Ngựa sẽ chuyển khỏi chuồng ${pickedNow.stall.code}.`
+      : `Chuồng ghi tay “${pickedNow.stableBlock}” sẽ được thay bằng chuồng chọn dưới đây.`
+    : null;
   const uncared = assignments.filter((a) => !a.assignedCaretaker);
   const hasMap = stalls.length > 0;
 
@@ -122,6 +135,24 @@ export default function StableAssignmentPage() {
     });
     setOpen(true);
   };
+
+  // ?horse=<id> (from the horse list or a horse's stall card) lands with that horse's form open: its
+  // assignment to change, or a new one with the horse picked. Opened once per link, then dropped from
+  // the URL so a reload or Back does not open it again.
+  const linkedHorse = searchParams.get('horse');
+  const [linkOpened, setLinkOpened] = useState(null);
+  if (!linkedHorse && linkOpened) setLinkOpened(null);
+  if (linkedHorse && linkOpened !== linkedHorse && assignmentsData && horsesData) {
+    setLinkOpened(linkedHorse);
+    const current = assignmentByHorse.get(linkedHorse);
+    openModal(current || null, current ? undefined : linkedHorse);
+  }
+  useEffect(() => {
+    if (!linkOpened || !searchParams.has('horse')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('horse');
+    setSearchParams(next, { replace: true });
+  }, [linkOpened, searchParams, setSearchParams]);
 
   // Stalls a horse can go into: in use, not under maintenance, empty (or the one it is in now).
   const editingHorseId = editing?.horse?._id || editing?.horse;
@@ -255,7 +286,7 @@ export default function StableAssignmentPage() {
               type="primary"
               icon={<PlusOutlined />}
               onClick={() => openModal(null)}
-              disabled={unstabled.length === 0}
+              disabled={horses.length === 0}
               className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
             >
               Xếp chuồng mới
@@ -378,18 +409,19 @@ export default function StableAssignmentPage() {
           layout="vertical"
           onFinish={(values) => saveMutation.mutate(hasMap ? { horse: values.horse, stall: values.stall, assignedCaretaker: values.assignedCaretaker } : values)}
         >
-          <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>
+          <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]} extra={!editing && moveNote}>
             <Select
               disabled={Boolean(editing)}
               showSearch
               optionFilterProp="label"
-              options={horses.map((h) => ({
-                value: h._id,
-                label: h.name,
-                // One stall per horse is enforced by a unique index, so re-picking an already
-                // stabled horse would just fail — hide the option instead.
-                disabled: !editing && assignedHorseIds.has(h._id),
-              }))}
+              placeholder="Chọn ngựa"
+              onChange={(id) => {
+                const caretaker = assignmentByHorse.get(String(id))?.assignedCaretaker;
+                if (caretaker) form.setFieldValue('assignedCaretaker', caretaker._id || caretaker);
+              }}
+              options={[...horses]
+                .sort((a, b) => placeOrder(a) - placeOrder(b))
+                .map((h) => ({ value: h._id, label: editing ? h.name : `${h.name} (${whereNow(assignmentByHorse.get(String(h._id)))})` }))}
             />
           </Form.Item>
           {hasMap ? (
