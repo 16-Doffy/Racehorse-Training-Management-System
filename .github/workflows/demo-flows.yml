@@ -3,7 +3,8 @@ name: Demo flows (live)
 # horses through every role, each a different case — one fed, trained to "Đạt mục tiêu", evaluated,
 # then trial-run and confirmed for the demo race; one whose breakfast was missed, refused, fed late,
 # stopped early ("Chưa đạt") and sent to the vet; in round 1 one that goes lame, is found injured and is
-# withdrawn from the race. A round starts at once and another 45 minutes later (until 06:00). The next
+# withdrawn from the race. A round starts at once and another every 45 minutes until 07:30 (four rounds
+# from 05:00, the last done by about 10:00, each one waiting the 90-minute digestion time). The next
 # day is race day: the trainer records the race's results. A second trigger each morning covers a late
 # or dropped schedule (GitHub delayed the 16/10 run by two hours); it stops when the work is done.
 # Remove the schedule after the demo.
@@ -45,7 +46,7 @@ jobs:
           DEMO_ACCOUNTS: ${{ secrets.DEMO_ACCOUNTS }}
           DEMO_CONFIRM: write
           DEMO_ROUND_EVERY_MIN: 45
-          DEMO_LAST_START: '06:00'
+          DEMO_LAST_START: '07:30'
           # The crons fire every year on these dates; only 2026 writes. The button runs what it is told.
           DEMO_ONLY_DATE: ${{ github.event_name == 'schedule' && '2026-10-21' || '' }}
           DEMO_RESULT_DATE: ${{ github.event_name == 'schedule' && '2026-10-22' || '' }}
