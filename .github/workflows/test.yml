@@ -26,25 +26,34 @@ jobs:
       - run: npm ci
       - name: Start isolated MongoDB replica set
         run: |
-          # Docker Hub limits anonymous pulls and runners share addresses: retry, then use Google's mirror of it.
-          image=mongo:8.0
-          for i in 1 2 3; do docker pull -q "$image" && break; echo "pull failed ($i)"; sleep $((i * 10)); done
-          if ! docker image inspect "$image" >/dev/null 2>&1; then image=mirror.gcr.io/library/mongo:8.0; docker pull -q "$image"; fi
-          docker run -d --name wdp301-test-mongo -p 27018:27018 "$image" mongod --port 27018 --replSet wdp301Test --bind_ip_all
-          for i in $(seq 1 90); do
-            if docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'db.adminCommand({ping:1}).ok' >/dev/null 2>&1; then break; fi
-            sleep 1
-          done
-          # A slow runner can take a while to elect the single member: initiate again if it did not take.
-          for attempt in 1 2 3; do
-            docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'try { rs.status() } catch (e) { rs.initiate({_id:"wdp301Test",members:[{_id:0,host:"127.0.0.1:27018"}]}) }' || true # a failed try must not end the step: the loop below checks and tries again
-            for i in $(seq 1 40); do
-              if docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; then exit 0; fi
+          # On some runners the mongo:8.0 container dies at start (it never answered, while good runs take
+          # ~15 s): check that it is alive, print why it stopped, and fall back to mongo:7.0 (replica set and
+          # transactions are all the tests need). Pulls retry, then use Google's mirror of Docker Hub.
+          pull() {
+            for i in 1 2 3; do docker pull -q "$1" >/dev/null && { echo "$1"; return 0; }; sleep $((i * 10)); done
+            docker pull -q "mirror.gcr.io/library/$1" >/dev/null && echo "mirror.gcr.io/library/$1"
+          }
+          start() {
+            docker rm -f wdp301-test-mongo >/dev/null 2>&1 || true
+            image=$(pull "$1") || return 1
+            echo "starting $image"
+            docker run -d --name wdp301-test-mongo -p 27018:27018 "$image" mongod --port 27018 --replSet wdp301Test --bind_ip_all >/dev/null || return 1
+            for i in $(seq 1 45); do
+              if [ "$(docker inspect -f '{{.State.Running}}' wdp301-test-mongo 2>/dev/null)" != "true" ]; then echo "$image stopped:"; docker logs --tail 40 wdp301-test-mongo; return 1; fi
+              docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'db.adminCommand({ping:1}).ok' >/dev/null 2>&1 && break
               sleep 1
             done
-          done
-          docker logs --tail 50 wdp301-test-mongo
-          exit 1
+            # A slow runner can take a while to elect the single member: initiate again if it did not take.
+            for attempt in 1 2 3; do
+              docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'try { rs.status() } catch (e) { rs.initiate({_id:"wdp301Test",members:[{_id:0,host:"127.0.0.1:27018"}]}) }' >/dev/null 2>&1 || true
+              for i in $(seq 1 30); do
+                docker exec wdp301-test-mongo mongosh --port 27018 --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' >/dev/null 2>&1 && { echo "$image is primary"; return 0; }
+                sleep 1
+              done
+            done
+            echo "$image did not become primary:"; docker logs --tail 40 wdp301-test-mongo; return 1
+          }
+          start mongo:8.0 || start mongo:7.0
       - name: Backend unit tests
         run: env -u TEST_MONGO_URI npm run test:server
       - run: npm run test:mobile
