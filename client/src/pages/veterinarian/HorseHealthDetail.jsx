@@ -462,6 +462,14 @@ export default function HorseHealthDetail() {
   }
 
   const clearance = clearanceOf(horse);
+  const lastExam = records[0];
+  const lastExamAt = lastExam && (lastExam.date || lastExam.createdAt);
+  const headerFacts = [
+    { label: 'Chủ ngựa', icon: 'bi-person', value: horse.owner?.name },
+    { label: 'Huấn luyện viên', icon: 'bi-stopwatch', value: horse.assignedTrainer?.name },
+    { label: 'Cân nặng', icon: 'bi-speedometer', value: horse.weightKg ? `${horse.weightKg} kg` : null },
+    { label: 'Khám gần nhất', icon: 'bi-clipboard2-pulse', value: lastExam ? fmtDate(lastExamAt) : null, sub: lastExam ? ago(lastExamAt) : null },
+  ];
   const close = () => setDialog(null);
   const actions = {
     examine: () => navigate(`/veterinarian/examinations/new/${id}`),
@@ -508,42 +516,54 @@ export default function HorseHealthDetail() {
       </button>
 
       <div className="vet-card vet-horse-head">
-        <div className="vet-horse-visual">
-          {horse.photoUrl ? <HorseAvatar horse={horse} size={128} /> : <Horse3D breed={horse.breed} color={horse.color} height={140} compact />}
-        </div>
-        <div className="vet-horse-info">
-          <h1 className="vet-title" style={{ fontSize: 28 }}>
-            {horse.name}
-          </h1>
-          <div className="vet-muted">{horseFacts(horse) || 'Chưa có thông tin giống / tuổi'}</div>
-          <div className="vet-small vet-faint mt-1">
-            {[horse.owner?.name && `Chủ: ${horse.owner.name}`, horse.assignedTrainer?.name && `HLV: ${horse.assignedTrainer.name}`, horse.weightKg && `${horse.weightKg} kg`].filter(Boolean).join(' · ')}
+        <div className="vet-horse-grid">
+          <div className="vet-horse-visual">
+            {horse.photoUrl ? <HorseAvatar horse={horse} size={128} /> : <Horse3D breed={horse.breed} color={horse.color} height="var(--vet-horse-stage)" compact />}
           </div>
-          <div className="d-flex flex-wrap gap-2 mt-3">
-            <HealthPill status={horse.healthStatus} lg />
-            <LevelPill level={clearance.level} lg />
+          <div className="vet-horse-body">
+            <div className="vet-horse-top">
+              <div className="vet-horse-info">
+                <h1 className="vet-title vet-horse-name">{horse.name}</h1>
+                <div className="vet-muted">{horseFacts(horse) || 'Chưa có thông tin giống / tuổi'}</div>
+              </div>
+              <div className="vet-horse-actions">
+                <Button variant="vet-outline" onClick={actions.prescribe}>
+                  <i className="bi bi-capsule" aria-hidden="true" /> Kê đơn
+                </Button>
+                <Button variant="vet" onClick={actions.examine}>
+                  <i className="bi bi-clipboard2-pulse" aria-hidden="true" /> Khám bệnh
+                </Button>
+                <ActionMenu
+                  size={null}
+                  items={[
+                    { label: 'Đổi mức tập', icon: 'bi-speedometer2', onClick: actions.changeLevel },
+                    { label: 'Ghi chấn thương', icon: 'bi-bandaid', onClick: actions.newInjury },
+                    { divider: true },
+                    { label: 'Ghi tiêm phòng', icon: CARE_KINDS.vaccination.icon, onClick: () => actions.care('vaccination') },
+                    { label: 'Ghi tẩy giun', icon: CARE_KINDS.deworming.icon, onClick: () => actions.care('deworming') },
+                    { label: 'Ghi đóng móng', icon: CARE_KINDS.farrier.icon, onClick: () => actions.care('farrier') },
+                    { divider: true },
+                    { label: 'Làm mới', icon: 'bi-arrow-clockwise', onClick: refresh },
+                  ]}
+                />
+              </div>
+            </div>
+            <div className="d-flex flex-wrap gap-2">
+              <HealthPill status={horse.healthStatus} lg />
+              <LevelPill level={clearance.level} lg />
+            </div>
+            <dl className="vet-horse-facts">
+              {headerFacts.map((f) => (
+                <div key={f.label} className="vet-horse-fact">
+                  <dt>
+                    <i className={`bi ${f.icon}`} aria-hidden="true" /> {f.label}
+                  </dt>
+                  <dd title={f.value || undefined}>{f.value || <span className="vet-faint">Chưa có</span>}</dd>
+                  {f.sub && <div className="vet-small vet-faint">{f.sub}</div>}
+                </div>
+              ))}
+            </dl>
           </div>
-        </div>
-        <div className="vet-horse-actions">
-          <Button variant="vet-outline" onClick={actions.prescribe}>
-            <i className="bi bi-capsule" aria-hidden="true" /> Kê đơn
-          </Button>
-          <Button variant="vet" onClick={actions.examine}>
-            <i className="bi bi-clipboard2-pulse" aria-hidden="true" /> Khám bệnh
-          </Button>
-          <ActionMenu
-            size={null}
-            items={[
-              { label: 'Đổi mức tập', icon: 'bi-speedometer2', onClick: actions.changeLevel },
-              { label: 'Ghi chấn thương', icon: 'bi-bandaid', onClick: actions.newInjury },
-              { divider: true },
-              { label: 'Ghi tiêm phòng', icon: CARE_KINDS.vaccination.icon, onClick: () => actions.care('vaccination') },
-              { label: 'Ghi tẩy giun', icon: CARE_KINDS.deworming.icon, onClick: () => actions.care('deworming') },
-              { label: 'Ghi đóng móng', icon: CARE_KINDS.farrier.icon, onClick: () => actions.care('farrier') },
-              { divider: true },
-              { label: 'Làm mới', icon: 'bi-arrow-clockwise', onClick: refresh },
-            ]}
-          />
         </div>
       </div>
 
