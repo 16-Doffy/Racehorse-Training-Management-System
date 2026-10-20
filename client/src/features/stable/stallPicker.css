@@ -1,0 +1,262 @@
+/* The stall picker and the zone dialog: light on the sand canvas, dark on the dark one. They open in
+   antd modals, which render on <body>, so the dark canvas reaches them through MainLayout's
+   body.wdp-dark-portals class. */
+.stall-ui {
+  --sp-surface: #faf7f0;
+  --sp-tile: #ffffff;
+  --sp-border: #e2d9c8;
+  --sp-ink: #1f2a24;
+  --sp-muted: #5f6b64;
+  --sp-faint: #8a8578;
+  --sp-hover: #f3eddf;
+  --sp-taken: #f1ede4;
+  --sp-pick: #0f5a43;
+  --sp-pick-ink: #f6d57a;
+  --sp-ring: rgba(15, 90, 67, 0.28);
+  --sp-new: #e2f1e6;
+  --sp-new-ink: #1f6b43;
+  --sp-maint: #fbf0d5;
+  --sp-maint-line: rgba(143, 106, 18, 0.18);
+}
+body.wdp-dark-portals .stall-ui {
+  --sp-surface: rgba(255, 255, 255, 0.03);
+  --sp-tile: rgba(255, 255, 255, 0.05);
+  --sp-border: rgba(212, 175, 55, 0.22);
+  --sp-ink: #f4f1e8;
+  --sp-muted: rgba(230, 237, 232, 0.78);
+  --sp-faint: rgba(230, 237, 232, 0.55);
+  --sp-hover: rgba(255, 255, 255, 0.08);
+  --sp-taken: rgba(255, 255, 255, 0.02);
+  --sp-pick: #d4af37;
+  --sp-pick-ink: #0d211a;
+  --sp-ring: rgba(212, 175, 55, 0.35);
+  --sp-new: rgba(16, 185, 129, 0.16);
+  --sp-new-ink: #6ee7b7;
+  --sp-maint: rgba(245, 158, 11, 0.1);
+  --sp-maint-line: rgba(245, 158, 11, 0.2);
+}
+
+.stall-ui .sp-box {
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  background: var(--sp-surface);
+  padding: 12px;
+}
+.stall-ui .sp-ink {
+  color: var(--sp-ink);
+}
+.stall-ui .sp-muted {
+  color: var(--sp-muted);
+}
+.stall-ui .sp-faint {
+  color: var(--sp-faint);
+}
+
+/* Zone tabs */
+.stall-ui .sp-zones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.stall-ui .sp-zone {
+  border: 1px solid var(--sp-border);
+  background: var(--sp-tile);
+  color: var(--sp-ink);
+  border-radius: 999px;
+  padding: 3px 11px;
+  font-size: 12.5px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.stall-ui .sp-zone:hover {
+  background: var(--sp-hover);
+}
+.stall-ui .sp-zone.is-active {
+  background: var(--sp-pick);
+  border-color: var(--sp-pick);
+  color: var(--sp-pick-ink);
+  font-weight: 600;
+}
+.stall-ui .sp-zone .sp-zone-free {
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Stall grid */
+.stall-ui .sp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+}
+.stall-ui .sp-stall {
+  position: relative;
+  min-height: 58px;
+  padding: 7px 9px 7px 12px;
+  border: 1px solid var(--sp-border);
+  border-radius: 10px;
+  background: var(--sp-tile);
+  color: var(--sp-ink);
+  text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.stall-ui .sp-stall::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--sp-dot, transparent);
+}
+.stall-ui .sp-stall:hover:not(:disabled) {
+  background: var(--sp-hover);
+  border-color: var(--sp-pick);
+}
+.stall-ui .sp-stall:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--sp-ring);
+}
+.stall-ui .sp-stall:disabled {
+  cursor: not-allowed;
+  background: var(--sp-taken);
+}
+.stall-ui .sp-stall.is-maint:disabled {
+  background: repeating-linear-gradient(135deg, var(--sp-maint) 0 8px, var(--sp-maint-line) 8px 10px);
+}
+.stall-ui .sp-stall.is-picked,
+.stall-ui .sp-stall.is-picked:hover:not(:disabled) {
+  background: var(--sp-pick);
+  border-color: var(--sp-pick);
+  color: var(--sp-pick-ink);
+  box-shadow: 0 0 0 3px var(--sp-ring);
+}
+.stall-ui .sp-stall.is-picked .sp-stall-sub {
+  color: var(--sp-pick-ink);
+  opacity: 0.85;
+}
+.stall-ui .sp-stall-code {
+  font-weight: 700;
+  font-size: 13.5px;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.stall-ui .sp-stall-sub {
+  font-size: 11.5px;
+  color: var(--sp-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stall-ui .sp-stall:disabled .sp-stall-code,
+.stall-ui .sp-stall:disabled .sp-stall-sub {
+  color: var(--sp-faint);
+}
+.stall-ui .sp-stall-tag {
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: var(--sp-new);
+  color: var(--sp-new-ink);
+}
+/* A text button inside a sentence ("Bỏ chọn", the suggested groom): no browser button chrome. */
+.stall-ui .sp-link {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.stall-ui .sp-link:focus-visible {
+  outline: 2px solid var(--sp-ring);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.stall-ui .sp-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+/* Zone dialog: stall type cards and the code preview */
+.stall-ui .sp-types {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (max-width: 560px) {
+  .stall-ui .sp-types {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.stall-ui .sp-type {
+  border: 1px solid var(--sp-border);
+  border-radius: 10px;
+  background: var(--sp-tile);
+  color: var(--sp-ink);
+  padding: 9px 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.stall-ui .sp-type:hover {
+  background: var(--sp-hover);
+}
+.stall-ui .sp-type.is-active {
+  border-color: var(--sp-pick);
+  box-shadow: 0 0 0 2px var(--sp-ring);
+}
+.stall-ui .sp-type-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.stall-ui .sp-type-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--sp-muted);
+}
+.stall-ui .sp-codes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.stall-ui .sp-code {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: var(--sp-new);
+  color: var(--sp-new-ink);
+}
+.stall-ui .sp-code.is-existing {
+  background: transparent;
+  color: var(--sp-faint);
+  border: 1px dashed var(--sp-border);
+  text-decoration: line-through;
+}
+.stall-ui .sp-zone-key input {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

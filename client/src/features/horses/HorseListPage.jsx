@@ -9,7 +9,8 @@ import { useSelector } from 'react-redux';
 import dayjs from 'dayjs';
 import { horsesApi } from './horsesApi';
 import { usersApi } from '../admin/usersApi';
-import { stallApi } from '../stable/stableApi';
+import { stableAssignmentApi, stallApi } from '../stable/stableApi';
+import { CaretakerSelect, StallPicker } from '../stable/StallPicker';
 import { ROLES } from '../../constants/roles';
 import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constants/health';
 import HorseNextStep from './HorseNextStep';
@@ -47,6 +48,7 @@ export default function HorseListPage() {
   const [form] = Form.useForm();
   const breedValue = Form.useWatch('breed', form);
   const colorValue = Form.useWatch('color', form);
+  const stallValue = Form.useWatch('stall', form);
   const queryClient = useQueryClient();
 
   // Picking a breed fills in the coat it is known for, unless the Manager already chose another.
@@ -65,6 +67,8 @@ export default function HorseListPage() {
     ...(stallsData?.data?.unplaced || []).map((u) => [String(u.horse._id), u.stableBlock]),
     ...(stallsData?.data?.stalls || []).filter((st) => st.occupant?.horse).map((st) => [String(st.occupant.horse._id), st.code]),
   ]);
+  const mapStalls = stallsData?.data?.stalls || [];
+  const pickedStall = mapStalls.find((s) => s._id === stallValue) || null;
   // The checklist is for the staff. The Owner's own view of whether a vet has seen each horse comes from the owner summary.
   const { data: ownerSummaryData } = useQuery({ queryKey: ['owner-summary'], queryFn: () => horsesApi.ownerSummary(), enabled: isOwner });
   const summaryByHorse = new Map((ownerSummaryData?.data || []).map((r) => [String(r.horse._id), r]));
@@ -162,6 +166,13 @@ export default function HorseListPage() {
     queryFn: () => usersApi.list({ role: ROLES.OWNER }),
     enabled: isManager,
   });
+  // A new horse can go straight into a stall, with its groom.
+  const { data: groomsData } = useQuery({
+    queryKey: ['users', ROLES.GROOM],
+    queryFn: () => usersApi.list({ role: ROLES.GROOM }),
+    enabled: isManager,
+  });
+  const grooms = (groomsData?.data || []).filter((u) => u.isActive !== false);
 
   const activeOptions = (res) =>
     (res?.data || [])
@@ -171,11 +182,29 @@ export default function HorseListPage() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['horses'] });
 
   const saveMutation = useMutation({
-    mutationFn: (payload) =>
-      editTarget ? horsesApi.update(editTarget._id, payload) : horsesApi.create(payload),
-    onSuccess: () => {
-      message.success(editTarget ? 'Đã cập nhật hồ sơ ngựa.' : 'Đã thêm ngựa mới.');
+    mutationFn: async ({ stall, caretaker, ...payload }) => {
+      if (editTarget) return { horse: (await horsesApi.update(editTarget._id, payload)).data };
+      const horse = (await horsesApi.create(payload)).data;
+      if (!stall) return { horse };
+      // The horse exists from here on. A stall someone took in the meantime leaves it without a stall
+      // (said below, placed from the Chuồng column), never makes the Manager create it twice.
+      try {
+        await stableAssignmentApi.upsert({ horse: horse._id, stall, assignedCaretaker: caretaker || undefined });
+        return { horse, stall: mapStalls.find((s) => s._id === stall) };
+      } catch (placeError) {
+        return { horse, placeError };
+      }
+    },
+    onSuccess: ({ horse, stall, placeError }) => {
+      if (editTarget) message.success('Đã cập nhật hồ sơ ngựa.');
+      else if (placeError) message.warning(`Đã thêm ${horse?.name || 'ngựa'} nhưng chưa xếp được chuồng: ${placeError.message || 'lỗi không rõ'}. Bấm "Xếp chuồng" ở cột Chuồng để xếp lại.`, 8);
+      else if (stall) message.success(`Đã thêm ${horse?.name || 'ngựa'} vào chuồng ${stall.code}.`);
+      else message.success('Đã thêm ngựa mới.');
       invalidate();
+      if (stall || placeError) {
+        queryClient.invalidateQueries({ queryKey: ['stalls'] });
+        queryClient.invalidateQueries({ queryKey: ['stable-assignments'] });
+      }
       setFormOpen(false);
       setEditTarget(null);
       form.resetFields();
@@ -543,6 +572,7 @@ export default function HorseListPage() {
             setEditTarget(null);
           }}
           onOk={() => form.submit()}
+          okText={editTarget ? 'Lưu' : pickedStall ? `Thêm & xếp vào ${pickedStall.code}` : 'Thêm ngựa'}
           confirmLoading={saveMutation.isPending}
           destroyOnHidden
           width={620}
@@ -684,6 +714,27 @@ export default function HorseListPage() {
                 options={activeOptions(vetsData)}
               />
             </Form.Item>
+            {!editTarget && (
+              // A new horse can go straight into an empty stall with its groom (POST /stable/assignments
+              // right after the horse is created), so its daily feeds start from day one.
+              <div className="mt-4 border-t border-[#E5DEC9] pt-4">
+                <div className="mb-1 font-semibold">Chuồng & người chăm sóc</div>
+                <p className="mb-3 text-xs text-gray-500">Không bắt buộc. Chọn chuồng thì ngựa được xếp vào ngay khi lưu; để trống thì xếp sau ở cột Chuồng.</p>
+                <Form.Item name="stall" label="Chuồng" className="!mb-3">
+                  <StallPicker stalls={mapStalls} allowClear />
+                </Form.Item>
+                {pickedStall && (
+                  <Form.Item
+                    name="caretaker"
+                    label="Nhân viên chăm sóc"
+                    extra="Người này tự nhận việc cho ăn hằng ngày của ngựa."
+                    className="!mb-1"
+                  >
+                    <CaretakerSelect grooms={grooms} stalls={mapStalls} unplaced={stallsData?.data?.unplaced || []} zone={pickedStall.zone} />
+                  </Form.Item>
+                )}
+              </div>
+            )}
           </Form>
         </Modal>
       )}
