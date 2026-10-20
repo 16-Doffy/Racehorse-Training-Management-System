@@ -13,7 +13,7 @@ Code mới đã nằm trên nhánh `NDuy` (2 commit: `a5bcbbd` server, `6507e13`
 **Cách 1, trên web GitHub:**
 1. Mở https://github.com/16-Doffy/Racehorse-Training-Management-System/compare/main...NDuy
 2. Bấm **Create pull request**, chờ kiểm tra **Test** xanh.
-3. Bấm **Merge pull request**.
+3. Bấm **Merge pull request**, chọn kiểu **Create a merge commit**. Không chọn Squash hay Rebase: hai kiểu đó tạo commit mới, và nhánh nào đã kéo NDuy về sẽ bị báo xung đột giả khi merge sau.
 
 **Cách 2, bằng git** (chỉ dùng được khi `main` chưa có commit nào mới hơn; nếu bị từ chối thì dùng cách 1):
 ```
@@ -26,6 +26,23 @@ git push origin origin/NDuy:main
 Có lỗi thì báo Duy, đừng sửa thẳng trên `main`.
 
 **Không** merge gì có sửa `server/` vào `main` trong khung **06:00–09:30 ngày 22/10**: máy nhập kết quả giải lúc đó.
+
+### Kéo NDuy về nhánh mình để code tiếp (ví dụ nhánh Tien)
+
+Làm được, không cần chờ:
+```
+git checkout Tien
+git pull origin NDuy
+```
+- Nhánh `Tien` trên GitHub đang trùng với `main` cũ (`b37b521`), nên lệnh trên chỉ tua nhánh tới, không có xung đột. Đã ghép thử nhánh Quân (`feature-horse-owner`) với NDuy lúc 01:00 ngày 21/10: cũng sạch.
+- Thứ tự sau đó: NDuy lên `main` trước (mục trên), nhánh của bạn merge vào `main` sau. Git nhận ra các commit của NDuy đã có sẵn ở cả hai bên, nên chỉ báo xung đột nếu bạn sửa trùng đúng những dòng Duy vừa sửa.
+- Các file Duy vừa sửa (để ý nếu bạn cũng đụng vào):
+  - `client/e2e/flow.spec.js`;
+  - `features/horses/HorseListPage.jsx`, `features/dashboard/DashboardPage.jsx`, `ManagerQueueCard.jsx`;
+  - `features/stable/StableAssignmentPage.jsx`, `HorseStallCard.jsx`, `stall3d/stallStatus.js`;
+  - `features/training/ReadinessPanel.jsx`;
+  - `server/src/modules/stable/*`, `horses/horses.controller.js`, `horses/checklist.service.js`, `training/readiness.service.js`.
+- **Đừng merge nhánh đã kéo NDuy vào `main` trước khi NDuy lên `main`** (trước 10:00 ngày 21/10). Nhánh đó giờ có sửa `server/`, merge sớm sẽ làm Render deploy lại giữa lúc máy đang chạy demo.
 
 ## 2. Thay đổi mới
 
@@ -56,7 +73,7 @@ Có lỗi thì báo Duy, đừng sửa thẳng trên `main`.
 | Người | Màn | Việc | Dùng gì |
 |---|---|---|---|
 | trunghieu | Bác sĩ | Ngựa chấn thương nổi đỏ trên sơ đồ chuồng; cần chuyển ngựa sang khu cách ly thì báo Quản lý | `GET /stable/stalls`; component `HorseStallCard` gắn vào chi tiết ngựa |
-| Quân | Chủ ngựa | Trang ngựa của chủ có thẻ chuồng 3D của ngựa mình | `<HorseStallCard horseId={id} canManage={false} />` hoặc `GET /stable/stalls/by-horse/:id` |
+| Quân | Chủ ngựa | Đã làm trên nhánh `feature-horse-owner` (`a2792dc`, `a9fb352`: ngựa trong chuồng ở trang ngựa và trang chuồng, mã chuồng trên dashboard). Còn lại: merge vào `main` sau khi NDuy lên | `HorseStallCard`, `GET /stable/stalls/by-horse/:id` |
 | Tien | App NV chăm sóc | Danh sách "chuồng của tôi"; mã chuồng đã có sẵn trong `stableBlock` của từng việc | lọc `GET /stable/stalls` theo `occupant.caretaker._id` |
 
 Component dùng chung nằm ở `client/src/features/stable/` (`HorseStallCard`, `Stall3D`, `StableMapBoard`, `stallApi`). Cách gắn: xem [STALL_API.md](STALL_API.md), mục "Gắn vào màn web của bạn".
