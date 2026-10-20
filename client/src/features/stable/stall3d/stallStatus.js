@@ -1,11 +1,13 @@
 /**
  * What a stall on the map shows: free, under maintenance, or the state of the horse in it. Shared by the
  * 3D stalls (the lamp beside the nameplate) and the 2D stable map (the dot on each stall).
+ * The horse's colour is its health status only — not whether a session may start now (meals, caretaker
+ * and the session's own checks decide that), so the labels say "sức khỏe", never "sẵn sàng tập".
  */
 export const STALL_STATES = {
-  ok: { label: 'Sẵn sàng tập', color: '#2E7D4F', lamp: 0x2ecc71, tag: 'success' },
-  watch: { label: 'Theo dõi', color: '#B7791F', lamp: 0xf5b301, tag: 'warning' },
-  bad: { label: 'Chấn thương · khóa tập', color: '#B3261E', lamp: 0xe5483b, tag: 'error' },
+  ok: { label: 'Sức khỏe đủ điều kiện', color: '#2E7D4F', lamp: 0x2ecc71, tag: 'success' },
+  watch: { label: 'Sức khỏe cần theo dõi', color: '#B7791F', lamp: 0xf5b301, tag: 'warning' },
+  bad: { label: 'Chấn thương hoặc cách ly', color: '#B3261E', lamp: 0xe5483b, tag: 'error' },
   taken: { label: 'Có ngựa', color: '#5B6B62', lamp: 0x8fa39a, tag: 'default' },
   empty: { label: 'Trống', color: '#8A8578', lamp: 0x6b7280, tag: 'default' },
   maint: { label: 'Bảo trì', color: '#8A6512', lamp: 0xf5b301, tag: 'warning' },

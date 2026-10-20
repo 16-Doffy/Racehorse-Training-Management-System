@@ -227,11 +227,111 @@ test('the Manager works the stable map: an empty stall offers a horse, a taken o
   await taken.click();
   await expect(page.getByRole('button', { name: 'Đổi chuồng / người chăm sóc' })).toBeVisible();
   await expect(page.locator('canvas[aria-label="Khu chuồng ngựa 3D"]').first()).toBeVisible();
+  // The colour on a stall is the horse's health, not a go-ahead for a session (GPT-72.6).
+  await expect(page.getByText('Sức khỏe đủ điều kiện').first()).toBeVisible();
+  await expect(page.getByText('Sẵn sàng tập', { exact: true })).toHaveCount(0);
   await page.goto(`/horses/${fixture.horseId}`);
   await expect(page.getByText('Chuồng A-01')).toBeVisible();
   await expect(page.getByText('Đổi chuồng trên sơ đồ')).toBeVisible();
   expect(errors).toEqual([]);
 });
+test('an empty stall takes any horse: one already in a stall moves, keeping its groom', async ({ page }) => {
+  await login(page, 'manager');
+  await page.goto('/admin/stables');
+  await page.getByRole('button', { name: /^A-02/ }).click();
+  await page.getByRole('button', { name: 'Xếp ngựa vào chuồng này' }).click();
+  const modal = page.locator('.ant-modal', { hasText: 'Xếp chuồng cho ngựa' });
+  await modal.locator('.ant-form-item', { hasText: 'Ngựa' }).first().locator('.ant-select').click();
+  // Every horse already has a stall (on the map or written by hand): none may be greyed out.
+  const option = page.locator('.ant-select-item-option', { hasText: 'TEST Browser Horse (đang ở A-01)' });
+  await expect(option).not.toHaveClass(/ant-select-item-option-disabled/);
+  await option.click();
+  await expect(modal.getByText('Ngựa sẽ chuyển khỏi chuồng A-01.')).toBeVisible();
+  await expect(modal.locator('.ant-form-item', { hasText: 'Nhân viên chăm sóc' }).getByText('TEST groom')).toBeVisible();
+  await modal.getByRole('button', { name: 'Hủy' }).click();
+});
+
+test("the Manager's horse list opens the horse's stall form on the stable page", async ({ page }) => {
+  await login(page, 'manager');
+  await page.goto('/horses');
+  await page.getByRole('button', { name: 'A-01', exact: true }).click();
+  await expect(page.locator('.ant-modal-title', { hasText: 'Sửa phân công — TEST Browser Horse' })).toBeVisible();
+  // Read once: a reload does not open it again.
+  await expect(page).toHaveURL(/\/admin\/stables$/);
+});
+
+// A list the page could not load is "not checked", never 0 or "all resolved" (GPT-72.4).
+const failWith500 = (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, message: 'TEST server error' }) });
+// A new matcher per call: keep it to unroute (Playwright matches the function itself).
+const apiPath = (path) => (url) => url.pathname === `/api/v1${path}`;
+const queueCard = (page) => page.locator('.ant-card', { hasText: 'Việc đang chờ bạn' });
+
+test('the Manager queue: a list that fails is shown as not checked, and comes back on retry', async ({ page }) => {
+  const inventoryList = apiPath('/inventory');
+  await page.route(inventoryList, failWith500);
+  await login(page, 'manager');
+  const card = queueCard(page);
+  await expect(card.getByText(/^Chưa kiểm tra được 2 mục/)).toBeVisible();
+  await expect(card.getByText('Tất cả đã được giải quyết')).toHaveCount(0);
+  await expect(card.getByText('chưa tải được', { exact: true })).toHaveCount(2);
+  // The lists that did load still count.
+  await expect(card.getByRole('link', { name: /Tài khoản đăng ký chờ duyệt/ })).toBeVisible();
+
+  await page.unroute(inventoryList);
+  await card.locator('.ant-card-head').getByRole('button', { name: 'Thử lại' }).click();
+  await expect(card.getByText('chưa tải được', { exact: true })).toHaveCount(0);
+  await expect(card.getByText(/^Chưa kiểm tra được/)).toHaveCount(0);
+  await expect(card.getByRole('link', { name: /Hàng đã duyệt, chờ nhận/ })).toBeVisible();
+});
+
+test('the Manager queue with every list failing claims nothing is waiting', async ({ page }) => {
+  for (const path of ['/users', '/inventory', '/horses/checklist']) await page.route(apiPath(path), failWith500);
+  await login(page, 'manager');
+  const card = queueCard(page);
+  await expect(card.getByText('Chưa kiểm tra được 4 mục')).toBeVisible();
+  await expect(card.getByText('Tất cả đã được giải quyết')).toHaveCount(0);
+  await expect(card.getByText('chưa tải được', { exact: true })).toHaveCount(4);
+});
+
+test('the Manager queue keeps the last counts, marked as old, when a refresh fails', async ({ page }) => {
+  await page.clock.install();
+  await login(page, 'manager');
+  const card = queueCard(page);
+  await expect(card.getByText(/Tất cả đã được giải quyết|việc chưa xử lý/)).toBeVisible();
+  // The lists go stale (30 s) and a reconnect refetches them; the accounts list now fails.
+  const usersList = apiPath('/users');
+  await page.route(usersList, failWith500);
+  await page.clock.fastForward('00:31');
+  await page.context().setOffline(true);
+  await page.context().setOffline(false);
+  await expect(card.getByText(/^số lúc \d\d:\d\d$/)).toBeVisible();
+  await expect(card.getByText(/theo số liệu cũ/)).toBeVisible();
+  await expect(card.getByText('Tất cả đã được giải quyết')).toHaveCount(0);
+
+  await page.unroute(usersList);
+  await card.locator('.ant-card-head').getByRole('button', { name: 'Thử lại' }).click();
+  await expect(card.getByText(/theo số liệu cũ/)).toHaveCount(0);
+  await expect(card.getByText(/^số lúc/)).toHaveCount(0);
+});
+
+test('the readiness board says it could not check, instead of going blank, and comes back on retry', async ({ page }) => {
+  const readiness = apiPath('/training/sessions/readiness');
+  await page.route(readiness, failWith500);
+  await login(page, 'trainer');
+  await page.goto('/training/sessions?new=1');
+  const modal = page.locator('.ant-modal', { hasText: 'Tạo buổi tập mới' });
+  await modal.locator('.ant-form-item', { hasText: 'Ngựa' }).first().locator('.ant-select').click();
+  await page.locator('.ant-select-item-option', { hasText: 'TEST Browser Horse' }).first().click();
+  const board = modal.locator('.ant-card', { hasText: 'Kiểm tra sẵn sàng' });
+  await expect(board.getByText('Chưa kiểm tra được tình trạng sẵn sàng')).toBeVisible();
+  await expect(board.getByText('Sẵn sàng tập')).toHaveCount(0);
+
+  await page.unroute(readiness);
+  await board.getByRole('button', { name: 'Thử lại' }).click();
+  await expect(board.getByText('Người chăm sóc', { exact: true })).toBeVisible();
+  await expect(board.getByText('Chưa kiểm tra được tình trạng sẵn sàng')).toHaveCount(0);
+});
+
 test('the trainer sees the horse stall and the stall column, without the Manager actions', async ({ page }) => {
   await login(page, 'trainer');
   await page.goto('/horses');

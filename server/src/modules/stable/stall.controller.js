@@ -1,7 +1,9 @@
+const mongoose = require('mongoose');
 const Stall = require('../../models/Stall');
 const StableAssignment = require('../../models/StableAssignment');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
+const { runTransaction, operationError } = require('../../utils/transaction');
 const { logAction } = require('../audit/audit.service');
 const { getScopedHorseIds, isHorseInScope, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { ROLES } = require('../../constants/roles');
@@ -153,17 +155,24 @@ const generateZone = asyncHandler(async (req, res) => {
 
 /** PATCH /stable/stalls/:id (Manager) — zone name/purpose, type, order, maintenance. The code never changes (it is on the nameplate). */
 const updateStall = asyncHandler(async (req, res) => {
-  const stall = await Stall.findById(req.params.id);
-  if (!stall) return fail(res, 'Không tìm thấy chuồng.', 404);
+  if (!mongoose.isValidObjectId(req.params.id)) return fail(res, 'Không tìm thấy chuồng.', 404);
   const { values, error } = readFields(req.body || {}, { creating: false });
   if (error) return fail(res, error, 400);
-  if (values.status === 'maintenance' && stall.status !== 'maintenance') {
-    const occupant = await StableAssignment.findOne({ stall: stall._id }).populate('horse', 'name');
-    if (occupant) return fail(res, `Chuồng ${stall.code} đang có ngựa ${occupant.horse?.name || ''} — chuyển ngựa sang chuồng khác trước khi bảo trì.`, 409);
-  }
   if (values.status === 'active') { values.maintenanceNote = ''; values.maintenanceUntil = null; }
-  Object.assign(stall, values);
-  await stall.save();
+  // The occupancy check and the change in one transaction, after writing the stall (Stall.claim), so
+  // a horse placed at the same moment either lands first (and this is refused) or meets the maintenance.
+  const stall = await runTransaction(async (session) => {
+    const current = await Stall.claim({ _id: req.params.id }, session);
+    if (!current) throw operationError(404, 'Không tìm thấy chuồng.');
+    if (values.status === 'maintenance' && current.status !== 'maintenance') {
+      const occupant = await StableAssignment.findOne({ stall: current._id }).populate('horse', 'name').session(session);
+      if (occupant) throw operationError(409, `Chuồng ${current.code} đang có ngựa ${occupant.horse?.name || ''} — chuyển ngựa sang chuồng khác trước khi bảo trì.`);
+    }
+    Object.assign(current, values);
+    await current.save({ session });
+    current.$session(null);
+    return current;
+  });
   await logAction({ actorId: req.user._id, action: 'stall.update', targetModel: 'Stall', targetId: stall._id, metadata: { code: stall.code, ...values } });
   const { byStall } = await occupants(req.user, [stall._id]);
   return ok(res, stallJson(stall, byStall.get(String(stall._id))), 'Stall updated.');
@@ -171,12 +180,18 @@ const updateStall = asyncHandler(async (req, res) => {
 
 /** DELETE /stable/stalls/:id (Manager) — takes an empty stall out of use (kept, so its code stays reserved). */
 const retireStall = asyncHandler(async (req, res) => {
-  const stall = await Stall.findById(req.params.id);
-  if (!stall) return fail(res, 'Không tìm thấy chuồng.', 404);
-  const occupant = await StableAssignment.findOne({ stall: stall._id }).populate('horse', 'name');
-  if (occupant) return fail(res, `Chuồng ${stall.code} đang có ngựa ${occupant.horse?.name || ''} — chuyển ngựa trước khi bỏ chuồng.`, 409);
-  stall.isActive = false;
-  await stall.save();
+  if (!mongoose.isValidObjectId(req.params.id)) return fail(res, 'Không tìm thấy chuồng.', 404);
+  // As for maintenance: the stall is written first, so a placement at the same moment cannot slip in.
+  const stall = await runTransaction(async (session) => {
+    const current = await Stall.claim({ _id: req.params.id }, session);
+    if (!current) throw operationError(404, 'Không tìm thấy chuồng.');
+    const occupant = await StableAssignment.findOne({ stall: current._id }).populate('horse', 'name').session(session);
+    if (occupant) throw operationError(409, `Chuồng ${current.code} đang có ngựa ${occupant.horse?.name || ''} — chuyển ngựa trước khi bỏ chuồng.`);
+    current.isActive = false;
+    await current.save({ session });
+    current.$session(null);
+    return current;
+  });
   await logAction({ actorId: req.user._id, action: 'stall.retire', targetModel: 'Stall', targetId: stall._id, metadata: { code: stall.code } });
   return ok(res, stallJson(stall), 'Stall taken out of use.');
 });

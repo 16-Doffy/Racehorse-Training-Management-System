@@ -301,7 +301,6 @@ const archiveHorse = asyncHandler(async (req, res) => {
     ),
     RaceEntry.updateMany({ horse: horse._id, status: { $in: ['registered', 'confirmed'] }, raceDate: { $gte: new Date() } }, { status: 'withdrawn' }),
     TrainingPlan.updateMany({ horse: horse._id, status: { $in: ['draft', 'active'] } }, { status: 'cancelled' }),
-    StableAssignment.deleteMany({ horse: horse._id }),
     // Keep observations and incident reports as history when the work is called off.
     DailyTask.updateMany(
       { horse: horse._id, status: 'pending' },
@@ -310,6 +309,10 @@ const archiveHorse = asyncHandler(async (req, res) => {
   ]);
   Object.assign(horse, { isArchived: true, archivedAt: new Date(), archivedReason: reason });
   await horse.save();
+  // The stall is freed only once the horse is marked archived. A placement writes the horse record in
+  // its transaction (stableAssignment.controller claimHorse): one still running holds up the save above
+  // and its stall goes here; one starting later finds the horse archived and is refused.
+  await StableAssignment.deleteMany({ horse: horse._id });
   const closed = await closeLeftoversFor(horse, reason);
 
   await logAction({

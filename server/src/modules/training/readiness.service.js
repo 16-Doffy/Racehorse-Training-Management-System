@@ -3,6 +3,7 @@ const HealthRecord = require('../../models/HealthRecord');
 const DailyTask = require('../../models/DailyTask');
 const StableAssignment = require('../../models/StableAssignment');
 const { findOpenIncident } = require('../stable/incident.service');
+const { CARETAKER_FIELDS, caretakerProblem } = require('../stable/caretaker');
 const { getTrainingClearance, allows } = require('../health/trainingClearance');
 const clubPolicy = require('../../config/clubPolicy');
 
@@ -328,7 +329,7 @@ async function nutritionGate(horse, when, { intensity } = {}) {
 async function careAssignmentGate(horse) {
   const gate = { key: 'care_assignment', label: 'Người chăm sóc', status: 'ok', detail: '' };
 
-  const assignment = await StableAssignment.findOne({ horse: horse._id }).populate('assignedCaretaker', 'name');
+  const assignment = await StableAssignment.findOne({ horse: horse._id }).populate('assignedCaretaker', CARETAKER_FIELDS);
 
   if (!assignment) {
     gate.status = 'caution';
@@ -339,6 +340,13 @@ async function careAssignmentGate(horse) {
   if (!assignment.assignedCaretaker) {
     gate.status = 'caution';
     gate.detail = `Chuồng ${assignment.stableBlock} chưa có nhân viên chăm sóc phụ trách.`;
+    return gate;
+  }
+
+  const problem = caretakerProblem(assignment.assignedCaretaker);
+  if (problem) {
+    gate.status = 'caution';
+    gate.detail = `${assignment.assignedCaretaker.name} (chuồng ${assignment.stableBlock}) ${problem} — Quản lý cần gán người chăm sóc khác.`;
     return gate;
   }
 

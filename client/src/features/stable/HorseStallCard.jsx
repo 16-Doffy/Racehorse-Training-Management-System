@@ -67,7 +67,7 @@ export default function HorseStallCard({ horseId, canManage }) {
             <span className="text-gray-600">Vào chuồng</span>
             <span className="tabular-nums">{info.since ? dayjs(info.since).format('DD/MM/YYYY') : '—'}</span>
             {canManage && (
-              <Link to="/admin/stables" className="col-span-2 mt-1">Đổi chuồng trên sơ đồ</Link>
+              <Link to={`/admin/stables?horse=${horseId}`} className="col-span-2 mt-1">Đổi chuồng trên sơ đồ</Link>
             )}
           </div>
         </div>

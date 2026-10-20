@@ -258,6 +258,22 @@ export default function HorseListPage() {
       key: 'stall',
       render: (_, h) => {
         const code = stallByHorse.get(String(h._id));
+        // The Manager places horses: the cell opens that horse's stall form on the stable page.
+        if (isManager) {
+          return (
+            <Button
+              size="small"
+              type="link"
+              className="!px-0 tabular-nums"
+              onClick={(e) => {
+                e.stopPropagation(); // not the row's click, which opens the horse
+                navigate(`/admin/stables?horse=${h._id}`);
+              }}
+            >
+              {code || 'Xếp chuồng'}
+            </Button>
+          );
+        }
         return code ? <span className="tabular-nums whitespace-nowrap">{code}</span> : <Tag>Chưa xếp</Tag>;
       },
     });
@@ -548,6 +564,17 @@ export default function HorseListPage() {
               })
             }
           >
+            {editTarget && isManager && (
+              // The stall is its own record (with the groom and the daily tasks), changed on the stable page.
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E5DEC9] px-3 py-2 text-sm">
+                <span>
+                  Chuồng: <span className="font-semibold tabular-nums">{stallByHorse.get(String(editTarget._id)) || 'chưa xếp'}</span>
+                </span>
+                <Button size="small" onClick={() => navigate(`/admin/stables?horse=${editTarget._id}`)}>
+                  {stallByHorse.has(String(editTarget._id)) ? 'Đổi chuồng' : 'Xếp chuồng'}
+                </Button>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
               <Form.Item name="name" label="Tên ngựa" rules={[{ required: true }]} className="!mb-3">
                 <Input placeholder="VD: Thunder Bolt" />
