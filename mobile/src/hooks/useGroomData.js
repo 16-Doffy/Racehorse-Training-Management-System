@@ -11,7 +11,7 @@ import {
   trainingApi,
 } from '../api/endpoints';
 import { useAuth } from '../auth/AuthContext';
-import { getStockLevel, parseStableBlock, refId, summarizeTasks } from '../utils/groom';
+import { getStockLevel, groupZones, myStallsOf, parseStableBlock, refId, summarizeTasks } from '../utils/groom';
 
 const list = (query) => query.data?.data || [];
 
@@ -169,6 +169,27 @@ export function useStableOverview() {
   }, [assignmentsQuery.data, horsesQuery.data, treatmentsQuery.data, user?._id]);
 
   return { ...derived, isLoading: assignmentsQuery.isLoading || horsesQuery.isLoading };
+}
+
+/**
+ * The stable map as the Manager laid it out (GET /stable/stalls): its zones with every stall, empty or
+ * under maintenance too, and the stalls whose horse this groom looks after.
+ */
+export function useStalls() {
+  const { user } = useAuth();
+  const query = useQuery({ queryKey: ['stalls'], queryFn: () => stableApi.stalls() });
+  const derived = useMemo(() => {
+    const map = query.data?.data || {};
+    const mine = myStallsOf(map, user?._id);
+    return {
+      stalls: map.stalls || [],
+      unplaced: map.unplaced || [],
+      zones: groupZones(map.stalls || []),
+      myStalls: mine.stalls,
+      myUnplaced: mine.unplaced,
+    };
+  }, [query.data, user?._id]);
+  return { ...query, ...derived };
 }
 
 /**

@@ -69,8 +69,8 @@ for (const role of ['manager', 'trainer', 'vet', 'owner', 'groom']) {
     await login(page, role);
     await expect(page.locator('.ant-segmented', { hasText: 'Tối' })).toHaveCount(1);
     await expect(page.locator('.is-dark-canvas.canvas-sider, .is-dark-canvas .canvas-sider')).toHaveCount(1);
-    // The staff's pages go fully dark; the Owner keeps its light panels.
-    await expect(page.locator('.staff-dark')).toHaveCount(role === 'owner' ? 0 : 1);
+    // Every role's pages go fully dark (the Owner's through its own dark tokens).
+    await expect(page.locator('.staff-dark')).toHaveCount(1);
     // The vet's Bootstrap pages follow through Bootstrap's dark mode.
     await expect(page.locator('body[data-bs-theme="dark"]')).toHaveCount(role === 'vet' ? 1 : 0);
     expect(errors).toEqual([]);
@@ -142,9 +142,16 @@ test('owner dashboard shows the real race record and prize money', async ({ page
 test('owner race page shows the prize in dong, not dollars', async ({ page }) => {
   await login(page, 'owner');
   await page.goto('/owner/races');
-  await expect(page.getByText('TEST Browser Cup', { exact: true })).toBeVisible();
-  await expect(page.getByText('1.000.000 ₫', { exact: true })).toBeVisible();
+  const result = page.locator('.own-row', { hasText: 'TEST Browser Cup' });
+  await expect(result).toBeVisible();
+  await expect(result.getByText('1.000.000 ₫', { exact: true })).toBeVisible();
   await expect(page.getByText(/\$1,000,000/)).toHaveCount(0);
+});
+test('owner opening the old reviews page lands on the trainer reviews of the training page', async ({ page }) => {
+  await login(page, 'owner');
+  await page.goto('/owner/evaluations');
+  await expect(page).toHaveURL(/\/owner\/training\?view=reviews$/);
+  await expect(page.getByText('TEST đi bộ đều, hồi sức tốt')).toBeVisible();
 });
 test('owner horse list counts the examined horse as ready, like the trainer sees it', async ({ page }) => {
   await login(page, 'owner');
@@ -156,14 +163,16 @@ test('owner horse list counts the examined horse as ready, like the trainer sees
 test('owner horse page shows the papers and the valuation', async ({ page }) => {
   await login(page, 'owner');
   await page.goto(`/horses/${fixture.horseId}`);
-  const papers = page.locator('.ant-card', { hasText: 'Giấy tờ & Định giá' });
-  await expect(papers.getByText('985112345678901')).toBeVisible();
-  await expect(papers.getByText('TEST-REG-001')).toBeVisible();
-  await expect(papers.getByText('750.000.000 ₫')).toBeVisible();
+  const record = page.locator('.own-card', { hasText: 'Số vi mạch' });
+  await expect(record.getByText('985112345678901')).toBeVisible();
+  await expect(record.getByText('TEST-REG-001')).toBeVisible();
+  await expect(page.locator('.own-hero').getByText('750.000.000 ₫')).toBeVisible();
+  // The horse form has no sire or dam, so there is no pedigree to show.
+  await expect(page.getByText(/Gia phả|Pedigree/)).toHaveCount(0);
 });
 test('owner horse page shows the horse in its stall, with no way to move it', async ({ page }) => {
   await login(page, 'owner');
-  await page.goto(`/horses/${fixture.horseId}`);
+  await page.goto(`/horses/${fixture.horseId}?tab=stall`);
   // The fixture puts the horse in the first stall of zone A.
   const stall = page.locator('.ant-card', { hasText: 'Chuồng A-01' });
   await expect(stall).toBeVisible();
@@ -189,8 +198,8 @@ test('owner stable page keeps the stall card title readable on the dark canvas',
   await page.goto('/owner/stable');
   const title = page.locator('.ant-card-head-title', { hasText: 'Chuồng A-01' });
   await expect(title).toBeVisible();
-  // The card sits in a light panel: its title must stay dark, not turn cream like the dark cards' titles.
-  expect(await textIsDark(title)).toBe(true);
+  // The Owner's pages go dark with the canvas: the card is dark, so its title is light.
+  expect(await textIsDark(title)).toBe(false);
 });
 test('owner cannot open the stable map of the Manager', async ({ page }) => {
   await login(page, 'owner');
@@ -204,15 +213,24 @@ test('the trainer sees the horse papers but not the valuation', async ({ page })
   await expect(page.getByText('985112345678901').first()).toBeVisible();
   await expect(page.getByText('750.000.000')).toHaveCount(0);
 });
-test('owner horse page keeps its header and pedigree readable on the dark canvas', async ({ page }) => {
+test('owner horse page keeps its header and cards readable on the dark canvas', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('wdp301_canvas_theme', 'peak_equestrian_dark'));
   await login(page, 'owner');
   await page.goto(`/horses/${fixture.horseId}`);
-  const hero = page.locator('.premium-card').first();
-  await expect(hero.getByText('Thành tích', { exact: true })).toBeVisible();
-  // The header is a light panel: its text must stay dark, not turn cream like the page's own text.
-  expect(await textIsDark(hero.getByText('Thành tích', { exact: true }))).toBe(true);
-  expect(await textIsDark(page.getByText('Bản thân', { exact: true }))).toBe(true);
+  const hero = page.locator('.own-hero');
+  await expect(hero.getByRole('heading', { name: 'TEST Browser Horse' })).toBeVisible();
+  // Dark cards, light text: the name, a figure's label and a fact in the record card.
+  expect(await textIsDark(hero.getByRole('heading', { name: 'TEST Browser Horse' }))).toBe(false);
+  expect(await textIsDark(hero.getByText('Thành tích', { exact: true }))).toBe(false);
+  expect(await textIsDark(page.locator('.own-card', { hasText: 'Số vi mạch' }).getByText('985112345678901'))).toBe(false);
+});
+test('the staff horse page names who looks after the horse instead of an empty pedigree', async ({ page }) => {
+  await login(page, 'trainer');
+  await page.goto(`/horses/${fixture.horseId}`);
+  const people = page.locator('.ant-card', { hasText: 'Người phụ trách' });
+  await expect(people.getByText('HLV phụ trách')).toBeVisible();
+  await expect(people.getByText('Nhân viên chăm sóc')).toBeVisible();
+  await expect(page.getByText(/Dòng dõi|Pedigree/)).toHaveCount(0);
 });
 test('the Manager works the stable map: an empty stall offers a horse, a taken one the change, the 3D barn beside it', async ({ page }) => {
   const errors = [];
@@ -227,11 +245,111 @@ test('the Manager works the stable map: an empty stall offers a horse, a taken o
   await taken.click();
   await expect(page.getByRole('button', { name: 'Đổi chuồng / người chăm sóc' })).toBeVisible();
   await expect(page.locator('canvas[aria-label="Khu chuồng ngựa 3D"]').first()).toBeVisible();
+  // The colour on a stall is the horse's health, not a go-ahead for a session (GPT-72.6).
+  await expect(page.getByText('Sức khỏe đủ điều kiện').first()).toBeVisible();
+  await expect(page.getByText('Sẵn sàng tập', { exact: true })).toHaveCount(0);
   await page.goto(`/horses/${fixture.horseId}`);
   await expect(page.getByText('Chuồng A-01')).toBeVisible();
   await expect(page.getByText('Đổi chuồng trên sơ đồ')).toBeVisible();
   expect(errors).toEqual([]);
 });
+test('an empty stall takes any horse: one already in a stall moves, keeping its groom', async ({ page }) => {
+  await login(page, 'manager');
+  await page.goto('/admin/stables');
+  await page.getByRole('button', { name: /^A-02/ }).click();
+  await page.getByRole('button', { name: 'Xếp ngựa vào chuồng này' }).click();
+  const modal = page.locator('.ant-modal', { hasText: 'Xếp chuồng cho ngựa' });
+  await modal.locator('.ant-form-item', { hasText: 'Ngựa' }).first().locator('.ant-select').click();
+  // Every horse already has a stall (on the map or written by hand): none may be greyed out.
+  const option = page.locator('.ant-select-item-option', { hasText: 'TEST Browser Horse (đang ở A-01)' });
+  await expect(option).not.toHaveClass(/ant-select-item-option-disabled/);
+  await option.click();
+  await expect(modal.getByText('Ngựa sẽ chuyển khỏi chuồng A-01.')).toBeVisible();
+  await expect(modal.locator('.ant-form-item', { hasText: 'Nhân viên chăm sóc' }).getByText('TEST groom')).toBeVisible();
+  await modal.getByRole('button', { name: 'Hủy' }).click();
+});
+
+test("the Manager's horse list opens the horse's stall form on the stable page", async ({ page }) => {
+  await login(page, 'manager');
+  await page.goto('/horses');
+  await page.getByRole('button', { name: 'A-01', exact: true }).click();
+  await expect(page.locator('.ant-modal-title', { hasText: 'Sửa phân công — TEST Browser Horse' })).toBeVisible();
+  // Read once: a reload does not open it again.
+  await expect(page).toHaveURL(/\/admin\/stables$/);
+});
+
+// A list the page could not load is "not checked", never 0 or "all resolved" (GPT-72.4).
+const failWith500 = (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, message: 'TEST server error' }) });
+// A new matcher per call: keep it to unroute (Playwright matches the function itself).
+const apiPath = (path) => (url) => url.pathname === `/api/v1${path}`;
+const queueCard = (page) => page.locator('.ant-card', { hasText: 'Việc đang chờ bạn' });
+
+test('the Manager queue: a list that fails is shown as not checked, and comes back on retry', async ({ page }) => {
+  const inventoryList = apiPath('/inventory');
+  await page.route(inventoryList, failWith500);
+  await login(page, 'manager');
+  const card = queueCard(page);
+  await expect(card.getByText(/^Chưa kiểm tra được 2 mục/)).toBeVisible();
+  await expect(card.getByText('Tất cả đã được giải quyết')).toHaveCount(0);
+  await expect(card.getByText('chưa tải được', { exact: true })).toHaveCount(2);
+  // The lists that did load still count.
+  await expect(card.getByRole('link', { name: /Tài khoản đăng ký chờ duyệt/ })).toBeVisible();
+
+  await page.unroute(inventoryList);
+  await card.locator('.ant-card-head').getByRole('button', { name: 'Thử lại' }).click();
+  await expect(card.getByText('chưa tải được', { exact: true })).toHaveCount(0);
+  await expect(card.getByText(/^Chưa kiểm tra được/)).toHaveCount(0);
+  await expect(card.getByRole('link', { name: /Hàng đã duyệt, chờ nhận/ })).toBeVisible();
+});
+
+test('the Manager queue with every list failing claims nothing is waiting', async ({ page }) => {
+  for (const path of ['/users', '/inventory', '/horses/checklist']) await page.route(apiPath(path), failWith500);
+  await login(page, 'manager');
+  const card = queueCard(page);
+  await expect(card.getByText('Chưa kiểm tra được 4 mục')).toBeVisible();
+  await expect(card.getByText('Tất cả đã được giải quyết')).toHaveCount(0);
+  await expect(card.getByText('chưa tải được', { exact: true })).toHaveCount(4);
+});
+
+test('the Manager queue keeps the last counts, marked as old, when a refresh fails', async ({ page }) => {
+  await page.clock.install();
+  await login(page, 'manager');
+  const card = queueCard(page);
+  await expect(card.getByText(/Tất cả đã được giải quyết|việc chưa xử lý/)).toBeVisible();
+  // The lists go stale (30 s) and a reconnect refetches them; the accounts list now fails.
+  const usersList = apiPath('/users');
+  await page.route(usersList, failWith500);
+  await page.clock.fastForward('00:31');
+  await page.context().setOffline(true);
+  await page.context().setOffline(false);
+  await expect(card.getByText(/^số lúc \d\d:\d\d$/)).toBeVisible();
+  await expect(card.getByText(/theo số liệu cũ/)).toBeVisible();
+  await expect(card.getByText('Tất cả đã được giải quyết')).toHaveCount(0);
+
+  await page.unroute(usersList);
+  await card.locator('.ant-card-head').getByRole('button', { name: 'Thử lại' }).click();
+  await expect(card.getByText(/theo số liệu cũ/)).toHaveCount(0);
+  await expect(card.getByText(/^số lúc/)).toHaveCount(0);
+});
+
+test('the readiness board says it could not check, instead of going blank, and comes back on retry', async ({ page }) => {
+  const readiness = apiPath('/training/sessions/readiness');
+  await page.route(readiness, failWith500);
+  await login(page, 'trainer');
+  await page.goto('/training/sessions?new=1');
+  const modal = page.locator('.ant-modal', { hasText: 'Tạo buổi tập mới' });
+  await modal.locator('.ant-form-item', { hasText: 'Ngựa' }).first().locator('.ant-select').click();
+  await page.locator('.ant-select-item-option', { hasText: 'TEST Browser Horse' }).first().click();
+  const board = modal.locator('.ant-card', { hasText: 'Kiểm tra sẵn sàng' });
+  await expect(board.getByText('Chưa kiểm tra được tình trạng sẵn sàng')).toBeVisible();
+  await expect(board.getByText('Sẵn sàng tập')).toHaveCount(0);
+
+  await page.unroute(readiness);
+  await board.getByRole('button', { name: 'Thử lại' }).click();
+  await expect(board.getByText('Người chăm sóc', { exact: true })).toBeVisible();
+  await expect(board.getByText('Chưa kiểm tra được tình trạng sẵn sàng')).toHaveCount(0);
+});
+
 test('the trainer sees the horse stall and the stall column, without the Manager actions', async ({ page }) => {
   await login(page, 'trainer');
   await page.goto('/horses');

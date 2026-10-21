@@ -30,6 +30,11 @@ export const taskApi = {
 
 export const stableApi = {
   assignments: () => api.get('/stable/assignments'),
+  /**
+   * The Manager's stable map: every stall in use, zone by zone, with the horse in it and its caretaker
+   * ({ stalls, unplaced }). `unplaced` are horses still on a free-text stall from before the map.
+   */
+  stalls: () => api.get('/stable/stalls'),
   /** status: 'open' | 'unresolved' | 'acknowledged' | 'resolved' */
   incidents: (params) => api.get('/stable/incidents', { params }),
   /** Per horse: rations and prescriptions with the stock behind them, plus what is short. */

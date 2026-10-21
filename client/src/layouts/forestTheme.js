@@ -13,8 +13,8 @@ export const usesForestTheme = (role) => FOREST_ROLES.includes(role);
 // Every role on the web has the Sáng/Tối switch and the Team 8 look.
 export const CANVAS_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.OWNER, ROLES.VETERINARIAN, ROLES.GROOM];
 export const usesCanvasPicker = (role) => CANVAS_ROLES.includes(role);
-// On the dark canvas these roles' pages go fully dark; the Owner's pages keep their own light panels.
-export const FULL_DARK_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN, ROLES.GROOM];
+// On the dark canvas these roles' pages go fully dark (the Owner's pages carry their own dark tokens, owner.css).
+export const FULL_DARK_ROLES = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN, ROLES.GROOM, ROLES.OWNER];
 // The vet's pages are built with Bootstrap: on the dark canvas they use Bootstrap's dark mode
 // (MainLayout puts data-bs-theme on <body>), recoloured to the forest palette.
 export const BOOTSTRAP_ROLES = [ROLES.VETERINARIAN];

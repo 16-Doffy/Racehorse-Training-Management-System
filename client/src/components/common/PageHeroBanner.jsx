@@ -45,7 +45,7 @@ export default function PageHeroBanner({
               )}
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-1.5 drop-shadow-sm" style={{ fontFamily: "'Lora', Georgia, serif" }}>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-balance text-white mb-1.5 drop-shadow-sm" style={{ fontFamily: "'Lora', Georgia, serif" }}>
               {title}
             </h1>
             {subtitle && (
@@ -103,7 +103,7 @@ export default function PageHeroBanner({
           )}
 
           <h1
-            className="text-xl sm:text-2xl font-semibold tracking-tight text-[#FAF8F5] mb-1"
+            className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-[#FAF8F5] mb-1"
             style={{ fontFamily: "'Lora', Georgia, serif" }}
           >
             {title}

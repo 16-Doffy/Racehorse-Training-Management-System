@@ -18,7 +18,10 @@ Tất cả nằm dưới `/api/v1/stable`. Request/response chi tiết ở `/api
 | `POST /stable/stalls` | Manager | Tạo một chuồng: `{ zone: "CL", number: 1, type: "isolation" }` |
 | `PATCH /stable/stalls/:id` | Manager | Đổi tên/mục đích khu, loại, thứ tự; bảo trì `{ status: "maintenance", maintenanceNote }` |
 | `DELETE /stable/stalls/:id` | Manager | Ngừng dùng một chuồng trống (giữ lại mã) |
-| `POST /stable/assignments` | Manager | Xếp ngựa: `{ horse, stall: "<id chuồng>", assignedCaretaker }`. Vẫn nhận `stableBlock` như cũ |
+| `POST /stable/assignments` | Manager | Xếp ngựa: `{ horse, stall: "<id chuồng>", assignedCaretaker }`. Vẫn nhận `stableBlock` như cũ. Bỏ trống `assignedCaretaker` thì ngựa nhận người chăm sóc của chuồng |
+| `PUT /stable/stalls/:id/caretaker` | Manager | Giao chuồng cho nhân viên chăm sóc: `{ caretaker: "<id>" }`, hoặc `null` để bỏ |
+| `PUT /stable/zones/:zone` | Manager | Sửa khu trong một lần lưu: `{ zoneName, zonePurpose, remove: ["<id chuồng>"], add: 2, type }`. Bỏ các chuồng trống được chọn (409 nếu còn ngựa), thêm chuồng mới sau số lớn nhất của khu (chuồng mới chưa có người chăm sóc). Mã khu không đổi |
+| `DELETE /stable/zones/:zone` | Manager | Xoá khu: bỏ mọi chuồng của khu. 409 nếu còn ngựa. Mã được giữ; `generate` lại khu đó thì các chuồng cũ quay lại |
 
 ## Dữ liệu một chuồng
 
@@ -32,9 +35,22 @@ Tất cả nằm dưới `/api/v1/stable`. Request/response chi tiết ở `/api
     "horse": { "_id": "…", "name": "Hoàng Kim", "breed": "Arabian", "color": "…", "healthStatus": "eligible" },
     "caretaker": { "_id": "…", "name": "…" },
     "since": "2026-10-12T…"
-  }
+  },
+  "caretaker": { "_id": "…", "name": "Lê Văn Cường" }
 }
 ```
+
+### Người chăm sóc của chuồng (từ 21/10/2026)
+
+Mỗi chuồng có một nhân viên chăm sóc (`caretaker`), kể cả chuồng trống. Quản lý giao từng chuồng một (không có giao cả khu).
+
+- Ngựa trong chuồng nhận người đó làm người chăm sóc (`StableAssignment.assignedCaretaker` luôn theo chuồng). Vì vậy việc cho ăn theo khẩu phần, chăm sóc sau buổi tập và cho thuốc theo đơn bác sĩ đều tự về người này.
+- Đổi người của chuồng: việc chưa làm của ngựa chuyển sang người mới, hai người đều nhận thông báo. Việc HLV tự tay giao cho một người cụ thể thì giữ nguyên.
+- Xếp ngựa vào chuồng mà không ghi `assignedCaretaker`: ngựa nhận người của chuồng. Ghi người khác thì người đó thành người của chuồng.
+- App NV chăm sóc: "chuồng của tôi" là các chuồng có `caretaker._id` là mình, kể cả chuồng trống.
+- Quản lý và NV chăm sóc thấy `caretaker` của mọi chuồng. Vai trò khác chỉ thấy người chăm sóc ngựa mình được xem; chuồng khác trả `null`.
+- `caretaker.inactive: true`: tài khoản người đó đã bị khóa hoặc đổi vai trò, Quản lý cần giao người khác.
+- Chuồng xếp ngựa trước ngày này chưa có `caretaker` riêng: API trả người chăm sóc của ngựa đang ở đó.
 
 - `type`: `standard` (thường), `isolation` (cách ly), `recovery` (hồi phục).
 - `status`: `active` hoặc `maintenance`. Chuồng bảo trì không xếp ngựa được. Chuồng đang có ngựa thì không đặt bảo trì được (409).
@@ -67,7 +83,7 @@ Chỉ Quản lý xếp và đổi chuồng (kèm người chăm sóc): đó là 
 | HLV: chuồng 3D trong chi tiết ngựa, cột Chuồng ở danh sách ngựa | Claude | xong |
 | Bác sĩ: ngựa chấn thương nổi đỏ trên sơ đồ; đề nghị Quản lý chuyển ngựa sang khu cách ly (chuồng `type: "isolation"`) | trunghieu | gọi `GET /stable/stalls` |
 | Chủ ngựa: chuồng của ngựa mình, có 3D | Quân | gọi `GET /stable/stalls/by-horse/:horseId`, dùng component chung khi có |
-| NV chăm sóc (app): mã chuồng trên từng việc, danh sách chuồng mình phụ trách | Tien | `stableBlock` đã là mã chuồng; lọc `GET /stable/stalls` theo `occupant.caretaker._id` |
+| NV chăm sóc (app): mã chuồng trên từng việc, danh sách chuồng mình phụ trách | Tien | xong: lọc `GET /stable/stalls` theo `caretaker._id` (cả chuồng trống) |
 
 ## Gắn vào màn web của bạn
 

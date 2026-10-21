@@ -31,6 +31,12 @@ export const stallApi = {
   generateZone: (payload) => axiosClient.post('/stable/stalls/generate', payload),
   update: (id, payload) => axiosClient.patch(`/stable/stalls/${id}`, payload),
   retire: (id) => axiosClient.delete(`/stable/stalls/${id}`),
+  /** The stall's groom (null: none); the horse in it and its open work go to them too. */
+  setCaretaker: (id, caretaker) => axiosClient.put(`/stable/stalls/${id}/caretaker`, { caretaker: caretaker || null }),
+  /** The zone dialog in one save: { zoneName?, zonePurpose?, remove?: [stall ids], add?: n, type? } → { removed, added, stalls }. */
+  editZone: (zone, payload) => axiosClient.put(`/stable/zones/${encodeURIComponent(zone)}`, payload),
+  /** Takes a whole zone out of use (409 while a horse is in it); laying it out again brings it back. */
+  retireZone: (zone) => axiosClient.delete(`/stable/zones/${encodeURIComponent(zone)}`),
 };
 
 export const stableAssignmentApi = {
