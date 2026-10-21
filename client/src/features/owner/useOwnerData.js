@@ -35,9 +35,10 @@ export function useHorse(id) {
   return { ...query, horse: query.data?.data || null };
 }
 
-/** Where each horse stands: its stall code and zone, from the stable map (one call for all). */
+/** Where each horse stands: its stall code and zone, from the stable map (one call for all); `stalls` is the map itself. */
 export function useStallsByHorse() {
   const query = useQuery({ queryKey: ['stalls'], queryFn: () => stallApi.map() });
+  const stalls = query.data?.data?.stalls || NONE;
   const byHorse = useMemo(() => {
     const map = new Map();
     (query.data?.data?.stalls || []).forEach((s) => {
@@ -48,7 +49,7 @@ export function useStallsByHorse() {
     });
     return map;
   }, [query.data]);
-  return { ...query, byHorse };
+  return { ...query, byHorse, stalls };
 }
 /** "Chuồng A-01 · Khu A", or the hand-written stall, or null. */
 export const stallText = (stall) => (!stall ? null : stall.handwritten ? `Chuồng ${stall.code} (ghi tay)` : `Chuồng ${stall.code}${stall.zone ? ` · ${stall.zone}` : ''}`);
