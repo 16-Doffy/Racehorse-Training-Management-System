@@ -15,8 +15,10 @@ const LEGEND = ['ok', 'watch', 'bad', 'taken', 'empty', 'maint'];
  * marked light-surface-box so the dark canvas turns them dark.
  *
  * `compact`: the zone's stalls only, smaller, for beside the 3D view — the page shows the zone tabs.
+ * `canSelect(stall)`: which stalls can be picked (the Owner picks only those of their horses); the rest
+ * are shown faded.
  */
-export default function StableMap({ stalls, zoneKey, onZoneChange, selectedCode, onSelect, compact = false }) {
+export default function StableMap({ stalls, zoneKey, onZoneChange, selectedCode, onSelect, compact = false, canSelect = () => true }) {
   const zones = groupZones(stalls);
   const zone = zones.find((z) => z.key === zoneKey) || zones[0];
   if (!zone) return null;
@@ -29,19 +31,22 @@ export default function StableMap({ stalls, zoneKey, onZoneChange, selectedCode,
     const key = stallState(s);
     const state = STALL_STATES[key];
     const selected = s.code === selectedCode;
+    const selectable = canSelect(s);
     return (
       <button
         key={s._id}
         type="button"
         onClick={() => onSelect(s.code)}
+        disabled={!selectable}
         aria-pressed={selected}
         title={`${s.code} · ${tileLabel(s)} · ${state.label}`}
         className={[
-          'relative min-w-0 overflow-hidden rounded-lg border text-left transition cursor-pointer',
+          'relative min-w-0 overflow-hidden rounded-lg border text-left transition',
+          selectable ? 'cursor-pointer' : 'cursor-default opacity-55',
           compact ? 'py-1.5 pl-3 pr-2' : 'px-2.5 py-2',
           key === 'empty' ? 'border-dashed border-gray-300 bg-transparent' : 'border-gray-200 bg-white',
           key === 'maint' ? 'bg-[repeating-linear-gradient(135deg,rgba(26,43,34,0.07)_0_6px,transparent_6px_12px)]' : '',
-          selected ? 'ring-2 ring-[#D4AF37] border-[#D4AF37]' : 'hover:border-[#D4AF37]/60',
+          selected ? 'ring-2 ring-[#D4AF37] border-[#D4AF37]' : selectable ? 'hover:border-[#D4AF37]/60' : '',
         ].join(' ')}
       >
         {compact && <span className="absolute inset-y-0 left-0 w-1" style={{ background: state.color }} aria-hidden="true" />}

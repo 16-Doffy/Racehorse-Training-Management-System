@@ -19,8 +19,9 @@ const observationText = (o) =>
 /**
  * Where one horse lives and how it is looked after today: its stall in 3D with its groom, today's care
  * work and its rations. Read-only: placing horses is the Manager's, the work is the groom's.
+ * `showStall={false}` leaves the stall out, for a page that shows the barn itself.
  */
-export default function StableDetail({ horse }) {
+export default function StableDetail({ horse, showStall = true }) {
   const id = idOf(horse);
   const { tasks, isLoading } = useDailyTasks();
   const { feedings } = useFeedings();
@@ -37,7 +38,7 @@ export default function StableDetail({ horse }) {
   return (
     <div className="flex flex-col gap-4">
       {/* The stall in 3D, its code, zone and groom: the stable map, as the Manager keeps it. */}
-      <HorseStallCard horseId={id} canManage={false} />
+      {showStall && <HorseStallCard horseId={id} canManage={false} />}
 
       <Card
         title="Việc chăm sóc hôm nay"
