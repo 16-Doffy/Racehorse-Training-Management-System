@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import ProtectedRoute from './ProtectedRoute';
 import MainLayout from '../layouts/MainLayout';
 import LoginPage from '../features/auth/LoginPage';
@@ -31,14 +32,22 @@ import ReportsOverviewPage from '../features/reports/ReportsOverviewPage';
 import InventoryPage from '../features/inventory/InventoryPage';
 import RacePage from '../features/race/RacePage';
 import FinancePage from '../features/finance/FinancePage';
-import OwnerHealthPage from '../features/horses/OwnerHealthPage';
-import OwnerTrainingPage from '../features/horses/OwnerTrainingPage';
-import OwnerEvaluationsPage from '../features/horses/OwnerEvaluationsPage';
-import OwnerRacesPage from '../features/horses/OwnerRacesPage';
-import OwnerStablePage from '../features/horses/OwnerStablePage';
+import OwnerHorses from '../features/owner/OwnerHorses';
+import OwnerHorse from '../features/owner/OwnerHorse';
+import OwnerHealth from '../features/owner/OwnerHealth';
+import OwnerTraining from '../features/owner/OwnerTraining';
+import OwnerRaces from '../features/owner/OwnerRaces';
+import OwnerStable from '../features/owner/OwnerStable';
+import OwnerFinance from '../features/owner/OwnerFinance';
 import { ROLES } from '../constants/roles';
 
 const ALL_ROLES = Object.values(ROLES);
+
+/** A path every role shares, where the Horse Owner gets their own page. */
+function OwnerOr({ owner, other }) {
+  const role = useSelector((state) => state.auth.user?.role);
+  return role === ROLES.OWNER ? owner : other;
+}
 
 export default function AppRouter() {
   return (
@@ -54,8 +63,8 @@ export default function AppRouter() {
           <Route path="/profile" element={<ProfilePage />} />
 
           {/* Shared: horse roster/profile (Owner's core flow; visible to every role). */}
-          <Route path="/horses" element={<HorseListPage />} />
-          <Route path="/horses/:id" element={<HorseDetailPage />} />
+          <Route path="/horses" element={<OwnerOr owner={<OwnerHorses />} other={<HorseListPage />} />} />
+          <Route path="/horses/:id" element={<OwnerOr owner={<OwnerHorse />} other={<HorseDetailPage />} />} />
 
           {/* Head Trainer core flow. */}
           <Route element={<ProtectedRoute allowedRoles={[ROLES.HEAD_TRAINER]} />}>
@@ -99,11 +108,12 @@ export default function AppRouter() {
 
           {/* Horse Owner core flow. */}
           <Route element={<ProtectedRoute allowedRoles={[ROLES.OWNER]} />}>
-            <Route path="/owner/health" element={<OwnerHealthPage />} />
-            <Route path="/owner/training" element={<OwnerTrainingPage />} />
-            <Route path="/owner/races" element={<OwnerRacesPage />} />
-            <Route path="/owner/stable" element={<OwnerStablePage />} />
-            <Route path="/owner/evaluations" element={<OwnerEvaluationsPage />} />
+            <Route path="/owner/health" element={<OwnerHealth />} />
+            <Route path="/owner/training" element={<OwnerTraining />} />
+            <Route path="/owner/races" element={<OwnerRaces />} />
+            <Route path="/owner/stable" element={<OwnerStable />} />
+            {/* The trainer's reviews are a tab of the training page now. */}
+            <Route path="/owner/evaluations" element={<Navigate to="/owner/training?view=reviews" replace />} />
           </Route>
 
           {/* Scaffold modules, shared by whichever roles the menu exposes them to. */}
@@ -116,7 +126,7 @@ export default function AppRouter() {
             <Route path="/races" element={<RacePage />} />
           </Route>
           <Route element={<ProtectedRoute allowedRoles={[ROLES.OWNER, ROLES.MANAGER]} />}>
-            <Route path="/finance" element={<FinancePage />} />
+            <Route path="/finance" element={<OwnerOr owner={<OwnerFinance />} other={<FinancePage />} />} />
           </Route>
         </Route>
       </Route>

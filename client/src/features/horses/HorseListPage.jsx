@@ -26,7 +26,7 @@ export default function HorseListPage() {
   // (POST/PUT /horses is Manager-only on the server); every other role sees the same read-only
   // roster they always had.
   const isManager = user?.role === ROLES.MANAGER;
-  const isOwner = user?.role === ROLES.OWNER;
+  // The Horse Owner has their own list (features/owner/OwnerHorses.jsx).
   // The Manager and the trainer run a horse from arrival to training: they see its next step.
   const showsNextStep = [ROLES.MANAGER, ROLES.HEAD_TRAINER].includes(user?.role);
 
@@ -46,17 +46,8 @@ export default function HorseListPage() {
     ...(stallsData?.data?.stalls || []).filter((st) => st.occupant?.horse).map((st) => [String(st.occupant.horse._id), st.code]),
   ]);
   const mapStalls = stallsData?.data?.stalls || [];
-  // The checklist is for the staff. The Owner's own view of whether a vet has seen each horse comes from the owner summary.
-  const { data: ownerSummaryData } = useQuery({ queryKey: ['owner-summary'], queryFn: () => horsesApi.ownerSummary(), enabled: isOwner });
-  const summaryByHorse = new Map((ownerSummaryData?.data || []).map((r) => [String(r.horse._id), r]));
   // Has a vet examined the horse? true / false, or undefined while that is still loading.
-  const examined = (h) => {
-    if (isOwner) {
-      const row = summaryByHorse.get(String(h._id));
-      return row ? Boolean(row.health.lastExam) : undefined;
-    }
-    return checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === 'health')?.done;
-  };
+  const examined = (h) => checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === 'health')?.done;
 
   // Manager: horses the club no longer manages, kept for their records.
   const [view, setView] = useState('active');
@@ -116,11 +107,7 @@ export default function HorseListPage() {
   // has seen it, so "ready" also needs an exam on file and no medical restriction; an unexamined horse
   // is counted on its own rather than as healthy.
   const checkItem = (h, key) => checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === key)?.done;
-  const readyCount = horses.filter((h) =>
-    isOwner
-      ? h.healthStatus === 'eligible' && examined(h) && !h.trainingClearance?.restricted
-      : h.healthStatus === 'eligible' && checkItem(h, 'health') && checkItem(h, 'clearance')
-  ).length;
+  const readyCount = horses.filter((h) => h.healthStatus === 'eligible' && checkItem(h, 'health') && checkItem(h, 'clearance')).length;
   const unexaminedCount = horses.filter((h) => examined(h) === false).length;
   const restrictedCount = horses.filter((h) => h.trainingClearance?.restricted).length;
   const watchCount = horses.filter((h) => ['monitoring', 'injured', 'quarantined'].includes(h.healthStatus) || h.trainingClearance?.restricted).length;
@@ -359,18 +346,16 @@ export default function HorseListPage() {
   }
 
   return (
-    <div className={isOwner ? 'owner-ui' : undefined}>
-      {showsNextStep || isOwner ? (
+    <div>
+      {showsNextStep ? (
       <PageHeroBanner
-        eyebrow={isOwner ? 'TEAM 8 • QUẢN LÝ ĐÀN CHIẾN MÃ' : 'Hồ sơ & danh mục ngựa'}
-        roleLabel={isManager ? 'Quản lý CLB' : isOwner ? 'Horse Owner' : 'HLV trưởng'}
-        title={isManager ? 'Danh mục & quản lý đàn ngựa' : isOwner ? 'Chiến Mã Của Tôi' : 'Danh sách ngựa phụ trách'}
+        eyebrow="Hồ sơ & danh mục ngựa"
+        roleLabel={isManager ? 'Quản lý CLB' : 'HLV trưởng'}
+        title={isManager ? 'Danh mục & quản lý đàn ngựa' : 'Danh sách ngựa phụ trách'}
         subtitle={
           isManager
             ? 'Cập nhật hồ sơ lý lịch và phân công huấn luyện viên, bác sĩ thú y phụ trách từng ngựa.'
-            : isOwner
-              ? 'Hồ sơ, sức khỏe và người phụ trách của từng chiến mã bạn sở hữu.'
-              : 'Theo dõi thể trạng, mức độ cho phép tập luyện và bước chuẩn bị tiếp theo của từng ngựa.'
+            : 'Theo dõi thể trạng, mức độ cho phép tập luyện và bước chuẩn bị tiếp theo của từng ngựa.'
         }
         stats={[
           { label: 'Tổng đàn', value: `${horses.length} con` },
@@ -432,7 +417,7 @@ export default function HorseListPage() {
         </div>
       )}
 
-      {!isOwner && isError && (
+      {isError && (
         <Alert
           className="mb-3"
           type="error"
