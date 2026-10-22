@@ -16,6 +16,8 @@ Duy cập nhật (Claude soạn). Mục 1: `main` đã xanh trở lại.
 - Gỡ người chăm sóc của chuồng rồi gán người mới: việc dở chuyển sang người mới.
 - Chủ ngựa, HLV, bác sĩ bị khóa tài khoản: checklist báo "cần người thay", hàng đợi Quản lý đếm con ngựa đó.
 - Trang chủ ngựa (Quân): API lỗi thì báo "Chưa tải được danh sách chiến mã" kèm Thử lại, không còn hiện "chưa có chiến mã".
+- Khóa (hoặc đổi vai trò) nhân viên chăm sóc còn giữ chuồng, ngựa hay việc: `PUT`/`DELETE /users/:id` trả 409 (`needsReplacement`) cho tới khi gửi `replacementCaretaker`; chuồng, ngựa và việc chưa làm chuyển sang người thay cùng lúc (commit `3ed268f`). Màn Nhân sự có hộp thoại "Chọn người thay".
+- Form chạy thử hiện cự ly giải và cảnh báo khi ngắn hơn 75% cự ly giải (vẫn lưu được).
 
 ## 1. Đã xử lý: 2 test chủ ngựa làm `main` đỏ
 
@@ -74,6 +76,5 @@ Toàn bộ test giao diện: 40/40 qua. **Quân xem lại** 2 test này khi rả
 
 ## 6. Đang chờ Duy chốt (chưa làm)
 
-- Khi khóa hoặc gỡ nhân viên chăm sóc, việc chưa làm và việc mới tự tạo sẽ giao cho ai.
 - Kết quả giải có bắt buộc phải qua bước xác nhận tham gia không (dự kiến: có, làm sau 23/10).
 - Dọn các bản ghi chuồng cũ của ngựa đã ngừng quản lý trên web thật.
