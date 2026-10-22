@@ -7,6 +7,10 @@ const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { ROLES, ALL_ROLES } = require('../../constants/roles');
 const { toPublicUser } = require('../auth/auth.service');
+const { runTransaction, afterCommit } = require('../../utils/transaction');
+const { pushNotification } = require('../alerts/notification.service');
+const { bringWorkTo } = require('../stable/stallCaretaker.service');
+const { groomWork, replacementProblem, handOverGroomWork } = require('./groomHandover.service');
 
 const MIN_PASSWORD_LENGTH = 6;
 
@@ -82,6 +86,70 @@ async function horsesLeftUncovered(user) {
 const coverageNote = (names) =>
   names.length ? ` Lưu ý: ${names.length} ngựa cần người thay thế — ${names.join(', ')}.` : '';
 
+const describeWork = (work) =>
+  [
+    work.stalls.length && `chuồng ${work.stalls.join(', ')}`,
+    work.horses.length && `ngựa ${work.horses.join(', ')}`,
+    work.pendingTasks && `${work.pendingTasks} việc chưa làm`,
+  ]
+    .filter(Boolean)
+    .join('; ');
+
+/**
+ * A groom being locked or moved to another role who still holds stalls, horses or work: refused
+ * (409, with what they hold, so the screen can ask for a replacement) unless `replacement` names an
+ * active groom who takes it all over. Returns { refusal } | { work } (work.held false: nothing to hand).
+ */
+async function checkGroomLeaving(user, replacement) {
+  const work = await groomWork(user._id);
+  if (!work.held) return { work };
+  if (!replacement) {
+    return {
+      refusal: {
+        status: 409,
+        message: `${user.name} đang phụ trách ${describeWork(work)}. Chọn nhân viên chăm sóc thay trước khi khóa hoặc đổi vai trò.`,
+        data: { needsReplacement: true, stalls: work.stalls, horses: work.horses, pendingTasks: work.pendingTasks },
+      },
+    };
+  }
+  const invalid = await replacementProblem(user, replacement);
+  return invalid ? { refusal: { status: 400, message: invalid } } : { work };
+}
+
+/** Saves the account; with a replacement, in one transaction with the handover of the groom's work. */
+async function saveAccount(user, replacement) {
+  if (!replacement) {
+    await user.save();
+    return null;
+  }
+  const handed = await runTransaction(async (session) => {
+    const counts = await handOverGroomWork({ from: user._id, to: replacement, session });
+    await user.save({ session });
+    return counts;
+  });
+  user.$session(null);
+  return handed;
+}
+
+/** After a handover: audit, the horses' work reaches the new groom, who is told. Returns the summary line. */
+async function finishHandover(actor, user, replacement, work, handed) {
+  const to = await User.findById(replacement).select('name');
+  await logAction({ actorId: actor._id, action: 'user.handover', targetModel: 'User', targetId: user._id, metadata: { to: replacement, ...handed } });
+  await afterCommit('user.handover', async () => {
+    for (const horse of work.horseIds) {
+      // eslint-disable-next-line no-await-in-loop
+      await bringWorkTo(horse);
+    }
+    await pushNotification({
+      recipientUser: replacement,
+      type: 'task_assigned',
+      severity: 'info',
+      message: `🏠 Bạn nhận việc của ${user.name}: ${describeWork(work)}. Việc đã có trong danh sách của bạn.`,
+    });
+  });
+  return ` Đã chuyển ${handed.stalls} chuồng, ${handed.horses} ngựa và ${handed.tasks} việc chưa làm cho ${to?.name || 'người thay'}.`;
+}
+
 // Updates profile fields and/or role. Role changes are audited separately since they are
 // security-sensitive (this is the RBAC assignment surface for the whole system).
 const updateUser = asyncHandler(async (req, res) => {
@@ -102,7 +170,14 @@ const updateUser = asyncHandler(async (req, res) => {
   const previousRole = user.role;
   const previouslyActive = user.isActive;
   const losingCoverage = (isActive === false && previouslyActive) || (role !== undefined && role !== previousRole);
-  const uncovered = losingCoverage ? await horsesLeftUncovered(user) : [];
+  // A groom hands their stalls, horses and work to a named replacement before leaving the role.
+  let handover = null;
+  if (losingCoverage && previousRole === ROLES.GROOM) {
+    const { refusal, work } = await checkGroomLeaving(user, req.body.replacementCaretaker);
+    if (refusal) return fail(res, refusal.message, refusal.status, refusal.data);
+    if (work.held) handover = { work, replacement: req.body.replacementCaretaker };
+  }
+  const uncovered = losingCoverage && !handover ? await horsesLeftUncovered(user) : [];
 
   if (name !== undefined) user.name = name;
   if (phone !== undefined) user.phone = phone;
@@ -115,7 +190,8 @@ const updateUser = asyncHandler(async (req, res) => {
     // it could already log in.
     if (isActive && user.approvalStatus !== 'approved') user.approvalStatus = 'approved';
   }
-  await user.save();
+  const handed = await saveAccount(user, handover?.replacement);
+  const handedNote = handed ? await finishHandover(req.user, user, handover.replacement, handover.work, handed) : '';
 
   if (isActive === true && !previouslyActive) {
     await logAction({ actorId: req.user._id, action: 'user.approve', targetModel: 'User', targetId: user._id, metadata: { role: user.role } });
@@ -130,7 +206,7 @@ const updateUser = asyncHandler(async (req, res) => {
     });
   }
 
-  return ok(res, { ...toPublicUser(user), uncoveredHorses: uncovered }, `Đã cập nhật tài khoản.${coverageNote(uncovered)}`);
+  return ok(res, { ...toPublicUser(user), uncoveredHorses: uncovered, handedOver: handed }, `Đã cập nhật tài khoản.${handedNote}${coverageNote(uncovered)}`);
 });
 
 // Club Manager's decision on a self-registered account. Approving is what actually lets the
@@ -171,12 +247,20 @@ const deleteUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return fail(res, 'User not found.', 404);
 
-  const uncovered = user.isActive ? await horsesLeftUncovered(user) : [];
+  // Same rule as locking from the edit form: a groom's stalls, horses and work go to a replacement first.
+  let handover = null;
+  if (user.isActive && user.role === ROLES.GROOM) {
+    const { refusal, work } = await checkGroomLeaving(user, req.body?.replacementCaretaker);
+    if (refusal) return fail(res, refusal.message, refusal.status, refusal.data);
+    if (work.held) handover = { work, replacement: req.body.replacementCaretaker };
+  }
+  const uncovered = user.isActive && !handover ? await horsesLeftUncovered(user) : [];
   user.isActive = false;
-  await user.save();
+  const handed = await saveAccount(user, handover?.replacement);
   await logAction({ actorId: req.user._id, action: 'user.deactivate', targetModel: 'User', targetId: user._id });
+  const handedNote = handed ? await finishHandover(req.user, user, handover.replacement, handover.work, handed) : '';
 
-  return ok(res, { ...toPublicUser(user), uncoveredHorses: uncovered }, `Đã khóa tài khoản.${coverageNote(uncovered)}`);
+  return ok(res, { ...toPublicUser(user), uncoveredHorses: uncovered, handedOver: handed }, `Đã khóa tài khoản.${handedNote}${coverageNote(uncovered)}`);
 });
 
 module.exports = { listUsers, getUser, createUser, updateUser, decideRegistration, deleteUser };

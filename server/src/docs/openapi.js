@@ -866,11 +866,12 @@ module.exports = {
       put: {
         tags: ['Users (Manager)'],
         summary: 'Update user (profile, role, isActive, or reset password)',
+        description: 'Locking a groom (isActive false) or moving them to another role while they still hold stalls, horses or unfinished work from today on: 409 with data { needsReplacement, stalls, horses, pendingTasks } unless replacementCaretaker names another active groom; then it all goes over to them in the same save (data.handedOver has the counts).',
         parameters: [idParam('id')],
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string' }, role: { type: 'string' }, isActive: { type: 'boolean' }, password: { type: 'string' } } } } } },
-        responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 404: responses[404] },
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string' }, role: { type: 'string' }, isActive: { type: 'boolean' }, password: { type: 'string' }, replacementCaretaker: { type: 'string', description: 'Active groom who takes over a groom being locked or moved to another role.' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 400: responses[400], 404: responses[404], 409: responses[409] },
       },
-      delete: { tags: ['Users (Manager)'], summary: 'Deactivate user (soft delete)', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 404: responses[404] } },
+      delete: { tags: ['Users (Manager)'], summary: 'Deactivate user (soft delete)', description: 'Same rule as PUT for a groom who still holds stalls, horses or work: body { replacementCaretaker } or 409.', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 400: responses[400], 404: responses[404], 409: responses[409] } },
     },
     '/users/{id}/approval': {
       patch: {

@@ -247,7 +247,10 @@ test('stall catalogue and stable map against real MongoDB', { skip: !process.env
     assert.equal((await gate()).status, 'ok');
     assert.equal((await stallItem()).done, true);
 
-    await api('manager', 'PUT', `/users/${users.groom.id}`, { isActive: false });
+    // Locking a groom who still holds a stall now needs a replacement (groomHandover.test.js). Accounts
+    // locked before that rule can still be on a stall: set that state directly, as old data has it.
+    assert.equal((await raw('manager', 'PUT', `/users/${users.groom.id}`, { isActive: false })).status, 409);
+    await models.User.updateOne({ _id: users.groom.id }, { isActive: false });
     const locked = await gate();
     assert.equal(locked.status, 'caution', 'the same level as a stall with nobody named, not a block');
     assert.match(locked.detail, /bị khóa/);
@@ -262,7 +265,8 @@ test('stall catalogue and stable map against real MongoDB', { skip: !process.env
     assert.equal((await gate()).status, 'ok');
     assert.equal((await stallItem()).done, true);
 
-    await api('manager', 'PUT', `/users/${replacement.id}`, { role: 'owner' });
+    // Moved to another role (old data, as above: through the API it needs a replacement too).
+    await models.User.updateOne({ _id: replacement._id }, { role: 'owner' });
     const moved = await gate();
     assert.equal(moved.status, 'caution');
     assert.match(moved.detail, /không còn là nhân viên chăm sóc/);
