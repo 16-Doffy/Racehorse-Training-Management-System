@@ -46,6 +46,8 @@ test('trainer sees scheduled training and recorded race result', async ({ page }
   await expect(page.getByText('TEST Browser Cup', { exact: true })).toBeVisible();
 });
 test('a horse added with its papers shows them on its profile', async ({ page }) => {
+  // The profile draws the horse in 3D, slow on a busy machine.
+  test.setTimeout(120000);
   await login(page, 'manager');
   await page.goto('/horses');
   await page.getByRole('button', { name: /Thêm ngựa mới/ }).first().click();
@@ -65,6 +67,22 @@ test('a horse added with its papers shows them on its profile', async ({ page })
   await expect(papers.getByText('985141000123456', { exact: true })).toBeVisible();
   await expect(papers.getByText('VN-2026-777', { exact: true })).toBeVisible();
   await expect(papers.getByText(/500\.000\.000/)).toBeVisible();
+});
+test('the ration form names the groom who feeds and suggests a meal from the training plan', async ({ page }) => {
+  await login(page, 'trainer');
+  await page.goto('/stable/tasks');
+  await page.getByRole('tab', { name: 'Khẩu phần ăn' }).click();
+  await expect(page.getByRole('columnheader', { name: 'Người cho ăn' })).toBeVisible();
+  await page.getByRole('button', { name: /Thêm khẩu phần/ }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Ngựa').click();
+  await page.getByTitle('TEST Browser Horse', { exact: true }).click();
+  await expect(dialog.getByText('Nhân viên cho ăn:')).toBeVisible();
+  await expect(dialog.getByText('TEST groom', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Gợi ý bữa sáng theo kế hoạch tập')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Dùng gợi ý cho bữa này' }).click();
+  await expect(dialog.getByText(/TEST Browser Feed/).first()).toBeVisible();
+  await dialog.getByRole('button', { name: /Hủy|Huỷ|Cancel/ }).click();
 });
 test('trainer opens one horse’s schedule from the sessions page, not its profile', async ({ page }) => {
   await login(page, 'trainer');

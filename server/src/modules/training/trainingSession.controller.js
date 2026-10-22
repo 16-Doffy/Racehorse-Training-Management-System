@@ -755,6 +755,25 @@ const abortSession = asyncHandler(async (req, res) => {
   return ok(res, closed, 'Training session aborted.');
 });
 
+/**
+ * POST /training/sessions/:id/simulate { scenario: 'normal' | 'tired' | 'injury' } — only while the
+ * sensors are simulated (ENABLE_SENSOR_SIMULATOR): plays out a scenario on a running session, so a
+ * demo shows what the system does when a horse tires or goes lame (realtime/sensorSimulator.js).
+ */
+const simulateScenario = asyncHandler(async (req, res) => {
+  if (process.env.ENABLE_SENSOR_SIMULATOR !== 'true') return fail(res, 'Chỉ dùng được khi hệ thống chạy cảm biến mô phỏng.', 409);
+  const session = await loadSession(req, res);
+  if (!session) return undefined;
+  const scenario = req.body?.scenario;
+  if (!TrainingSession.schema.path('simScenario').enumValues.includes(scenario)) {
+    return fail(res, 'Kịch bản chỉ là normal, tired hoặc injury.', 400);
+  }
+  const updated = await TrainingSession.findOneAndUpdate({ _id: session._id, status: SESSION_STATUS.IN_PROGRESS }, { $set: { simScenario: scenario } }, { new: true });
+  if (!updated) return fail(res, 'Chỉ áp dụng cho buổi đang diễn ra.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });
+  await logAction({ actorId: req.user._id, action: 'trainingSession.simulate', targetModel: 'TrainingSession', targetId: session._id, metadata: { scenario } });
+  return ok(res, { simScenario: scenario }, 'Simulation scenario set.');
+});
+
 // A finished session is the record of work done and what came of it; only bookings that never
 // happened can be removed.
 const deleteSession = asyncHandler(async (req, res) => {
@@ -848,5 +867,6 @@ module.exports = {
   recordEvaluation,
   endSession,
   abortSession,
+  simulateScenario,
   deleteSession,
 };

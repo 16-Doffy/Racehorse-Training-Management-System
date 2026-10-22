@@ -1215,6 +1215,19 @@ module.exports = {
         responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
+    '/training/sessions/{id}/simulate': {
+      post: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'Play out a scenario on a running session (simulated sensors only)',
+        description:
+          'Only while ENABLE_SENSOR_SIMULATOR=true (409 otherwise) and only on an in_progress session (409). scenario: normal, tired (the horse slows, heart rate climbs, the run ends short of its targets) ' +
+          'or injury: on the next sensor tick the run is stopped as aborted/injury with the readings in abortReason, the vet gets a high-priority exam request, ' +
+          'the groom an icing task now, the trainer a critical fitness_alert, the owner a message; the socket sends session:completed with aborted: true.',
+        parameters: [idParam('id')],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['scenario'], properties: { scenario: { type: 'string', enum: ['normal', 'tired', 'injury'] } } } } } },
+        responses: { 200: responses[200]({ type: 'object', properties: { simScenario: { type: 'string' } } }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
     '/training/sessions/{id}/evaluation': {
       patch: {
         tags: ['Training (Head Trainer)'],

@@ -59,6 +59,9 @@ const trainingSessionSchema = new mongoose.Schema(
     evaluatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     abortReason: { type: String },
     abortCategory: { type: String, enum: ABORT_CATEGORIES },
+    // What the simulated sensors play out on this run (demo only, set while it runs): a horse that
+    // tires, or one that goes lame part-way — the sensor feed then stops the run itself.
+    simScenario: { type: String, enum: ['normal', 'tired', 'injury'], default: 'normal' },
     blockedReason: { type: String },
     cancelReason: { type: String },
     evaluatedAt: { type: Date, default: null },

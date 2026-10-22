@@ -17,7 +17,9 @@ import {
   surfaceOptions,
   layPhases,
   planWarnings,
+  INTENSITY_LABELS,
 } from './trainingVocab';
+import { distanceClass, phaseGuide, midKm, PLAN_RULES } from './planGuide';
 
 const { Text } = Typography;
 const MORNING_TIMES = ['05:30', '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00'];
@@ -146,6 +148,16 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
   const startDay = basics ? basics.startDate.startOf('day').toDate() : null;
   const laid = startDay ? layPhases(startDay, phases) : [];
   const warnings = basics ? planWarnings(phases, { startDate: startDay, raceDate: race?.raceDate, distance: race?.distance || basics.distanceTarget }) : [];
+  // Reference numbers for this race distance, beside each phase (planGuide.js).
+  const guideDistance = race?.distance || basics?.distanceTarget;
+  const guideClass = distanceClass(guideDistance);
+  const fillFromGuide = () =>
+    setPhases((list) =>
+      list.map((p) => {
+        const g = phaseGuide(guideDistance, p.key);
+        return g ? { ...p, weeklyVolumeKm: midKm(g.km), intensity: g.intensity } : p;
+      })
+    );
   const hasError = warnings.some((w) => w.level === 'error');
 
   const submit = () =>
@@ -337,6 +349,16 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
                     </td>
                     <td className="py-1.5 pr-2">
                       <InputNumber size="small" min={1} max={100} value={p.weeklyVolumeKm} onChange={(v) => updatePhase(i, { weeklyVolumeKm: v })} />
+                      {(() => {
+                        const g = phaseGuide(guideDistance, p.key);
+                        if (!g) return null;
+                        const out = p.weeklyVolumeKm < g.km[0] || p.weeklyVolumeKm > g.km[1];
+                        return (
+                          <Text type={out ? 'warning' : 'secondary'} className="block !text-xs whitespace-nowrap">
+                            tham khảo {g.km[0]}–{g.km[1]} km
+                          </Text>
+                        );
+                      })()}
                     </td>
                     <td className="py-1.5 pr-2">
                       <Select size="small" className="w-24" value={p.intensity} options={intensityOptions} onChange={(v) => updatePhase(i, { intensity: v })} />
@@ -370,6 +392,52 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
           >
             Thêm giai đoạn
           </Button>
+
+          <div className="mt-4 rounded-lg border border-black/10 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Text strong className="!text-sm">
+                Số liệu tham khảo cho giải {guideDistance ? `${guideDistance} m` : ''} · nhóm {guideClass.label}
+              </Text>
+              <Button size="small" onClick={fillFromGuide}>
+                Điền km/tuần và cường độ theo gợi ý
+              </Button>
+            </div>
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-gray-500">
+                    <th className="py-1 pr-2 font-medium">Giai đoạn</th>
+                    <th className="py-1 pr-2 font-medium">Số tuần</th>
+                    <th className="py-1 pr-2 font-medium">km/tuần</th>
+                    <th className="py-1 pr-2 font-medium">Cường độ</th>
+                    <th className="py-1 font-medium">Trọng tâm</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {['base_building', 'strength', 'speed', 'peak', 'recovery'].map((key) => {
+                    const g = phaseGuide(guideDistance, key);
+                    return (
+                      <tr key={key} className="border-t border-black/5 align-top">
+                        <td className="py-1 pr-2 whitespace-nowrap">{PHASE_LABELS[key]}</td>
+                        <td className="py-1 pr-2 tabular-nums whitespace-nowrap">{g.weeks[0] === g.weeks[1] ? g.weeks[0] : `${g.weeks[0]}–${g.weeks[1]}`}</td>
+                        <td className="py-1 pr-2 tabular-nums whitespace-nowrap">{g.km[0]}–{g.km[1]}</td>
+                        <td className="py-1 pr-2 whitespace-nowrap">{INTENSITY_LABELS[g.intensity]}</td>
+                        <td className="py-1 text-gray-600">{g.focus}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <ul className="mt-2 mb-0 pl-4 text-xs text-gray-600">
+              {PLAN_RULES.map((rule) => (
+                <li key={rule}>{rule}</li>
+              ))}
+            </ul>
+            <Text type="secondary" className="block !text-xs mt-1">
+              Đây là điểm xuất phát; HLV chỉnh theo thể trạng từng con. Số tuần do hệ thống chia ngược từ ngày đua.
+            </Text>
+          </div>
         </div>
       )}
 

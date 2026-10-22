@@ -17,6 +17,7 @@ import {
   Popconfirm,
   Segmented,
   InputNumber,
+  Alert,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
 import {
@@ -31,7 +32,10 @@ import {
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { dailyTaskApi, incidentApi, stallApi } from './stableApi';
+import { dailyTaskApi, incidentApi, stallApi, stableAssignmentApi } from './stableApi';
+import { suggestRation, breakfastBy } from './rationSuggestion';
+import { trainingPlanApi } from '../training/trainingApi';
+import { PHASE_LABELS } from '../training/trainingVocab';
 import { horsesApi } from '../horses/horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { feedingApi } from '../feeding/feedingApi';
@@ -475,6 +479,36 @@ function RationList() {
   const { data: inventoryData } = useQuery({ queryKey: ['inventory'], queryFn: () => inventoryApi.list() });
   const feedItems = (inventoryData?.data || []).filter((i) => i.category === 'feed' && !i.isProposed && i.isActive !== false);
   const feedById = new Map(feedItems.map((i) => [i._id, i]));
+  // Who feeds each horse (its stall's groom), what happened to each meal today, and the plan the
+  // suggested ration is worked out from.
+  const { data: assignmentsData } = useQuery({ queryKey: ['stable-assignments'], queryFn: () => stableAssignmentApi.list() });
+  const { data: tasksData } = useQuery({ queryKey: ['daily-tasks-all'], queryFn: () => dailyTaskApi.list() });
+  const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
+  const idOf = (ref) => String(ref?._id || ref || '');
+  const assignmentOf = (horse) => (assignmentsData?.data || []).find((a) => idOf(a.horse) === idOf(horse));
+  const planOf = (horse) => (plansData?.data || []).find((p) => p.status === 'active' && idOf(p.horse) === idOf(horse));
+  const todayMeal = (ration) => {
+    const meals = (tasksData?.data || []).filter(
+      (t) => t.taskType === 'feeding' && idOf(t.horse) === idOf(ration.horse) && t.mealSlot === ration.mealTime && dayjs(t.scheduledDate).isSame(dayjs(), 'day')
+    );
+    return meals.find((t) => t.status === 'completed') || meals.find((t) => !t.makeUpOf) || null;
+  };
+  const watchedHorse = Form.useWatch('horse', form);
+  const watchedSlot = Form.useWatch('mealTime', form);
+  const formHorse = (horsesData?.data || []).find((h) => h._id === watchedHorse);
+  const formGroom = watchedHorse ? assignmentOf(watchedHorse) : null;
+  const formPlan = watchedHorse ? planOf(watchedHorse) : null;
+  const suggestion = formHorse ? suggestRation({ horse: formHorse, plan: formPlan, slot: watchedSlot, feedItems }) : null;
+  const morningBy = formPlan && watchedSlot === 'morning' ? breakfastBy(formPlan.sessionTime || policy.morningTime, policy.digestMinutes) : null;
+  const applySuggestion = () => {
+    const lines = [
+      suggestion.items.forage && { inventoryItem: suggestion.items.forage._id, amount: suggestion.meal.forage },
+      suggestion.items.concentrate && { inventoryItem: suggestion.items.concentrate._id, amount: suggestion.meal.concentrate },
+    ].filter(Boolean);
+    if (lines.length) form.setFieldValue('items', lines);
+    const time = form.getFieldValue('timeOfDay');
+    if (morningBy && time && dayjs(time).format('HH:mm') > morningBy) form.setFieldValue('timeOfDay', dayjs(morningBy, 'HH:mm'));
+  };
   const [proposeOpen, setProposeOpen] = useState(false);
   const [proposeForm] = Form.useForm();
   const proposeMutation = useMutation({
@@ -547,6 +581,30 @@ function RationList() {
       dataIndex: ['horse', 'name'],
       key: 'horse',
       render: (name, r) => <Link to={`/horses/${r.horse?._id}`}>{name}</Link>,
+    },
+    {
+      // The groom who feeds the horse, and what became of this meal today.
+      title: 'Người cho ăn',
+      key: 'groom',
+      render: (_, r) => {
+        const groom = assignmentOf(r.horse)?.assignedCaretaker;
+        const t = todayMeal(r);
+        let today = null;
+        if (t?.status === 'completed') today = { type: 'success', text: `Hôm nay: ${(t.completedBy || t.assignedTo)?.name || 'nhân viên'} cho ăn lúc ${dayjs(t.completedAt).format('HH:mm')}` };
+        else if (t?.status === 'skipped') today = { type: 'danger', text: t.skipReason ? `Hôm nay: không cho ăn được (${t.skipReason})` : 'Hôm nay: HLV cho bỏ bữa' };
+        else if (t?.timing?.state === 'missed') today = { type: 'danger', text: 'Hôm nay: chưa cho ăn, đã quá giờ' };
+        else if (t) today = { type: 'secondary', text: 'Hôm nay: chưa cho ăn' };
+        return (
+          <div className="flex flex-col min-w-[180px] text-sm">
+            {groom?.name ? <span>{groom.name}</span> : <Text type="warning">Chưa có nhân viên chăm sóc</Text>}
+            {today && (
+              <Text type={today.type} className="!text-xs">
+                {today.text}
+              </Text>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: 'Bữa',
@@ -683,7 +741,22 @@ function RationList() {
             })
           }
         >
-          <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>
+          <Form.Item
+            name="horse"
+            label="Ngựa"
+            rules={[{ required: true }]}
+            extra={
+              watchedHorse &&
+              (formGroom?.assignedCaretaker?.name ? (
+                <span>
+                  Nhân viên cho ăn: <b>{formGroom.assignedCaretaker.name}</b>
+                  {formGroom.stall?.code ? ` · chuồng ${formGroom.stall.code}` : ''}
+                </span>
+              ) : (
+                <Text type="warning">Ngựa chưa có nhân viên chăm sóc: Quản lý cần xếp chuồng thì mới có người cho ăn.</Text>
+              ))
+            }
+          >
             <Select
               disabled={Boolean(editing)}
               options={(horsesData?.data || []).map((h) => ({ value: h._id, label: h.name }))}
@@ -705,6 +778,42 @@ function RationList() {
               <TimePicker format="HH:mm" minuteStep={15} className="w-full" />
             </Form.Item>
           </div>
+
+          {suggestion && (
+            <Alert
+              type="info"
+              className="!mb-3"
+              title={`Gợi ý ${(MEAL_LABELS[watchedSlot] || 'bữa này').toLowerCase()} theo kế hoạch tập`}
+              description={
+                <div className="flex flex-col gap-1 text-sm">
+                  <span>
+                    {suggestion.phase ? `Giai đoạn ${PHASE_LABELS[suggestion.phase.key] || suggestion.phase.key} · ${suggestion.workLabel}` : 'Ngựa chưa có kế hoạch tập: khẩu phần duy trì'}
+                    {' · '}nặng {suggestion.weightKg} kg{suggestion.weightGuessed ? ' (chưa nhập cân nặng, tạm tính)' : ''}.
+                  </span>
+                  <span>
+                    Cả ngày khoảng {suggestion.daily.forage} kg cỏ và {suggestion.daily.concentrate} kg thức ăn tinh. Bữa này:{' '}
+                    <b>
+                      {suggestion.meal.forage} kg {suggestion.items.forage?.name || 'cỏ'} + {suggestion.meal.concentrate} kg {suggestion.items.concentrate?.name || 'thức ăn tinh'}
+                    </b>
+                    .
+                  </span>
+                  {morningBy && (
+                    <span>
+                      Buổi tập sáng {formPlan.sessionTime || policy.morningTime}: cho ăn sáng xong trước {morningBy} để đủ {policy.digestMinutes} phút tiêu hóa.
+                    </span>
+                  )}
+                  <Text type="secondary" className="!text-xs">
+                    Căn cứ: cả ngày 2–2,5% cân nặng; cỏ không dưới 1,5%; thức ăn tinh tăng theo mức tập và không quá 0,5% cân nặng mỗi bữa (NRC 2007).
+                  </Text>
+                  {(suggestion.items.forage || suggestion.items.concentrate) && (
+                    <Button size="small" className="!self-start !mt-1" onClick={applySuggestion}>
+                      Dùng gợi ý cho bữa này
+                    </Button>
+                  )}
+                </div>
+              }
+            />
+          )}
 
           <div className="flex items-center justify-between">
             <Text strong className="!text-sm">
