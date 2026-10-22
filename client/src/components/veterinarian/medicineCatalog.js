@@ -16,6 +16,12 @@ export const isExamTool = (item) => medical(item) && TOOL_UNITS.includes(String(
 /** A medicine the vet can prescribe (and the groom gives from stock). */
 export const isPrescribable = (item) => medical(item) && !item.isProposed && !isExamTool(item);
 
+/** The medicines a prescription picks from, by name, plus any item an existing one (`treatment`) still links. */
+export function prescribableCatalog(items, treatment) {
+  const linked = new Set((treatment?.medications || []).map((m) => String(m.inventoryItem?._id || m.inventoryItem || '')).filter(Boolean));
+  return (items || []).filter((i) => isPrescribable(i) || linked.has(i._id)).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** Lower case, no accents, single spaces: what names are compared on. */
 export const plain = (text) =>
   String(text ?? '')

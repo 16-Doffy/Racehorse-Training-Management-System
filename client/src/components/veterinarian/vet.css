@@ -163,6 +163,120 @@ body[data-bs-theme='dark'] .vet-ui {
   border-radius: 12px;
 }
 
+/* ---------- A filed exam, read as a sheet (ExamRecordPage) ---------- */
+.vet-ui .vet-sheet {
+  padding: 18px 20px;
+}
+.vet-ui .vet-sheet-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.vet-ui .vet-sheet-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vet-brass);
+}
+.vet-ui .vet-sheet-horse {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--vet-ink);
+}
+.vet-ui .vet-sheet-conclusion {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--vet-border-soft);
+}
+.vet-ui .vet-sheet-label {
+  margin-bottom: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-sheet-diagnosis {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--vet-ink);
+}
+.vet-ui .vet-sheet-block + .vet-sheet-block {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--vet-border-soft);
+}
+/* Every field of the exam form with its value, or "Không ghi". */
+.vet-ui .vet-sheet-facts {
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
+.vet-ui .vet-sheet-facts dt {
+  color: var(--vet-muted);
+  font-weight: 400;
+}
+.vet-ui .vet-sheet-facts dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--vet-ink);
+}
+.vet-ui .vet-vitals.vet-vitals-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 720px) {
+  .vet-ui .vet-vitals.vet-vitals-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .vet-ui .vet-sheet-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .vet-ui .vet-sheet-facts dd {
+    margin-bottom: 8px;
+  }
+}
+
+/* ---------- An exam request, as the vet reads it ---------- */
+.vet-ui .vet-request {
+  padding: 12px 14px;
+}
+.vet-ui .vet-sign {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--vet-border);
+  background: var(--vet-card);
+  color: var(--vet-ink);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.vet-ui .vet-request-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 14px;
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+.vet-ui .vet-request-facts dt {
+  color: var(--vet-muted);
+  font-weight: 400;
+}
+.vet-ui .vet-request-facts dd {
+  margin: 0;
+  color: var(--vet-ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vet-ui .vet-request-facts .contents {
+  display: contents;
+}
+
 /* ---------- Pills ---------- */
 .vet-ui .vet-pill {
   display: inline-flex;
@@ -512,6 +626,47 @@ body[data-bs-theme='dark'] .vet-menu .dropdown-item.is-danger {
 .vet-ui .vet-choice-hint {
   margin-top: 8px;
   font-size: 12.5px;
+  color: var(--vet-muted);
+}
+
+/* ---------- A prescription inside another form (PrescriptionFields compact) ---------- */
+.vet-ui .vet-rx-label {
+  margin-bottom: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-rx-block {
+  margin-top: 14px;
+}
+.vet-ui .vet-rx-foot {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--vet-border-soft);
+}
+.vet-ui .vet-rx .vet-choice {
+  padding: 5px 10px;
+  font-size: 12.5px;
+}
+.vet-ui .vet-rx .vet-choices {
+  gap: 6px;
+}
+.vet-ui .vet-rx-quick {
+  padding: 2px 9px;
+  border: 1px solid var(--vet-border);
+  border-radius: 999px;
+  background: var(--vet-card);
+  color: var(--vet-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vet-ui .vet-rx-quick:hover {
+  background: var(--vet-hover);
+}
+.vet-ui .vet-rx-quick.is-ghost {
+  border-color: transparent;
+  background: transparent;
   color: var(--vet-muted);
 }
 
@@ -977,26 +1132,51 @@ body[data-bs-theme='dark'] .vet-ui .vet-due:hover {
   min-width: 110px;
   margin-right: 4px;
 }
+/* The medicines of a treatment: one line each, in one box. */
 .vet-ui .vet-meds {
   list-style: none;
   margin: 10px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-.vet-ui .vet-meds > li {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 12px;
   border-radius: 10px;
   background: var(--vet-card-2);
   border: 1px solid var(--vet-border-soft);
+  overflow: hidden;
+}
+.vet-ui .vet-meds > li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+}
+.vet-ui .vet-meds > li + li {
+  border-top: 1px solid var(--vet-border-soft);
 }
 .vet-ui .vet-meds > li > .bi {
   color: var(--vet-faint);
-  margin-top: 2px;
+  font-size: 13px;
+}
+.vet-ui .vet-med-line {
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.vet-ui .vet-tr-notes {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.vet-ui .vet-tr-notes dt {
+  color: var(--vet-faint);
+  font-weight: 400;
+}
+.vet-ui .vet-tr-notes dd {
+  margin: 0;
+  color: var(--vet-ink);
+  min-width: 0;
 }
 .vet-ui .vet-meds > li.is-stopped {
   opacity: 0.6;

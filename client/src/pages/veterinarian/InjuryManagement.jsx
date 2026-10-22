@@ -3,33 +3,28 @@ import { Button } from 'react-bootstrap';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import InjuryModal from '../../components/veterinarian/InjuryModal';
-import useConfirm from '../../components/veterinarian/useConfirm';
-import { deleteInjury, setInjuryStage } from '../../components/veterinarian/vetActions';
-import { ActionMenu, Callout, EmptyNote, FilterChips, HealthPill, HorseCell, LevelPill, LoadingBlock, Pill, RecoveryStepper, SearchBox, VetCard } from '../../components/veterinarian/ui';
+import { setInjuryStage } from '../../components/veterinarian/vetActions';
+import { Callout, EmptyNote, FilterChips, HealthPill, HorseCell, LevelPill, LoadingBlock, Pill, RecoveryStepper, SearchBox, VetCard } from '../../components/veterinarian/ui';
 import { SEVERITY_META, ago, clearanceOf, idOf, isActiveInjury, shortBodyPart } from '../../components/veterinarian/vetFormat';
 import { useInjuries, useVetHorses, useVetRefresh } from '../../hooks/useVetData';
 
 const SEVERITY_RANK = { severe: 0, moderate: 1, mild: 2 };
 
 /**
- * Injuries across the vet's horses, grouped by horse, worst first. The stage of recovery moves with
- * one click on its stepper; the 3D view of each horse's injuries is on the horse's page.
- * ?new=1[&horseId=] opens the form, ?edit=<id> opens an injury (links from before this page).
+ * Injuries across the vet's horses, grouped by horse, worst first. Once recorded an injury is not
+ * edited nor deleted: only its stage of recovery moves, with one click on its stepper (or with the
+ * horse's treatment). The 3D view of each horse's injuries is on the horse's page.
+ * ?new=1[&horseId=] opens the form.
  */
 export default function InjuryManagement() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const refresh = useVetRefresh();
-  const [confirm, confirmDialog] = useConfirm();
   const injuriesQ = useInjuries();
   const horsesQ = useVetHorses();
   const [status, setStatus] = useState('active');
   const [query, setQuery] = useState('');
-  const [dialog, setDialog] = useState(() => {
-    if (params.get('edit')) return { type: 'edit', id: params.get('edit') };
-    if (params.get('new')) return { type: 'new', horseId: params.get('horseId') };
-    return null;
-  });
+  const [dialog, setDialog] = useState(() => (params.get('new') ? { type: 'new', horseId: params.get('horseId') } : null));
 
   const horses = useMemo(() => horsesQ.data || [], [horsesQ.data]);
   const injuries = useMemo(() => injuriesQ.data || [], [injuriesQ.data]);
@@ -53,7 +48,6 @@ export default function InjuryManagement() {
     return list.sort((a, b) => (SEVERITY_RANK[a.injuries[0].severity] ?? 3) - (SEVERITY_RANK[b.injuries[0].severity] ?? 3) || (a.horse?.name || '').localeCompare(b.horse?.name || ''));
   }, [injuries, horseById, status, q]);
 
-  const editing = dialog?.type === 'edit' ? injuries.find((m) => m._id === dialog.id) : dialog?.injury;
   const close = () => setDialog(null);
 
   return (
@@ -82,6 +76,10 @@ export default function InjuryManagement() {
             { value: 'all', label: 'Tất cả', count: injuries.length },
           ]}
         />
+      </div>
+      <div className="vet-small vet-muted mb-3">
+        <i className="bi bi-arrow-repeat me-1" aria-hidden="true" />
+        Giai đoạn tự chuyển theo đơn điều trị: kê đơn cho ngựa → <strong>Đang điều trị</strong>; kết thúc đơn cuối cùng → <strong>Đang hồi phục</strong>. “Đã khỏi” do bác sĩ xác nhận — bấm vào chấm trên dòng chấn thương, hoặc tích khi lưu phiếu khám cho tập bình thường.
       </div>
 
       {injuriesQ.isError && (
@@ -131,18 +129,17 @@ export default function InjuryManagement() {
                           </span>
                           <Pill tone={SEVERITY_META[m.severity]?.tone}>{SEVERITY_META[m.severity]?.label || m.severity}</Pill>
                           <span className="vet-small vet-faint">ghi {ago(m.createdAt)}</span>
+                          {m.healthRecord && (
+                            <button type="button" className="vet-link vet-small" onClick={() => navigate(`/veterinarian/examinations/${idOf(m.healthRecord)}`)}>
+                              <i className="bi bi-clipboard2-pulse" aria-hidden="true" /> Phiếu khám
+                            </button>
+                          )}
                         </div>
                         {m.notes && <div className="vet-small vet-muted vet-clamp-2 mt-1">{m.notes}</div>}
                         <div className="mt-2">
                           <RecoveryStepper value={m.recoveryStatus} onChange={(stage) => setInjuryStage(m, stage, { refresh })} />
                         </div>
                       </div>
-                      <ActionMenu
-                        items={[
-                          { label: 'Sửa', icon: 'bi-pencil', onClick: () => setDialog({ type: 'edit', id: m._id }) },
-                          { label: 'Xóa (ghi nhầm)', icon: 'bi-trash', onClick: () => deleteInjury(m, { confirm, refresh }), danger: true },
-                        ]}
-                      />
                     </div>
                   ))}
                 </div>
@@ -155,10 +152,6 @@ export default function InjuryManagement() {
       {dialog?.type === 'new' && (
         <InjuryModal defaultHorseId={dialog.horseId || ''} horses={horses} injuries={injuries} onHide={close} onDone={refresh} />
       )}
-      {dialog?.type === 'edit' && editing && (
-        <InjuryModal injury={{ ...editing, horse: horseById.get(idOf(editing.horse)) || editing.horse }} horses={horses} injuries={injuries} onHide={close} onDone={refresh} />
-      )}
-      {confirmDialog}
     </div>
   );
 }

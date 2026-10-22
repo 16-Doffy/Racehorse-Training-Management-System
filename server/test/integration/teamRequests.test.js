@@ -113,4 +113,73 @@ test('team requests: audit filters, horse papers, owner numbers, care history, e
     assert.equal(declined.status, 'cancelled');
     assert.ok(await models.Notification.exists({ recipientUser: users.trainer.id, message: /từ chối yêu cầu khám/ }));
   });
+
+  await t.test('exam request: what the trainer saw, the deadline of its priority, and a hold on training', async () => {
+    assert.equal((await raw('trainer', 'POST', '/health/exam-requests', { horse: horse._id })).status, 400, 'a reason or a sign is needed');
+    assert.equal((await raw('trainer', 'POST', '/health/exam-requests', { horse: horse._id, reason: 'TEST', observedAt: day(1).toISOString() })).status, 400, 'not seen in the future');
+
+    const urgent = await api(
+      'trainer',
+      'POST',
+      '/health/exam-requests',
+      { horse: horse._id, priority: 'urgent', symptoms: ['lameness', 'swelling', 'nope'], bodyAreas: ['fore_left'], observedAt: new Date().toISOString(), firstAid: 'Chườm lạnh 15 phút', holdTraining: true, reason: 'TEST khập khiễng sau phi nước đại' },
+      201
+    );
+    assert.deepEqual(urgent.symptoms, ['lameness', 'swelling']);
+    assert.deepEqual(urgent.bodyAreas, ['fore_left']);
+    assert.equal(urgent.auto, false);
+    assert.ok(new Date(urgent.dueBy).getTime() - new Date(urgent.createdAt).getTime() <= 3600000 + 1000, 'urgent: within the hour');
+    assert.ok(await models.Notification.exists({ type: 'exam_request', message: /KHẨN CẤP.*Khập khiễng.*chân trước trái.*dừng tập/ }));
+
+    const readiness = await api('trainer', 'GET', `/training/sessions/readiness?horse=${horse._id}&intensity=light`);
+    const medical = readiness.gates.find((g) => g.key === 'medical');
+    assert.equal(medical.status, 'blocked', 'the hold stops training until a vet has seen the horse');
+    assert.match(medical.detail, /Tạm dừng tập chờ bác sĩ khám/);
+
+    assert.equal((await raw('vet', 'PATCH', `/health/exam-requests/${urgent._id}`, { action: 'accept', scheduledFor: new Date(Date.now() + 1800000).toISOString() })).status, 400, 'an urgent request is not booked for later');
+    await api('vet', 'PATCH', `/health/exam-requests/${urgent._id}`, { action: 'accept' });
+    assert.ok(await models.Notification.exists({ recipientUser: users.trainer.id, message: /đang tới khám/ }));
+
+    await api('vet', 'POST', '/health/records', { horse: horse._id, diagnosis: 'TEST viêm gân nhẹ', resultStatus: 'monitoring', vitalSigns: { weightKg: 512 }, clinical: { lamenessGrade: 2, lamenessLimb: 'fore_left', mucousMembrane: 'pink' }, history: 'TEST theo yêu cầu HLV' }, 201);
+    assert.equal((await models.ExamRequest.findById(urgent._id)).status, 'done');
+    assert.equal((await models.Horse.findById(horse._id)).weightKg, 512, 'the exam weighed the horse');
+    const after = await api('trainer', 'GET', `/training/sessions/readiness?horse=${horse._id}&intensity=light`);
+    assert.doesNotMatch(after.gates.find((g) => g.key === 'medical').detail, /Tạm dừng tập/, 'the exam lifts the hold');
+
+    const high = await api('trainer', 'POST', '/health/exam-requests', { horse: horse._id, priority: 'high', symptoms: ['breathing'] }, 201);
+    assert.equal((await raw('vet', 'PATCH', `/health/exam-requests/${high._id}`, { action: 'accept', scheduledFor: new Date(Date.now() + 8 * 3600000).toISOString() })).status, 400, 'past the 6-hour window');
+    await api('vet', 'PATCH', `/health/exam-requests/${high._id}`, { action: 'accept', scheduledFor: new Date(Date.now() + 2 * 3600000).toISOString() });
+    assert.equal((await raw('vet', 'POST', '/health/records', { horse: horse._id, diagnosis: 'TEST', resultStatus: 'eligible', clinical: { gutSounds: 'loud' } })).status, 400, 'a clinical finding from the list');
+  });
+
+  await t.test("injuries follow the horse's treatment: started → in treatment, last one ended → recovering", async () => {
+    const record = await api('vet', 'POST', '/health/records', { horse: horse._id, diagnosis: 'TEST vết thương sườn', resultStatus: 'monitoring' }, 201);
+    const marker = await api('vet', 'POST', '/health/injury-markers', { horse: horse._id, healthRecord: record._id, bodyPart: 'TEST Sườn trái', coordinates: { x: 0.5, y: 0.5 }, severity: 'moderate' }, 201);
+    assert.equal(marker.recoveryStatus, 'new');
+    const treatment = await api('vet', 'POST', '/health/treatments', { horse: horse._id, healthRecord: record._id, status: 'ongoing', careInstructions: 'TEST rửa vết thương' }, 201);
+    assert.equal((await models.InjuryMarker.findById(marker._id)).recoveryStatus, 'in_treatment');
+    await api('vet', 'PUT', `/health/treatments/${treatment._id}`, { status: 'completed' });
+    assert.equal((await models.InjuryMarker.findById(marker._id)).recoveryStatus, 'recovering', 'healed stays the vet’s call');
+  });
+
+  await t.test('filed records are not rewritten: an exam, a prescription (ended or replaced instead)', async () => {
+    const record = await api('vet', 'POST', '/health/records', { horse: horse._id, diagnosis: 'TEST viêm gân', resultStatus: 'injured' }, 201);
+    assert.equal((await raw('vet', 'PUT', `/health/records/${record._id}`, { diagnosis: 'TEST khác' })).status, 409);
+
+    const first = await api('vet', 'POST', '/health/treatments', { horse: horse._id, healthRecord: record._id, status: 'ongoing', trainingLevel: 'none', lockReason: 'TEST nghỉ', careInstructions: 'TEST chườm lạnh' }, 201);
+    assert.equal((await raw('vet', 'PUT', `/health/treatments/${first._id}`, { careInstructions: 'TEST khác' })).status, 400, 'not rewritten');
+    assert.equal((await raw('vet', 'PUT', `/health/treatments/${first._id}`, { status: 'completed', careInstructions: 'TEST khác' })).status, 400);
+
+    // A new prescription takes over: the old one ends without holding the horse at its old level.
+    const second = await api('vet', 'POST', '/health/treatments', { horse: horse._id, healthRecord: record._id, status: 'ongoing', trainingLevel: 'light', lockReason: 'TEST đi bộ', replaces: first._id }, 201);
+    const old = await models.Treatment.findById(first._id);
+    assert.equal(old.status, 'completed');
+    assert.equal(String(old.replacedBy), String(second._id));
+    assert.equal(old.returnLevel, null, 'the new prescription’s level counts');
+    assert.equal((await api('vet', 'GET', `/horses/${horse._id}`)).trainingClearance.level, 'light');
+    assert.equal((await raw('vet', 'PUT', `/health/treatments/${first._id}`, { status: 'completed' })).status, 409, 'already ended');
+
+    await api('vet', 'PUT', `/health/treatments/${second._id}`, { status: 'completed' });
+    assert.equal((await models.Treatment.findById(second._id)).returnLevel, 'light', 'ending one that restricts still waits for a return assessment');
+  });
 });

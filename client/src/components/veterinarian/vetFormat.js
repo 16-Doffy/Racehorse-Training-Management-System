@@ -5,6 +5,7 @@
 import { HEALTH_LABELS, TRAINING_LEVEL_META, LEVEL_RANK } from '../../constants/health';
 import { INCIDENT_CATEGORY_META, INCIDENT_SEVERITY_META, MEDICATION_ROUTE_LABELS } from '../../constants/care';
 import { HORSE_SEX_LABELS } from '../../constants/horse';
+import { dueByOf } from '../../constants/examRequest';
 import { breedLabel } from '../../features/horses/horse3d/horseBreeds';
 
 export { LEVEL_RANK };
@@ -84,6 +85,30 @@ export const PRIORITY_META = {
   high: { label: 'Ưu tiên cao', tone: 'watch', rank: 1 },
   normal: { label: 'Bình thường', tone: 'neutral', rank: 2 },
 };
+
+/** "25 phút", "3 giờ 10 phút", "2 ngày". */
+export function spanText(ms) {
+  const minutes = Math.max(1, Math.round(ms / 60000));
+  if (minutes < 60) return `${minutes} phút`;
+  if (minutes < 24 * 60) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m && h < 6 ? `${h} giờ ${m} phút` : `${h} giờ`;
+  }
+  return `${Math.round(minutes / (24 * 60))} ngày`;
+}
+
+/**
+ * Where an open request stands against the deadline of its priority: by when, how long is left (or how
+ * late it is), and a tone — red under an hour or late, amber under three hours.
+ */
+export function requestDeadline(request, now = Date.now()) {
+  const due = dueByOf(request);
+  const left = due.getTime() - now;
+  if (left < 0) return { due, overdue: true, tone: 'bad', label: `Quá hạn ${spanText(-left)}`, text: `Hạn khám ${fmtDateTime(due)} đã qua ${spanText(-left)}.` };
+  const tone = left < 60 * 60000 ? 'bad' : left < 3 * 3600000 ? 'watch' : 'neutral';
+  return { due, overdue: false, tone, label: `Còn ${spanText(left)}`, text: `Khám trước ${fmtDateTime(due)} (còn ${spanText(left)}).` };
+}
 const INCIDENT_TONE = { low: 'info', medium: 'watch', high: 'bad' };
 export const incidentSeverity = (severity) => ({
   label: INCIDENT_SEVERITY_META[severity]?.label || 'Trung bình',
@@ -131,6 +156,57 @@ export const VITALS = [
 ];
 export const vitalOff = (vital, value) =>
   value !== undefined && value !== null && value !== '' && (Number(value) < vital.min || Number(value) > vital.max);
+
+// ---------- Clinical findings (HealthRecord.clinical) ----------
+export const MUCOUS_MEMBRANES = {
+  pink: { label: 'Hồng', tone: 'good' },
+  pale: { label: 'Nhợt', tone: 'watch' },
+  congested: { label: 'Đỏ sẫm', tone: 'bad' },
+  icteric: { label: 'Vàng', tone: 'watch' },
+  cyanotic: { label: 'Tím tái', tone: 'bad' },
+};
+export const GUT_SOUNDS = {
+  normal: { label: 'Bình thường', tone: 'good' },
+  reduced: { label: 'Giảm', tone: 'watch' },
+  increased: { label: 'Tăng', tone: 'watch' },
+  absent: { label: 'Mất', tone: 'bad' },
+};
+export const HYDRATION = {
+  normal: { label: 'Bình thường', tone: 'good' },
+  mild: { label: 'Mất nước nhẹ', tone: 'watch' },
+  moderate: { label: 'Mất nước vừa', tone: 'watch' },
+  severe: { label: 'Mất nước nặng', tone: 'bad' },
+};
+// The AAEP lameness scale.
+export const LAMENESS_GRADES = [
+  { value: 0, label: '0', desc: 'Không què', tone: 'good' },
+  { value: 1, label: '1', desc: 'Khó thấy, không đều', tone: 'info' },
+  { value: 2, label: '2', desc: 'Thấy khi chạy vòng hoặc lên dốc', tone: 'watch' },
+  { value: 3, label: '3', desc: 'Thấy khi chạy kiệu thẳng', tone: 'watch' },
+  { value: 4, label: '4', desc: 'Rõ khi đi bộ', tone: 'bad' },
+  { value: 5, label: '5', desc: 'Không chịu lực lên chân', tone: 'bad' },
+];
+export const LIMBS = { fore_left: 'Chân trước trái', fore_right: 'Chân trước phải', hind_left: 'Chân sau trái', hind_right: 'Chân sau phải' };
+export const CRT_MAX_SEC = 2;
+
+/** The findings of an exam as short lines, each flagged when it is outside normal. */
+export function clinicalFindings(record) {
+  const c = record?.clinical || {};
+  const v = record?.vitalSigns || {};
+  const has = (x) => x !== undefined && x !== null && x !== '';
+  return [
+    has(v.weightKg) && { key: 'weight', text: `Cân nặng ${v.weightKg} kg`, off: false },
+    c.mucousMembrane && { key: 'mm', text: `Niêm mạc ${MUCOUS_MEMBRANES[c.mucousMembrane]?.label.toLowerCase() || c.mucousMembrane}`, off: c.mucousMembrane !== 'pink' },
+    has(c.capillaryRefillSec) && { key: 'crt', text: `CRT ${c.capillaryRefillSec} giây`, off: Number(c.capillaryRefillSec) > CRT_MAX_SEC },
+    c.gutSounds && { key: 'gut', text: `Nhu động ruột ${GUT_SOUNDS[c.gutSounds]?.label.toLowerCase() || c.gutSounds}`, off: c.gutSounds !== 'normal' },
+    c.hydration && { key: 'hyd', text: c.hydration === 'normal' ? 'Không mất nước' : HYDRATION[c.hydration]?.label || c.hydration, off: c.hydration !== 'normal' },
+    has(c.lamenessGrade) && {
+      key: 'lame',
+      text: Number(c.lamenessGrade) === 0 ? 'Không què' : `Què độ ${c.lamenessGrade}/5${c.lamenessLimb ? ` · ${LIMBS[c.lamenessLimb]?.toLowerCase()}` : ''}`,
+      off: Number(c.lamenessGrade) > 0,
+    },
+  ].filter(Boolean);
+}
 
 // ---------- Horses ----------
 export function ageOf(dob) {

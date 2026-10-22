@@ -92,3 +92,68 @@ export const CARE_EVENT_META = {
   farrier: { label: 'Đóng móng', icon: 'bi-hammer', color: 'dark', bg: 'dark', badgeColor: 'purple' },
 };
 
+// The details recorded with routine care, by kind — the same keys as the server
+// (server/src/constants/careEvent.js), which checks them.
+export const VACCINE_TARGETS = {
+  influenza: 'Cúm ngựa',
+  tetanus: 'Uốn ván',
+  ehv: 'Herpes (EHV-1/4)',
+  encephalomyelitis: 'Viêm não tủy',
+  west_nile: 'Tây sông Nile',
+  rabies: 'Dại',
+  strangles: 'Viêm hạch (Strangles)',
+};
+export const SHOT_TYPES = { primary_1: 'Mũi cơ bản 1', primary_2: 'Mũi cơ bản 2', booster: 'Mũi nhắc lại' };
+export const CARE_ROUTES = { im: 'Tiêm bắp', sc: 'Tiêm dưới da', intranasal: 'Nhỏ mũi', oral: 'Uống (gel)', feed: 'Trộn thức ăn' };
+export const CARE_REACTIONS = { none: 'Không phản ứng', swelling: 'Sưng chỗ tiêm', fever: 'Sốt nhẹ', lethargy: 'Mệt, bỏ ăn', other: 'Phản ứng khác' };
+export const FARRIER_WORK = { trim: 'Gọt sửa móng', new_shoes: 'Đóng móng mới', reset: 'Đóng lại móng cũ', corrective: 'Móng chỉnh hình', remove: 'Tháo móng' };
+export const HOOF_LIMBS = { fore_left: 'Trước trái', fore_right: 'Trước phải', hind_left: 'Sau trái', hind_right: 'Sau phải' };
+export const HOOF_CONDITIONS = { good: 'Móng tốt', cracked: 'Nứt móng', thin_sole: 'Đế móng mỏng', abscess: 'Áp xe móng', thrush: 'Thối gót', laminitis: 'Viêm lá móng' };
+export const INJECTION_SITES = ['Cổ trái', 'Cổ phải', 'Ngực', 'Mông trái', 'Mông phải'];
+export const DEWORM_INGREDIENTS = ['Ivermectin', 'Moxidectin', 'Fenbendazole', 'Pyrantel', 'Ivermectin + Praziquantel'];
+
+/**
+ * Products the vet usually picks, filling in what goes with them: what a vaccine covers, a dewormer's
+ * active ingredient and how it is given, the usual dose. Typing another name is fine.
+ */
+export const CARE_PRODUCTS = {
+  vaccination: [
+    { name: 'Equilis Prequenza Te', targets: ['influenza', 'tetanus'], dose: '1 ml', route: 'im' },
+    { name: 'ProteqFlu-Te', targets: ['influenza', 'tetanus'], dose: '1 ml', route: 'im' },
+    { name: 'Equilis Te (uốn ván)', targets: ['tetanus'], dose: '1 ml', route: 'im' },
+    { name: 'Equip EHV 1,4', targets: ['ehv'], dose: '1,5 ml', route: 'im' },
+    { name: 'Equilis StrepE', targets: ['strangles'], dose: '0,2 ml', route: 'sc' },
+    { name: 'Rabisin', targets: ['rabies'], dose: '1 ml', route: 'im' },
+  ],
+  deworming: [
+    { name: 'Ivermectin gel 1,87%', activeIngredient: 'Ivermectin', route: 'oral' },
+    { name: 'Equest (Moxidectin 2%)', activeIngredient: 'Moxidectin', route: 'oral' },
+    { name: 'Panacur (Fenbendazole 10%)', activeIngredient: 'Fenbendazole', route: 'oral' },
+    { name: 'Strongid-P (Pyrantel)', activeIngredient: 'Pyrantel', route: 'oral' },
+    { name: 'Equimax (Ivermectin + Praziquantel)', activeIngredient: 'Ivermectin + Praziquantel', route: 'oral' },
+  ],
+  farrier: [{ name: 'Móng sắt thường' }, { name: 'Móng nhôm thi đấu' }, { name: 'Móng chỉnh hình (egg bar)' }, { name: 'Đế lót cao su' }],
+};
+
+const labelsOf = (keys, vocabulary) => (keys || []).map((k) => vocabulary[k]).filter(Boolean).join(', ');
+
+/** The details of a care event as short phrases, for its history line. */
+export function careEventDetails(e) {
+  const allFour = (e.limbs || []).length === 4;
+  return [
+    e.targets?.length > 0 && `Phòng: ${labelsOf(e.targets, VACCINE_TARGETS)}`,
+    SHOT_TYPES[e.shotType],
+    e.activeIngredient && `Hoạt chất: ${e.activeIngredient}`,
+    CARE_ROUTES[e.route],
+    e.site && `Vị trí: ${e.site}`,
+    e.weightKg && `Liều theo ${e.weightKg} kg`,
+    typeof e.fecEpg === 'number' && `Trứng giun ${e.fecEpg} EPG`,
+    e.work?.length > 0 && labelsOf(e.work, FARRIER_WORK),
+    e.limbs?.length > 0 && (allFour ? 'Cả 4 chân' : labelsOf(e.limbs, HOOF_LIMBS)),
+    e.hoofCondition?.length > 0 && labelsOf(e.hoofCondition, HOOF_CONDITIONS),
+    e.farrierName && `Thợ móng: ${e.farrierName}`,
+    e.reaction && e.reaction !== 'none' && CARE_REACTIONS[e.reaction],
+    e.lotExpiry && `Lô hết hạn ${new Date(e.lotExpiry).toLocaleDateString('vi-VN')}`,
+  ].filter(Boolean);
+}
+

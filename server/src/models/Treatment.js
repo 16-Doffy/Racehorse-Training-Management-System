@@ -47,6 +47,10 @@ const treatmentSchema = new mongoose.Schema(
     // a vet assesses it for a return to training (a HealthRecord with clearedLevel). Ending a treatment is
     // not the same as being cleared to train again.
     returnLevel: { type: String, enum: ['none', 'light', 'moderate', 'high', null], default: null },
+    // An issued prescription is never rewritten: a change is a new one that takes over. `replaces` on
+    // the new one, `replacedBy` on the one it ended.
+    replaces: { type: mongoose.Schema.Types.ObjectId, ref: 'Treatment', default: null },
+    replacedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Treatment', default: null },
   },
   { timestamps: true }
 );
