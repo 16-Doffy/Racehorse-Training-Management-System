@@ -113,6 +113,16 @@ const textIsDark = (locator) =>
     const [r, g, b] = cv.getImageData(0, 0, 1, 1).data;
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.45;
   });
+// Is this element's own background dark? (Read the same way; a transparent background is not dark.)
+const backgroundIsDark = (locator) =>
+  locator.evaluate((el) => {
+    const cv = document.createElement('canvas').getContext('2d');
+    cv.fillStyle = '#000';
+    cv.fillStyle = getComputedStyle(el).backgroundColor;
+    cv.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = cv.getImageData(0, 0, 1, 1).data;
+    return a > 0 && (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.45;
+  });
 for (const [name, canvas] of [['light', 'sand_bone'], ['dark', 'peak_equestrian_dark']]) {
   test(`owner opens every menu page on the ${name} canvas without errors or a sideways scroll`, async ({ page }) => {
     const errors = [];
@@ -183,7 +193,9 @@ test('owner horse page shows the horse in its stall, with no way to move it', as
 test('owner stable page reads the stall from the stable map, not from the old free-text code', async ({ page }) => {
   await login(page, 'owner');
   await page.goto('/owner/stable');
-  await expect(page.locator('.ant-card', { hasText: 'Chuồng A-01' })).toBeVisible();
+  // The page goes zone, then stall: the fixture horse's tile on the stable map, and the stall's facts beside the barn.
+  await expect(page.getByRole('button', { name: /^A-01/ })).toContainText('TEST Browser Horse');
+  await expect(page.locator('.own-stall-card')).toContainText('A-01');
   // The stall code A-01 used to be split at the dash and shown as "A – 01".
   await expect(page.getByText('A – 01')).toHaveCount(0);
 });
@@ -196,10 +208,13 @@ test('owner stable page keeps the stall card title readable on the dark canvas',
   await page.addInitScript(() => localStorage.setItem('wdp301_canvas_theme', 'peak_equestrian_dark'));
   await login(page, 'owner');
   await page.goto('/owner/stable');
-  const title = page.locator('.ant-card-head-title', { hasText: 'Chuồng A-01' });
+  const card = page.locator('.own-card', { hasText: 'Chuồng của ngựa bạn' });
+  const title = card.locator('.own-card-title');
   await expect(title).toBeVisible();
-  // The Owner's pages go dark with the canvas: the card is dark, so its title is light.
+  // The Owner's pages go dark with the canvas: the card is dark, so its title and the horse in the stall read light.
+  expect(await backgroundIsDark(card)).toBe(true);
   expect(await textIsDark(title)).toBe(false);
+  expect(await textIsDark(card.locator('.own-stall-card .own-horse-name'))).toBe(false);
 });
 test('owner cannot open the stable map of the Manager', async ({ page }) => {
   await login(page, 'owner');
