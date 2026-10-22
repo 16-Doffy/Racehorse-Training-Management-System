@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Tag, Typography, Button, Modal, Form, Input, InputNumber, Select, DatePicker, Alert, Empty, Tooltip, Popconfirm, Segmented } from 'antd';
+import { Table, Tag, Typography, Button, Modal, Form, Input, Select, Alert, Empty, Tooltip, Popconfirm, Segmented } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined } from '@ant-design/icons';
 import { downloadFile } from '../../lib/files';
@@ -9,27 +9,15 @@ import { useSelector } from 'react-redux';
 import dayjs from 'dayjs';
 import { horsesApi } from './horsesApi';
 import { usersApi } from '../admin/usersApi';
-import { stallApi } from '../stable/stableApi';
+import { stableAssignmentApi, stallApi } from '../stable/stableApi';
 import { ROLES } from '../../constants/roles';
 import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constants/health';
 import HorseNextStep from './HorseNextStep';
-import { HORSE_SEX_LABELS, horseSexOptions } from '../../constants/horse';
+import { HORSE_SEX_LABELS } from '../../constants/horse';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
-import Horse3D from './horse3d/Horse3D';
-import { BREEDS, COATS, REGIONS, coatValueOfBreed } from './horse3d/horseBreeds';
+import HorseFormModal from './HorseFormModal';
 
 const { Title } = Typography;
-
-// The Manager picks a breed and sees the horse in 3D, in the coat the breed is known for.
-const breedOptions = REGIONS.map((region) => ({
-  label: region,
-  options: BREEDS.filter((b) => b.region === region).map((b) => ({ value: b.value, label: b.label, origin: b.origin, coat: COATS[b.coat] })),
-}));
-const coatOptions = Object.values(COATS).map((c) => ({ value: c.value, label: c.label, hint: c.hint, swatch: c.swatch }));
-const Swatch = ({ color }) => (
-  <span className="inline-block rounded-full shrink-0" style={{ width: 12, height: 12, background: color, boxShadow: '0 0 0 1px rgba(0,0,0,.25)' }} />
-);
-
 
 export default function HorseListPage() {
   const navigate = useNavigate();
@@ -38,22 +26,14 @@ export default function HorseListPage() {
   // (POST/PUT /horses is Manager-only on the server); every other role sees the same read-only
   // roster they always had.
   const isManager = user?.role === ROLES.MANAGER;
-  const isOwner = user?.role === ROLES.OWNER;
+  // The Horse Owner has their own list (features/owner/OwnerHorses.jsx).
   // The Manager and the trainer run a horse from arrival to training: they see its next step.
   const showsNextStep = [ROLES.MANAGER, ROLES.HEAD_TRAINER].includes(user?.role);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [form] = Form.useForm();
-  const breedValue = Form.useWatch('breed', form);
-  const colorValue = Form.useWatch('color', form);
   const queryClient = useQueryClient();
-
-  // Picking a breed fills in the coat it is known for, unless the Manager already chose another.
-  const onBreedChange = (next) => {
-    const current = form.getFieldValue('color');
-    if (!current || current === coatValueOfBreed(breedValue)) form.setFieldValue('color', coatValueOfBreed(next) || undefined);
-  };
 
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const horses = data?.data || [];
@@ -65,17 +45,9 @@ export default function HorseListPage() {
     ...(stallsData?.data?.unplaced || []).map((u) => [String(u.horse._id), u.stableBlock]),
     ...(stallsData?.data?.stalls || []).filter((st) => st.occupant?.horse).map((st) => [String(st.occupant.horse._id), st.code]),
   ]);
-  // The checklist is for the staff. The Owner's own view of whether a vet has seen each horse comes from the owner summary.
-  const { data: ownerSummaryData } = useQuery({ queryKey: ['owner-summary'], queryFn: () => horsesApi.ownerSummary(), enabled: isOwner });
-  const summaryByHorse = new Map((ownerSummaryData?.data || []).map((r) => [String(r.horse._id), r]));
+  const mapStalls = stallsData?.data?.stalls || [];
   // Has a vet examined the horse? true / false, or undefined while that is still loading.
-  const examined = (h) => {
-    if (isOwner) {
-      const row = summaryByHorse.get(String(h._id));
-      return row ? Boolean(row.health.lastExam) : undefined;
-    }
-    return checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === 'health')?.done;
-  };
+  const examined = (h) => checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === 'health')?.done;
 
   // Manager: horses the club no longer manages, kept for their records.
   const [view, setView] = useState('active');
@@ -135,11 +107,7 @@ export default function HorseListPage() {
   // has seen it, so "ready" also needs an exam on file and no medical restriction; an unexamined horse
   // is counted on its own rather than as healthy.
   const checkItem = (h, key) => checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === key)?.done;
-  const readyCount = horses.filter((h) =>
-    isOwner
-      ? h.healthStatus === 'eligible' && examined(h) && !h.trainingClearance?.restricted
-      : h.healthStatus === 'eligible' && checkItem(h, 'health') && checkItem(h, 'clearance')
-  ).length;
+  const readyCount = horses.filter((h) => h.healthStatus === 'eligible' && checkItem(h, 'health') && checkItem(h, 'clearance')).length;
   const unexaminedCount = horses.filter((h) => examined(h) === false).length;
   const restrictedCount = horses.filter((h) => h.trainingClearance?.restricted).length;
   const watchCount = horses.filter((h) => ['monitoring', 'injured', 'quarantined'].includes(h.healthStatus) || h.trainingClearance?.restricted).length;
@@ -162,6 +130,13 @@ export default function HorseListPage() {
     queryFn: () => usersApi.list({ role: ROLES.OWNER }),
     enabled: isManager,
   });
+  // A new horse can go straight into a stall, with its groom.
+  const { data: groomsData } = useQuery({
+    queryKey: ['users', ROLES.GROOM],
+    queryFn: () => usersApi.list({ role: ROLES.GROOM }),
+    enabled: isManager,
+  });
+  const grooms = (groomsData?.data || []).filter((u) => u.isActive !== false);
 
   const activeOptions = (res) =>
     (res?.data || [])
@@ -171,11 +146,29 @@ export default function HorseListPage() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['horses'] });
 
   const saveMutation = useMutation({
-    mutationFn: (payload) =>
-      editTarget ? horsesApi.update(editTarget._id, payload) : horsesApi.create(payload),
-    onSuccess: () => {
-      message.success(editTarget ? 'Đã cập nhật hồ sơ ngựa.' : 'Đã thêm ngựa mới.');
+    mutationFn: async ({ stall, caretaker, ...payload }) => {
+      if (editTarget) return { horse: (await horsesApi.update(editTarget._id, payload)).data };
+      const horse = (await horsesApi.create(payload)).data;
+      if (!stall) return { horse };
+      // The horse exists from here on. A stall someone took in the meantime leaves it without a stall
+      // (said below, placed from the Chuồng column), never makes the Manager create it twice.
+      try {
+        await stableAssignmentApi.upsert({ horse: horse._id, stall, assignedCaretaker: caretaker || undefined });
+        return { horse, stall: mapStalls.find((s) => s._id === stall) };
+      } catch (placeError) {
+        return { horse, placeError };
+      }
+    },
+    onSuccess: ({ horse, stall, placeError }) => {
+      if (editTarget) message.success('Đã cập nhật hồ sơ ngựa.');
+      else if (placeError) message.warning(`Đã thêm ${horse?.name || 'ngựa'} nhưng chưa xếp được chuồng: ${placeError.message || 'lỗi không rõ'}. Bấm "Xếp chuồng" ở cột Chuồng để xếp lại.`, 8);
+      else if (stall) message.success(`Đã thêm ${horse?.name || 'ngựa'} vào chuồng ${stall.code}.`);
+      else message.success('Đã thêm ngựa mới.');
       invalidate();
+      if (stall || placeError) {
+        queryClient.invalidateQueries({ queryKey: ['stalls'] });
+        queryClient.invalidateQueries({ queryKey: ['stable-assignments'] });
+      }
       setFormOpen(false);
       setEditTarget(null);
       form.resetFields();
@@ -353,18 +346,16 @@ export default function HorseListPage() {
   }
 
   return (
-    <div className={isOwner ? 'owner-ui' : undefined}>
-      {showsNextStep || isOwner ? (
+    <div>
+      {showsNextStep ? (
       <PageHeroBanner
-        eyebrow={isOwner ? 'TEAM 8 • QUẢN LÝ ĐÀN CHIẾN MÃ' : 'Hồ sơ & danh mục ngựa'}
-        roleLabel={isManager ? 'Quản lý CLB' : isOwner ? 'Horse Owner' : 'HLV trưởng'}
-        title={isManager ? 'Danh mục & quản lý đàn ngựa' : isOwner ? 'Chiến Mã Của Tôi' : 'Danh sách ngựa phụ trách'}
+        eyebrow="Hồ sơ & danh mục ngựa"
+        roleLabel={isManager ? 'Quản lý CLB' : 'HLV trưởng'}
+        title={isManager ? 'Danh mục & quản lý đàn ngựa' : 'Danh sách ngựa phụ trách'}
         subtitle={
           isManager
             ? 'Cập nhật hồ sơ lý lịch và phân công huấn luyện viên, bác sĩ thú y phụ trách từng ngựa.'
-            : isOwner
-              ? 'Hồ sơ, sức khỏe và người phụ trách của từng chiến mã bạn sở hữu.'
-              : 'Theo dõi thể trạng, mức độ cho phép tập luyện và bước chuẩn bị tiếp theo của từng ngựa.'
+            : 'Theo dõi thể trạng, mức độ cho phép tập luyện và bước chuẩn bị tiếp theo của từng ngựa.'
         }
         stats={[
           { label: 'Tổng đàn', value: `${horses.length} con` },
@@ -426,7 +417,7 @@ export default function HorseListPage() {
         </div>
       )}
 
-      {!isOwner && isError && (
+      {isError && (
         <Alert
           className="mb-3"
           type="error"
@@ -535,157 +526,37 @@ export default function HorseListPage() {
       )}
 
       {isManager && (
-        <Modal
-          title={editTarget ? `Sửa hồ sơ — ${editTarget.name}` : 'Thêm ngựa mới'}
+        <HorseFormModal
           open={formOpen}
+          editTarget={editTarget}
+          form={form}
+          saving={saveMutation.isPending}
           onCancel={() => {
             setFormOpen(false);
             setEditTarget(null);
           }}
-          onOk={() => form.submit()}
-          confirmLoading={saveMutation.isPending}
-          destroyOnHidden
-          width={620}
-        >
-          <Form
-            form={form}
-            layout="vertical"
-            onFinish={(values) =>
-              // Cleared optional fields are sent as '' / null so the server removes them.
-              saveMutation.mutate({
-                ...values,
-                dob: values.dob ? values.dob.toISOString() : undefined,
-                breed: values.breed ?? '',
-                color: values.color ?? '',
-                sex: values.sex ?? '',
-                microchipNumber: values.microchipNumber ?? '',
-                registrationNumber: values.registrationNumber ?? '',
-                valuationVnd: values.valuationVnd ?? null,
-              })
-            }
-          >
-            {editTarget && isManager && (
-              // The stall is its own record (with the groom and the daily tasks), changed on the stable page.
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E5DEC9] px-3 py-2 text-sm">
-                <span>
-                  Chuồng: <span className="font-semibold tabular-nums">{stallByHorse.get(String(editTarget._id)) || 'chưa xếp'}</span>
-                </span>
-                <Button size="small" onClick={() => navigate(`/admin/stables?horse=${editTarget._id}`)}>
-                  {stallByHorse.has(String(editTarget._id)) ? 'Đổi chuồng' : 'Xếp chuồng'}
-                </Button>
-              </div>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-              <Form.Item name="name" label="Tên ngựa" rules={[{ required: true }]} className="!mb-3">
-                <Input placeholder="VD: Thunder Bolt" />
-              </Form.Item>
-              <Form.Item name="breed" label="Giống" className="!mb-3">
-                <Select
-                  allowClear
-                  showSearch
-                  optionFilterProp="label"
-                  placeholder="Chọn giống ngựa"
-                  popupMatchSelectWidth={400}
-                  options={breedOptions}
-                  onChange={onBreedChange}
-                  optionRender={(option) => (
-                    <div className="flex items-center gap-2">
-                      <Swatch color={option.data.coat.swatch} />
-                      <span>{option.data.label}</span>
-                      <span className="ml-auto text-xs text-gray-400">{option.data.origin} · {option.data.coat.label}</span>
-                    </div>
-                  )}
-                />
-              </Form.Item>
-            </div>
-            {/* The horse as everyone it is assigned to will see it in 3D, the groom's phone included. */}
-            <Horse3D breed={breedValue} color={colorValue} height={230} className="!mb-3" />
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4">
-              <Form.Item name="color" label="Màu lông" className="!mb-3">
-                <Select
-                  allowClear
-                  placeholder="Theo giống"
-                  options={coatOptions}
-                  optionRender={(option) => (
-                    <div className="flex items-center gap-2" title={option.data.hint}>
-                      <Swatch color={option.data.swatch} />
-                      <span>{option.data.label}</span>
-                    </div>
-                  )}
-                />
-              </Form.Item>
-              <Form.Item name="dob" label="Ngày sinh" className="!mb-3">
-                <DatePicker className="w-full" format="DD/MM/YYYY" />
-              </Form.Item>
-              <Form.Item name="weightKg" label="Cân nặng (kg)" className="!mb-3">
-                <InputNumber min={50} max={1200} className="w-full" />
-              </Form.Item>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4">
-              <Form.Item name="sex" label="Giới tính" className="!mb-3">
-                <Select allowClear placeholder="Chọn giới tính" options={horseSexOptions} />
-              </Form.Item>
-              <Form.Item
-                name="microchipNumber"
-                label="Số vi mạch"
-                className="!mb-3"
-                rules={[{ pattern: /^[A-Za-z0-9]{9,15}$/, message: '9–15 chữ số hoặc chữ cái' }]}
-              >
-                <Input placeholder="VD: 985141002345678" maxLength={15} />
-              </Form.Item>
-              <Form.Item name="registrationNumber" label="Số đăng ký" className="!mb-3">
-                <Input placeholder="Số trong sổ giống" maxLength={40} />
-              </Form.Item>
-            </div>
-            <Form.Item name="valuationVnd" label="Định giá (₫)" className="!mb-3" extra="Chỉ Quản lý và chủ ngựa thấy.">
-              <InputNumber
-                min={0}
-                step={1000000}
-                className="w-full"
-                formatter={(v) => (v === undefined || v === null || v === '' ? '' : Number(v).toLocaleString('vi-VN'))}
-                parser={(v) => (v ? v.replace(/[^0-9]/g, '') : '')}
-                placeholder="VD: 500.000.000"
-              />
-            </Form.Item>
-            <Form.Item name="owner" label="Chủ sở hữu" className="!mb-3">
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                placeholder="Chọn chủ sở hữu"
-                options={activeOptions(ownersData)}
-              />
-            </Form.Item>
-            <Form.Item
-              name="assignedTrainer"
-              label="Huấn luyện viên phụ trách"
-              extra="Chỉ HLV được gán mới thấy và lập kế hoạch huấn luyện cho ngựa này."
-              className="!mb-3"
-            >
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                placeholder="Chưa gán — chưa HLV nào thấy ngựa này"
-                options={activeOptions(trainersData)}
-              />
-            </Form.Item>
-            <Form.Item
-              name="assignedVet"
-              label="Bác sĩ thú y phụ trách"
-              extra="Yêu cầu khám cho ngựa này sẽ gửi thẳng tới bác sĩ được gán."
-              className="!mb-3"
-            >
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                placeholder="Chưa gán — chưa bác sĩ nào thấy ngựa này"
-                options={activeOptions(vetsData)}
-              />
-            </Form.Item>
-          </Form>
-        </Modal>
+          onFinish={(values) =>
+            // Cleared optional fields are sent as '' / null so the server removes them.
+            saveMutation.mutate({
+              ...values,
+              dob: values.dob ? values.dob.toISOString() : undefined,
+              breed: values.breed ?? '',
+              color: values.color ?? '',
+              sex: values.sex ?? '',
+              microchipNumber: values.microchipNumber ?? '',
+              registrationNumber: values.registrationNumber ?? '',
+              valuationVnd: values.valuationVnd ?? null,
+            })
+          }
+          ownerOptions={activeOptions(ownersData)}
+          trainerOptions={activeOptions(trainersData)}
+          vetOptions={activeOptions(vetsData)}
+          stalls={mapStalls}
+          unplaced={stallsData?.data?.unplaced || []}
+          grooms={grooms}
+          currentStall={editTarget ? stallByHorse.get(String(editTarget._id)) : undefined}
+          onOpenStable={() => editTarget && navigate(`/admin/stables?horse=${editTarget._id}`)}
+        />
       )}
     </div>
   );

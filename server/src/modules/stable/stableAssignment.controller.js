@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 const StableAssignment = require('../../models/StableAssignment');
 const Stall = require('../../models/Stall');
-const DailyTask = require('../../models/DailyTask');
 const User = require('../../models/User');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
@@ -14,6 +13,7 @@ const { syncCareTasks } = require('../health/treatmentCare.service');
 const { pushNotification } = require('../alerts/notification.service');
 const { ensureFeedingTasks } = require('../../realtime/dailyTaskGenerator');
 const { runTransaction, operationError } = require('../../utils/transaction');
+const { handOverTasks, isActiveGroom } = require('./stallCaretaker.service');
 
 // Owners, trainers and vets see the stalls of their own horses; the Manager and grooms see the
 // whole stable (a groom's map shows neighbouring stalls too). This used to return every horse's
@@ -88,31 +88,25 @@ const upsertAssignment = asyncHandler(async (req, res) => {
       .session(session);
     if (occupied) throw operationError(409, `Chuồng "${code}" đang có ngựa ${occupied.horse?.name || 'khác'}.`);
 
+    // A stall on the map has its own groom (Stall.caretaker): the horse placed there gets them, unless
+    // the Manager names someone, who then becomes the stall's groom.
+    let caretaker = assignedCaretaker || null;
+    if (target && caretaker && String(target.caretaker || '') !== String(caretaker)) {
+      target.caretaker = caretaker;
+      await target.save({ session });
+    } else if (target && !caretaker && target.caretaker && (await isActiveGroom(target.caretaker, session))) {
+      caretaker = target.caretaker;
+    }
+
     const previous = await StableAssignment.findOne({ horse }).select('assignedCaretaker').session(session);
     const saved = await StableAssignment.findOneAndUpdate(
       { horse },
-      { horse, stableBlock: code, stall: target ? target._id : null, assignedCaretaker: assignedCaretaker || null },
+      { horse, stableBlock: code, stall: target ? target._id : null, assignedCaretaker: caretaker },
       { new: true, upsert: true, runValidators: true, session }
     );
 
     const changed = String(previous?.assignedCaretaker || '') !== String(saved.assignedCaretaker || '');
-    if (changed && previous?.assignedCaretaker && saved.assignedCaretaker) {
-      // Only unfinished automatic work (feeds, post-session care) moves with the horse; tasks the
-      // trainer handed to a specific person by hand stay where they were put.
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      await DailyTask.updateMany(
-        {
-          horse,
-          assignedTo: previous.assignedCaretaker,
-          status: 'pending',
-          scheduledDate: { $gte: today },
-          $or: [{ taskType: 'feeding' }, { trainingSession: { $ne: null } }, { treatment: { $ne: null } }],
-        },
-        { assignedTo: saved.assignedCaretaker },
-        { session }
-      );
-    }
+    if (changed) await handOverTasks({ horse, from: previous?.assignedCaretaker, to: saved.assignedCaretaker, session });
     return { assignment: saved, block: code, stall: target, changedCaretaker: changed, horseName: horseDoc.name };
   });
 

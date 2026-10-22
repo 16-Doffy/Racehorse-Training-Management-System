@@ -69,8 +69,8 @@ for (const role of ['manager', 'trainer', 'vet', 'owner', 'groom']) {
     await login(page, role);
     await expect(page.locator('.ant-segmented', { hasText: 'Tối' })).toHaveCount(1);
     await expect(page.locator('.is-dark-canvas.canvas-sider, .is-dark-canvas .canvas-sider')).toHaveCount(1);
-    // The staff's pages go fully dark; the Owner keeps its light panels.
-    await expect(page.locator('.staff-dark')).toHaveCount(role === 'owner' ? 0 : 1);
+    // Every role's pages go fully dark (the Owner's through its own dark tokens).
+    await expect(page.locator('.staff-dark')).toHaveCount(1);
     // The vet's Bootstrap pages follow through Bootstrap's dark mode.
     await expect(page.locator('body[data-bs-theme="dark"]')).toHaveCount(role === 'vet' ? 1 : 0);
     expect(errors).toEqual([]);
@@ -142,9 +142,16 @@ test('owner dashboard shows the real race record and prize money', async ({ page
 test('owner race page shows the prize in dong, not dollars', async ({ page }) => {
   await login(page, 'owner');
   await page.goto('/owner/races');
-  await expect(page.getByText('TEST Browser Cup', { exact: true })).toBeVisible();
-  await expect(page.getByText('1.000.000 ₫', { exact: true })).toBeVisible();
+  const result = page.locator('.own-row', { hasText: 'TEST Browser Cup' });
+  await expect(result).toBeVisible();
+  await expect(result.getByText('1.000.000 ₫', { exact: true })).toBeVisible();
   await expect(page.getByText(/\$1,000,000/)).toHaveCount(0);
+});
+test('owner opening the old reviews page lands on the trainer reviews of the training page', async ({ page }) => {
+  await login(page, 'owner');
+  await page.goto('/owner/evaluations');
+  await expect(page).toHaveURL(/\/owner\/training\?view=reviews$/);
+  await expect(page.getByText('TEST đi bộ đều, hồi sức tốt')).toBeVisible();
 });
 test('owner horse list counts the examined horse as ready, like the trainer sees it', async ({ page }) => {
   await login(page, 'owner');
@@ -156,14 +163,16 @@ test('owner horse list counts the examined horse as ready, like the trainer sees
 test('owner horse page shows the papers and the valuation', async ({ page }) => {
   await login(page, 'owner');
   await page.goto(`/horses/${fixture.horseId}`);
-  const papers = page.locator('.ant-card', { hasText: 'Giấy tờ & Định giá' });
-  await expect(papers.getByText('985112345678901')).toBeVisible();
-  await expect(papers.getByText('TEST-REG-001')).toBeVisible();
-  await expect(papers.getByText('750.000.000 ₫')).toBeVisible();
+  const record = page.locator('.own-card', { hasText: 'Số vi mạch' });
+  await expect(record.getByText('985112345678901')).toBeVisible();
+  await expect(record.getByText('TEST-REG-001')).toBeVisible();
+  await expect(page.locator('.own-hero').getByText('750.000.000 ₫')).toBeVisible();
+  // The horse form has no sire or dam, so there is no pedigree to show.
+  await expect(page.getByText(/Gia phả|Pedigree/)).toHaveCount(0);
 });
 test('owner horse page shows the horse in its stall, with no way to move it', async ({ page }) => {
   await login(page, 'owner');
-  await page.goto(`/horses/${fixture.horseId}`);
+  await page.goto(`/horses/${fixture.horseId}?tab=stall`);
   // The fixture puts the horse in the first stall of zone A.
   const stall = page.locator('.ant-card', { hasText: 'Chuồng A-01' });
   await expect(stall).toBeVisible();
@@ -189,8 +198,8 @@ test('owner stable page keeps the stall card title readable on the dark canvas',
   await page.goto('/owner/stable');
   const title = page.locator('.ant-card-head-title', { hasText: 'Chuồng A-01' });
   await expect(title).toBeVisible();
-  // The card sits in a light panel: its title must stay dark, not turn cream like the dark cards' titles.
-  expect(await textIsDark(title)).toBe(true);
+  // The Owner's pages go dark with the canvas: the card is dark, so its title is light.
+  expect(await textIsDark(title)).toBe(false);
 });
 test('owner cannot open the stable map of the Manager', async ({ page }) => {
   await login(page, 'owner');
@@ -204,15 +213,24 @@ test('the trainer sees the horse papers but not the valuation', async ({ page })
   await expect(page.getByText('985112345678901').first()).toBeVisible();
   await expect(page.getByText('750.000.000')).toHaveCount(0);
 });
-test('owner horse page keeps its header and pedigree readable on the dark canvas', async ({ page }) => {
+test('owner horse page keeps its header and cards readable on the dark canvas', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('wdp301_canvas_theme', 'peak_equestrian_dark'));
   await login(page, 'owner');
   await page.goto(`/horses/${fixture.horseId}`);
-  const hero = page.locator('.premium-card').first();
-  await expect(hero.getByText('Thành tích', { exact: true })).toBeVisible();
-  // The header is a light panel: its text must stay dark, not turn cream like the page's own text.
-  expect(await textIsDark(hero.getByText('Thành tích', { exact: true }))).toBe(true);
-  expect(await textIsDark(page.getByText('Bản thân', { exact: true }))).toBe(true);
+  const hero = page.locator('.own-hero');
+  await expect(hero.getByRole('heading', { name: 'TEST Browser Horse' })).toBeVisible();
+  // Dark cards, light text: the name, a figure's label and a fact in the record card.
+  expect(await textIsDark(hero.getByRole('heading', { name: 'TEST Browser Horse' }))).toBe(false);
+  expect(await textIsDark(hero.getByText('Thành tích', { exact: true }))).toBe(false);
+  expect(await textIsDark(page.locator('.own-card', { hasText: 'Số vi mạch' }).getByText('985112345678901'))).toBe(false);
+});
+test('the staff horse page names who looks after the horse instead of an empty pedigree', async ({ page }) => {
+  await login(page, 'trainer');
+  await page.goto(`/horses/${fixture.horseId}`);
+  const people = page.locator('.ant-card', { hasText: 'Người phụ trách' });
+  await expect(people.getByText('HLV phụ trách')).toBeVisible();
+  await expect(people.getByText('Nhân viên chăm sóc')).toBeVisible();
+  await expect(page.getByText(/Dòng dõi|Pedigree/)).toHaveCount(0);
 });
 test('the Manager works the stable map: an empty stall offers a horse, a taken one the change, the 3D barn beside it', async ({ page }) => {
   const errors = [];

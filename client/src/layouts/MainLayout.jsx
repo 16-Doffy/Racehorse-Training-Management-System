@@ -77,7 +77,7 @@ export default function MainLayout() {
   const currentTheme = getForestTheme(canvasKey);
   const isDarkCanvas = canvas && canvasKey === DARK_CANVAS;
   const isStaff = FULL_DARK_ROLES.includes(user?.role);
-  // The staff's pages go fully dark; the Owner's pages keep their light panels.
+  // Every role's pages go fully dark on the dark canvas.
   const staffDark = isDarkCanvas && isStaff;
   // The vet's Bootstrap pages use Bootstrap's own dark mode, recoloured to the forest palette below.
   const bootstrapDark = isDarkCanvas && BOOTSTRAP_ROLES.includes(user?.role);
@@ -693,8 +693,8 @@ export default function MainLayout() {
           box-shadow: 0 1px 2px rgba(48, 40, 20, 0.06);
         }
 
-        /* A page built from light boxes (the Owner's pages) keeps its antd cards and tables light on a dark
-           canvas too; otherwise they turn dark while the text inside stays dark. */
+        /* A light box keeps its antd cards and tables light on a dark canvas, so they never turn dark while the
+           text inside stays dark; the fully dark pages (.staff-dark) recolour the box itself further down. */
         .forest-layout.is-dark-canvas .light-surface-box .ant-card,
         .forest-layout.is-dark-canvas .light-surface-box .ant-card-body,
         .forest-layout.is-dark-canvas .light-surface-box .ant-table,
@@ -745,43 +745,9 @@ export default function MainLayout() {
           color: #6B7280 !important;
         }
 
-        /* Horse Owner pages (.owner-ui): compact tables. Only spacing and type; colours stay with the rules above. */
-        .forest-layout .owner-ui .ant-table-thead > tr > th {
-          padding: 9px 14px !important;
-          font-size: 11px !important;
-          font-weight: 600 !important;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          white-space: nowrap;
-        }
-        .forest-layout .owner-ui .ant-table-thead > tr > th::before {
-          display: none !important;
-        }
-        .forest-layout .owner-ui .ant-table-tbody > tr:not(.ant-table-measure-row) > td {
-          padding: 10px 14px !important;
-          font-size: 13.5px;
-        }
-        .forest-layout .owner-ui .ant-table-tbody > tr:not(.ant-table-measure-row):last-child > td {
-          border-bottom: 0 !important;
-        }
-        /* On a dark canvas the light page panel gets a little inner margin, so bare text (the horse picker, the counts) is not on its edge. */
-        .forest-layout.is-dark-canvas .light-surface-box.owner-ui {
-          padding: 0 8px 8px;
-        }
-        .forest-layout .owner-ui .ant-pagination {
-          margin: 10px 16px !important;
-        }
-        .forest-layout .owner-ui .ant-btn {
-          border-radius: 8px;
-        }
-        .forest-layout .owner-ui .ant-segmented {
-          border-radius: 8px;
-        }
-
-        /* Manager / Head Trainer on the dark canvas: the boxes that stay light on the light canvas (KPI
-           strips, ribbons, the week calendar, empty states) go dark as well, with cream text, so the page
-           has no white blocks. The Owner's pages keep their own light panels (rules above). These win over
-           the light-box rules by one more class. */
+        /* On the dark canvas the boxes that stay light on the light canvas (KPI strips, ribbons, the week
+           calendar, empty states) go dark as well, with cream text, so the page has no white blocks. These
+           win over the light-box rules above by one more class. */
         .forest-layout.is-dark-canvas.staff-dark .light-surface-box {
           background-color: #10261E !important;
           background-image: none !important;
