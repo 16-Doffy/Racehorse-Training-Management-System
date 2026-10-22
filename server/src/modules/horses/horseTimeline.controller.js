@@ -10,6 +10,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ok, fail } = require('../../utils/apiResponse');
 const { canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { OBJECTIVE_LABELS, SESSION_STATUS_LABELS } = require('../../constants/training');
+const { careDetails } = require('../../constants/careEvent');
 
 /**
  * One horse, everything every role did to it, in order.
@@ -148,7 +149,7 @@ function routineCareEvents(events) {
     role: 'veterinarian',
     actor: e.performedBy?.name,
     title: `${ROUTINE_LABELS[e.kind] || e.kind}${e.product ? ` — ${e.product}` : ''}`,
-    detail: join([e.batchNumber && `Số lô: ${e.batchNumber}`, e.dose && `Liều: ${e.dose}`, e.note, e.nextDue && `Hẹn lần sau: ${new Date(e.nextDue).toLocaleDateString('vi-VN')}`]),
+    detail: join([...careDetails(e), e.batchNumber && `Số lô: ${e.batchNumber}`, e.dose && `Liều: ${e.dose}`, e.note, e.nextDue && `Hẹn lần sau: ${new Date(e.nextDue).toLocaleDateString('vi-VN')}`]),
     severity: 'info',
     refId: e._id,
   }));

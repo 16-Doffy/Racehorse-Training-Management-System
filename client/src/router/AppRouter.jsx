@@ -18,6 +18,7 @@ import VeterinarianDashboard from '../pages/veterinarian/VeterinarianDashboard';
 import HorseHealthList from '../pages/veterinarian/HorseHealthList';
 import HorseHealthDetail from '../pages/veterinarian/HorseHealthDetail';
 import MedicalExaminationForm from '../pages/veterinarian/MedicalExaminationForm';
+import ExamRecordPage from '../pages/veterinarian/ExamRecordPage';
 import InjuryManagement from '../pages/veterinarian/InjuryManagement';
 import InjuryForm from '../pages/veterinarian/InjuryForm';
 import TreatmentsPage from '../pages/veterinarian/TreatmentsPage';
@@ -79,7 +80,9 @@ export default function AppRouter() {
             <Route path="/veterinarian/horses" element={<HorseHealthList />} />
             <Route path="/veterinarian/horses/:id" element={<HorseHealthDetail />} />
             <Route path="/veterinarian/examinations/new/:horseId" element={<MedicalExaminationForm />} />
+            {/* A filed exam is not edited: the old edit link opens the exam. */}
             <Route path="/veterinarian/examinations/:id/edit" element={<MedicalExaminationForm />} />
+            <Route path="/veterinarian/examinations/:id" element={<ExamRecordPage />} />
             <Route path="/veterinarian/injuries" element={<InjuryManagement />} />
             <Route path="/veterinarian/injuries/new" element={<InjuryForm />} />
             <Route path="/veterinarian/injuries/:id/edit" element={<InjuryForm />} />

@@ -635,6 +635,8 @@ async function blockForFever(res, session, bodyTempC, user) {
       requestedBy: user,
       reason: `Sốt ${bodyTempC} °C khi kiểm tra trước buổi tập.`,
       priority: 'high',
+      symptoms: ['fever'],
+      observedAt: new Date(),
       trainingSession: session._id,
       message: `🌡️ [ƯU TIÊN CAO] ${horse.name} sốt ${bodyTempC} °C khi kiểm tra trước buổi tập — buổi tập đã bị chặn, cần bác sĩ khám.`,
     });

@@ -6,6 +6,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { logAction } = require('../audit/audit.service');
+const { DETAIL_FIELDS } = require('../../constants/careEvent');
 
 // Which careSchedule due date (and its "reminder sent" mark) each kind of care moves.
 const CARE_DUE = {
@@ -38,10 +39,30 @@ const listCareEvents = asyncHandler(async (req, res) => {
   return ok(res, events, 'Care events fetched.');
 });
 
+/** The details sent for this kind of care (DETAIL_FIELDS), blanks left out. Returns { details, error }. */
+function detailsOf(kind, body, when) {
+  const details = {};
+  for (const field of DETAIL_FIELDS[kind] || []) {
+    const value = body[field];
+    if (value === undefined || value === null || value === '') continue;
+    if (Array.isArray(value) && !value.length) continue;
+    details[field] = Array.isArray(value) ? [...new Set(value)] : value;
+  }
+  if (details.lotExpiry !== undefined) {
+    if (!validDate(details.lotExpiry)) return { error: 'Hạn dùng của lô không hợp lệ.' };
+    details.lotExpiry = new Date(details.lotExpiry);
+    if (details.lotExpiry < new Date(new Date(when).setHours(0, 0, 0, 0))) return { error: 'Lô vắc-xin đã hết hạn trước ngày tiêm — kiểm tra lại số lô.' };
+  }
+  for (const field of ['weightKg', 'fecEpg']) {
+    if (details[field] !== undefined && !(Number(details[field]) >= 0)) return { error: field === 'weightKg' ? 'Cân nặng tính liều không hợp lệ.' : 'Số trứng giun (EPG) không hợp lệ.' };
+  }
+  return { details };
+}
+
 /**
- * POST /horses/:id/care-events { kind, date, product, batchNumber, dose, note, nextDue } — the vet
- * records care that was done. A vaccine or dewormer must be named. `nextDue` (after `date`) moves
- * the horse's reminder for that kind of care.
+ * POST /horses/:id/care-events { kind, date, product, batchNumber, dose, note, nextDue, …details } —
+ * the vet records care that was done. A vaccine or dewormer must be named. The details depend on the
+ * kind (constants/careEvent.js). `nextDue` (after `date`) moves the horse's reminder for that kind.
  */
 const createCareEvent = asyncHandler(async (req, res) => {
   const horse = await Horse.findById(req.params.id);
@@ -65,7 +86,10 @@ const createCareEvent = asyncHandler(async (req, res) => {
     if (due <= when) return fail(res, 'Ngày hẹn lần sau phải sau ngày thực hiện.', 400);
   }
 
-  const event = await CareEvent.create({ horse: horse._id, kind, date: when, product, batchNumber, dose, note, nextDue: due, performedBy: req.user._id });
+  const { details, error } = detailsOf(kind, req.body, when);
+  if (error) return fail(res, error, 400);
+
+  const event = await CareEvent.create({ horse: horse._id, kind, date: when, product, batchNumber, dose, note, ...details, nextDue: due, performedBy: req.user._id });
   if (due) {
     setCareDue(horse, kind, due);
     await horse.save();

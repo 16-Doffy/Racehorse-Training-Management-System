@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Card, Empty, Select, Table, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { horsesApi } from './horsesApi';
+import { careEventDetails } from '../../constants/care';
 
 const CARE_KIND_LABELS = { vaccination: 'Tiêm phòng', deworming: 'Tẩy giun', farrier: 'Đóng móng' };
 const CARE_KIND_COLORS = { vaccination: 'blue', deworming: 'purple', farrier: 'orange' };
@@ -27,6 +28,7 @@ export default function CareHistoryCard({ horseId }) {
     { title: 'Sản phẩm', dataIndex: 'product', key: 'product', render: (v) => v || '—' },
     { title: 'Số lô', dataIndex: 'batchNumber', key: 'batchNumber', render: (v) => <span className="tabular-nums">{v || '—'}</span> },
     { title: 'Liều', dataIndex: 'dose', key: 'dose', render: (v) => <span className="tabular-nums">{v || '—'}</span> },
+    { title: 'Chi tiết', key: 'details', render: (_, ev) => careEventDetails(ev).join(' · ') || '—' },
     { title: 'Hẹn lần sau', dataIndex: 'nextDue', key: 'nextDue', render: (d) => <span className="tabular-nums whitespace-nowrap">{d ? dayjs(d).format('DD/MM/YYYY') : '—'}</span> },
     { title: 'Người thực hiện', dataIndex: ['performedBy', 'name'], key: 'performedBy', render: (v) => v || '—' },
     { title: 'Ghi chú', dataIndex: 'note', key: 'note', render: (v) => v || '—' },

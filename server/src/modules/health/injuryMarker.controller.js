@@ -62,6 +62,26 @@ async function syncHorseHealthStatus(horseId) {
   }
 }
 
+/**
+ * Moves the horse's injuries along with its treatment, so the vet does not have to click each one:
+ * a treatment that starts takes the injuries just found (new) into treatment; the last treatment
+ * ending moves those in treatment on to recovering. Healed stays the vet's call — it is a clinical
+ * conclusion, made from the injury, the exam form or the training-level dialog.
+ * Returns how many injuries moved.
+ */
+async function followTreatment(horseId, event) {
+  if (!horseId) return 0;
+  if (event === 'started') {
+    const { modifiedCount } = await InjuryMarker.updateMany({ horse: horseId, recoveryStatus: 'new' }, { recoveryStatus: 'in_treatment' });
+    return modifiedCount || 0;
+  }
+  if (event === 'ended' && !(await Treatment.exists({ horse: horseId, status: 'ongoing' }))) {
+    const { modifiedCount } = await InjuryMarker.updateMany({ horse: horseId, recoveryStatus: 'in_treatment' }, { recoveryStatus: 'recovering' });
+    return modifiedCount || 0;
+  }
+  return 0;
+}
+
 const MARKER_FIELDS = ['horse', 'healthRecord', 'bodyPart', 'coordinates', 'location3d', 'severity', 'recoveryStatus', 'notes'];
 
 const finite = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -114,29 +134,29 @@ async function loadMarker(req, res) {
   return marker;
 }
 
+// PUT /health/injury-markers/:id { recoveryStatus } — once recorded, an injury is part of the horse's
+// medical record, like the exam that found it: only its recovery moves on. What it says (where, how
+// bad, the notes) is not rewritten — a different finding is recorded in a new exam.
 const updateMarker = asyncHandler(async (req, res) => {
   const marker = await loadMarker(req, res);
   if (!marker) return undefined;
 
-  // A marker stays on the horse it was placed on.
-  const { horse, ...changes } = pick(req.body, MARKER_FIELDS);
-  const problem = locationProblem(changes);
-  if (problem) return fail(res, problem, 400);
-  Object.assign(marker, changes);
+  // The horse it is on may be sent along; it never changes.
+  const changes = pick(req.body, MARKER_FIELDS);
+  delete changes.horse;
+  if (Object.keys(changes).some((k) => k !== 'recoveryStatus')) return fail(res, 'Chấn thương đã ghi không sửa được — chỉ cập nhật giai đoạn hồi phục.', 400);
+  if (!changes.recoveryStatus) return fail(res, 'Chọn giai đoạn hồi phục.', 400);
+  marker.recoveryStatus = changes.recoveryStatus;
   await marker.save();
   await syncHorseHealthStatus(marker.horse);
   return ok(res, marker, 'Injury marker updated.');
 });
 
-// A marker placed on the wrong body part had no way to be removed — only edited — which left the
-// horse's injury map permanently wrong if the mistake wasn't caught before saving.
-// Deleting a mis-marked injury marker automatically recalculates the horse's health status.
+// DELETE /health/injury-markers/:id — refused, for the same reason: the record stays as it was filed.
 const deleteMarker = asyncHandler(async (req, res) => {
   const marker = await loadMarker(req, res);
   if (!marker) return undefined;
-  await marker.deleteOne();
-  await syncHorseHealthStatus(marker.horse);
-  return ok(res, null, 'Injury marker deleted.');
+  return fail(res, 'Chấn thương đã ghi không xóa được — là một phần hồ sơ y tế của ngựa.', 409);
 });
 
-module.exports = { listMarkers, createMarker, updateMarker, deleteMarker, syncHorseHealthStatus };
+module.exports = { listMarkers, createMarker, updateMarker, deleteMarker, syncHorseHealthStatus, followTreatment };

@@ -202,7 +202,14 @@ module.exports = {
           horse: { type: 'string' },
           requestedBy: { type: 'string' },
           reason: { type: 'string' },
-          priority: { type: 'string', enum: ['normal', 'high', 'urgent'] },
+          priority: { type: 'string', enum: ['normal', 'high', 'urgent'], description: 'urgent: seen within 1 hour, never booked for later; high: within 6 hours; normal: within 3 days' },
+          symptoms: { type: 'array', items: { type: 'string', enum: ['lameness', 'swelling', 'wound', 'breathing', 'nasal', 'fever', 'appetite', 'colic', 'fatigue', 'behaviour', 'other'] } },
+          bodyAreas: { type: 'array', items: { type: 'string', enum: ['head', 'chest', 'back', 'belly', 'fore_left', 'fore_right', 'hind_left', 'hind_right', 'hooves', 'skin', 'whole'] } },
+          observedAt: { type: 'string', format: 'date-time', nullable: true, description: 'When the requester noticed the problem' },
+          firstAid: { type: 'string', description: 'What was already done for the horse (cold hosing, the session stopped)' },
+          holdTraining: { type: 'boolean', description: 'While the request is open, the medical gate blocks every session of the horse' },
+          dueBy: { type: 'string', format: 'date-time', description: 'When the vet must have seen the horse by, from the priority' },
+          auto: { type: 'boolean', description: 'Raised by the system from a session (older requests: absent, and those with a session were the system’s)' },
           status: { type: 'string', enum: ['pending', 'done', 'cancelled'] },
           resolvedBy: { type: 'string', nullable: true },
           resolvedAt: { type: 'string', format: 'date-time', nullable: true },
@@ -214,7 +221,7 @@ module.exports = {
           trainingSession: {
             type: 'string',
             nullable: true,
-            description: 'Set when the system raised the request itself: a finished session averaged 10%+ over its heart-rate limit',
+            description: 'The session it came from: picked by the requester, or set when the system raised the request (a finished session averaged 10%+ over its heart-rate limit, a fever at the pre-check). Populated in lists.',
           },
         },
       },
@@ -331,9 +338,21 @@ module.exports = {
           examinedBy: { type: 'string' },
           date: { type: 'string', format: 'date-time' },
           diagnosis: { type: 'string' },
+          history: { type: 'string', description: 'The complaint and how it came about, as the vet was told and saw it' },
           vitalSigns: {
             type: 'object',
-            properties: { temperatureC: { type: 'number' }, heartRate: { type: 'number' }, respiratoryRate: { type: 'number' } },
+            properties: { temperatureC: { type: 'number' }, heartRate: { type: 'number' }, respiratoryRate: { type: 'number' }, weightKg: { type: 'number', description: 'The newest exam that weighs the horse also sets Horse.weightKg' } },
+          },
+          clinical: {
+            type: 'object',
+            properties: {
+              mucousMembrane: { type: 'string', nullable: true, enum: ['pink', 'pale', 'congested', 'icteric', 'cyanotic'] },
+              capillaryRefillSec: { type: 'number', minimum: 0, maximum: 10 },
+              gutSounds: { type: 'string', nullable: true, enum: ['normal', 'reduced', 'increased', 'absent'] },
+              hydration: { type: 'string', nullable: true, enum: ['normal', 'mild', 'moderate', 'severe'] },
+              lamenessGrade: { type: 'number', minimum: 0, maximum: 5, description: 'AAEP scale' },
+              lamenessLimb: { type: 'string', nullable: true, enum: ['fore_left', 'fore_right', 'hind_left', 'hind_right'] },
+            },
           },
           resultStatus: { type: 'string', enum: ['eligible', 'monitoring', 'injured', 'quarantined'] },
           clearedLevel: { type: 'string', nullable: true, enum: ['none', 'light', 'moderate', 'high'], description: 'Return-to-training assessment: how hard the horse may work from now on. The newest one caps the training level until a later one raises it; it also ends the hold of a treatment that ended while still restricting (Treatment.returnLevel). Bookings above the new level are cancelled and not restored.' },
@@ -1267,8 +1286,8 @@ module.exports = {
       },
     },
     '/health/records/{id}': {
-      get: { tags: ['Health (Veterinarian)'], summary: 'Get health record', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/HealthRecord' }), 404: responses[404] } },
-      put: { tags: ['Health (Veterinarian)'], summary: 'Update health record', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/HealthRecord' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/HealthRecord' }), 404: responses[404] } },
+      get: { tags: ['Health (Veterinarian)'], summary: 'Get health record, with the injuries recorded with it, the treatments written against it and the exam requests it answered (`injuries`, `treatments`, `requests`)', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/HealthRecord' }), 404: responses[404] } },
+      put: { tags: ['Health (Veterinarian)'], summary: 'Refused (409): a filed exam is not edited — a later finding is a new exam. Files can still be added (POST …/attachments); removing one is refused too.', parameters: [idParam('id')], responses: { 404: responses[404], 409: responses[409] } },
     },
     '/health/exam-requests': {
       post: {
@@ -1281,10 +1300,17 @@ module.exports = {
               schema: {
                 type: 'object',
                 required: ['horse'],
+                description: 'A reason or at least one symptom is required.',
                 properties: {
                   horse: { type: 'string' },
                   reason: { type: 'string' },
                   priority: { type: 'string', enum: ['normal', 'high', 'urgent'], default: 'normal' },
+                  symptoms: { type: 'array', items: { type: 'string' } },
+                  bodyAreas: { type: 'array', items: { type: 'string' } },
+                  observedAt: { type: 'string', format: 'date-time' },
+                  firstAid: { type: 'string' },
+                  holdTraining: { type: 'boolean', default: false },
+                  trainingSession: { type: 'string', description: 'A session of this horse the request is about' },
                 },
               },
             },
@@ -1310,6 +1336,8 @@ module.exports = {
         description:
           '`action: accept` — sets acceptedBy/acceptedAt and `scheduledFor` (optional, not in the past); the request stays pending ' +
           'and is closed by the exam as before; sending accept again moves the appointment. The requester is notified. ' +
+          'The priority decides the booking (400 otherwise): an urgent request takes no `scheduledFor` (accept means the vet is on the way); ' +
+          'a high or normal one only up to its `dueBy`. ' +
           '`action: decline` — needs `note` (400 without), closes the request as cancelled, the requester is notified. ' +
           'Without `action`, `status: done|cancelled` closes it as before. 409 once the request is no longer pending.',
         parameters: [idParam('id')],
@@ -1366,7 +1394,14 @@ module.exports = {
     },
     '/health/treatments/{id}': {
       get: { tags: ['Health (Veterinarian)'], summary: 'Get treatment', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/Treatment' }), 404: responses[404] } },
-      put: { tags: ['Health (Veterinarian)'], summary: 'Update treatment', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Treatment' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/Treatment' }), 404: responses[404] } },
+      put: {
+        tags: ['Health (Veterinarian)'],
+        summary: 'End a treatment: only { status: "completed" } (400 for anything else, 409 once ended)',
+        description: 'An issued prescription is not rewritten. To change it, POST /health/treatments with `replaces: <id>`: the new one takes over and the old one ends without holding the horse at its old level. Ending the last treatment moves the horse’s injuries in treatment to recovering.',
+        parameters: [idParam('id')],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string', enum: ['completed'] } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/Treatment' }), 400: responses[400], 404: responses[404], 409: responses[409] },
+      },
     },
     '/health/treatments/{id}/lock-training': {
       post: {
@@ -1383,8 +1418,8 @@ module.exports = {
       post: { tags: ['Health (Veterinarian)'], summary: 'Create injury marker', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/InjuryMarker' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/InjuryMarker' }), 403: responses[403] } },
     },
     '/health/injury-markers/{id}': {
-      put: { tags: ['Health (Veterinarian)'], summary: 'Update injury marker (e.g. recoveryStatus)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/InjuryMarker' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InjuryMarker' }), 404: responses[404] } },
-      delete: { tags: ['Health (Veterinarian)'], summary: 'Delete injury marker — for one placed on the wrong body part, which previously could only be edited, never removed', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
+      put: { tags: ['Health (Veterinarian)'], summary: 'Move an injury to another recovery stage: only { recoveryStatus } (400 for anything else — a recorded injury is not rewritten). A new treatment moves new injuries to in_treatment; the last one ending moves them to recovering.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { recoveryStatus: { type: 'string', enum: ['new', 'in_treatment', 'recovering', 'recovered'] } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InjuryMarker' }), 400: responses[400], 404: responses[404] } },
+      delete: { tags: ['Health (Veterinarian)'], summary: 'Refused (409): a recorded injury is part of the horse’s medical record', parameters: [idParam('id')], responses: { 403: responses[403], 404: responses[404], 409: responses[409] } },
     },
     '/health/prescription-templates': {
       get: { tags: ['Health (Veterinarian)'], summary: 'Prescription templates per condition (every vet’s), picked in the prescription form', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/PrescriptionTemplate' } }), 403: responses[403] } },

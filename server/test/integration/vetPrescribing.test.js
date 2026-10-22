@@ -64,13 +64,18 @@ test('vet prescribing: prescription templates and injuries placed on the 3D hors
 
     const bad = await raw('vet', 'POST', '/health/injury-markers', { horse: horse._id, bodyPart: 'X', coordinates: { x: 0.5, y: 0.5 }, location3d: { position: { x: 1, y: 2 } }, severity: 'mild' });
     assert.equal(bad.status, 400);
-    const badLayer = await raw('vet', 'PUT', `/health/injury-markers/${inside._id}`, { location3d: { position: { x: 0, y: 1, z: 2 }, layer: 'bone' } });
+    const badLayer = await raw('vet', 'POST', '/health/injury-markers', { horse: horse._id, bodyPart: 'X', coordinates: { x: 0.5, y: 0.5 }, location3d: { position: { x: 0, y: 1, z: 2 }, layer: 'bone' }, severity: 'mild' });
     assert.equal(badLayer.status, 400);
 
     // A mark from before the 3D map has only coordinates, and keeps working.
     const old = await api('vet', 'POST', '/health/injury-markers', { horse: horse._id, bodyPart: 'Lưng', coordinates: { x: 0.5, y: 0.3 }, severity: 'mild' }, 201);
     assert.equal(old.location3d, undefined);
-    const cleared = await api('vet', 'PUT', `/health/injury-markers/${onSkin._id}`, { location3d: null });
-    assert.equal(cleared.location3d, null);
+
+    // Once recorded, an injury is not rewritten nor deleted: only its recovery moves on.
+    assert.equal((await raw('vet', 'PUT', `/health/injury-markers/${onSkin._id}`, { location3d: null })).status, 400);
+    assert.equal((await raw('vet', 'PUT', `/health/injury-markers/${onSkin._id}`, { severity: 'mild', recoveryStatus: 'recovering' })).status, 400);
+    const moved = await api('vet', 'PUT', `/health/injury-markers/${onSkin._id}`, { recoveryStatus: 'recovering' });
+    assert.equal(moved.recoveryStatus, 'recovering');
+    assert.equal((await raw('vet', 'DELETE', `/health/injury-markers/${old._id}`)).status, 409);
   });
 });

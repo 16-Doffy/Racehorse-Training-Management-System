@@ -107,6 +107,8 @@ async function raiseExamIfOverexerted(session, user, horse) {
     requestedBy: user,
     reason,
     priority: 'high',
+    symptoms: ['fatigue'],
+    observedAt: session.actualEndAt || new Date(),
     trainingSession: session._id,
     message: `🩺 [ƯU TIÊN CAO] Hệ thống đề nghị khám ${horse.name} sau buổi tập: ${reason}`,
   });
@@ -327,6 +329,7 @@ async function onAborted(session, actor) {
         requestedBy: actor,
         reason: `Dừng buổi ${what} giữa chừng — ${why}.`,
         priority: 'high',
+        observedAt: new Date(),
         trainingSession: session._id,
         message: `🩺 [ƯU TIÊN CAO] ${horse.name} phải dừng buổi ${what} giữa chừng — ${why}. Cần bác sĩ khám.`,
       });

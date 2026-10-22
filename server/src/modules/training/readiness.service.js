@@ -1,5 +1,6 @@
 const Horse = require('../../models/Horse');
 const HealthRecord = require('../../models/HealthRecord');
+const ExamRequest = require('../../models/ExamRequest');
 const DailyTask = require('../../models/DailyTask');
 const StableAssignment = require('../../models/StableAssignment');
 const { findOpenIncident } = require('../stable/incident.service');
@@ -87,6 +88,15 @@ async function medicalGate(horse, { intensity } = {}) {
   if (horse.healthStatus === 'injured' || horse.healthStatus === 'quarantined') {
     gate.status = 'blocked';
     gate.detail = `Tình trạng sức khỏe hiện tại: ${HEALTH_STATUS_LABELS[horse.healthStatus]}.`;
+    return gate;
+  }
+
+  // The trainer stopped the horse's work until a vet has seen it: held until the exam is filed or the
+  // vet closes the request.
+  const hold = await ExamRequest.findOne({ horse: horse._id, status: 'pending', holdTraining: true }).sort({ createdAt: -1 }).populate('requestedBy', 'name');
+  if (hold) {
+    gate.status = 'blocked';
+    gate.detail = `Tạm dừng tập chờ bác sĩ khám: ${hold.requestedBy?.name || 'HLV'} yêu cầu ${formatTime(hold.createdAt)} ${new Date(hold.createdAt).toLocaleDateString('vi-VN')}${hold.reason ? ` — ${hold.reason}` : ''}.`;
     return gate;
   }
 

@@ -232,8 +232,10 @@ async function run() {
   await HealthRecord.create({
     horse: horses[1]._id,
     examinedBy: vet._id,
+    history: 'Khám định kỳ 2 tuần, ngựa ăn uống và tập bình thường.',
     diagnosis: 'Routine check-up, no abnormalities found.',
-    vitalSigns: { temperatureC: 37.8, heartRate: 36, respiratoryRate: 14 },
+    vitalSigns: { temperatureC: 37.8, heartRate: 36, respiratoryRate: 14, weightKg: 470 },
+    clinical: { mucousMembrane: 'pink', capillaryRefillSec: 1.5, gutSounds: 'normal', hydration: 'normal', lamenessGrade: 0 },
     resultStatus: 'eligible',
   });
 
@@ -275,8 +277,11 @@ async function run() {
   const tendonCheck = await HealthRecord.create({
     horse: horses[2]._id,
     examinedBy: vet._id,
+    history: 'Nhân viên chăm sóc báo gân chân trước hơi ấm sau buổi tập sáng.',
     diagnosis: 'Gân chân trước hơi ấm sau buổi tập, chưa thấy tổn thương.',
     vitalSigns: { temperatureC: 38.0, heartRate: 40, respiratoryRate: 16 },
+    clinical: { mucousMembrane: 'pink', capillaryRefillSec: 2, gutSounds: 'normal', hydration: 'normal', lamenessGrade: 1, lamenessLimb: 'fore_left' },
+    notes: 'Bôi gel kháng viêm, dắt bộ nhẹ; khám lại nếu còn ấm sau 3 ngày.',
     resultStatus: 'eligible',
   });
   const course = await Treatment.create({

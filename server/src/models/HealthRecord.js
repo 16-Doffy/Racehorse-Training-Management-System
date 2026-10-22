@@ -6,10 +6,23 @@ const healthRecordSchema = new mongoose.Schema(
     examinedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     date: { type: Date, default: Date.now },
     diagnosis: { type: String, required: true },
+    // What the vet was told and saw before examining: the complaint and how it came about.
+    history: { type: String, trim: true },
     vitalSigns: {
       temperatureC: { type: Number },
       heartRate: { type: Number },
       respiratoryRate: { type: Number },
+      weightKg: { type: Number, min: 0 },
+    },
+    // What the vet found by hand and eye beside the numbers, each optional: gum colour, capillary
+    // refill, gut sounds, hydration, and lameness on the AAEP scale (0 sound … 5 non-weight-bearing).
+    clinical: {
+      mucousMembrane: { type: String, enum: ['pink', 'pale', 'congested', 'icteric', 'cyanotic', null] },
+      capillaryRefillSec: { type: Number, min: 0, max: 10 },
+      gutSounds: { type: String, enum: ['normal', 'reduced', 'increased', 'absent', null] },
+      hydration: { type: String, enum: ['normal', 'mild', 'moderate', 'severe', null] },
+      lamenessGrade: { type: Number, min: 0, max: 5 },
+      lamenessLimb: { type: String, enum: ['fore_left', 'fore_right', 'hind_left', 'hind_right', null] },
     },
     resultStatus: {
       type: String,
