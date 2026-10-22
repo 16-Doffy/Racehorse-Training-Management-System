@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Button, Form } from 'react-bootstrap';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import PageHeroBanner from '../../components/common/PageHeroBanner';
 import HorsePickerModal from '../../components/veterinarian/HorsePickerModal';
 import TrainingLevelModal from '../../components/veterinarian/TrainingLevelModal';
 import TreatmentCard from '../../components/veterinarian/TreatmentCard';
 import useConfirm from '../../components/veterinarian/useConfirm';
 import { endTreatment } from '../../components/veterinarian/vetActions';
-import { Callout, EmptyNote, FilterChips, LoadingBlock, VetCard } from '../../components/veterinarian/ui';
+import { Callout, EmptyNote, FilterChips, LoadingBlock, PageHead, Pill, VetCard } from '../../components/veterinarian/ui';
 import { clearanceOf, idOf } from '../../components/veterinarian/vetFormat';
 import { useCareOrders, useInjuries, useTreatments, useVetHorses, useVetRefresh } from '../../hooks/useVetData';
 
@@ -47,26 +46,36 @@ export default function TreatmentsPage() {
         : new Date(b.endDate || b.updatedAt) - new Date(a.endDate || a.updatedAt)
     );
 
-  const edit = (t) => navigate(`${HERE}/${t._id}/edit`, { state: { from: HERE } });
+  // A prescription is not edited: a new one, started from it, takes over.
+  const replace = (t) => navigate(`${HERE}/new?horseId=${idOf(t.horse)}&replace=${t._id}`, { state: { from: HERE } });
 
   return (
     <div className="vet-ui">
-      <PageHeroBanner
-        eyebrow="TEAM 8 • Y TẾ & THÚ Y"
-        roleLabel="Bác sĩ Thú y"
+      <PageHead
         title="Điều trị & đơn thuốc"
-        subtitle="Phác đồ đang áp dụng, thuốc theo giờ và tiến độ nhân viên chăm sóc cho thuốc hôm nay."
-        stats={
-          treatments.length
-            ? [
-                { label: 'Đang điều trị', value: ongoingCount },
-                { label: 'Hôm nay đã cho', value: `${today.done}/${today.total}` },
-                ...(today.missed ? [{ label: 'Bỏ lỡ', value: today.missed }] : []),
-              ]
-            : []
+        subtitle={
+          treatmentsQ.isLoading ? (
+            'Đang tải…'
+          ) : (
+            <span className="d-inline-flex flex-wrap align-items-center gap-2">
+              <span>
+                <strong className="vet-tnum">{ongoingCount}</strong> phác đồ đang áp dụng
+              </span>
+              {today.total > 0 && (
+                <span>
+                  · hôm nay đã cho{' '}
+                  <strong className="vet-tnum">
+                    {today.done}/{today.total}
+                  </strong>{' '}
+                  liều
+                </span>
+              )}
+              {today.missed > 0 && <Pill tone="bad">{today.missed} liều bỏ lỡ</Pill>}
+            </span>
+          )
         }
-        actionButton={
-          <Button variant="vet-hero" onClick={() => setDialog({ type: 'pick' })}>
+        actions={
+          <Button variant="vet" onClick={() => setDialog({ type: 'pick' })}>
             <i className="bi bi-plus-lg" aria-hidden="true" /> Kê đơn mới
           </Button>
         }
@@ -127,7 +136,8 @@ export default function TreatmentsPage() {
                 progress={progressOf(t._id)}
                 awaitingReturn={t.status !== 'ongoing' && clearance.source === 'awaiting_return' && String(clearance.treatment) === t._id}
                 onOpenHorse={() => navigate(`/veterinarian/horses/${idOf(t.horse)}`)}
-                onEdit={() => edit(t)}
+                onReplace={() => replace(t)}
+                onOpenExam={() => navigate(`/veterinarian/examinations/${idOf(t.healthRecord)}`)}
                 onEnd={() => endTreatment({ ...t, horse: horse || t.horse }, { confirm, refresh })}
                 onLevel={horse ? () => setDialog({ type: 'level', horse }) : undefined}
               />

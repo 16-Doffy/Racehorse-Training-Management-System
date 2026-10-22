@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { Descriptions, Tag, Table, Card, Breadcrumb, Row, Col, Empty, Button, Modal, Form, Input, Select, Alert } from 'antd';
-import { message } from '../../lib/antdStatic';
+import { useQuery } from '@tanstack/react-query';
+import { Descriptions, Tag, Table, Card, Breadcrumb, Row, Col, Empty, Button, Alert } from 'antd';
 import { HORSE_SEX_LABELS, formatVnd } from '../../constants/horse';
 import { MedicineBoxOutlined } from '@ant-design/icons';
 import { horsesApi } from './horsesApi';
@@ -14,7 +13,7 @@ import { stallApi } from '../stable/stableApi';
 import Horse3D from './horse3d/Horse3D';
 import { breedLabel, coatLabel } from './horse3d/horseBreeds';
 import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constants/health';
-import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
+import RequestExamModal from '../health/RequestExamModal';
 import { ROLES, ROLE_LABELS } from '../../constants/roles';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import dayjs from 'dayjs';
@@ -36,7 +35,6 @@ export default function HorseDetailPage() {
   const { user } = useSelector((state) => state.auth);
   const canRequestExam = user?.role === ROLES.HEAD_TRAINER || user?.role === ROLES.MANAGER;
   const [examModalOpen, setExamModalOpen] = useState(false);
-  const [examForm] = Form.useForm();
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['horses', id],
@@ -46,16 +44,6 @@ export default function HorseDetailPage() {
   // The groom of the horse's stall (the same request as the stall card below, so it is made once).
   const { data: stallData } = useQuery({ queryKey: ['stall-of-horse', id], queryFn: () => stallApi.forHorse(id), enabled: Boolean(id) });
   const groom = stallData?.data?.caretaker?.name;
-
-  const requestExamMutation = useMutation({
-    mutationFn: (payload) => healthRecordApi.requestExam(payload),
-    onSuccess: () => {
-      message.success('Đã gửi yêu cầu khám tới bác sĩ thú y.');
-      setExamModalOpen(false);
-      examForm.resetFields();
-    },
-    onError: (err) => message.error(err.message || 'Gửi yêu cầu thất bại.'),
-  });
 
   if (isLoading && !horse) {
     return (
@@ -229,32 +217,7 @@ export default function HorseDetailPage() {
         <CareHistoryCard horseId={horse._id} />
       </div>
 
-      {canRequestExam && (
-        <Modal
-          title={`Yêu cầu bác sĩ kiểm tra — ${horse.name}`}
-          open={examModalOpen}
-          onCancel={() => setExamModalOpen(false)}
-          onOk={() => examForm.submit()}
-          confirmLoading={requestExamMutation.isPending}
-          destroyOnHidden
-        >
-          <Form
-            form={examForm}
-            layout="vertical"
-            onFinish={(values) => requestExamMutation.mutate({ horse: horse._id, reason: values.reason, priority: values.priority })}
-          >
-            <Form.Item name="priority" label="Mức độ" initialValue="normal">
-              <Select options={EXAM_PRIORITY_OPTIONS} />
-            </Form.Item>
-            <Form.Item name="reason" label="Lý do">
-              <Input.TextArea
-                rows={3}
-                placeholder="VD: Ngựa có dấu hiệu khập khiễng sau buổi tập sáng nay."
-              />
-            </Form.Item>
-          </Form>
-        </Modal>
-      )}
+      {canRequestExam && examModalOpen && <RequestExamModal horse={horse} onClose={() => setExamModalOpen(false)} />}
     </div>
   );
 }

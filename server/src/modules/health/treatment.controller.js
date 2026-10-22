@@ -16,7 +16,7 @@ const { notifyHorseStaff, notifyCaretaker, pushNotification } = require('../aler
 const { syncCareTasks } = require('./treatmentCare.service');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
-const { syncHorseHealthStatus } = require('./injuryMarker.controller');
+const { followTreatment, syncHorseHealthStatus } = require('./injuryMarker.controller');
 const InventoryItem = require('../../models/InventoryItem');
 const { LEVELS, LEVEL_RANK, INTENSITY_RANK, levelOf, getTrainingClearance, LEVEL_LABELS } = require('./trainingClearance');
 const { withSupplyStatus } = require('../inventory/stock.service');
@@ -365,9 +365,55 @@ async function onTrainingLevelChanged(treatment, { previousLevel, actor }) {
   });
 }
 
+/**
+ * Ends an ongoing treatment. Ending one that still restricted training does not clear the horse: it
+ * stays at that level until a vet assesses it for a return to training (HealthRecord.clearedLevel) —
+ * unless a new prescription takes over from it (`replacedBy`): then the new one's level is the one
+ * that counts, and the horse's injuries stay in treatment.
+ */
+async function closeTreatment(treatment, actor, { replacedBy = null } = {}) {
+  const previousLevel = levelOf(treatment);
+  const holdsHorse = previousLevel !== 'high' && !replacedBy;
+  Object.assign(treatment, {
+    status: 'completed',
+    endDate: new Date(),
+    isTrainingLocked: false,
+    trainingLevel: 'high',
+    returnLevel: holdsHorse ? previousLevel : null,
+    replacedBy,
+  });
+  await treatment.save();
+
+  await logAction({ actorId: actor._id, action: replacedBy ? 'treatment.replaced' : 'treatment.update', targetModel: 'Treatment', targetId: treatment._id, metadata: replacedBy ? { replacedBy } : { status: 'completed' } });
+  if (holdsHorse) {
+    await notifyHorseStaff({
+      staff: 'trainer',
+      horse: treatment.horse,
+      type: 'training_restricted',
+      severity: 'info',
+      message: `🩺 Đã kết thúc điều trị cho ngựa, nhưng chưa được tập lại: chờ bác sĩ đánh giá trở lại tập (đang giữ mức "${LEVEL_LABELS[previousLevel]}").`,
+    });
+    await logAction({ actorId: actor._id, action: 'treatment.ended_awaiting_return', targetModel: 'Treatment', targetId: treatment._id, metadata: { level: previousLevel } });
+  } else if (!replacedBy) {
+    await onTrainingLevelChanged(treatment, { previousLevel, actor });
+  }
+  // Removes the care tasks still pending for it.
+  await sendCareOrders(treatment, actor);
+  // The horse's last treatment over: its injuries move on to recovering.
+  if (!replacedBy) await followTreatment(treatment.horse, 'ended');
+}
+
+// POST /health/treatments — a new prescription; with `replaces` (an ongoing treatment of the same
+// horse) it takes over from that one, which ends.
 const createTreatment = asyncHandler(async (req, res) => {
   const body = pick(req.body, TREATMENT_FIELDS);
   if (!(await canAccessHorse(req.user, body.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+  let replaced = null;
+  if (req.body.replaces) {
+    replaced = await Treatment.findById(req.body.replaces).catch(() => null);
+    if (!replaced || String(replaced.horse) !== String(body.horse)) return fail(res, 'Đơn cần thay không phải của ngựa này.', 400);
+    if (replaced.status !== 'ongoing') return fail(res, 'Đơn cần thay đã kết thúc.', 409);
+  }
   if (body.medications !== undefined) {
     const { medications, error } = await normalizeMedications(body.medications);
     if (error) return fail(res, error, 400);
@@ -381,64 +427,34 @@ const createTreatment = asyncHandler(async (req, res) => {
   if (!record) return fail(res, 'Không tìm thấy hồ sơ khám.', 404);
   if (String(record.horse) !== String(body.horse)) return fail(res, 'Hồ sơ khám không thuộc ngựa này.', 400);
 
-  const treatment = await Treatment.create({ ...body, prescribedBy: req.user._id });
+  const treatment = await Treatment.create({ ...body, replaces: replaced?._id || null, prescribedBy: req.user._id });
   // Stock is not touched here: each dose becomes a groom task carrying its supplies, and the stock
   // goes down when that dose is recorded as given (blocked while the stock is short).
 
   await logAction({ actorId: req.user._id, action: 'treatment.create', targetModel: 'Treatment', targetId: treatment._id });
   await onTrainingLevelChanged(treatment, { previousLevel: 'high', actor: req.user });
   await sendCareOrders(treatment, req.user, { isNew: true });
+  // The injuries just found are now being treated.
+  await followTreatment(treatment.horse, 'started');
+  if (replaced) await closeTreatment(replaced, req.user, { replacedBy: treatment._id });
   await syncHorseHealthStatus(treatment.horse);
 
   return created(res, treatment, 'Treatment created.');
 });
 
+// PUT /health/treatments/:id { status: 'completed' } — ends it. An issued prescription is not rewritten
+// (the groom's doses and the stock already follow it): a change is a new prescription that replaces
+// it (POST with `replaces`). How hard the horse may work moves on its own endpoint (lock-training).
 const updateTreatment = asyncHandler(async (req, res) => {
   const treatment = await loadTreatment(req, res);
   if (!treatment) return undefined;
+  if (treatment.status !== 'ongoing') return fail(res, 'Đơn này đã kết thúc.', 409);
+  const asked = Object.keys(pick(req.body, TREATMENT_FIELDS)).filter((k) => k !== 'status');
+  if (req.body.status !== 'completed' || asked.length) return fail(res, 'Đơn đã kê không sửa được: kết thúc đơn này, hoặc kê đơn mới thay thế.', 400);
 
-  const previousLevel = levelOf(treatment);
-  // The horse and the exam it came from are fixed once the treatment exists.
-  const { horse, healthRecord, ...changes } = pick(req.body, TREATMENT_FIELDS);
-  if (changes.medications !== undefined) {
-    const { medications, error } = await normalizeMedications(changes.medications);
-    if (error) return fail(res, error, 400);
-    changes.medications = medications;
-  }
-  // Ending a treatment that still restricted training does not clear the horse: it stays at that level
-  // until a vet assesses it for a return to training (HealthRecord.clearedLevel).
-  const endedRestricted = changes.status && changes.status !== 'ongoing' && treatment.status === 'ongoing' && previousLevel !== 'high';
-  if (changes.status && changes.status !== 'ongoing') {
-    changes.isTrainingLocked = false;
-    changes.trainingLevel = 'high';
-    if (endedRestricted) {
-      changes.returnLevel = previousLevel;
-      if (!changes.endDate) changes.endDate = new Date();
-    }
-  }
-  const levelError = applyTrainingLevel(changes, treatment);
-  if (levelError) return fail(res, levelError, 400);
-  Object.assign(treatment, changes);
-
-  await treatment.save();
-
-  await logAction({ actorId: req.user._id, action: 'treatment.update', targetModel: 'Treatment', targetId: treatment._id });
-  if (endedRestricted) {
-    await notifyHorseStaff({
-      staff: 'trainer',
-      horse: treatment.horse,
-      type: 'training_restricted',
-      severity: 'info',
-      message: `🩺 Đã kết thúc điều trị cho ngựa, nhưng chưa được tập lại: chờ bác sĩ đánh giá trở lại tập (đang giữ mức "${LEVEL_LABELS[previousLevel]}").`,
-    });
-    await logAction({ actorId: req.user._id, action: 'treatment.ended_awaiting_return', targetModel: 'Treatment', targetId: treatment._id, metadata: { level: previousLevel } });
-  } else {
-    await onTrainingLevelChanged(treatment, { previousLevel, actor: req.user });
-  }
-  // Also removes the care tasks still pending when the treatment has just been completed.
-  await sendCareOrders(treatment, req.user);
+  await closeTreatment(treatment, req.user);
   await syncHorseHealthStatus(treatment.horse);
-  return ok(res, treatment, 'Treatment updated.');
+  return ok(res, treatment, 'Treatment ended.');
 });
 
 // Dedicated emergency endpoint: set/lift the "lock training" order for a horse, independent of a

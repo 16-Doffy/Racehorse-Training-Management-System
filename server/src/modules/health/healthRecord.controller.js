@@ -11,10 +11,19 @@ const { getTrainingClearance, LEVELS, LEVEL_LABELS } = require('./trainingCleara
 const { openExamRequest } = require('./examRequest.service');
 const { resolveIncidentsWithRecord } = require('../stable/incident.service');
 const { ROLES } = require('../../constants/roles');
+const { BODY_AREAS, EXAM_PRIORITIES, EXAM_SYMPTOMS, fmtWhen, knownKeys, ruleOf, scheduleProblem } = require('../../constants/examRequest');
 const pick = require('../../utils/pick');
-const { saveFile, deleteFileByUrl } = require('../../utils/fileStore');
+const { saveFile } = require('../../utils/fileStore');
 
-const RECORD_FIELDS = ['horse', 'date', 'diagnosis', 'vitalSigns', 'resultStatus', 'notes', 'clearedLevel'];
+const RECORD_FIELDS = ['horse', 'date', 'diagnosis', 'history', 'vitalSigns', 'clinical', 'resultStatus', 'notes', 'clearedLevel'];
+
+/** The horse's weight follows the newest exam that weighed it (the horse page shows Horse.weightKg). */
+async function keepWeight(record) {
+  const weight = record.vitalSigns?.weightKg;
+  if (typeof weight === 'number' && weight > 0 && (await isLatestRecord(record))) {
+    await Horse.findByIdAndUpdate(record.horse, { weightKg: weight });
+  }
+}
 
 /** "" or null clears it; anything else must be a training level. Returns an error message or null. */
 function clearedLevelProblem(body) {
@@ -70,14 +79,33 @@ const listRecords = asyncHandler(async (req, res) => {
     .populate('horse', 'name healthStatus')
     .populate('examinedBy', 'name')
     .sort({ date: -1, createdAt: -1 });
-  return ok(res, records, 'Health records fetched.');
+  // How many exam requests each one answered, so a list can tell the trainer's from the vet's own.
+  const answered = await ExamRequest.find({ healthRecord: { $in: records.map((r) => r._id) } }).select('healthRecord').lean();
+  const counts = new Map();
+  answered.forEach((a) => counts.set(String(a.healthRecord), (counts.get(String(a.healthRecord)) || 0) + 1));
+  return ok(res, records.map((r) => ({ ...r.toObject(), answeredRequests: counts.get(String(r._id)) || 0 })), 'Health records fetched.');
 });
 
+/**
+ * GET /health/records/:id — the exam as filed, with what came from it: the injuries recorded with it,
+ * the prescriptions written against it, and the requests it answered.
+ */
 const getRecord = asyncHandler(async (req, res) => {
   const record = await HealthRecord.findById(req.params.id).populate('horse').populate('examinedBy', 'name');
   if (!record) return fail(res, 'Health record not found.', 404);
   if (!(await canAccessHorse(req.user, record.horse?._id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
-  return ok(res, record, 'Health record fetched.');
+  const InjuryMarker = require('../../models/InjuryMarker');
+  const Treatment = require('../../models/Treatment');
+  const [injuries, treatments, requests] = await Promise.all([
+    InjuryMarker.find({ healthRecord: record._id }).sort({ createdAt: 1 }),
+    Treatment.find({ healthRecord: record._id }).populate('prescribedBy', 'name').sort({ createdAt: 1 }),
+    ExamRequest.find({ healthRecord: record._id })
+      .populate('requestedBy', 'name role')
+      .populate('acceptedBy', 'name')
+      .populate('trainingSession', 'scheduledAt kind objective intensity sessionType status')
+      .sort({ createdAt: 1 }),
+  ]);
+  return ok(res, { ...record.toObject(), injuries, treatments, requests }, 'Health record fetched.');
 });
 
 /** True when `record` is the horse's most recent exam — the only one that speaks for "now". */
@@ -102,6 +130,7 @@ const createRecord = asyncHandler(async (req, res) => {
   if (await isLatestRecord(record)) {
     await Horse.findByIdAndUpdate(record.horse, { healthStatus: record.resultStatus });
   }
+  await keepWeight(record);
 
   // If the horse does not have an assigned vet yet, this examining vet takes responsibility
   const horseDoc = await Horse.findById(record.horse);
@@ -119,44 +148,64 @@ const createRecord = asyncHandler(async (req, res) => {
   return created(res, record, 'Health record created.');
 });
 
+// PUT /health/records/:id — refused. A filed exam is the horse's medical record of that day, with the
+// injuries and the prescription that came from it: it is not rewritten. A correction or a later
+// finding is a new exam. (Files can still be added to it — results that come back later.)
 const updateRecord = asyncHandler(async (req, res) => {
-  const record = await HealthRecord.findById(req.params.id);
+  const record = await HealthRecord.findById(req.params.id).select('horse');
   if (!record) return fail(res, 'Health record not found.', 404);
   if (!(await canAccessHorse(req.user, record.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
-
-  // The horse an exam was about can't be changed afterwards.
-  const { horse, ...changes } = pick(req.body, RECORD_FIELDS);
-  const levelProblem = clearedLevelProblem(changes);
-  if (levelProblem) return fail(res, levelProblem, 400);
-  const levelChanged = changes.clearedLevel !== undefined && changes.clearedLevel !== record.clearedLevel;
-  Object.assign(record, changes);
-  await record.save();
-
-  // Correcting an old exam used to overwrite the horse's current status with that old
-  // conclusion, even when a newer exam said otherwise.
-  if (changes.resultStatus && (await isLatestRecord(record))) {
-    await Horse.findByIdAndUpdate(record.horse, { healthStatus: record.resultStatus });
-  }
-  await logAction({ actorId: req.user._id, action: 'healthRecord.update', targetModel: 'HealthRecord', targetId: record._id });
-  if (levelChanged && record.clearedLevel) await applyReturnAssessment(record, req.user);
-
-  return ok(res, record, 'Health record updated.');
+  return fail(res, 'Phiếu khám đã lưu không sửa được: lập phiếu khám mới để bổ sung hoặc điều chỉnh.', 409);
 });
 
 // Lets a Head Trainer or Manager flag that a horse needs a vet's attention (e.g. after noticing
 // repeated fitness alerts or a performance drop) without them being able to create a HealthRecord
 // themselves — that stays Veterinarian-only. Stored as a request with a status, and announced to
 // the horse's assigned vet (or every vet if nobody is assigned yet).
+// Body: { horse, priority, reason, symptoms[], bodyAreas[], observedAt, firstAid, holdTraining, trainingSession }.
 const requestExam = asyncHandler(async (req, res) => {
-  const { horse: horseId, reason } = req.body;
-  const priority = ['normal', 'high', 'urgent'].includes(req.body.priority) ? req.body.priority : 'normal';
+  const { horse: horseId } = req.body;
+  const priority = EXAM_PRIORITIES.includes(req.body.priority) ? req.body.priority : 'normal';
+  const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+  const firstAid = typeof req.body.firstAid === 'string' ? req.body.firstAid.trim() : '';
+  const symptoms = knownKeys(req.body.symptoms, EXAM_SYMPTOMS);
+  const bodyAreas = knownKeys(req.body.bodyAreas, BODY_AREAS);
   if (!horseId) return fail(res, 'horse is required.', 400);
+  if (!reason && !symptoms.length) return fail(res, 'Ghi lý do hoặc chọn ít nhất một dấu hiệu để bác sĩ biết cần khám gì.', 400);
   if (!(await canAccessHorse(req.user, horseId))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+
+  let observedAt = null;
+  if (req.body.observedAt) {
+    observedAt = new Date(req.body.observedAt);
+    if (!Number.isFinite(observedAt.getTime())) return fail(res, 'Thời điểm phát hiện không hợp lệ.', 400);
+    if (observedAt > new Date(Date.now() + 5 * 60000)) return fail(res, 'Thời điểm phát hiện không được ở tương lai.', 400);
+  }
 
   const horse = await Horse.findById(horseId).select('name');
   if (!horse) return fail(res, 'Horse not found.', 404);
 
-  const request = await openExamRequest({ horse, requestedBy: req.user, reason, priority });
+  // The session the requester points at must be one of this horse's.
+  let trainingSession = null;
+  if (req.body.trainingSession) {
+    const TrainingSession = require('../../models/TrainingSession');
+    const session = await TrainingSession.findById(req.body.trainingSession).select('horse').catch(() => null);
+    if (!session || String(session.horse) !== String(horse._id)) return fail(res, 'Buổi tập liên quan không phải của ngựa này.', 400);
+    trainingSession = session._id;
+  }
+
+  const request = await openExamRequest({
+    horse,
+    requestedBy: req.user,
+    reason,
+    priority,
+    symptoms,
+    bodyAreas,
+    observedAt,
+    firstAid,
+    holdTraining: req.body.holdTraining === true,
+    trainingSession,
+    auto: false,
+  });
   return created(res, request, 'Exam request sent.');
 });
 
@@ -184,6 +233,7 @@ const listExamRequests = asyncHandler(async (req, res) => {
     .populate('resolvedBy', 'name')
     .populate('acceptedBy', 'name')
     .populate('healthRecord', 'resultStatus diagnosis date')
+    .populate('trainingSession', 'scheduledAt kind objective intensity sessionType status')
     .sort({ status: -1, createdAt: -1 })
     .limit(100);
 
@@ -199,6 +249,8 @@ const resolveExamRequest = asyncHandler(async (req, res) => {
 
   const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
   // Taking the request on (again, to move the appointment): it stays open until the exam is filed.
+  // How it can be booked depends on its priority: an urgent one is seen now (the vet says they are on
+  // the way, with no time), a high or normal one only inside its window (constants/examRequest.js).
   if (req.body.action === 'accept') {
     let at = null;
     if (req.body.scheduledFor) {
@@ -206,17 +258,20 @@ const resolveExamRequest = asyncHandler(async (req, res) => {
       if (!Number.isFinite(at.getTime())) return fail(res, 'Giờ hẹn khám không hợp lệ.', 400);
       if (at < new Date(Date.now() - 5 * 60000)) return fail(res, 'Giờ hẹn khám phải ở tương lai.', 400);
     }
+    const problem = scheduleProblem(request, at);
+    if (problem) return fail(res, problem, 400);
     const moved = Boolean(request.acceptedAt);
     Object.assign(request, { acceptedBy: req.user._id, acceptedAt: request.acceptedAt || new Date(), scheduledFor: at });
     if (note) request.resolutionNote = note;
     await request.save();
-    const when = at ? `, hẹn khám ${at.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}` : '';
+    const urgent = !ruleOf(request.priority).canSchedule;
+    const what = urgent ? `đang tới khám ${request.horse.name} (khẩn cấp)` : `${moved ? 'đổi lịch' : 'đã nhận'} yêu cầu khám ${request.horse.name}${at ? `, hẹn khám ${fmtWhen(at)}` : ''}`;
     await pushNotification({
       recipientUser: request.requestedBy,
       horse: request.horse._id,
       type: 'exam_request',
-      severity: 'info',
-      message: `🩺 Bác sĩ ${req.user.name} ${moved ? 'đổi lịch' : 'đã nhận'} yêu cầu khám ${request.horse.name}${when}${note ? ` — ${note}` : ''}.`,
+      severity: urgent ? 'warning' : 'info',
+      message: `🩺 Bác sĩ ${req.user.name} ${what}${note ? ` — ${note}` : ''}.`,
     });
     await logAction({ actorId: req.user._id, action: 'examRequest.accept', targetModel: 'ExamRequest', targetId: request._id, metadata: { horse: request.horse.name, scheduledFor: at } });
     return ok(res, request, 'Exam request accepted.');
@@ -337,18 +392,14 @@ const addAttachments = asyncHandler(async (req, res) => {
   return ok(res, record, 'Attachments added.');
 });
 
+// DELETE /health/records/:id/attachments/:attachmentId — refused: what an exam was filed with stays
+// with it (files are only added).
 const removeAttachment = asyncHandler(async (req, res) => {
-  const record = await HealthRecord.findById(req.params.id);
+  const record = await HealthRecord.findById(req.params.id).select('horse attachments');
   if (!record) return fail(res, 'Health record not found.', 404);
   if (!(await canAccessHorse(req.user, record.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
-  const attachment = record.attachments.id(req.params.attachmentId);
-  if (!attachment) return fail(res, 'Không tìm thấy tệp đính kèm.', 404);
-
-  const { url } = attachment;
-  attachment.deleteOne();
-  await record.save();
-  await deleteFileByUrl(url);
-  return ok(res, record, 'Attachment removed.');
+  if (!record.attachments.id(req.params.attachmentId)) return fail(res, 'Không tìm thấy tệp đính kèm.', 404);
+  return fail(res, 'Tệp đã đính kèm phiếu khám không xóa được — là một phần hồ sơ y tế của ngựa.', 409);
 });
 
 module.exports = {

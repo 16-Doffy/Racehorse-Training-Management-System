@@ -7,12 +7,15 @@ import { BusyButton, Callout, Choices, Field, VetModal } from './ui';
 import { RECOVERY_STEPS, SEVERITY_META, errorText, idOf, isActiveInjury } from './vetFormat';
 
 /**
- * Marks an injury on the horse (or edits one): where — clicked on the 3D horse, which also names the
- * part of the body — how bad, and how far along. The server works out the horse's health status from
- * its injuries, so nothing else is written here. Mounted when opened. Give `horse` (from its page), or
- * `horses` to choose from; `injuries` (any horses) are shown on the model for context.
+ * Marks an injury on the horse: where — clicked on the 3D horse, which also names the part of the
+ * body — how bad, and how far along. The server works out the horse's health status from its
+ * injuries, so nothing else is written here. A recorded injury is not edited (only its stage moves,
+ * elsewhere). Mounted when opened. Give `horse` (from its page), or `horses` to choose from;
+ * `injuries` (any horses) are shown on the model for context.
+ * With `onDraft`, nothing is saved: the injury goes back to the caller (the exam form saves it with
+ * the exam that found it), and `injury` may be such a draft to change before the exam is saved.
  */
-export default function InjuryModal({ horse, horses = [], injury, injuries = [], defaultHorseId = '', onHide, onDone }) {
+export default function InjuryModal({ horse, horses = [], injury, injuries = [], defaultHorseId = '', onHide, onDone, onDraft }) {
   const [horseId, setHorseId] = useState(() => idOf(injury?.horse) || idOf(horse) || defaultHorseId || '');
   const [bodyPart, setBodyPart] = useState(injury?.bodyPart || '');
   const [named, setNamed] = useState(''); // the last name the model filled in, replaced by the next click
@@ -52,10 +55,14 @@ export default function InjuryModal({ horse, horses = [], injury, injuries = [],
       notes: notes.trim(),
     };
     if (moved && point?.location3d) payload.location3d = point.location3d;
+    if (onDraft) {
+      onDraft({ ...payload, _id: injury?._id, location3d: point?.location3d || injury?.location3d });
+      onHide();
+      return undefined;
+    }
     try {
-      if (injury) await vetApi.updateInjuryMarker(injury._id, payload);
-      else await vetApi.createInjuryMarker(payload);
-      message.success(injury ? 'Đã cập nhật chấn thương.' : `Đã ghi chấn thương cho ${horseName}.`);
+      await vetApi.createInjuryMarker(payload);
+      message.success(`Đã ghi chấn thương cho ${horseName}.`);
       onDone?.();
       onHide();
     } catch (err) {
@@ -81,7 +88,7 @@ export default function InjuryModal({ horse, horses = [], injury, injuries = [],
             Hủy
           </Button>
           <BusyButton type="submit" busy={busy}>
-            {injury ? 'Lưu thay đổi' : 'Ghi chấn thương'}
+            {onDraft ? (injury ? 'Cập nhật' : 'Thêm vào phiếu khám') : injury ? 'Lưu thay đổi' : 'Ghi chấn thương'}
           </BusyButton>
         </>
       }

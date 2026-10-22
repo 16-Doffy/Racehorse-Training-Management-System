@@ -32,7 +32,8 @@ async function buildCareCoordination(range) {
       { $match: { source: 'vet', ...(range ? { scheduledDate: range } : {}) } },
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]),
-    ExamRequest.countDocuments({ trainingSession: { $ne: null }, ...(range ? { createdAt: range } : {}) }),
+    // Raised by the system: older requests carry no `auto`, and those with a session were the system's.
+    ExamRequest.countDocuments({ trainingSession: { $ne: null }, auto: { $ne: false }, ...(range ? { createdAt: range } : {}) }),
   ]);
 
   const byStatus = { open: 0, acknowledged: 0, resolved: 0 };

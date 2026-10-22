@@ -224,8 +224,13 @@ async function setUpHorse(F, name, stall, breakfastAt, feed) {
     horse: horse._id, stableBlock: stall, assignedCaretaker: ids.groom,
   });
   await must(F, 'vet', 'khám tiếp nhận: đủ điều kiện, không hạn chế (37,6 °C, 36 bpm)', 'POST', '/health/records', {
-    horse: horse._id, diagnosis: 'Khám tiếp nhận: niêm mạc hồng, tim phổi bình thường, chân không sưng nóng. Đủ điều kiện tập.',
-    resultStatus: 'eligible', clearedLevel: 'high', vitalSigns: { temperatureC: 37.6, heartRate: 36 },
+    horse: horse._id,
+    history: 'Ngựa mới về CLB, vận chuyển 6 giờ. Chủ báo đã tiêm cúm + uốn ván 3 tháng trước, tẩy giun 2 tháng trước; chưa từng chấn thương.',
+    diagnosis: 'Khám tiếp nhận: niêm mạc hồng, tim phổi bình thường, chân không sưng nóng. Đủ điều kiện tập.',
+    resultStatus: 'eligible', clearedLevel: 'high',
+    vitalSigns: { temperatureC: 37.6, heartRate: 36, respiratoryRate: 12, weightKg: 485 },
+    clinical: { mucousMembrane: 'pink', capillaryRefillSec: 1.5, gutSounds: 'normal', hydration: 'normal', lamenessGrade: 0 },
+    notes: 'Cho tập nhẹ 2–3 ngày đầu để ngựa quen chuồng. Hẹn khám định kỳ sau 14 ngày.',
   });
   await must(F, 'trainer', `khẩu phần bữa sáng ${hhmm(breakfastAt)}: 2,5 ${feed.unit} ${feed.name}`, 'POST', '/feeding', {
     horse: horse._id, mealTime: 'morning', timeOfDay: hhmm(breakfastAt), items: [{ inventoryItem: feed._id, amount: 2.5 }],
@@ -424,8 +429,12 @@ async function flowInjured(ctx, F, setup) {
   });
   await must(F, 'vet', 'khám: viêm gân gấp chân trước trái độ 1 — chấn thương, nghỉ tập 2 tuần', 'POST', '/health/records', {
     horse: horse._id,
+    history: 'HLV báo ngựa hụt bước ở vòng đầu buổi phi chậm, sau đó khập khiễng chân trước trái; đã dừng buổi và chườm lạnh 15 phút.',
     diagnosis: 'Sưng nóng nhẹ vùng gân gấp chân trước trái, ngựa né chân khi bước. Viêm gân độ 1: chườm lạnh, băng ép, nghỉ tập 2 tuần rồi khám lại.',
-    resultStatus: 'injured', clearedLevel: 'none', vitalSigns: { temperatureC: 38.2, heartRate: 46 },
+    resultStatus: 'injured', clearedLevel: 'none',
+    vitalSigns: { temperatureC: 38.2, heartRate: 46, respiratoryRate: 16 },
+    clinical: { mucousMembrane: 'pink', capillaryRefillSec: 2, gutSounds: 'normal', hydration: 'normal', lamenessGrade: 2, lamenessLimb: 'fore_left' },
+    notes: 'Siêu âm gân sau 7 ngày. Không cho ra sân tới khi khám lại.',
   });
   const at = slotAfter(new Date(), TRIAL_GAP);
   const medical = ((await readinessAt(horse, at, 'high'))?.gates || []).find((g) => g.key === 'medical');

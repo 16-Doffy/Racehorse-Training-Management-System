@@ -41,7 +41,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { trainingSessionApi, trainingPlanApi } from './trainingApi';
 import { horsesApi } from '../horses/horsesApi';
 import { raceApi } from '../race/raceApi';
-import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
+import RequestExamModal from '../health/RequestExamModal';
 import { useLockedHorseIds, useHorseClearances } from './useLockedHorses';
 import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } from '../../constants/health';
 import ReadinessPanel from './ReadinessPanel';
@@ -115,8 +115,8 @@ export default function TrainingSessionPage() {
   const [abortSession, setAbortSession] = useState(null);
   const [abortForm] = Form.useForm();
   const draftKind = Form.useWatch('kind', createForm);
-  const [examForm] = Form.useForm();
-  const [examOpen, setExamOpen] = useState(false);
+  // The exam request being written: { horseId, session?, defaults? }.
+  const [examFor, setExamFor] = useState(null);
   const [preCheckSession, setPreCheckSession] = useState(null);
   const [scheduleSession, setScheduleSession] = useState(null);
   const [scheduleForm] = Form.useForm();
@@ -345,11 +345,12 @@ export default function TrainingSessionPage() {
   );
 
   // A session held back by a medical gate: ask the vet straight from it.
-  const requestExamFor = (session) => {
-    setDraft((current) => ({ ...current, horse: session.horse?._id || session.horse }));
-    examForm.setFieldsValue({ priority: 'high', reason: `Buổi tập ${sessionTimeLabel(session.scheduledAt)} bị chặn: ${session.blockedReason || 'chưa đủ điều kiện'}` });
-    setExamOpen(true);
-  };
+  const requestExamFor = (session) =>
+    setExamFor({
+      horseId: session.horse?._id || session.horse,
+      session,
+      defaults: { priority: 'high', reason: `Buổi tập ${sessionTimeLabel(session.scheduledAt)} bị chặn: ${session.blockedReason || 'chưa đủ điều kiện'}` },
+    });
 
   const cancelMutation = useMutation({
     mutationFn: ({ id, cancelReason }) => trainingSessionApi.update(id, { status: 'cancelled', cancelReason }),
@@ -411,16 +412,6 @@ export default function TrainingSessionPage() {
       message.success(`Đã xếp ${created.length} buổi tập cho ${plan.horse?.name}.${extra}`, skipped.length ? 6 : 3);
     },
     onError: (err) => message.error(err.message || 'Không sinh được lịch tuần.'),
-  });
-
-  const examMutation = useMutation({
-    mutationFn: (payload) => healthRecordApi.requestExam(payload),
-    onSuccess: () => {
-      message.success('Đã gửi yêu cầu khám tới bác sĩ thú y.');
-      setExamOpen(false);
-      examForm.resetFields();
-    },
-    onError: (err) => message.error(err.message || 'Gửi yêu cầu thất bại.'),
   });
 
   const columns = [
@@ -685,10 +676,7 @@ export default function TrainingSessionPage() {
       open={Boolean(preCheckSession)}
       onClose={() => setPreCheckSession(null)}
       onDone={invalidate}
-      onRequestExam={() => {
-        setDraft((current) => ({ ...current, horse: preCheckSession?.horse?._id }));
-        setExamOpen(true);
-      }}
+      onRequestExam={() => setExamFor({ horseId: preCheckSession?.horse?._id, session: preCheckSession, defaults: { priority: 'high' } })}
     />
   );
 
@@ -1116,7 +1104,7 @@ export default function TrainingSessionPage() {
                   intensity={draft.intensity}
                   sessionType={draft.sessionType}
                   objective={draft.objective}
-                  onRequestExam={() => setExamOpen(true)}
+                  onRequestExam={() => setExamFor({ horseId: draft.horse })}
                 />
                 <Text type="secondary" className="!text-xs block mt-2">
                   Mỗi dòng do một người khác nắm giữ. Khóa y tế của bác sĩ, sốt, hoặc ngựa vừa ăn bữa có thức ăn tinh chưa
@@ -1327,32 +1315,14 @@ export default function TrainingSessionPage() {
         </Form>
       </Modal>
 
-      <Modal
-        title="Yêu cầu bác sĩ kiểm tra"
-        open={examOpen}
-        onCancel={() => setExamOpen(false)}
-        onOk={() => examForm.submit()}
-        confirmLoading={examMutation.isPending}
-        destroyOnHidden
-      >
-        <Form
-          form={examForm}
-          layout="vertical"
-          onFinish={(values) => examMutation.mutate({ horse: draft.horse, reason: values.reason, priority: values.priority })}
-        >
-          <Form.Item name="priority" label="Mức độ" initialValue="normal">
-            <Select options={EXAM_PRIORITY_OPTIONS} />
-          </Form.Item>
-          <Form.Item
-            name="reason"
-            label="Lý do"
-            rules={[{ required: true, message: 'Vui lòng nhập lý do' }]}
-            extra="Yêu cầu sẽ gửi thẳng tới bác sĩ được gán cho ngựa này."
-          >
-            <Input.TextArea rows={3} placeholder="VD: Cần giấy khám còn hiệu lực trước buổi chạy thử cuối tuần." />
-          </Form.Item>
-        </Form>
-      </Modal>
+      {examFor?.horseId && (
+        <RequestExamModal
+          horse={(horsesData?.data || []).find((h) => String(h._id) === String(examFor.horseId)) || examFor.session?.horse || { _id: examFor.horseId }}
+          session={examFor.session}
+          defaults={examFor.defaults}
+          onClose={() => setExamFor(null)}
+        />
+      )}
     </div>
   );
 }
