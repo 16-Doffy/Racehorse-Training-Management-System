@@ -617,6 +617,10 @@ module.exports = {
           code: { type: 'string', readOnly: true, example: 'TA-001', description: 'Auto per category: TA (food), YT (medical), DC (equipment)' },
           name: { type: 'string' },
           category: { type: 'string', enum: ['feed', 'medicine', 'equipment'] },
+          feedType: {
+            type: 'string', enum: ['forage', 'concentrate', 'supplement'],
+            description: 'Feed only (400 on other categories). Readiness: a meal with a concentrate blocks moderate/hard work for 60 min, forage only warns, supplements alone are not a meal. Guessed from the name when left out.',
+          },
           description: { type: 'string', description: 'What it is for' },
           quantity: { type: 'number' },
           unit: { type: 'string', description: 'Unit rations / doses and stock are counted in (kg, g, ml, viên…)' },

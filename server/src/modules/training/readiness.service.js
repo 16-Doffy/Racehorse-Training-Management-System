@@ -1,6 +1,9 @@
 const Horse = require('../../models/Horse');
 const HealthRecord = require('../../models/HealthRecord');
 const DailyTask = require('../../models/DailyTask');
+const InventoryItem = require('../../models/InventoryItem');
+const { feedTypeOf } = require('../inventory/feedType');
+const { taskTiming } = require('../../utils/taskTiming');
 const StableAssignment = require('../../models/StableAssignment');
 const { findOpenIncident } = require('../stable/incident.service');
 const { CARETAKER_FIELDS, caretakerProblem } = require('../stable/caretaker');
@@ -187,15 +190,23 @@ function describeGap(minutes) {
  * count as eaten at their planned time: that is how a lunch at 11:30 ahead of a 12:30 gallop gets
  * flagged when the session is booked, not when it's already too late to move lunch.
  */
-// What a meal was, from the ration it took out of stock: forage (hay) sits lighter than grain or pellets.
-// Supplements (vitamins, minerals, salt, electrolytes, oil) don't change that. No ration recorded: a main meal.
-const FORAGE = /(cỏ|hay|rơm|alfalfa|timothy|chaff|straw)/i;
-const SUPPLEMENT = /(vitamin|khoáng|mineral|muối|salt|điện giải|electrolyte|dầu|oil)/i;
-function mealKind(task) {
-  const items = (task?.supplies || []).filter((i) => i?.name);
-  if (!items.length) return 'main';
-  const solid = items.filter((i) => !SUPPLEMENT.test(i.name));
-  return solid.length && solid.every((i) => FORAGE.test(i.name)) ? 'forage' : 'main';
+// What a meal was, from the ration it took out of stock, each line by the kind the Manager gave the
+// stock item (feedType.js): 'main' with grain or pellets in it, 'forage' for hay only, 'supplement'
+// for oil, minerals and the like only — not a meal. No ration recorded: a main meal.
+function mealKind(task, stock = new Map()) {
+  const lines = (task?.supplies || []).filter((i) => i?.name || i?.inventoryItem);
+  if (!lines.length) return 'main';
+  const kinds = lines.map((i) => feedTypeOf(stock.get(String(i.inventoryItem)) || { name: i.name }));
+  const solid = kinds.filter((k) => k !== 'supplement');
+  if (!solid.length) return 'supplement';
+  return solid.every((k) => k === 'forage') ? 'forage' : 'main';
+}
+
+// The stock items behind these meals, by id: their kind may have been set after the meal was planned.
+async function stockOf(tasks) {
+  const ids = [...new Set(tasks.flatMap((t) => (t.supplies || []).map((i) => i.inventoryItem).filter(Boolean).map(String)))];
+  const items = ids.length ? await InventoryItem.find({ _id: { $in: ids } }).select('name feedType').lean() : [];
+  return new Map(items.map((item) => [String(item._id), item]));
 }
 
 async function nutritionGate(horse, when, { intensity } = {}) {
@@ -251,10 +262,38 @@ async function nutritionGate(horse, when, { intensity } = {}) {
   // Only the meal right before the session matters: that is what the horse has in its stomach (or
   // is missing) when it works. An unmarked breakfast says nothing about an evening session once a
   // later meal has been given — judging by the oldest unmarked meal used to flag nearly every
-  // session and push trainers into overriding everything.
-  const lastMeal = feedings[feedings.length - 1];
+  // session and push trainers into overriding everything. Supplements alone (oil, minerals…) are
+  // not a meal: they neither feed the horse nor need digesting before work. A make-up still waiting
+  // for the groom is not a missed meal either: it counts once given.
+  const stock = await stockOf(feedings);
+  const kindOf = (t) => mealKind(t, stock);
+  const meals = feedings.filter((t) => kindOf(t) !== 'supplement' && !(t.makeUpOf && t.status === 'pending'));
+  const lastMeal = meals[meals.length - 1];
   const done = (t) => t.status === 'completed' && t.completedAt && t.completedAt <= when;
-  const lastEaten = feedings.filter(done).sort((a, b) => a.completedAt - b.completedAt).pop();
+  const lastEaten = meals.filter(done).sort((a, b) => a.completedAt - b.completedAt).pop();
+
+  // A meal of the session's day missed and not made up leaves the horse short that day, even once a
+  // later meal is given: a warning (never a block) with the make-up button.
+  const madeUp = (t) => feedings.find((m) => String(m._id) === String(t.makeUpTask));
+  const missedToday = meals.filter(
+    (t) => t !== lastMeal && t.mealSlot && !t.makeUpOf && t.scheduledDate >= startOfDay(when) &&
+      (t.status === 'skipped' || (t.status === 'pending' && taskTiming(t).state === 'missed')) &&
+      !(madeUp(t) && done(madeUp(t)))
+  );
+  const shortOfFood = (result) => {
+    const missed = missedToday[0];
+    if (!missed || result.status === 'blocked') return result;
+    const what = missed.makeUpTask
+      ? 'đã báo cho ăn bù, đang chờ nhân viên'
+      : `${missed.status === 'skipped' ? `nhân viên báo không cho ăn được${missed.skipReason ? ` (${missed.skipReason})` : ''}` : 'không được cho ăn'} và chưa được ăn bù`;
+    result.detail += ` Hôm nay ${mealLabel(missed).toLowerCase()} (${formatTime(missed.scheduledDate)}) ${what} — ngựa đang ăn thiếu so với khẩu phần.`;
+    result.status = 'caution';
+    if (!missed.makeUpTask && !result.action && startOfDay(missed.scheduledDate).getTime() === startOfDay(new Date()).getTime()) {
+      result.action = 'make_up_meal';
+      result.taskId = missed._id;
+    }
+    return result;
+  };
 
   // Harder work on an empty stomach is refused by club policy (light work only warns).
   const blockHardWork = clubPolicy.missedMealBlocksHardWork && intensity !== 'light';
@@ -270,13 +309,13 @@ async function nutritionGate(horse, when, { intensity } = {}) {
   if (lastEaten && (done(lastMeal) || lastEaten.completedAt >= lastMeal.scheduledDate)) {
     const light = intensity === 'light';
     const gapOf = (meal) => Math.round((when.getTime() - meal.completedAt.getTime()) / 60000);
-    const describe = (meal) => `${mealLabel(meal)}${mealKind(meal) === 'forage' ? ' (chỉ cỏ khô)' : ''} cho ăn lúc ${formatTime(meal.completedAt)}`;
+    const describe = (meal) => `${mealLabel(meal)}${kindOf(meal) === 'forage' ? ' (chỉ cỏ khô)' : ''} cho ăn lúc ${formatTime(meal.completedAt)}`;
     // Hay given after grain does not shorten the grain's digestion: the latest grain meal is judged
     // as well as the latest meal.
-    const lastMain = feedings.filter((t) => done(t) && mealKind(t) === 'main').sort((a, b) => a.completedAt - b.completedAt).pop();
+    const lastMain = meals.filter((t) => done(t) && kindOf(t) === 'main').sort((a, b) => a.completedAt - b.completedAt).pop();
     for (const meal of new Set([lastMain, lastEaten].filter(Boolean))) {
       const gapMinutes = gapOf(meal);
-      const kind = mealKind(meal);
+      const kind = kindOf(meal);
       const which = describe(meal);
       // A forage-only meal, or light work: a warning at most. Grain or pellets before harder work: the
       // club's hard limit applies.
@@ -292,7 +331,7 @@ async function nutritionGate(horse, when, { intensity } = {}) {
         gate.detail = light
           ? `${which}, mới ${gapMinutes} phút trước giờ tập — buổi nhẹ (đi bộ) vẫn tập được, nhưng theo quy định CLB nên chờ ${HARD_DIGEST_MINUTES} phút.`
           : `${which}, chỉ cách giờ tập ${gapMinutes} phút — theo quy định CLB nên chờ ${caution} phút sau ${kind === 'forage' ? 'bữa cỏ' : 'bữa chính'} trước khi tập nặng.`;
-        return gate;
+        return shortOfFood(gate);
       }
     }
     const gapMinutes = gapOf(lastEaten);
@@ -300,27 +339,27 @@ async function nutritionGate(horse, when, { intensity } = {}) {
     if (gapMinutes > MAX_FAST_HOURS * 60) {
       gate.status = 'caution';
       gate.detail = `${which}, đã ${describeGap(gapMinutes)} trước giờ tập — ngựa có thể đã đói.`;
-      return gate;
+      return shortOfFood(gate);
     }
     gate.detail = `${which}, cách giờ tập ${describeGap(gapMinutes)} — đủ thời gian tiêu hóa.`;
     if (lastEaten.observation?.appetite === 'partial') {
       gate.status = 'caution';
       gate.detail += ` Nhưng ngựa chỉ ăn ${lastEaten.observation.amountEatenPercent ?? 'một phần'}% khẩu phần.`;
     }
-    return gate;
+    return shortOfFood(gate);
   }
 
   // The meal before the session is still to come (a session later today): judge the planned gap.
   if (lastMeal.status === 'pending' && lastMeal.scheduledDate > now) {
     const gapMinutes = Math.round((when.getTime() - lastMeal.scheduledDate.getTime()) / 60000);
-    const planned = mealKind(lastMeal) === 'forage' ? FORAGE_DIGEST_MINUTES : MIN_DIGEST_MINUTES;
+    const planned = kindOf(lastMeal) === 'forage' ? FORAGE_DIGEST_MINUTES : MIN_DIGEST_MINUTES;
     if (gapMinutes < (intensity === 'light' ? HARD_DIGEST_MINUTES : planned)) {
       gate.status = 'caution';
       gate.detail = `Theo lịch, ${mealLabel(lastMeal).toLowerCase()} lúc ${formatTime(lastMeal.scheduledDate)}, chỉ cách giờ tập ${gapMinutes} phút — hãy dời giờ tập hoặc báo nhân viên cho ăn sớm hơn (theo quy định CLB: ${planned} phút).`;
-      return gate;
+      return shortOfFood(gate);
     }
     gate.detail = `Theo lịch, ${mealLabel(lastMeal).toLowerCase()} lúc ${formatTime(lastMeal.scheduledDate)}, cách giờ tập ${describeGap(gapMinutes)} — đủ thời gian tiêu hóa.`;
-    return gate;
+    return shortOfFood(gate);
   }
 
   // Its time has passed and nobody marked it given (or the groom reported it could not be given).
@@ -332,9 +371,9 @@ async function nutritionGate(horse, when, { intensity } = {}) {
   gate.status = blockHardWork && hungry ? 'blocked' : 'caution';
   gate.detail = `${mealLabel(lastMeal)} (${formatTime(lastMeal.scheduledDate)}) — bữa ngay trước giờ tập — ${what}.${
     lastEaten ? ` Lần ăn gần nhất được ghi nhận: ${formatTime(lastEaten.completedAt)} (${describeGap(fastMinutes)} trước giờ tập).` : ' Không có bữa nào được ghi nhận trong 24 giờ.'
-  }${gate.status === 'blocked' ? hardWorkNote : ''}`;
+  }${lastMeal.makeUpTask ? ' Đã báo cho ăn bù, đang chờ nhân viên.' : ''}${gate.status === 'blocked' ? hardWorkNote : ''}`;
   // The trainer can ask the groom to feed it now (POST /stable/tasks/:id/make-up) — a meal of today.
-  if (lastMeal.mealSlot && startOfDay(lastMeal.scheduledDate).getTime() === startOfDay(new Date()).getTime()) {
+  if (lastMeal.mealSlot && !lastMeal.makeUpOf && !lastMeal.makeUpTask && startOfDay(lastMeal.scheduledDate).getTime() === startOfDay(new Date()).getTime()) {
     gate.action = 'make_up_meal';
     gate.taskId = lastMeal._id;
   }

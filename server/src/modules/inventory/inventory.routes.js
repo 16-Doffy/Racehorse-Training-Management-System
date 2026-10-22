@@ -11,6 +11,7 @@ const DailyTask = require('../../models/DailyTask');
 const { computeForecast, itemInUse } = require('./stock.service');
 const { logAction } = require('../audit/audit.service');
 const { canAccessHorse } = require('../../utils/horseScope');
+const { FEED_TYPES } = require('./feedType');
 
 // Restock requests are reviewed by name on the Manager's screen, so the requester is populated
 // here — otherwise the list hands back a raw ObjectId and the UI has nothing to show.
@@ -31,6 +32,10 @@ function itemProblem(req, { existing }) {
     if (typeof b.unit !== 'string' || !b.unit.trim()) return 'Đơn vị tính không được để trống.';
   }
   if ((!existing || b.category !== undefined) && !CATEGORIES.includes(b.category)) return 'Danh mục không hợp lệ.';
+  if (b.feedType !== undefined) {
+    if ((b.category ?? existing?.category) !== 'feed') return 'Chỉ vật tư nhóm thức ăn mới có loại thức ăn.';
+    if (!FEED_TYPES.includes(b.feedType)) return 'Loại thức ăn chỉ là cỏ (forage), thức ăn tinh (concentrate) hoặc bổ sung (supplement).';
+  }
   if (b.quantity !== undefined && (!Number.isFinite(Number(b.quantity)) || Number(b.quantity) < 0)) {
     return 'Số lượng tồn phải là số không âm.';
   }
@@ -79,7 +84,7 @@ const ctrl = crudFactory(InventoryItem, {
     { path: 'proposedBy', select: 'name role' },
   ],
   // The request history and proposal flags are managed by the endpoints below, not the item form.
-  fields: ['name', 'category', 'description', 'quantity', 'unit', 'packUnit', 'packSize', 'reorderLevel', 'price', 'expiryDate', 'stableBlock', 'isActive'],
+  fields: ['name', 'category', 'feedType', 'description', 'quantity', 'unit', 'packUnit', 'packSize', 'reorderLevel', 'price', 'expiryDate', 'stableBlock', 'isActive'],
   validate: checkItem,
 });
 

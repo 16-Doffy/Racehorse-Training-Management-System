@@ -24,6 +24,20 @@ test('manager inventory displays real stock', async ({ page }) => {
   await page.goto('/inventory');
   await expect(page.getByText('TEST Browser Feed', { exact: true })).toBeVisible();
 });
+test('manager gives a feed its kind, and the stock list shows it', async ({ page }) => {
+  await login(page, 'manager');
+  await page.goto('/inventory');
+  await expect(page.getByRole('row', { name: /TEST Browser Feed/ }).getByText('Thức ăn tinh', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /Thêm vật tư mới/ }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Tên vật tư').fill('TEST Dầu hạt lanh UI');
+  await dialog.getByLabel('Đơn vị dùng').fill('lít');
+  await dialog.getByLabel('Loại thức ăn').click();
+  await page.getByTitle('Bổ sung', { exact: true }).click();
+  await expect(dialog.getByText('Không tính là một bữa ăn.', { exact: false })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Thêm', exact: true }).click();
+  await expect(page.getByRole('row', { name: /TEST Dầu hạt lanh UI/ }).getByText('Bổ sung', { exact: true })).toBeVisible();
+});
 test('trainer sees scheduled training and recorded race result', async ({ page }) => {
   await login(page, 'trainer');
   await page.goto('/training/sessions');

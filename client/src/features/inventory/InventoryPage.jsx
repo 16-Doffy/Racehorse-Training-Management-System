@@ -41,6 +41,13 @@ const CATEGORIES = [
   { key: 'equipment', label: 'Dụng cụ', hint: 'Đồ dùng lâu dài; theo dõi số lượng và đề xuất mua thêm.' },
 ];
 const CATEGORY_LABELS = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
+// The kind of a feed: how long a horse waits after eating it before harder work (readiness check).
+const FEED_TYPES = [
+  { value: 'concentrate', label: 'Thức ăn tinh', color: 'orange', hint: 'Cám, ngũ cốc, thức ăn viên. Sau bữa có loại này, bài vừa/nặng phải chờ 60 phút.' },
+  { value: 'forage', label: 'Cỏ', color: 'green', hint: 'Cỏ khô, rơm, alfalfa. Tập ngay sau bữa chỉ bị cảnh báo.' },
+  { value: 'supplement', label: 'Bổ sung', color: 'blue', hint: 'Dầu, khoáng, vitamin, điện giải. Không tính là một bữa ăn.' },
+];
+const FEED_TYPE_BY_VALUE = Object.fromEntries(FEED_TYPES.map((t) => [t.value, t]));
 // Units offered per category in the item form (the Manager can still type another one).
 const UNIT_SUGGESTIONS = {
   feed: { units: ['kg', 'g', 'lít', 'ml', 'viên'], packUnits: ['bao', 'kiện', 'hộp', 'túi', 'chai', 'can'] },
@@ -83,6 +90,7 @@ function ItemModal({ item, category, open, onClose, units }) {
   const watchedCategory = Form.useWatch('category', form) || item?.category || category;
   const watchedUnit = Form.useWatch('unit', form);
   const watchedPackUnit = Form.useWatch('packUnit', form);
+  const watchedFeedType = Form.useWatch('feedType', form);
   const suggestions = units[watchedCategory] || DEFAULT_UNITS[watchedCategory] || DEFAULT_UNITS.feed;
 
   const saveMutation = useMutation({
@@ -99,6 +107,8 @@ function ItemModal({ item, category, open, onClose, units }) {
   const submit = (v) =>
     saveMutation.mutate({
       ...v,
+      // Only a feed has a kind; left empty, the server guesses it from the name.
+      feedType: v.category === 'feed' ? v.feedType || undefined : undefined,
       packUnit: v.packUnit || '',
       packSize: v.packUnit ? v.packSize : null,
       expiryDate: v.expiryDate ? v.expiryDate.toISOString() : null,
@@ -123,6 +133,7 @@ function ItemModal({ item, category, open, onClose, units }) {
             ? {
                 name: item.name,
                 category: item.category,
+                feedType: item.feedType,
                 description: item.description,
                 unit: item.unit,
                 packUnit: item.packUnit,
@@ -147,6 +158,16 @@ function ItemModal({ item, category, open, onClose, units }) {
             <Select options={CATEGORIES.map((c) => ({ value: c.key, label: c.label }))} />
           </Form.Item>
         </div>
+        {watchedCategory === 'feed' && (
+          <Form.Item
+            name="feedType"
+            label="Loại thức ăn"
+            tooltip="Quyết định ngựa phải chờ bao lâu sau bữa ăn mới được tập vừa/nặng."
+            extra={FEED_TYPE_BY_VALUE[watchedFeedType]?.hint || 'Để trống thì hệ thống đoán theo tên.'}
+          >
+            <Select allowClear placeholder="Chọn loại" options={FEED_TYPES.map((t) => ({ value: t.value, label: t.label }))} />
+          </Form.Item>
+        )}
         <Form.Item name="description" label="Công dụng">
           <Input placeholder="VD: Cung cấp năng lượng cho ngựa đua" />
         </Form.Item>
@@ -420,7 +441,14 @@ export default function InventoryPage() {
         key: 'name',
         render: (_, r) => (
           <div className="min-w-[220px]">
-            <div className={r.isActive === false ? 'text-gray-400 line-through' : 'font-medium'}>{r.name}</div>
+            <div className={r.isActive === false ? 'text-gray-400 line-through' : 'font-medium'}>
+              <span>{r.name}</span>
+              {FEED_TYPE_BY_VALUE[r.feedType] && (
+                <Tag color={FEED_TYPE_BY_VALUE[r.feedType].color} className="!ml-2 !text-xs">
+                  {FEED_TYPE_BY_VALUE[r.feedType].label}
+                </Tag>
+              )}
+            </div>
             {r.description && (
               <Text type="secondary" className="!text-xs">
                 {r.description}
