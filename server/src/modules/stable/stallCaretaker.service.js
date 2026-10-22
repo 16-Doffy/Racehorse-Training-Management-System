@@ -24,17 +24,19 @@ async function isActiveGroom(id, session) {
 }
 
 /**
- * Moves a horse's unfinished automatic work (feeds, post-session care, care orders) from one groom to
- * another. Tasks the trainer handed to a specific person by hand stay where they were put.
+ * Gives a horse's unfinished automatic work (feeds, post-session care, care orders) to its new groom,
+ * from whoever holds it — not only from the groom just replaced: after a stall was left without a
+ * groom and then given one, the work was still with the groom from before (there was no `from` any
+ * more). Tasks the trainer handed to a specific person by hand stay where they were put.
  */
 async function handOverTasks({ horse, from, to, session }) {
-  if (!from || !to || String(from) === String(to)) return;
+  if (!to || (from && String(from) === String(to))) return;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   await DailyTask.updateMany(
     {
       horse,
-      assignedTo: from,
+      assignedTo: { $ne: to },
       status: 'pending',
       scheduledDate: { $gte: today },
       $or: [{ taskType: 'feeding' }, { trainingSession: { $ne: null } }, { treatment: { $ne: null } }],

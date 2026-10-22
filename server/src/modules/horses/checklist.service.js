@@ -5,12 +5,29 @@ const RaceEntry = require('../../models/RaceEntry');
 const TrainingPlan = require('../../models/TrainingPlan');
 const TrainingSession = require('../../models/TrainingSession');
 const { clearanceMap } = require('../health/trainingClearance');
-const { CARETAKER_FIELDS, caretakerProblem } = require('../stable/caretaker');
+const { CARETAKER_FIELDS, caretakerProblem, staffProblem } = require('../stable/caretaker');
+const { ROLES } = require('../../constants/roles');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ROLE = { manager: 'Quản lý', trainer: 'HLV', vet: 'Bác sĩ', groom: 'Chăm sóc' };
 const CONCLUSION = { eligible: 'đủ điều kiện', monitoring: 'cần theo dõi', injured: 'chấn thương', quarantined: 'cách ly' };
 const ddmm = (d) => new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+/**
+ * The owner / trainer / vet line of the checklist. Someone whose account was locked or moved to
+ * another role is not "assigned": the line stays open (the Manager's queue counts it) until a person
+ * who fills the role is named. Needs the person populated with name, role and isActive.
+ */
+function staffItem(key, label, person, role, missing) {
+  const problem = staffProblem(person, role);
+  return {
+    key,
+    label,
+    done: Boolean(person) && !problem,
+    detail: person ? `${person.name}${problem ? ` (${problem}, cần người thay)` : ''}` : missing,
+    who: ROLE.manager,
+  };
+}
+
 const group = (rows, key = 'horse') => {
   const map = new Map();
   for (const r of rows) {
@@ -58,9 +75,9 @@ async function checklistFor(horses) {
     const meals = byRations.get(key) || [];
     const clearance = clearances.get(key);
     const items = [
-      { key: 'owner', label: 'Chủ ngựa', done: Boolean(h.owner), detail: h.owner?.name || 'Chưa gán chủ ngựa', who: ROLE.manager },
-      { key: 'trainer', label: 'HLV phụ trách', done: Boolean(h.assignedTrainer), detail: h.assignedTrainer?.name || 'Chưa gán HLV', who: ROLE.manager },
-      { key: 'vet', label: 'Bác sĩ phụ trách', done: Boolean(h.assignedVet), detail: h.assignedVet?.name || 'Chưa gán bác sĩ', who: ROLE.manager },
+      staffItem('owner', 'Chủ ngựa', h.owner, ROLES.OWNER, 'Chưa gán chủ ngựa'),
+      staffItem('trainer', 'HLV phụ trách', h.assignedTrainer, ROLES.HEAD_TRAINER, 'Chưa gán HLV'),
+      staffItem('vet', 'Bác sĩ phụ trách', h.assignedVet, ROLES.VETERINARIAN, 'Chưa gán bác sĩ'),
       {
         key: 'stall',
         label: 'Chuồng và người chăm sóc',

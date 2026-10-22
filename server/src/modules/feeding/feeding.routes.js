@@ -136,6 +136,9 @@ const ctrl = crudFactory(FeedingSchedule, {
   validate: validateRation,
   // The groom should see the new meal on their list now, not after the next hourly run.
   afterWrite: syncTodayMeal,
+  // Only these are the trainer's to write (approvedBy is stamped above). Without a list the whole
+  // body went into the update, so a body wrapped in "$set" moved a ration past the horse-scope check.
+  fields: ['horse', 'mealTime', 'timeOfDay', 'items'],
 });
 
 router.use(protect);

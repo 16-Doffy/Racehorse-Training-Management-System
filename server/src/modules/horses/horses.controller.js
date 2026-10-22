@@ -8,7 +8,11 @@ const RaceEntry = require('../../models/RaceEntry');
 const StableAssignment = require('../../models/StableAssignment');
 const FeedingSchedule = require('../../models/FeedingSchedule');
 const DailyTask = require('../../models/DailyTask');
+const FinancialRecord = require('../../models/FinancialRecord');
+const CareEvent = require('../../models/CareEvent');
+const ExamRequest = require('../../models/ExamRequest');
 const asyncHandler = require('../../utils/asyncHandler');
+const pick = require('../../utils/pick');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
 const { ROLES } = require('../../constants/roles');
@@ -19,6 +23,7 @@ const { pushNotification } = require('../alerts/notification.service');
 const { clearanceMap } = require('../health/trainingClearance');
 const { closeLeftoversFor } = require('./archive.service');
 const { checklistFor } = require('./checklist.service');
+const { STAFF_FIELDS } = require('../stable/caretaker');
 const { ownerSummary, ownerOverview } = require('./ownerSummary.service');
 const { setCareDue } = require('./careEvent.controller');
 
@@ -78,7 +83,7 @@ const listChecklists = asyncHandler(async (req, res) => {
   const scopedIds = await getScopedHorseIds(req.user);
   const filter = scopedIds ? { _id: { $in: scopedIds } } : {};
   filter.isArchived = { $ne: true };
-  const horses = await Horse.find(filter).populate('owner assignedTrainer assignedVet', 'name').select('name owner assignedTrainer assignedVet healthStatus').sort({ name: 1 });
+  const horses = await Horse.find(filter).populate('owner assignedTrainer assignedVet', STAFF_FIELDS).select('name owner assignedTrainer assignedVet healthStatus').sort({ name: 1 });
   return ok(res, await checklistFor(horses), 'Checklists computed.');
 });
 
@@ -93,7 +98,7 @@ const getOwnerOverview = asyncHandler(async (req, res) => ok(res, await ownerOve
 
 const getChecklist = asyncHandler(async (req, res) => {
   if (!(await canAccessHorse(req.user, req.params.id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
-  const horse = await Horse.findById(req.params.id).populate('owner assignedTrainer assignedVet', 'name').select('name owner assignedTrainer assignedVet healthStatus');
+  const horse = await Horse.findById(req.params.id).populate('owner assignedTrainer assignedVet', STAFF_FIELDS).select('name owner assignedTrainer assignedVet healthStatus');
   if (!horse) return fail(res, 'Horse not found.', 404);
   const [checklist] = await checklistFor([horse]);
   return ok(res, checklist, 'Checklist computed.');
@@ -111,10 +116,14 @@ const getHorse = asyncHandler(async (req, res) => {
 // training locks). It gates whether a horse may be trained, so letting the horse-registry endpoints
 // write it would let a non-vet clear a horse the vet grounded. careSchedule has its own vet-only
 // endpoint. Both are dropped here rather than trusted to the UI not sending them.
-function withoutClinicalFields(body) {
-  const { healthStatus, careSchedule, valuationUpdatedAt, ...rest } = body || {};
-  return rest;
-}
+/**
+ * What the horse form may write: its particulars and its staffing. Not here, on purpose: the health
+ * conclusion and the care schedule (the vet's), archiving (PATCH /archive, with a reason, which also
+ * frees the stall and calls off the work), achievements (race results) and the valuation date (the
+ * server's). A list of allowed fields rather than a list of banned ones, so nothing else gets in.
+ */
+const EDITABLE_FIELDS = ['name', 'breed', 'dob', 'color', 'sex', 'weightKg', 'microchipNumber', 'registrationNumber', 'valuationVnd', 'owner', 'assignedTrainer', 'assignedVet', 'sire', 'dam', 'photoUrl'];
+const editableFields = (body) => pick(body, EDITABLE_FIELDS);
 
 /**
  * What a horse is worth is between the club and its owner: the Manager and the horse's owner see
@@ -154,7 +163,7 @@ async function validateStaffing(body) {
 }
 
 const createHorse = asyncHandler(async (req, res) => {
-  const body = withoutClinicalFields(req.body);
+  const body = editableFields(req.body);
   const invalid = await validateStaffing(body);
   if (invalid) return fail(res, invalid, 400);
 
@@ -176,7 +185,7 @@ const updateHorse = asyncHandler(async (req, res) => {
   const before = await Horse.findById(req.params.id).select('owner assignedTrainer assignedVet valuationVnd');
   if (!before) return fail(res, 'Horse not found.', 404);
 
-  const body = withoutClinicalFields(req.body);
+  const body = editableFields(req.body);
   const invalid = await validateStaffing(body);
   if (invalid) return fail(res, invalid, 400);
 
@@ -230,16 +239,25 @@ const deleteHorse = asyncHandler(async (req, res) => {
   const horse = await Horse.findById(req.params.id);
   if (!horse) return fail(res, 'Horse not found.', 404);
 
-  const [sessions, records, treatments, races] = await Promise.all([
+  // Deleting is for a horse entered by mistake. Anything it already has on record — money in the
+  // books included, which would otherwise be left pointing at nothing — means it is archived instead.
+  const counts = await Promise.all([
     TrainingSession.countDocuments({ horse: horse._id }),
     HealthRecord.countDocuments({ horse: horse._id }),
     Treatment.countDocuments({ horse: horse._id }),
     RaceEntry.countDocuments({ horse: horse._id }),
+    FinancialRecord.countDocuments({ horse: horse._id }),
+    CareEvent.countDocuments({ horse: horse._id }),
+    ExamRequest.countDocuments({ horse: horse._id }),
+    DailyTask.countDocuments({ horse: horse._id, status: { $ne: 'pending' } }),
   ]);
-  if (sessions + records + treatments + races > 0) {
+  const kept = ['buổi tập', 'hồ sơ khám', 'phác đồ', 'lượt đăng ký giải', 'khoản thu chi', 'lần chăm sóc định kỳ', 'yêu cầu khám', 'việc chăm sóc đã làm']
+    .map((what, i) => [counts[i], what])
+    .filter(([n]) => n > 0);
+  if (kept.length) {
     return fail(
       res,
-      `Không thể xoá: ngựa đã có ${sessions} buổi tập, ${records} hồ sơ khám, ${treatments} phác đồ và ${races} lượt đăng ký giải. Đây là hồ sơ cần lưu giữ — hãy chọn "Ngừng quản lý".`,
+      `Không thể xoá: ngựa đã có ${kept.map(([n, what]) => `${n} ${what}`).join(', ')}. Đây là hồ sơ cần lưu giữ — hãy chọn "Ngừng quản lý".`,
       409,
       { canArchive: true }
     );

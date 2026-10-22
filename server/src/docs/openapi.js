@@ -56,7 +56,8 @@ module.exports = {
       'veterinarian, groom, owner, manager). All responses use the shape `{ success, data, message }`. ' +
       'Authenticate with `POST /auth/login`, then send `Authorization: Bearer <token>` on every other ' +
       'request. Socket.io connects to the server root (not under /api/v1) with `auth: { token }` and ' +
-      'emits `fitness:alert` / `sensor:reading` — see README.md for details, not covered by this spec.',
+      'emits `fitness:alert` / `sensor:reading` — see README.md for details, not covered by this spec. ' +
+      'A body or query with a key starting with `$` (a MongoDB operator) is refused with 400.',
   },
   servers: [
     { url: 'https://racehorse-tms-server.onrender.com/api/v1', description: 'Production (shared, Render + Atlas)' },
@@ -898,8 +899,8 @@ module.exports = {
     },
     '/horses/{id}': {
       get: { tags: ['Horses'], summary: 'Get horse by id', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404] } },
-      put: { tags: ['Horses'], summary: 'Update horse (Manager only)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Horse' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404] } },
-      delete: { tags: ['Horses'], summary: 'Delete horse (Manager only)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
+      put: { tags: ['Horses'], summary: 'Update horse (Manager only)', description: 'Writes only: name, breed, dob, color, sex, weightKg, microchipNumber, registrationNumber, valuationVnd, owner, assignedTrainer, assignedVet, sire, dam, photoUrl. Health status and the care schedule are the vet’s; archiving goes through PATCH /archive.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Horse' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404] } },
+      delete: { tags: ['Horses'], summary: 'Delete horse (Manager only)', description: 'Only a horse with nothing on record. Sessions, exams, treatments, race entries, financial records, routine care, exam requests or finished care tasks → 409 with data.canArchive: archive it instead.', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404], 409: responses[409] } },
     },
     '/horses/{id}/archive': {
       patch: {
@@ -1804,8 +1805,8 @@ module.exports = {
       },
     },
     '/races/{id}': {
-      get: { tags: ['Races'], summary: 'Get race entry', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
-      put: { tags: ['Races'], summary: 'Update race entry (Head Trainer)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
+      get: { tags: ['Races'], summary: 'Get race entry', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 400: responses[400], 404: responses[404], 409: responses[409] } },
+      put: { tags: ['Races'], summary: 'Update race entry (Head Trainer)', description: 'Fields: horse, raceName, raceDate, distance, venue, surface. Status changes go through /decision and /results. Once the entry has a result (completed), horse, raceName, raceDate and distance no longer change (409): the prize and the achievement are booked from them.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
       delete: { tags: ['Races'], summary: 'Delete race entry (Head Trainer, Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
     '/finance/mine/summary': {
