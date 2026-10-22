@@ -377,6 +377,82 @@ test('the readiness board says it could not check, instead of going blank, and c
   await expect(board.getByText('Chưa kiểm tra được tình trạng sẵn sàng')).toHaveCount(0);
 });
 
+test('locking a groom who still has a stall asks for a replacement first', async ({ page }) => {
+  await login(page, 'manager');
+  await page.goto('/admin/users');
+  await page.getByRole('row', { name: /TEST groom/ }).getByRole('button', { name: /Sửa/ }).click();
+  const edit = page.getByRole('dialog', { name: /Cập nhật tài khoản/ });
+  await edit.getByRole('switch').click();
+  await edit.getByRole('button', { name: 'Đồng ý' }).click();
+  const pick = page.getByRole('dialog', { name: /Chọn người thay/ });
+  await expect(pick).toBeVisible();
+  await expect(pick.getByText('Chuồng A-01')).toBeVisible();
+  await expect(pick.getByText('Ngựa TEST Browser Horse')).toBeVisible();
+  // The fixture has no other groom: nobody to hand over to, so the lock cannot be saved.
+  await expect(pick.getByText('Chưa có nhân viên chăm sóc nào khác đang hoạt động')).toBeVisible();
+  await expect(pick.getByRole('button', { name: 'Chuyển việc và lưu' })).toBeDisabled();
+  await pick.getByRole('button', { name: 'Hủy' }).click();
+  await edit.getByRole('button', { name: 'Hủy' }).click();
+  await expect(page.getByRole('row', { name: /TEST groom/ }).getByText('Hoạt động')).toBeVisible();
+});
+
+test('approving two sign-ups in a row keeps both busy until each answer comes back', async ({ page }) => {
+  const pending = (id, name) => ({ _id: id, name, email: `${id}@pending.test`, phone: '', role: 'groom', approvalStatus: 'pending', isActive: false, createdAt: new Date().toISOString() });
+  await login(page, 'manager');
+  // Two sign-ups waiting (a mocked list) and slow answers to each approval; nothing is saved.
+  await page.route(
+    (url) => url.pathname === '/api/v1/users',
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [pending('p-a', 'TEST Pending A'), pending('p-b', 'TEST Pending B')], message: 'ok' }) })
+        : route.continue(),
+  );
+  await page.route(
+    (url) => url.pathname.endsWith('/approval'),
+    async (route) => {
+      await new Promise((resolve) => { setTimeout(resolve, 1500); });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: {}, message: 'ok' }) });
+    },
+  );
+  await page.goto('/admin/users');
+  const approveA = page.getByRole('row', { name: /TEST Pending A/ }).getByRole('button', { name: /Duyệt/ });
+  const approveB = page.getByRole('row', { name: /TEST Pending B/ }).getByRole('button', { name: /Duyệt/ });
+  await approveA.click();
+  await approveB.click();
+  // A is still waiting for its own answer: it must not come back to life when B starts (GPT-72.5).
+  await expect(approveA).toBeDisabled();
+  await expect(approveB).toBeDisabled();
+});
+
+test('a trial much shorter than its race gets a warning, and can still be saved', async ({ page }) => {
+  // A race still to come for the fixture horse (a mocked list; nothing is saved).
+  const raceDate = new Date(Date.now() + 10 * 86400000).toISOString();
+  await page.route(
+    (url) => url.pathname === '/api/v1/races',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: [{ _id: 'race-e2e-1', horse: { _id: fixture.horseId, name: 'TEST Browser Horse' }, raceName: 'TEST Long Cup', raceDate, distance: 2400, status: 'registered' }], message: 'ok' }),
+      }),
+  );
+  await login(page, 'trainer');
+  await page.goto('/training/sessions?new=1');
+  const modal = page.locator('.ant-modal', { hasText: 'Tạo buổi tập mới' });
+  const pickOption = async (item, option) => {
+    await modal.locator('.ant-form-item', { hasText: item }).first().locator('.ant-select').click();
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: option }).first().click();
+  };
+  await pickOption('Ngựa', 'TEST Browser Horse');
+  await pickOption('Loại buổi tập', 'Chạy thử');
+  await pickOption('Chạy thử cho giải', 'TEST Long Cup');
+  const distance = modal.locator('.ant-form-item', { hasText: 'Cự ly (m)' });
+  // Filled in with the race's distance, which shows beside the field.
+  await expect(distance.getByText('Cự ly giải: 2400 m')).toBeVisible();
+  await distance.locator('input').fill('800');
+  await expect(distance.getByText(/Chỉ bằng 33% cự ly giải \(2400 m\)/)).toBeVisible();
+});
+
 test('the trainer sees the horse stall and the stall column, without the Manager actions', async ({ page }) => {
   await login(page, 'trainer');
   await page.goto('/horses');

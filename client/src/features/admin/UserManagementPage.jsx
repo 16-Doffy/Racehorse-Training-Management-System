@@ -13,6 +13,13 @@ export default function UserManagementPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [roleOverrides, setRoleOverrides] = useState({});
+  // Sign-ups being decided right now, by id ('approve' | 'reject'): each row stays busy until its own
+  // answer comes back, however many the Manager clicks in a row.
+  const [deciding, setDeciding] = useState({});
+  // A groom being locked (or moved to another role) who still holds stalls, horses or work: the
+  // server asks for a replacement, and the save is sent again with the one picked here.
+  const [handover, setHandover] = useState(null);
+  const [replacement, setReplacement] = useState();
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
   const queryClient = useQueryClient();
@@ -28,6 +35,13 @@ export default function UserManagementPage() {
 
   const decideMutation = useMutation({
     mutationFn: ({ id, approve, role }) => usersApi.decideRegistration(id, { approve, role }),
+    onMutate: ({ id, approve }) => setDeciding((now) => ({ ...now, [id]: approve ? 'approve' : 'reject' })),
+    onSettled: (_res, _err, { id }) =>
+      setDeciding((now) => {
+        const next = { ...now };
+        delete next[id];
+        return next;
+      }),
     onSuccess: (_res, variables) => {
       message.success(variables.approve ? 'Đã duyệt tài khoản.' : 'Đã từ chối tài khoản.');
       invalidate();
@@ -60,12 +74,25 @@ export default function UserManagementPage() {
     mutationFn: ({ id, payload }) => usersApi.update(id, payload),
     onSuccess: (res) => {
       if (res?.data?.uncoveredHorses?.length) message.warning(res.message, 8);
+      else if (res?.data?.handedOver) message.success(res.message, 6);
       else message.success('Đã cập nhật tài khoản.');
       invalidate();
       setEditTarget(null);
+      setHandover(null);
+      setReplacement(undefined);
     },
-    onError: (err) => message.error(err.message || 'Cập nhật thất bại.'),
+    onError: (err, variables) => {
+      if (err.status === 409 && err.data?.needsReplacement) {
+        setHandover({ ...variables, ...err.data });
+        return;
+      }
+      message.error(err.message || 'Cập nhật thất bại.');
+    },
   });
+  // Who can take over from the groom being locked: the other active grooms.
+  const replacementOptions = allUsers
+    .filter((u) => u.role === 'groom' && u.isActive !== false && u.approvalStatus !== 'pending' && String(u._id) !== String(handover?.id))
+    .map((u) => ({ value: u._id, label: u.name }));
 
   const roleOptions = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }));
 
@@ -101,15 +128,15 @@ export default function UserManagementPage() {
       title: '',
       key: 'actions',
       render: (_, record) => {
-        const isCurrentDeciding = decideMutation.isPending && decideMutation.variables?.id === record._id;
+        const busy = deciding[record._id];
         return (
           <Space>
             <Button
               type="primary"
               size="small"
               icon={<CheckOutlined />}
-              loading={isCurrentDeciding && decideMutation.variables?.approve === true}
-              disabled={isCurrentDeciding}
+              loading={busy === 'approve'}
+              disabled={Boolean(busy)}
               onClick={() =>
                 decideMutation.mutate({
                   id: record._id,
@@ -131,8 +158,8 @@ export default function UserManagementPage() {
                 danger
                 size="small"
                 icon={<CloseOutlined />}
-                loading={isCurrentDeciding && decideMutation.variables?.approve === false}
-                disabled={isCurrentDeciding}
+                loading={busy === 'reject'}
+                disabled={Boolean(busy)}
               >
                 Từ chối
               </Button>
@@ -348,6 +375,41 @@ export default function UserManagementPage() {
             <Input.Password />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={`Chọn người thay — ${editTarget?.name || ''}`}
+        open={!!handover}
+        onCancel={() => {
+          setHandover(null);
+          setReplacement(undefined);
+        }}
+        onOk={() => updateMutation.mutate({ id: handover.id, payload: { ...handover.payload, replacementCaretaker: replacement } })}
+        okText="Chuyển việc và lưu"
+        okButtonProps={{ disabled: !replacement }}
+        confirmLoading={updateMutation.isPending}
+        destroyOnHidden
+      >
+        <p className="mb-2 text-sm">Người này đang phụ trách:</p>
+        <ul className="mb-3 list-disc pl-5 text-sm">
+          {handover?.stalls?.length > 0 && <li>Chuồng {handover.stalls.join(', ')}</li>}
+          {handover?.horses?.length > 0 && <li>Ngựa {handover.horses.join(', ')}</li>}
+          {handover?.pendingTasks > 0 && <li>{handover.pendingTasks} việc chưa làm từ hôm nay</li>}
+        </ul>
+        {replacementOptions.length ? (
+          <Form layout="vertical">
+            <Form.Item label="Nhân viên chăm sóc nhận thay" extra="Chuồng, ngựa và việc chưa làm chuyển sang người này ngay khi lưu.">
+              <Select placeholder="Chọn người thay" options={replacementOptions} value={replacement} onChange={setReplacement} />
+            </Form.Item>
+          </Form>
+        ) : (
+          <Alert
+            type="warning"
+            showIcon
+            title="Chưa có nhân viên chăm sóc nào khác đang hoạt động"
+            description="Tạo hoặc duyệt thêm một nhân viên chăm sóc, rồi khóa tài khoản này sau."
+          />
+        )}
       </Modal>
     </div>
   );

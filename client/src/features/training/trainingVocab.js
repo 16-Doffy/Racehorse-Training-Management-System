@@ -114,6 +114,9 @@ export const SESSION_KINDS = {
   },
 };
 export const kindOptions = Object.entries(SESSION_KINDS).map(([value, k]) => ({ value, label: k.label, hint: k.hint }));
+// A trial is run over its race's distance (SESSION_KINDS.trial). Shorter is allowed (the trainer
+// decides), but below this share of the race the form says so: such a run says little about the race.
+export const TRIAL_MIN_RACE_SHARE = 0.75;
 // Same bands the server checks (constants/training.js).
 export const KIND_SPEED_RANGES = { walk: [5, 20], canter: [25, 45], hill: [15, 45], breeze: [45, 70], trial: [45, 75] };
 export const PRESCRIPTION_LIMITS = {

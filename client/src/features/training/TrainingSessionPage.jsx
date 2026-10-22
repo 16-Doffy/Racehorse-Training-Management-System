@@ -70,6 +70,7 @@ import {
   mondayOf,
   actualTimeLabel,
   TRAINER_ABORT_OPTIONS,
+  TRIAL_MIN_RACE_SHARE,
 } from './trainingVocab';
 
 const { Text } = Typography;
@@ -164,6 +165,12 @@ export default function TrainingSessionPage() {
   const trialRaceOptions = (racesData?.data || [])
     .filter((r) => String(r.horse?._id || r.horse) === String(draft.horse) && ['registered', 'confirmed'].includes(r.status) && dayjs(r.raceDate).isAfter(dayjs()))
     .map((r) => ({ value: r._id, label: `${r.raceName} — ${dayjs(r.raceDate).format('DD/MM/YYYY')}${r.distance ? ` · ${r.distance}m` : ''}` }));
+  // The trial's distance against its race's: shown beside the field, with a warning when much shorter.
+  const draftRaceId = Form.useWatch('raceEntry', createForm);
+  const draftDistance = Form.useWatch(['prescription', 'distanceM'], createForm);
+  const draftRace = draftIsTrial ? (racesData?.data || []).find((r) => String(r._id) === String(draftRaceId)) : null;
+  const trialShare = draftRace?.distance && draftDistance ? draftDistance / draftRace.distance : null;
+  const trialTooShort = trialShare !== null && trialShare < TRIAL_MIN_RACE_SHARE;
   const firstWeek = searchParams.get('first') === '1';
   const policy = useClubPolicy();
   const draftAt = Form.useWatch('scheduledAt', createForm);
@@ -1047,7 +1054,13 @@ export default function TrainingSessionPage() {
               </Text>
               <Row gutter={16}>
                 <Col xs={12} md={8}>
-                  <Form.Item name={['prescription', 'distanceM']} label="Cự ly (m)">
+                  <Form.Item
+                    name={['prescription', 'distanceM']}
+                    label="Cự ly (m)"
+                    validateStatus={trialTooShort ? 'warning' : undefined}
+                    help={trialTooShort ? `Chỉ bằng ${Math.round(trialShare * 100)}% cự ly giải (${draftRace.distance} m): khó nói lên sức bền cho giải. Vẫn lưu được.` : undefined}
+                    extra={draftRace?.distance && !trialTooShort ? `Cự ly giải: ${draftRace.distance} m` : undefined}
+                  >
                     <InputNumber min={PRESCRIPTION_LIMITS.distanceM[0]} max={PRESCRIPTION_LIMITS.distanceM[1]} step={100} className="w-full" placeholder="1200" />
                   </Form.Item>
                 </Col>
