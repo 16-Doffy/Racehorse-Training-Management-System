@@ -299,29 +299,26 @@ export default function RacePage() {
       render: (_, r) => (r.status === 'withdrawn' ? <Text type="secondary" className="!text-xs">—</Text> : <TrialCell trial={trialFor(r, trials)} />),
     },
     {
-      title: 'Quyết định',
+      // The result sits under the decision: one column fewer, so the table fits the page and the
+      // pinned actions column never covers it.
+      title: 'Quyết định · kết quả',
       key: 'status',
-      width: 230,
-      render: (_, r) => <DecisionCell entry={r} />,
-    },
-    {
-      title: 'Kết quả',
-      dataIndex: 'result',
-      key: 'result',
-      width: 150,
-      render: (v, r) =>
-        v ? (
-          <div>
-            <div>{v}</div>
-            {r.prizeMoney > 0 && (
-              <Text type="success" className="!text-xs">
-                Thưởng {Number(r.prizeMoney).toLocaleString('vi-VN')} ₫
-              </Text>
-            )}
-          </div>
-        ) : (
-          <span className="text-gray-400">Chưa có kết quả</span>
-        ),
+      width: 240,
+      render: (_, r) => (
+        <div className="flex flex-col gap-1">
+          <DecisionCell entry={r} />
+          {r.result && (
+            <div>
+              <span className="font-medium">{r.result}</span>
+              {r.prizeMoney > 0 && (
+                <Text type="success" className="block !text-xs">
+                  Thưởng {Number(r.prizeMoney).toLocaleString('vi-VN')} ₫
+                </Text>
+              )}
+            </div>
+          )}
+        </div>
+      ),
     },
     {
       title: '',
