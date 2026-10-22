@@ -56,8 +56,10 @@ function setInsideView(el, inside, coat, originals) {
  * structures). `interactive`: picking a place calls onPick({ location3d, coordinates, region }) — the
  * point on the skin (or the organ), the matching side-view coordinates, and the name of that part of
  * the body ("Khớp cổ chân trước trái", "Phổi phải"). `picked` is the place chosen so far.
+ * `selectedId`: the injury a list beside it has chosen — its mark opens (and the inside view shows when
+ * it is inside); clicking a mark calls onSelect(id).
  */
-export default function HorseInjuryViewer({ horse, injuries = [], interactive = false, picked = null, onPick, height = 380 }) {
+export default function HorseInjuryViewer({ horse, injuries = [], interactive = false, picked = null, onPick, selectedId, onSelect, height = 380 }) {
   const viewer = useRef(null);
   const pressedAt = useRef(null);
   const pickRef = useRef(onPick);
@@ -125,6 +127,15 @@ export default function HorseInjuryViewer({ horse, injuries = [], interactive = 
       el.removeEventListener('click', onClick);
     };
   }, []);
+
+  // The injury chosen beside the viewer: its label open, on the layer it is on.
+  useEffect(() => {
+    if (selectedId === undefined) return;
+    setOpenId(selectedId);
+    const chosen = injuries.find((m) => m._id === selectedId);
+    if (chosen) setLayer(chosen.location3d?.layer === 'internal' ? 'internal' : 'surface');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   // The coat of the horse (another horse chosen in the form), and the see-through body of the inside view.
   useEffect(() => {
@@ -205,6 +216,7 @@ export default function HorseInjuryViewer({ horse, injuries = [], interactive = 
                 onClick={(e) => {
                   e.stopPropagation();
                   setOpenId(open ? null : m._id);
+                  if (!open) onSelect?.(m._id);
                 }}
                 aria-label={`${shortBodyPart(m.bodyPart)} — ${meta.label}`}
               >

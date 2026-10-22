@@ -425,7 +425,7 @@ module.exports = {
             },
           },
           severity: { type: 'string', enum: ['mild', 'moderate', 'severe'] },
-          recoveryStatus: { type: 'string', enum: ['new', 'in_treatment', 'recovering', 'recovered'] },
+          recoveryStatus: { type: 'string', enum: ['new', 'in_treatment', 'recovering', 'recovered'], description: "Always 'new' when recorded (any other value is refused); moves on with its treatment or by PUT" },
         },
       },
       PrescriptionTemplate: {

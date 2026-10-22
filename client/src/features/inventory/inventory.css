@@ -1,0 +1,135 @@
+/* The storeroom page and its item form (InventoryPage): light on the sand canvas, dark on the dark
+   one. The page sits in .forest-layout (is-dark-canvas when dark); the form's modal renders on <body>,
+   where MainLayout's body.wdp-dark-portals class says which canvas is on. */
+.inv-ui {
+  --inv-surface: #faf7f0;
+  --inv-card: #ffffff;
+  --inv-border: #e5dec9;
+  --inv-ink: #1f2a24;
+  --inv-muted: #5f6b64;
+  --inv-faint: #8a8578;
+  --inv-accent: #0f5a43;
+  --inv-accent-soft: rgba(15, 90, 67, 0.08);
+  --inv-warn-soft: rgba(217, 119, 6, 0.08);
+}
+.forest-layout.is-dark-canvas .inv-ui,
+body.wdp-dark-portals .inv-ui {
+  --inv-surface: rgba(255, 255, 255, 0.04);
+  --inv-card: rgba(255, 255, 255, 0.03);
+  --inv-border: rgba(212, 175, 55, 0.22);
+  --inv-ink: #f4f1e8;
+  --inv-muted: rgba(230, 237, 232, 0.78);
+  --inv-faint: rgba(230, 237, 232, 0.55);
+  --inv-accent: #f6d57a;
+  --inv-accent-soft: rgba(246, 213, 122, 0.1);
+  --inv-warn-soft: rgba(245, 158, 11, 0.1);
+}
+
+.inv-ui .inv-muted { color: var(--inv-muted); }
+.inv-ui .inv-faint { color: var(--inv-faint); }
+.inv-ui .inv-ink { color: var(--inv-ink); }
+
+/* The queue of restock requests: one line each, the decision on the right. */
+.inv-ui .inv-queue {
+  border: 1px solid var(--inv-border);
+  border-radius: 14px;
+  background: var(--inv-warn-soft);
+  overflow: hidden;
+}
+.inv-ui .inv-queue-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--inv-border);
+  font-weight: 600;
+  color: var(--inv-ink);
+}
+.inv-ui .inv-request {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--inv-card);
+}
+.inv-ui .inv-request + .inv-request { border-top: 1px solid var(--inv-border); }
+.inv-ui .inv-cat-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 17px;
+}
+.inv-ui .inv-cat-icon.is-feed { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+.inv-ui .inv-cat-icon.is-medicine { background: rgba(220, 38, 38, 0.1); color: #dc2626; }
+.inv-ui .inv-cat-icon.is-equipment { background: rgba(37, 99, 235, 0.1); color: #2563eb; }
+@media (max-width: 767px) {
+  .inv-ui .inv-request { grid-template-columns: 36px minmax(0, 1fr); }
+  .inv-ui .inv-request-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}
+
+/* The item form: the three kinds as cards, then short sections. */
+.inv-ui .inv-kinds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.inv-ui .inv-kind {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1.5px solid var(--inv-border);
+  border-radius: 12px;
+  background: var(--inv-card);
+  text-align: left;
+  cursor: pointer;
+  color: var(--inv-ink);
+  transition: border-color 0.15s, background 0.15s;
+}
+.inv-ui .inv-kind:hover { border-color: var(--inv-accent); }
+.inv-ui .inv-kind.is-on {
+  border-color: var(--inv-accent);
+  background: var(--inv-accent-soft);
+  box-shadow: 0 0 0 1px var(--inv-accent) inset;
+}
+.inv-ui .inv-kind-title { font-weight: 700; font-size: 14px; line-height: 1.3; }
+.inv-ui .inv-kind-hint { font-size: 11.5px; line-height: 1.35; color: var(--inv-muted); margin-top: 2px; }
+@media (max-width: 575px) {
+  .inv-ui .inv-kinds { grid-template-columns: minmax(0, 1fr); }
+}
+.inv-ui .inv-section {
+  margin: 14px 0 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--inv-border);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--inv-faint);
+}
+.inv-ui .inv-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.inv-ui .inv-chip {
+  padding: 1px 9px;
+  border: 1px solid var(--inv-border);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 12px;
+  color: var(--inv-muted);
+  cursor: pointer;
+}
+.inv-ui .inv-chip:hover,
+.inv-ui .inv-chip.is-on { border-color: var(--inv-accent); color: var(--inv-accent); background: var(--inv-accent-soft); }
+.inv-ui .inv-summary {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px dashed var(--inv-border);
+  border-radius: 10px;
+  background: var(--inv-surface);
+  font-size: 13px;
+  color: var(--inv-ink);
+}

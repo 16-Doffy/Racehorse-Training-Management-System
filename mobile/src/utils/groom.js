@@ -272,6 +272,45 @@ export const canRecordLate = (task, ctx, now = new Date()) =>
 /** A meal or dose whose window closed can still be reported as not done (the trainer / vet is told). */
 export const canReportNotDone = (task) => task?.status === 'pending';
 
+export const NO_RATION_REASON = 'Chưa có khẩu phần được duyệt';
+export const EXPIRED_REASON = 'Thuốc/vật tư đã hết hạn';
+
+/**
+ * The one thing to do with a pending meal, dose or chore straight from its row, by where it stands:
+ * record it (`complete`), record it at its real time (`late`), ask the Manager for what the store is
+ * short of (`restock`), or tell the trainer why it can't be done (`notDone`, with the reason when it
+ * is known). null when there is nothing to do yet (not time yet) or any more (recorded, reported) —
+ * the detail sheet still carries every action.
+ */
+export function primaryAction(task, ctx, now = new Date()) {
+  if (task?.status !== 'pending') return null;
+  if (canCompleteTask(task, ctx)) return { key: 'complete' };
+  const state = taskState(task, ctx);
+  if (state?.key === 'missed') return canRecordLate(task, ctx, now) ? { key: 'late' } : { key: 'notDone' };
+  if (state?.key !== 'blocked') return null;
+  const codes = state.blockers.map((b) => b.code);
+  if (codes.includes('NO_APPROVED_RATION')) return { key: 'notDone', reason: NO_RATION_REASON };
+  if (codes.includes('SHORT_OF_STOCK')) return { key: 'restock' };
+  if (codes.includes('EXPIRED_SUPPLY')) return { key: 'notDone', reason: EXPIRED_REASON };
+  return null;
+}
+
+// Work that needs the groom first, then what is waiting, then what is settled.
+const STATE_RANK = { late: 0, ready: 1, missed: 2, blocked: 3, upcoming: 4, unable: 5, cancelled: 6, completed: 7 };
+export const stateRank = (state) => STATE_RANK[state?.key] ?? 8;
+
+/** Still on the groom's plate: to do now or later, or missed and not yet reported either way. */
+export const needsAction = (task, ctx) => {
+  const state = taskState(task, ctx);
+  return !!state && (state.open || (state.key === 'missed' && task.status === 'pending'));
+};
+
+/** The stall a horse stands in, as its door plate reads ("A-03"), or null when it has none. */
+export function stallCodeOf(assignment) {
+  if (!assignment?.stableBlock) return null;
+  return parseStableBlock(assignment.stableBlock).stall;
+}
+
 /** What the Manager approved of a request: all of it unless they approved less (approvedQuantity). */
 export const approvedOf = (request) => request?.approvedQuantity ?? request?.quantity;
 

@@ -16,7 +16,6 @@ import { taskApi } from '../api/endpoints';
 import Icon from './Icon';
 import { Button, ChipGroup, Row } from './ui';
 import {
-  APPETITE_OPTIONS,
   EATEN_OPTIONS,
   MANURE_OPTIONS,
   MEDICATION_ROUTE,
@@ -33,6 +32,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Refusals the server explains with a code (stable/dailyTask.controller.js completionCheck): the
 // message says what happened; the lists are reloaded so the screen shows the work as it is now.
+// How the meal went, the first thing asked: most meals are eaten up, so that is the default and
+// "Đã cho ăn" records it at once; the other two open what the vet needs to know.
+const OUTCOMES = [
+  { value: 'full', label: 'Ăn hết', icon: 'checkCircle', appetite: 'Bình thường', eaten: 100, color: colors.green, bg: colors.greenSoft },
+  { value: 'partial', label: 'Ăn không hết', icon: 'alert', appetite: 'Kém', eaten: 50, color: colors.orange, bg: colors.orangeSoft },
+  { value: 'refused', label: 'Bỏ ăn', icon: 'block', appetite: 'Bỏ ăn', eaten: 0, color: colors.red, bg: colors.redSoft },
+];
+const outcomeOf = (appetite) => (appetite === 'Bỏ ăn' ? 'refused' : appetite === 'Kém' ? 'partial' : 'full');
+
 const BLOCK_TITLES = {
   NO_APPROVED_RATION: 'Chưa có khẩu phần được duyệt',
   PRESCRIPTION_CHANGED: 'Y lệnh đã thay đổi',
@@ -131,11 +139,12 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
     },
   });
 
-  const chooseAppetite = (value) => {
-    setAppetite(value);
-    if (value === 'Bỏ ăn') setEaten(0);
-    else if (eaten === 0) setEaten(100);
+  const chooseOutcome = (value) => {
+    const o = OUTCOMES.find((x) => x.value === value);
+    setAppetite(o.appetite);
+    setEaten(o.eaten);
   };
+  const outcome = outcomeOf(appetite);
 
   const submit = () => {
     if (isDose && !checked) {
@@ -214,25 +223,44 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
 
             {isFeeding ? (
               <>
-                <Text style={styles.hint}>
-                  Ghi nhận giúp bác sĩ phát hiện sớm dấu hiệu bất thường. Nếu ngựa bỏ ăn hoặc phân lỏng, hệ thống báo
-                  bác sĩ thú y ngay.
-                </Text>
                 <View>
-                  <Text style={styles.label}>Ăn uống</Text>
-                  <ChipGroup options={APPETITE_OPTIONS} value={appetite} onChange={chooseAppetite} />
+                  <Text style={styles.label}>Ngựa ăn thế nào?</Text>
+                  <Row style={{ gap: spacing.sm }}>
+                    {OUTCOMES.map((o) => {
+                      const on = outcome === o.value;
+                      return (
+                        <Pressable
+                          key={o.value}
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected: on }}
+                          onPress={() => chooseOutcome(o.value)}
+                          style={[styles.outcome, on && { borderColor: o.color, backgroundColor: o.bg }]}
+                        >
+                          <Icon name={o.icon} size={22} color={on ? o.color : colors.textFaint} />
+                          <Text style={[styles.outcomeText, on && { color: o.color }]} numberOfLines={1}>
+                            {o.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </Row>
                 </View>
-                <View>
-                  <Text style={styles.label}>Ngựa ăn được (so với khẩu phần đã xuất)</Text>
-                  <ChipGroup options={EATEN_OPTIONS} value={eaten} onChange={setEaten} size="sm" />
-                </View>
+                {outcome === 'partial' ? (
+                  <View>
+                    <Text style={styles.label}>Ăn được khoảng (so với khẩu phần đã xuất)</Text>
+                    <ChipGroup options={EATEN_OPTIONS.filter((o) => o.value > 0 && o.value < 100)} value={eaten} onChange={setEaten} size="sm" />
+                  </View>
+                ) : null}
+                {outcome === 'refused' ? (
+                  <Text style={[styles.hint, { color: colors.red }]}>Ngựa bỏ ăn: bác sĩ thú y được báo ngay khi bạn ghi nhận.</Text>
+                ) : null}
                 <View>
                   <Text style={styles.label}>Phân</Text>
-                  <ChipGroup options={MANURE_OPTIONS} value={manure} onChange={setManure} />
+                  <ChipGroup options={MANURE_OPTIONS} value={manure} onChange={setManure} size="sm" />
                 </View>
                 <View>
                   <Text style={styles.label}>Uống nước</Text>
-                  <ChipGroup options={WATER_OPTIONS} value={water} onChange={setWater} />
+                  <ChipGroup options={WATER_OPTIONS} value={water} onChange={setWater} size="sm" />
                 </View>
               </>
             ) : isDose ? (
@@ -316,6 +344,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   confirmOn: { borderColor: colors.green, backgroundColor: colors.forestSoft },
+  outcome: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  outcomeText: { fontSize: 13, fontWeight: '800', color: colors.textMuted },
   lateBox: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.orangeSoft },
   hint: { ...font.small },
   label: { ...font.tiny, marginBottom: spacing.sm },
