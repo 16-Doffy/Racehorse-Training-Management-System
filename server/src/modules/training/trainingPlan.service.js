@@ -48,8 +48,9 @@ function mondayOf(d) {
  *   will be fed next Thursday. They are checked when the trainer presses "Bắt đầu".
  *
  * Returns { weekStart, created, skipped } or { error }. `notify: false` skips the groom's message (seed).
+ * `automatic`: booked by the timetable (scheduleAhead), which leaves a slot the trainer called off empty.
  */
-async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify = true }) {
+async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify = true, automatic = false }) {
   const timeProblem = slotTimeProblem(plan.sessionTime, plan.afternoonTime);
   if (timeProblem) return { error: timeProblem };
   if (requestedWeek && !Number.isFinite(new Date(requestedWeek).getTime())) {
@@ -70,9 +71,10 @@ async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify 
   const clockOf = { morning: plan.sessionTime || '07:30', afternoon: plan.afternoonTime || '16:00' };
 
   const booked = await TrainingSession.find({
-    // A manual session or another plan's booking occupies the horse's slot too.
+    // A manual session or another plan's booking occupies the horse's slot too. The timetable also
+    // counts a called-off session, or it would book again what the trainer just cancelled.
     horse: horseId,
-    status: { $ne: 'cancelled' },
+    ...(automatic ? {} : { status: { $ne: 'cancelled' } }),
     scheduledAt: { $gte: weekStart, $lt: new Date(weekStart.getTime() + 7 * DAY_MS) },
   }).select('scheduledAt');
   const bookedSlots = new Set(booked.map((s) => `${startOfDay(s.scheduledAt).getTime()}|${slotOf(s.scheduledAt)}`));
@@ -142,7 +144,7 @@ async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify 
       action: 'trainingPlan.generate_week',
       targetModel: 'TrainingPlan',
       targetId: plan._id,
-      metadata: { weekStart, created: createdSessions.length, skipped: skipped.length },
+      metadata: { weekStart, created: createdSessions.length, skipped: skipped.length, ...(automatic ? { automatic: true } : {}) },
     });
     const list = createdSessions
       .map((s) => `${new Date(s.scheduledAt).toLocaleDateString('vi-VN', { weekday: 'short' })} ${SLOT_LABEL[slotOf(s.scheduledAt)]} ${SESSION_KINDS[s.kind].label.toLowerCase()}`)
@@ -157,4 +159,38 @@ async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify 
   return { weekStart, created: createdSessions, skipped };
 }
 
-module.exports = { generatePlanWeek, mondayOf, startOfDay, ddmm, DAY_MS, TRIAL_DAYS_BEFORE_RACE };
+// Like a timetable: an active plan keeps this week and next booked, so today the trainer and the
+// groom already see tomorrow's and next week's work without anyone pressing "Sinh lịch tuần".
+const AHEAD_WEEKS = 2;
+// Off in the test harness, where tests book their own sessions; read on each call so a test can turn it on.
+const autoScheduleOn = () => process.env.AUTO_SCHEDULE_PLANS !== 'false';
+
+/** Books the plan's weeks ahead. The plan must have horse (name) and targetRace populated. Returns { created } or { error }. */
+async function scheduleAhead(plan) {
+  if (!autoScheduleOn()) return { created: 0 };
+  const thisWeek = mondayOf(new Date());
+  let created = 0;
+  for (let w = 0; w < AHEAD_WEEKS; w += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const result = await generatePlanWeek({ plan, weekStart: new Date(thisWeek.getTime() + w * 7 * DAY_MS), actor: { _id: plan.createdBy }, automatic: true });
+    if (result.error) return { error: result.error, created };
+    created += result.created.length;
+  }
+  return { created };
+}
+
+/** Every active plan of a horse still with the club, booked ahead (realtime/planScheduler.js). Returns how many sessions were booked. */
+async function scheduleActivePlans() {
+  const plans = await TrainingPlan.find({ status: 'active' })
+    .populate('targetRace', 'raceName raceDate distance status')
+    .populate('horse', 'name isArchived');
+  let created = 0;
+  for (const plan of plans) {
+    if (!plan.horse || plan.horse.isArchived) continue;
+    // eslint-disable-next-line no-await-in-loop
+    created += (await scheduleAhead(plan)).created;
+  }
+  return created;
+}
+
+module.exports = { generatePlanWeek, scheduleAhead, scheduleActivePlans, mondayOf, startOfDay, ddmm, DAY_MS, TRIAL_DAYS_BEFORE_RACE };

@@ -222,7 +222,8 @@ export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], p
               {[...rows.values()].map(({ horse, plan }) => (
                 <tr key={horse?._id} className="align-top hover:bg-gray-50/40 transition-colors">
                   <td className="px-3.5 py-3">
-                    <Link to={`/horses/${horse?._id}`} className="font-semibold text-emerald-950 hover:text-emerald-700">
+                    {/* The horse's own schedule on this page; its profile is linked from the filter tag. */}
+                    <Link to={`?horse=${horse?._id}`} title="Xem lịch của riêng ngựa này" className="font-semibold text-emerald-950 hover:text-emerald-700">
                       {horse?.name}
                     </Link>
                     {plan ? (
@@ -230,7 +231,7 @@ export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], p
                         <span className="text-xs text-gray-500 font-medium">
                           {PHASE_LABELS[plan.phase] || plan.phase}
                         </span>
-                        <Tooltip title="Xếp buổi tập tuần này theo lịch tuần mẫu của giai đoạn">
+                        <Tooltip title="Tuần này và tuần sau được xếp tự động theo lịch tuần mẫu. Bấm để xếp lại các buổi còn trống của tuần đang xem, kể cả buổi đã hủy.">
                           <Button
                             size="small"
                             icon={<ScheduleOutlined />}
@@ -238,7 +239,7 @@ export default function WeekCalendar({ weekStart, onWeekChange, sessions = [], p
                             onClick={() => onGenerate(plan, weekStart)}
                             className="text-xs"
                           >
-                            Sinh lịch tuần
+                            Xếp lại tuần
                           </Button>
                         </Tooltip>
                       </div>

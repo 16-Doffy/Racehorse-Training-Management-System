@@ -61,6 +61,7 @@ const dailyTaskSchema = new mongoose.Schema(
     scheduledDate: { type: Date, required: true, default: Date.now },
     status: { type: String, enum: ['pending', 'completed', 'skipped'], default: 'pending' },
     completedAt: { type: Date }, // when the work was done (the groom's clock, checked), not when the server heard
+    completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // who ticked it
     // When the server received the record, apart from when it was done: a phone without signal sends later.
     receivedAt: { type: Date, default: null },
     // Sent more than SYNC_LATE_MINUTES after it was done (from the offline outbox).

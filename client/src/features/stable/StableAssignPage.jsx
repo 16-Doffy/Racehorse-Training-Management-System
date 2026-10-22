@@ -256,6 +256,17 @@ function TaskList() {
               {r.observation.amountEatenPercent != null ? ` ${r.observation.amountEatenPercent}%` : ''}
             </Tag>
           )}
+          {/* Who did it and when: the person who ticked it, not only who it was given to. */}
+          {r.status === 'completed' && r.completedAt && (
+            <Text type="secondary" className="basis-full !text-xs">
+              {(r.completedBy || r.assignedTo)?.name || 'Nhân viên'} {r.taskType === 'feeding' ? 'cho ăn' : 'làm'} lúc {dayjs(r.completedAt).format('HH:mm')}
+            </Text>
+          )}
+          {r.status === 'skipped' && r.skippedBy?.name && (
+            <Text type="secondary" className="basis-full !text-xs">
+              {r.skippedBy.name} báo lúc {dayjs(r.receivedAt || r.updatedAt).format('HH:mm')}
+            </Text>
+          )}
         </div>
       ),
     },

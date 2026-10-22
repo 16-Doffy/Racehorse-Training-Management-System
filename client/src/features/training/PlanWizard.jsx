@@ -102,8 +102,8 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
   const createMutation = useMutation({
     mutationFn: (payload) => trainingPlanApi.create(payload),
     onSuccess: (res) => {
-      // A plan books nothing by itself: say so, and take the trainer to booking its first week.
-      message.success('Đã lập kế hoạch — chưa có buổi tập nào. Sinh lịch tuần đầu tiên để xếp buổi.');
+      // The server books this week and next straight away (and keeps two weeks booked from then on).
+      message.success('Đã lập kế hoạch — lịch tập tuần này và tuần sau đã được xếp sẵn.');
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
       close();
       onCreated?.(res?.data);

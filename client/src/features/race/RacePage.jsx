@@ -254,12 +254,14 @@ export default function RacePage() {
       title: 'Ngựa',
       dataIndex: ['horse', 'name'],
       key: 'horse',
+      width: 180,
       render: (name, record) => <Link to={`/horses/${record.horse?._id}`}>{name}</Link>,
     },
     {
       title: 'Giải đua',
       dataIndex: 'raceName',
       key: 'raceName',
+      width: 190,
       render: (name, r) => (
         <div>
           <div>{name}</div>
@@ -271,6 +273,7 @@ export default function RacePage() {
       title: 'Ngày đua',
       dataIndex: 'raceDate',
       key: 'raceDate',
+      width: 115,
       render: (d, r) => {
         const days = dayjs(d).startOf('day').diff(dayjs().startOf('day'), 'day');
         return (
@@ -286,6 +289,7 @@ export default function RacePage() {
     {
       title: 'Cự ly · mặt sân',
       key: 'distance',
+      width: 130,
       render: (_, r) => [r.distance ? `${r.distance}m` : null, SURFACE_LABELS[r.surface]].filter(Boolean).join(' · ') || '—',
     },
     {
@@ -304,6 +308,7 @@ export default function RacePage() {
       title: 'Kết quả',
       dataIndex: 'result',
       key: 'result',
+      width: 150,
       render: (v, r) =>
         v ? (
           <div>
@@ -321,14 +326,16 @@ export default function RacePage() {
     {
       title: '',
       key: 'actions',
-      // Pinned so the actions stay in view when the table scrolls sideways.
+      // Pinned so the actions stay in view when the table scrolls sideways; one button per line and a
+      // set width, so the pinned column never covers the result next to it.
       fixed: 'right',
+      width: 180,
       render: (_, record) => {
         const open = ['registered', 'confirmed'].includes(record.status);
         const plan = activePlanByHorse.get(refId(record.horse));
         const planForThis = plan && refId(plan.targetRace) === String(record._id);
         return (
-          <Space size={4} wrap>
+          <Space size={4} orientation="vertical" align="start">
             {open && !isPast(record) && !plan && (
               <Button size="small" icon={<ScheduleOutlined />} onClick={() => navigate(`/training/plans?race=${record._id}`)}>
                 Lập kế hoạch

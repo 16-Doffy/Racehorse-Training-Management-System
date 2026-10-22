@@ -9,7 +9,7 @@ const { logAction } = require('../audit/audit.service');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
 const { getMedicalBlock } = require('./readiness.service');
-const { generatePlanWeek, startOfDay, ddmm, DAY_MS, TRIAL_DAYS_BEFORE_RACE } = require('./trainingPlan.service');
+const { generatePlanWeek, scheduleAhead, startOfDay, ddmm, DAY_MS, TRIAL_DAYS_BEFORE_RACE } = require('./trainingPlan.service');
 const {
   PHASE_LABELS,
   SESSION_KINDS,
@@ -266,6 +266,23 @@ async function preparePhases(body) {
   return null;
 }
 
+/**
+ * Books an active plan's sessions for this week and next straight away (the hourly timetable,
+ * realtime/planScheduler.js, does the same later). A failure here leaves the plan saved: the next
+ * hourly run tries again.
+ */
+async function bookAhead(plan) {
+  try {
+    await plan.populate([{ path: 'targetRace', select: 'raceName raceDate distance status' }, { path: 'horse', select: 'name' }]);
+    await scheduleAhead(plan);
+  } catch (err) {
+    console.error('[plan-scheduler] booking ahead failed:', err.message);
+  } finally {
+    plan.depopulate('targetRace');
+    plan.depopulate('horse');
+  }
+}
+
 const createPlan = asyncHandler(async (req, res) => {
   const body = pick(req.body, CREATE_FIELDS);
   if (!(await canAccessHorse(req.user, body.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
@@ -289,6 +306,7 @@ const createPlan = asyncHandler(async (req, res) => {
 
   const plan = await TrainingPlan.create({ ...body, createdBy: req.user._id });
   await logAction({ actorId: req.user._id, action: 'trainingPlan.create', targetModel: 'TrainingPlan', targetId: plan._id });
+  if (plan.status === 'active') await bookAhead(plan);
   return created(res, plan, 'Training plan created.');
 });
 
@@ -322,8 +340,11 @@ const updatePlan = asyncHandler(async (req, res) => {
     }
   }
 
+  const activating = changes.status === 'active' && plan.status !== 'active';
   Object.assign(plan, changes);
   await plan.save();
+  // A plan put into use, or an active plan whose phases, start or race changed: its weeks ahead now.
+  if (plan.status === 'active' && (activating || ['phases', 'startDate', 'targetRace'].some((k) => changes[k] !== undefined))) await bookAhead(plan);
   // Closing a cycle also closes every workout that has not begun, including one whose start
   // time has just passed but whose pre-check/start grace window is still open.
   if (['completed', 'cancelled'].includes(changes.status)) {

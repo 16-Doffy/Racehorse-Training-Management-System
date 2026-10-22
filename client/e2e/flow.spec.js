@@ -45,6 +45,35 @@ test('trainer sees scheduled training and recorded race result', async ({ page }
   await page.goto('/races');
   await expect(page.getByText('TEST Browser Cup', { exact: true })).toBeVisible();
 });
+test('a horse added with its papers shows them on its profile', async ({ page }) => {
+  await login(page, 'manager');
+  await page.goto('/horses');
+  await page.getByRole('button', { name: /Thêm ngựa mới/ }).first().click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Tên ngựa').fill('TEST Papers Horse');
+  await dialog.getByLabel('Giới tính').click();
+  await page.getByTitle('Ngựa đực giống', { exact: true }).click();
+  await dialog.getByLabel('Số vi mạch').fill('985141000123456');
+  await dialog.getByLabel('Số đăng ký').fill('VN-2026-777');
+  await dialog.getByLabel('Định giá (₫)').fill('500000000');
+  await dialog.getByRole('button', { name: 'Thêm ngựa', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await page.locator('.ant-table-row', { hasText: 'TEST Papers Horse' }).first().click();
+  await expect(page).toHaveURL(/\/horses\/[0-9a-f]{24}$/);
+  const papers = page.locator('.ant-descriptions').first();
+  await expect(papers.getByText('Ngựa đực giống', { exact: true })).toBeVisible();
+  await expect(papers.getByText('985141000123456', { exact: true })).toBeVisible();
+  await expect(papers.getByText('VN-2026-777', { exact: true })).toBeVisible();
+  await expect(papers.getByText(/500\.000\.000/)).toBeVisible();
+});
+test('trainer opens one horse’s schedule from the sessions page, not its profile', async ({ page }) => {
+  await login(page, 'trainer');
+  await page.goto('/training/sessions');
+  await page.getByRole('link', { name: 'TEST Browser Horse', exact: true }).first().click();
+  await expect(page).toHaveURL(/\/training\/sessions\?horse=/);
+  await expect(page.getByText('Đang xem lịch của ngựa: TEST Browser Horse')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Mở hồ sơ ngựa' })).toBeVisible();
+});
 test('owner sees race history and cannot open manager routes', async ({ page }) => {
   await login(page, 'owner');
   await page.goto('/owner/races');

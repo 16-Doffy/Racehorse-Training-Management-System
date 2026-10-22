@@ -8,6 +8,7 @@ const { startCareScheduler } = require('./src/realtime/careScheduler');
 const { startDailyTaskGenerator } = require('./src/realtime/dailyTaskGenerator');
 const { startMissedSessionWatcher } = require('./src/realtime/missedSessionWatcher');
 const { startMissedCareWatcher } = require('./src/realtime/missedCareWatcher');
+const { startPlanScheduler } = require('./src/realtime/planScheduler');
 
 async function start() {
   await connectDB();
@@ -27,6 +28,7 @@ async function start() {
     startDailyTaskGenerator();
     startMissedSessionWatcher();
     startMissedCareWatcher();
+    startPlanScheduler();
   });
 }
 

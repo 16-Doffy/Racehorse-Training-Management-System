@@ -430,7 +430,7 @@ export default function TrainingSessionPage() {
       key: 'horse',
       render: (name, record) => (
         <div className="whitespace-nowrap">
-          <Link to={`/horses/${record.horse?._id}`} className="font-semibold text-emerald-950 hover:text-emerald-700">
+          <Link to={`?horse=${record.horse?._id}`} title="Xem lịch của riêng ngựa này" className="font-semibold text-emerald-950 hover:text-emerald-700">
             {name}
           </Link>
           {lockedHorseIds.has(record.horse?._id) ? (
@@ -759,8 +759,13 @@ export default function TrainingSessionPage() {
           color="blue"
           className="mb-4"
         >
-          Đang lọc theo ngựa: {filteredHorse.name}
+          Đang xem lịch của ngựa: {filteredHorse.name}
         </Tag>
+      )}
+      {filteredHorse && (
+        <Link to={`/horses/${filteredHorse._id}`} className="mb-4 ml-1 inline-block text-sm">
+          Mở hồ sơ ngựa
+        </Link>
       )}
 
       {firstWeek && filteredPlan && !(sessionsData?.data || []).length && (
@@ -769,7 +774,7 @@ export default function TrainingSessionPage() {
           type="info"
           showIcon
           title={`Kế hoạch của ${filteredPlan.horse?.name || 'ngựa'} chưa có buổi tập nào`}
-          description="Lập kế hoạch chỉ đặt ra giai đoạn và lịch tuần mẫu. Sinh lịch cho tuần đầu tiên để có các buổi tập cụ thể; người chăm sóc được báo lịch ngay."
+          description="Lịch tuần này và tuần sau được xếp tự động khi áp dụng kế hoạch. Chưa có buổi nào nghĩa là kế hoạch bắt đầu muộn hơn; bấm để xếp tuần đầu tiên ngay."
           action={
             <Button
               type="primary"
@@ -781,7 +786,7 @@ export default function TrainingSessionPage() {
                 generateMutation.mutate({ plan: filteredPlan, start: week.toDate() });
               }}
             >
-              Sinh lịch tuần đầu tiên
+              Xếp tuần đầu tiên
             </Button>
           }
         />

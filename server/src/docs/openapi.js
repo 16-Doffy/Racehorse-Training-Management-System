@@ -485,7 +485,8 @@ module.exports = {
           },
           acknowledgedAt: { type: 'string', format: 'date-time', nullable: true, description: 'When the groom took the task on (PATCH /stable/tasks/{id}/acknowledge)' },
           skipReason: { type: 'string', description: 'Why it was not done, when the groom reported it (PATCH /stable/tasks/{id}/not-done)' },
-          skippedBy: { type: 'string', nullable: true, description: 'Who called it off: the trainer, or the groom reporting it could not be done' },
+          skippedBy: { type: 'string', nullable: true, description: 'Who called it off: the trainer, or the groom reporting it could not be done. GET /stable/tasks populates { _id, name }.' },
+          completedBy: { type: 'string', nullable: true, description: 'Who recorded it done (the groom who fed / gave the dose). GET /stable/tasks populates { _id, name }.' },
           timing: {
             type: 'object',
             readOnly: true,

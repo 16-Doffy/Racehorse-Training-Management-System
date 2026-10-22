@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Tag, Card, Select, Empty, Dropdown, Modal, Progress, Space, Alert } from 'antd';
+import { Table, Button, Typography, Tag, Card, Select, Empty, Dropdown, Modal, Progress, Space, Alert, Tooltip } from 'antd';
 import { PlusOutlined, CalendarOutlined, ScheduleOutlined, DownOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -157,7 +157,7 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, updati
               </div>
             ) : (
               <Text type="secondary" className="block !text-xs mt-1">
-                Chưa xếp buổi nào — bấm &quot;Sinh lịch tuần&quot;.
+                Chưa có buổi nào trong 2 tuần tới: kế hoạch bắt đầu muộn hơn, hoặc bác sĩ đang khóa tập.
               </Text>
             )}
           </div>
@@ -165,12 +165,14 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, updati
 
         <div className="flex flex-wrap gap-2">
           <Space.Compact size="small">
-            <Button type="primary" icon={<ScheduleOutlined />} loading={generating} disabled={locked} onClick={() => onGenerate(plan, 'next')}>
-              Sinh lịch tuần tới
-            </Button>
+            <Tooltip title="Lịch tuần này và tuần sau được xếp tự động. Bấm để xếp lại các buổi còn trống, kể cả buổi đã hủy.">
+              <Button type="primary" icon={<ScheduleOutlined />} loading={generating} disabled={locked} onClick={() => onGenerate(plan, 'next')}>
+                Xếp lại tuần tới
+              </Button>
+            </Tooltip>
             <Dropdown
               disabled={locked || generating}
-              menu={{ items: [{ key: 'this', label: 'Sinh lịch tuần này' }], onClick: () => onGenerate(plan, 'this') }}
+              menu={{ items: [{ key: 'this', label: 'Xếp lại tuần này' }], onClick: () => onGenerate(plan, 'this') }}
             >
               <Button type="primary" icon={<DownOutlined />} aria-label="Chọn tuần khác" />
             </Dropdown>
@@ -312,7 +314,7 @@ export default function TrainingPlanPage() {
         eyebrow="Huấn luyện & chu kỳ"
         roleLabel="HLV trưởng"
         title="Kế hoạch huấn luyện"
-        subtitle="Mỗi ngựa theo một chu kỳ hướng tới giải: Nền tảng → Sức mạnh → Tốc độ → Điểm rơi trước giải, rồi hồi phục. Sinh lịch tuần và kiểm soát tải trọng."
+        subtitle="Mỗi ngựa theo một chu kỳ hướng tới giải: Nền tảng → Sức mạnh → Tốc độ → Điểm rơi trước giải, rồi hồi phục. Lịch tập tự xếp sẵn 2 tuần tới; theo dõi tải trọng từng giai đoạn."
         actionButton={
           <Button
             type="primary"

@@ -11,6 +11,9 @@ Duy cập nhật (Claude soạn). Mục 0a: kiểm tra bữa ăn trước buổi
   - Bữa chỉ có thức ăn bổ sung: không tính là một bữa ăn.
 - Giờ ăn tính theo lúc nhân viên thực sự cho ăn. Ví dụ bữa hẹn 20:30 mà cho ăn sớm lúc 20:11 thì tính từ 20:11.
 - Trong ngày có bữa bị lỡ mà chưa ăn bù: cảnh báo vàng kèm nút "Báo nhân viên cho ăn bù", kể cả khi sau đó ngựa đã ăn bữa khác. Đã báo cho ăn bù thì bảng ghi "đang chờ nhân viên".
+- **Lịch tập tự xếp như thời khóa biểu:** kế hoạch đang áp dụng luôn có sẵn buổi tập tuần này và tuần sau (xếp ngay khi áp dụng, rồi kiểm lại mỗi giờ). Buổi HLV đã hủy không bị xếp lại. Nút "Sinh lịch tuần" đổi thành "Xếp lại tuần" (xếp các buổi còn trống, kể cả buổi đã hủy). Trên server, đặt `AUTO_SCHEDULE_PLANS=false` thì tắt (test harness đã tắt sẵn).
+- `GET /stable/tasks` trả thêm `completedBy` và `skippedBy` là `{ _id, name }`. Bảng Công việc chăm sóc của HLV hiện "Nguyễn Văn Sóc cho ăn lúc 20:11".
+- Trang Buổi tập: bấm tên ngựa thì lọc lịch của riêng ngựa đó (link "Mở hồ sơ ngựa" ở bên cạnh). Bảng Giải đua: các cột có độ rộng cố định, nút xếp dọc, không còn đè lên cột Kết quả.
 
 ## 0. Cập nhật chiều 22/10 (đã lên `main`, server đã deploy)
 
