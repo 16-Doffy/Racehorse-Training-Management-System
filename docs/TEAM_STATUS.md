@@ -13,7 +13,11 @@ Duy cập nhật (Claude soạn). Mục 0a: kiểm tra bữa ăn trước buổi
 - Trong ngày có bữa bị lỡ mà chưa ăn bù: cảnh báo vàng kèm nút "Báo nhân viên cho ăn bù", kể cả khi sau đó ngựa đã ăn bữa khác. Đã báo cho ăn bù thì bảng ghi "đang chờ nhân viên".
 - **Lịch tập tự xếp như thời khóa biểu:** kế hoạch đang áp dụng luôn có sẵn buổi tập tuần này và tuần sau (xếp ngay khi áp dụng, rồi kiểm lại mỗi giờ). Buổi HLV đã hủy không bị xếp lại. Nút "Sinh lịch tuần" đổi thành "Xếp lại tuần" (xếp các buổi còn trống, kể cả buổi đã hủy). Trên server, đặt `AUTO_SCHEDULE_PLANS=false` thì tắt (test harness đã tắt sẵn).
 - `GET /stable/tasks` trả thêm `completedBy` và `skippedBy` là `{ _id, name }`. Bảng Công việc chăm sóc của HLV hiện "Nguyễn Văn Sóc cho ăn lúc 20:11".
-- Trang Buổi tập: bấm tên ngựa thì lọc lịch của riêng ngựa đó (link "Mở hồ sơ ngựa" ở bên cạnh). Bảng Giải đua: các cột có độ rộng cố định, nút xếp dọc, không còn đè lên cột Kết quả.
+- Trang Buổi tập: bấm tên ngựa thì lọc lịch của riêng ngựa đó (link "Mở hồ sơ ngựa" ở bên cạnh). Bảng Giải đua: kết quả nằm dưới cột "Quyết định · kết quả", cột nút không còn đè lên.
+- **Khẩu phần (HLV):** cột "Người cho ăn" (nhân viên của chuồng + tình trạng bữa hôm nay); form hiện nhân viên cho ăn và gợi ý bữa theo cân nặng + giai đoạn kế hoạch (`client/src/features/stable/rationSuggestion.js`).
+- **Lập kế hoạch:** khoảng km/tuần tham khảo theo nhóm cự ly giải, bảng tham khảo và nút điền (`client/src/features/training/planGuide.js`).
+- **Cảm biến mô phỏng:** `POST /training/sessions/:id/simulate { scenario: 'tired' | 'injury' }` (HLV, buổi đang chạy, chỉ khi `ENABLE_SENSOR_SIMULATOR=true`). `injury` thì hệ thống tự dừng buổi (`abortCategory: 'injury'`), gửi bác sĩ yêu cầu khám ưu tiên cao, giao nhân viên việc chườm lạnh, báo HLV và chủ ngựa; socket `session:completed` có `aborted: true`. Session có thêm `simScenario`.
+- **Theo dõi trực tiếp:** từ 3 ngựa chạy cùng lúc thì hiện bảng gọn, mỗi ngựa một dòng.
 
 ## 0. Cập nhật chiều 22/10 (đã lên `main`, server đã deploy)
 
