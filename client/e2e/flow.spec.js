@@ -216,6 +216,18 @@ test('owner stable page keeps the stall card title readable on the dark canvas',
   expect(await textIsDark(title)).toBe(false);
   expect(await textIsDark(card.locator('.own-stall-card .own-horse-name'))).toBe(false);
 });
+test('owner horse list says it did not load, instead of "you have no horses", and comes back on retry', async ({ page }) => {
+  const summary = (url) => url.pathname === '/api/v1/horses/owner-summary';
+  await page.route(summary, (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, message: 'TEST server error' }) }));
+  await login(page, 'owner');
+  await page.goto('/horses');
+  await expect(page.getByText(/Chưa tải được danh sách chiến mã/)).toBeVisible();
+  await expect(page.getByText(/Bạn chưa có chiến mã nào/)).toHaveCount(0);
+  await page.unroute(summary);
+  await page.getByRole('button', { name: 'Thử lại', exact: true }).click();
+  await expect(page.getByText('TEST Browser Horse', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/Chưa tải được danh sách chiến mã/)).toHaveCount(0);
+});
 test('owner cannot open the stable map of the Manager', async ({ page }) => {
   await login(page, 'owner');
   await page.goto('/admin/stables');

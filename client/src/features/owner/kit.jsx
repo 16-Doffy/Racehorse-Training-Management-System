@@ -331,6 +331,18 @@ export function EmptyNote({ children }) {
   return <div className="own-empty">{children}</div>;
 }
 
+/** A list that did not load: say so and offer to try again, never "you have none". */
+export function LoadFailed({ what, onRetry }) {
+  return (
+    <EmptyNote>
+      Chưa tải được {what}.{' '}
+      <button type="button" className="own-link-btn" onClick={() => onRetry()}>
+        Thử lại
+      </button>
+    </EmptyNote>
+  );
+}
+
 /** Label and value pairs; falsy entries are skipped. */
 export function Facts({ items }) {
   return (

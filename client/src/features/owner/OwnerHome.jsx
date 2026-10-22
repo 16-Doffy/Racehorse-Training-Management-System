@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 import { Select } from 'antd';
 import { BellOutlined, CalendarOutlined, DollarOutlined, FundOutlined, LineChartOutlined, TrophyOutlined } from '@ant-design/icons';
 import { CHART_RANGES, chartRange, trainingChartRows, trainingChartTotals } from '../horses/trainingChart';
-import { Card, EmptyNote, OwnerPage, PageHead, Stats, Tiles } from './kit';
+import { Card, EmptyNote, LoadFailed, OwnerPage, PageHead, Stats, Tiles } from './kit';
 import { TrainingBars } from './charts';
 import { AgendaList, AttentionList } from './lists';
 import HorseTile from './HorseTile';
@@ -20,7 +20,7 @@ export default function OwnerHome() {
   const { user } = useSelector((state) => state.auth);
   const [range, setRange] = useState('6months');
   const { horses } = useMyHorses();
-  const { rows, isLoading: rowsLoading } = useOwnerSummary();
+  const { rows, isLoading: rowsLoading, isError: rowsError, refetch: refetchRows } = useOwnerSummary();
   const { overview, isLoading: overviewLoading, isError: overviewError } = useOwnerOverview();
   const { byHorse: stallOf, isSuccess: stallsLoaded } = useStallsByHorse();
   const { sessions } = useSessions();
@@ -104,6 +104,10 @@ export default function OwnerHome() {
         </div>
         {rowsLoading ? (
           <EmptyNote>Đang tải…</EmptyNote>
+        ) : rowsError && rows.length === 0 ? (
+          <Card>
+            <LoadFailed what="danh sách chiến mã" onRetry={refetchRows} />
+          </Card>
         ) : rows.length === 0 ? (
           <Card>
             <EmptyNote>Bạn chưa có chiến mã nào. Khi CLB ghi nhận ngựa của bạn, chúng sẽ hiện ở đây.</EmptyNote>

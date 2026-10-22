@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Input, Segmented } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
-import { Card, EmptyNote, OwnerPage, PageHead } from './kit';
+import { Card, EmptyNote, LoadFailed, OwnerPage, PageHead } from './kit';
 import HorseTile from './HorseTile';
 import { idOf } from './ownerFormat';
 import { useMyHorses, useOwnerSummary, useStallsByHorse } from './useOwnerData';
@@ -12,8 +12,8 @@ import { useMyHorses, useOwnerSummary, useStallsByHorse } from './useOwnerData';
  * unexamined horse is counted apart rather than as healthy.
  */
 export default function OwnerHorses() {
-  const { horses, isLoading: horsesLoading } = useMyHorses();
-  const { rows, isLoading: rowsLoading } = useOwnerSummary();
+  const { horses, isLoading: horsesLoading, isError: horsesError, refetch: refetchHorses } = useMyHorses();
+  const { rows, isLoading: rowsLoading, isError: rowsError, refetch: refetchRows } = useOwnerSummary();
   const { byHorse: stallOf, isSuccess: stallsLoaded } = useStallsByHorse();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
@@ -58,6 +58,16 @@ export default function OwnerHorses() {
 
       {rowsLoading || horsesLoading ? (
         <EmptyNote>Đang tải…</EmptyNote>
+      ) : (rowsError || horsesError) && rows.length === 0 ? (
+        <Card>
+          <LoadFailed
+            what="danh sách chiến mã"
+            onRetry={() => {
+              if (rowsError) refetchRows();
+              if (horsesError) refetchHorses();
+            }}
+          />
+        </Card>
       ) : shown.length === 0 ? (
         <Card>
           <EmptyNote>{rows.length ? 'Không có chiến mã nào khớp tìm kiếm.' : 'Bạn chưa có chiến mã nào. Khi CLB ghi nhận ngựa của bạn, chúng sẽ hiện ở đây.'}</EmptyNote>

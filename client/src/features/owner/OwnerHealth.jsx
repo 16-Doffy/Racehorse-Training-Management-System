@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { BellOutlined, HeartOutlined, MedicineBoxOutlined } from '@ant-design/icons';
-import { Card, ClearancePill, EmptyNote, HealthPill, HorseAvatar, HorsePicker, OwnerPage, PageHead, Pill, Row } from './kit';
+import { Card, ClearancePill, EmptyNote, HealthPill, HorseAvatar, HorsePicker, LoadFailed, OwnerPage, PageHead, Pill, Row } from './kit';
 import { AttentionList } from './lists';
 import HealthDetail from './HealthDetail';
 import { fmtDate, idOf } from './ownerFormat';
@@ -12,7 +12,7 @@ import { useHorseParam, useMyHorses, useOwnerSummary, useTreatments } from './us
  * treatments and what needs a look), or one horse in full when it is picked.
  */
 export default function OwnerHealth() {
-  const { horses, isLoading } = useMyHorses();
+  const { horses, isLoading, isError, refetch } = useMyHorses();
   const { rows } = useOwnerSummary();
   const { treatments } = useTreatments();
   const [horseId, setHorse] = useHorseParam(horses);
@@ -46,7 +46,11 @@ export default function OwnerHealth() {
         <>
           <Card title="Từng chiến mã" icon={<HeartOutlined />} flush>
             {horses.length === 0 ? (
-              <EmptyNote>{isLoading ? 'Đang tải…' : 'Bạn chưa có chiến mã nào.'}</EmptyNote>
+              isError && !isLoading ? (
+                <LoadFailed what="danh sách chiến mã" onRetry={refetch} />
+              ) : (
+                <EmptyNote>{isLoading ? 'Đang tải…' : 'Bạn chưa có chiến mã nào.'}</EmptyNote>
+              )
             ) : (
               <ul className="own-list">
                 {horses.map((h) => {
