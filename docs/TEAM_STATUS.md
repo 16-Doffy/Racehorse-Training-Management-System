@@ -1,20 +1,16 @@
 # Tình hình dự án: 22/10/2026
 
-Duy cập nhật (Claude soạn). Đọc mục 1 trước: `main` đang đỏ, cần sửa trước buổi demo với mentor ngày 23/10.
+Duy cập nhật (Claude soạn). Mục 1: `main` đã xanh trở lại.
 
-## 1. Việc cần làm ngay: 2 test chủ ngựa làm `main` đỏ
+## 1. Đã xử lý: 2 test chủ ngựa làm `main` đỏ
 
-Kiểm tra **Test** trên `main` đỏ từ 17:43 ngày 21/10 (commit `a04b163`). Chỉ hỏng 2 test trong `client/e2e/flow.spec.js`; các phần khác qua hết:
-- `owner stable page reads the stall from the stable map, not from the old free-text code`
-- `owner stable page keeps the stall card title readable on the dark canvas`
+Kiểm tra **Test** trên `main` đỏ từ 17:43 ngày 21/10 vì 2 test của trang `/owner/stable` vẫn tìm thẻ cũ "Chuồng A-01", trong khi commit `a04b163` đã làm lại trang (chọn khu, rồi chọn chuồng, rồi xem ngựa trong chuồng). Trang mới chạy đúng; chỉ test bị cũ.
 
-**Nguyên nhân:** `a04b163` làm lại trang `/owner/stable` theo kiểu chọn khu, rồi chọn chuồng, rồi xem ngựa trong chuồng. Trang mới chạy đúng: hiện nhãn "A-01 · Khu A", ngựa trong chuồng 3D, ô A-01 trên sơ đồ có tên ngựa. Nhưng 2 test vẫn tìm thẻ có tiêu đề **"Chuồng A-01"**, thứ trang mới không còn (thẻ giờ tên "Chuồng của ngựa bạn").
+Claude đã sửa 2 test theo trang mới (commit `1d113f2`, Duy nhờ làm ngay vì sáng 23/10 demo), giữ nguyên ý cũ:
+- ô A-01 trên sơ đồ có "TEST Browser Horse", thông tin chuồng bên cạnh ghi A-01, không có chữ "A – 01";
+- trên nền tối, thẻ "Chuồng của ngựa bạn" có nền tối, tiêu đề và tên ngựa trong chuồng đọc sáng.
 
-**Cần:** sửa 2 test theo trang mới, giữ đúng ý cũ:
-1. Trang đọc chuồng từ sơ đồ: ô A-01 có "TEST Browser Horse", và không có chữ "A – 01".
-2. Tiêu đề thẻ đọc được trên nền tối: kiểm tra trên tiêu đề "Chuồng của ngựa bạn".
-
-**Ai:** Tien sửa (trang đổi ở commit của Tien), Quân xem lại vì đây là test và màn của Quân. Chạy `npm run test:ui` cho xanh rồi mới merge vào `main`.
+Toàn bộ test giao diện: 40/40 qua. **Quân xem lại** 2 test này khi rảnh (đây là test của Quân). Ai làm lại một trang thì sửa test của trang đó trong cùng lượt, chạy `npm run test:ui` trước khi merge.
 
 ## 2. Nhánh và cách làm tiếp
 
@@ -51,8 +47,8 @@ Kiểm tra **Test** trên `main` đỏ từ 17:43 ngày 21/10 (commit `a04b163`)
 
 | Người | Việc |
 |---|---|
-| Tien | Sửa 2 test ở mục 1. App: tab chuồng đọc sơ đồ của Quản lý đã xong (`261f64d`) |
-| Quân | Xem lại 2 test ở mục 1. Thẻ chuồng cho chủ ngựa đã xong (PR #9) |
+| Tien | App: tab chuồng đọc sơ đồ của Quản lý đã xong (`261f64d`). Lần sau làm lại trang nào thì sửa test của trang đó cùng lúc |
+| Quân | Xem lại 2 test Claude đã sửa ở mục 1 (`1d113f2`). Thẻ chuồng cho chủ ngựa đã xong (PR #9) |
 | trunghieu | Ngựa chấn thương nổi đỏ trên sơ đồ chuồng (`GET /stable/stalls`); có thể gắn `HorseStallCard` vào chi tiết ngựa phía bác sĩ |
 
 ## 5. Demo tự động trên web thật: đã chạy xong
