@@ -1,6 +1,21 @@
 # Tình hình dự án: 22/10/2026
 
+Duy cập nhật (Claude soạn). Mục 0: thay đổi API chiều 22/10. Mục 1: `main` đã xanh trở lại.
+
+## 0. Cập nhật chiều 22/10 (đã lên `main`, server đã deploy)
+
+Sửa 8 lỗi từ review 79 (commit `d705f1b` server, `cf6a83f` web). Ảnh hưởng tới màn của các bạn:
+- Body hoặc query có khóa bắt đầu bằng `# Tình hình dự án: 22/10/2026
+
 Duy cập nhật (Claude soạn). Mục 1: `main` đã xanh trở lại.
+
+ (toán tử MongoDB) bị từ chối 400.
+- `PUT /horses/:id` chỉ ghi các trường của form hồ sơ; trạng thái sức khỏe, lịch chăm sóc (của bác sĩ) và ngừng quản lý (`PATCH /archive`) không đổi qua đây.
+- `PUT /races/:id`: lượt đã có kết quả không đổi ngựa, tên giải, ngày đua, cự ly nữa (409); sửa kết quả ở "Cập nhật kết quả".
+- `DELETE /horses/:id`: ngựa đã có thu chi, chăm sóc định kỳ, yêu cầu khám hoặc việc đã làm thì không xóa được (409, `canArchive`), dùng "Ngừng quản lý".
+- Gỡ người chăm sóc của chuồng rồi gán người mới: việc dở chuyển sang người mới.
+- Chủ ngựa, HLV, bác sĩ bị khóa tài khoản: checklist báo "cần người thay", hàng đợi Quản lý đếm con ngựa đó.
+- Trang chủ ngựa (Quân): API lỗi thì báo "Chưa tải được danh sách chiến mã" kèm Thử lại, không còn hiện "chưa có chiến mã".
 
 ## 1. Đã xử lý: 2 test chủ ngựa làm `main` đỏ
 
