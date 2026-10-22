@@ -87,6 +87,38 @@ test('meals: ration times, missed meals, hard work on an empty stomach, make-up,
     assert.equal((await raw('trainer', 'POST', `/stable/tasks/${notToday._id}/make-up`)).status, 409, 'only today\'s meals');
   });
 
+  await t.test('a meal given ahead of its hour counts from when it was eaten', async () => {
+    const { computeReadiness } = require('../../src/modules/training/readiness.service');
+    await models.DailyTask.deleteMany({ horse: horse._id, taskType: 'feeding' });
+    const ago = (n) => new Date(Date.now() - n * 60000);
+    const meal = { horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', status: 'completed' };
+    await models.DailyTask.create({ ...meal, mealSlot: 'morning', scheduledDate: ago(13 * 60), completedAt: ago(13 * 60) });
+    // Planned for after the session, given two minutes ago: the horse has a full stomach, not an empty one.
+    await models.DailyTask.create({ ...meal, mealSlot: 'evening', scheduledDate: laterToday(20), completedAt: ago(2) });
+    const nutrition = async (scheduledAt, intensity = 'high') => (await computeReadiness(horse._id, { scheduledAt, intensity })).gates.find((g) => g.key === 'nutrition');
+    const gate = await nutrition(laterToday(1));
+    assert.doesNotMatch(gate.detail, /đói/, gate.detail);
+    assert.equal(gate.status, 'blocked', gate.detail);
+    assert.match(gate.detail, /Bữa chiều cho ăn lúc .*, mới \d+ phút trước giờ tập/);
+
+    // Hay eaten after grain does not shorten the grain's digestion.
+    await models.DailyTask.deleteMany({ horse: horse._id, taskType: 'feeding' });
+    await models.DailyTask.create({ ...meal, source: 'trainer', mealSlot: 'morning', scheduledDate: ago(20), completedAt: ago(20), supplies: [{ name: 'TEST oats', amount: 2 }] });
+    await models.DailyTask.create({ ...meal, mealSlot: 'evening', scheduledDate: laterToday(20), completedAt: ago(2), supplies: [{ name: 'Cỏ khô Timothy', amount: 1 }] });
+    const grain = await nutrition(laterToday(1));
+    assert.equal(grain.status, 'blocked', grain.detail);
+    assert.match(grain.detail, /Bữa sáng cho ăn lúc .*, mới 2\d phút trước giờ tập/);
+    assert.equal((await nutrition(laterToday(1), 'light')).status, 'caution', 'light work only warns');
+
+    // A meal planned just over 24 hours before the session but eaten inside them is still seen.
+    await models.DailyTask.deleteMany({ horse: horse._id, taskType: 'feeding' });
+    const at = laterToday(1);
+    await models.DailyTask.create({ ...meal, mealSlot: 'morning', scheduledDate: new Date(at.getTime() - 24 * 3600000 - 1), completedAt: new Date(at.getTime() - 23 * 3600000) });
+    const old = await nutrition(at);
+    assert.doesNotMatch(old.detail, /Không có bữa ăn nào/, old.detail);
+    assert.match(old.detail, /có thể đã đói/);
+  });
+
   await t.test('the trainer deletes a ration; today\'s meal not given yet goes with it, history stays', async () => {
     const upcoming = await models.DailyTask.create({ horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', mealSlot: 'morning', scheduledDate: new Date(Date.now() + 30 * 60000) });
     const given = await models.DailyTask.create({ horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', mealSlot: 'morning', scheduledDate: new Date(), status: 'completed', completedAt: new Date() });

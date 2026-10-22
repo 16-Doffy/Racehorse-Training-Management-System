@@ -208,10 +208,17 @@ async function nutritionGate(horse, when, { intensity } = {}) {
     return gate;
   }
 
+  // Meals planned in the 24 hours before the session, and meals eaten in them: one given early (the
+  // groom may feed up to an hour ahead) is already in the horse even when its planned hour falls
+  // after the session, and one recorded late counts from when it was eaten.
+  const since = new Date(when.getTime() - DAY_MS);
   const feedings = await DailyTask.find({
     horse: horse._id,
     taskType: 'feeding',
-    scheduledDate: { $gte: new Date(when.getTime() - DAY_MS), $lte: when },
+    $or: [
+      { scheduledDate: { $gte: since, $lte: when } },
+      { status: 'completed', completedAt: { $gte: since, $lte: when } },
+    ],
   }).sort({ scheduledDate: 1 });
 
   // The groom's own words take priority over any timing arithmetic — a horse that refused its
@@ -245,10 +252,9 @@ async function nutritionGate(horse, when, { intensity } = {}) {
   // is missing) when it works. An unmarked breakfast says nothing about an evening session once a
   // later meal has been given — judging by the oldest unmarked meal used to flag nearly every
   // session and push trainers into overriding everything.
-  const before = feedings.filter((t) => t.scheduledDate <= when);
-  const lastMeal = before[before.length - 1];
+  const lastMeal = feedings[feedings.length - 1];
   const done = (t) => t.status === 'completed' && t.completedAt && t.completedAt <= when;
-  const lastEaten = [...before].reverse().find(done);
+  const lastEaten = feedings.filter(done).sort((a, b) => a.completedAt - b.completedAt).pop();
 
   // Harder work on an empty stomach is refused by club policy (light work only warns).
   const blockHardWork = clubPolicy.missedMealBlocksHardWork && intensity !== 'light';
@@ -261,27 +267,36 @@ async function nutritionGate(horse, when, { intensity } = {}) {
   }
 
   // The meal before the session has been given: judge the real gap.
-  if (lastEaten && (lastEaten === lastMeal || lastEaten.completedAt >= lastMeal.scheduledDate)) {
-    const gapMinutes = Math.round((when.getTime() - lastEaten.completedAt.getTime()) / 60000);
-    const kind = mealKind(lastEaten);
-    const which = `${mealLabel(lastEaten)}${kind === 'forage' ? ' (chỉ cỏ khô)' : ''} cho ăn lúc ${formatTime(lastEaten.completedAt)}`;
+  if (lastEaten && (done(lastMeal) || lastEaten.completedAt >= lastMeal.scheduledDate)) {
     const light = intensity === 'light';
-    // A forage-only meal, or light work: a warning at most. Grain or pellets before harder work: the
-    // club's hard limit applies.
-    const caution = kind === 'forage' ? FORAGE_DIGEST_MINUTES : MIN_DIGEST_MINUTES;
-    if (gapMinutes < HARD_DIGEST_MINUTES && kind === 'main' && !light) {
-      const from = new Date(lastEaten.completedAt.getTime() + MIN_DIGEST_MINUTES * 60000);
-      gate.status = 'blocked';
-      gate.detail = `${which}, mới ${gapMinutes} phút trước giờ tập — theo quy định CLB không tập sau bữa có thức ăn tinh dưới ${HARD_DIGEST_MINUTES} phút (nguy cơ đau bụng, xoắn ruột). Nên đủ ${MIN_DIGEST_MINUTES} phút: tập được từ ${formatTime(from)}.`;
-      return gate;
+    const gapOf = (meal) => Math.round((when.getTime() - meal.completedAt.getTime()) / 60000);
+    const describe = (meal) => `${mealLabel(meal)}${mealKind(meal) === 'forage' ? ' (chỉ cỏ khô)' : ''} cho ăn lúc ${formatTime(meal.completedAt)}`;
+    // Hay given after grain does not shorten the grain's digestion: the latest grain meal is judged
+    // as well as the latest meal.
+    const lastMain = feedings.filter((t) => done(t) && mealKind(t) === 'main').sort((a, b) => a.completedAt - b.completedAt).pop();
+    for (const meal of new Set([lastMain, lastEaten].filter(Boolean))) {
+      const gapMinutes = gapOf(meal);
+      const kind = mealKind(meal);
+      const which = describe(meal);
+      // A forage-only meal, or light work: a warning at most. Grain or pellets before harder work: the
+      // club's hard limit applies.
+      const caution = kind === 'forage' ? FORAGE_DIGEST_MINUTES : MIN_DIGEST_MINUTES;
+      if (gapMinutes < HARD_DIGEST_MINUTES && kind === 'main' && !light) {
+        const from = new Date(meal.completedAt.getTime() + MIN_DIGEST_MINUTES * 60000);
+        gate.status = 'blocked';
+        gate.detail = `${which}, mới ${gapMinutes} phút trước giờ tập — theo quy định CLB không tập sau bữa có thức ăn tinh dưới ${HARD_DIGEST_MINUTES} phút (nguy cơ đau bụng, xoắn ruột). Nên đủ ${MIN_DIGEST_MINUTES} phút: tập được từ ${formatTime(from)}.`;
+        return gate;
+      }
+      if (gapMinutes < (light ? HARD_DIGEST_MINUTES : caution)) {
+        gate.status = 'caution';
+        gate.detail = light
+          ? `${which}, mới ${gapMinutes} phút trước giờ tập — buổi nhẹ (đi bộ) vẫn tập được, nhưng theo quy định CLB nên chờ ${HARD_DIGEST_MINUTES} phút.`
+          : `${which}, chỉ cách giờ tập ${gapMinutes} phút — theo quy định CLB nên chờ ${caution} phút sau ${kind === 'forage' ? 'bữa cỏ' : 'bữa chính'} trước khi tập nặng.`;
+        return gate;
+      }
     }
-    if (gapMinutes < (light ? HARD_DIGEST_MINUTES : caution)) {
-      gate.status = 'caution';
-      gate.detail = light
-        ? `${which}, mới ${gapMinutes} phút trước giờ tập — buổi nhẹ (đi bộ) vẫn tập được, nhưng theo quy định CLB nên chờ ${HARD_DIGEST_MINUTES} phút.`
-        : `${which}, chỉ cách giờ tập ${gapMinutes} phút — theo quy định CLB nên chờ ${caution} phút sau ${kind === 'forage' ? 'bữa cỏ' : 'bữa chính'} trước khi tập nặng.`;
-      return gate;
-    }
+    const gapMinutes = gapOf(lastEaten);
+    const which = describe(lastEaten);
     if (gapMinutes > MAX_FAST_HOURS * 60) {
       gate.status = 'caution';
       gate.detail = `${which}, đã ${describeGap(gapMinutes)} trước giờ tập — ngựa có thể đã đói.`;
