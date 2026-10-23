@@ -1,9 +1,7 @@
-import { Tag, Tooltip, Typography } from 'antd';
-import { TrophyOutlined, CheckCircleFilled, WarningFilled, CloseCircleFilled, InfoCircleOutlined } from '@ant-design/icons';
+import { Tag, Tooltip } from 'antd';
+import { TrophyOutlined, WarningFilled, CloseCircleFilled } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useClubPolicy } from './useClubPolicy';
-
-const { Text } = Typography;
 
 const FORM_COLORS = { ready: 'green', on_track: 'blue', not_ready: 'orange', blocked: 'red', pending: 'default' };
 const TRIAL_WORDS = { passed: 'chạy thử đạt', ran: 'đã chạy thử', failed: 'chạy thử chưa đạt', missing: 'chưa chạy thử' };
@@ -35,10 +33,7 @@ export function RaceFormBlock({ form }) {
   const policy = useClubPolicy();
   if (!form) return null;
   const pct = (share) => `${Math.round(share * 100)}%`;
-
-  const isReady = form.status === 'ready';
   const isBlocked = form.status === 'blocked';
-  const isNotReady = form.status === 'not_ready';
 
   return (
     <div className="flex flex-col gap-2">

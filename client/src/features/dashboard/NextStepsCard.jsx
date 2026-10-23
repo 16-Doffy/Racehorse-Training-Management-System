@@ -1,11 +1,9 @@
 import { useState } from 'react';
-import { Card, Empty, Table, Typography, Segmented, Progress } from 'antd';
+import { Card, Empty, Table, Segmented, Progress } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { horsesApi } from '../horses/horsesApi';
 import HorseNextStep from '../horses/HorseNextStep';
-
-const { Text } = Typography;
 
 /**
  * Each horse and what comes next on its way from arrival to training — held back first, then those with

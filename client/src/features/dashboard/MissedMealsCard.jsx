@@ -1,12 +1,11 @@
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Card, Tag, Button, Typography } from 'antd';
-import { ClockCircleOutlined, ExclamationCircleOutlined, CheckCircleOutlined, SendOutlined } from '@ant-design/icons';
+import { Card, Tag, Button } from 'antd';
+import { ClockCircleOutlined, CheckCircleOutlined, SendOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { message } from '../../lib/antdStatic';
 import { dailyTaskApi } from '../stable/stableApi';
 
-const { Text } = Typography;
 const MEAL_LABELS = { morning: 'Bữa sáng', noon: 'Bữa trưa', evening: 'Bữa chiều' };
 const hhmm = (d) => dayjs(d).format('HH:mm');
 

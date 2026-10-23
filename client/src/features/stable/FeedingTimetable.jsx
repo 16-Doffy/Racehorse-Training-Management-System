@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import { Button, Empty, Spin, Tag, Tooltip, Typography } from 'antd';
+import { Button, Empty, Spin, Tag, Tooltip } from 'antd';
 import { LeftOutlined, RightOutlined, ClockCircleOutlined, CheckCircleOutlined, UserOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { feedingApi } from '../feeding/feedingApi';
 import { WEEK_DAYS, mondayOf } from '../training/trainingVocab';
 import { MEAL_STATUS_META as MEAL_STATUS } from '../../constants/care';
-
-const { Text } = Typography;
 
 const SLOT_LABELS = { morning: 'Bữa sáng', noon: 'Bữa trưa', evening: 'Bữa chiều' };
 const amount = (n) => Number(n).toLocaleString('vi-VN');
