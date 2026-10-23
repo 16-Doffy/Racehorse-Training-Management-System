@@ -1,11 +1,15 @@
 import { useMemo, useState } from 'react';
 import { AlertOutlined, CalendarOutlined, FileSearchOutlined, HeartOutlined, LineChartOutlined, MedicineBoxOutlined } from '@ant-design/icons';
+import { Segmented } from 'antd';
+import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import HorseInjuryViewer from '../../components/veterinarian/HorseInjuryViewer';
 import { SEVERITY_META, isActiveInjury, recoveryMeta } from '../../components/veterinarian/vetFormat';
 // The 3D viewer is styled by the vet's stylesheet, whose rules all sit under .vet-ui.
 import '../../components/veterinarian/vet.css';
+import CareBodyMap from '../horses/CareBodyMap';
 import CareHistoryCard from '../horses/CareHistoryCard';
+import { horsesApi } from '../horses/horsesApi';
 import { TRAINING_LEVEL_META } from '../../constants/health';
 import { Card, ClearancePill, DateChip, EmptyNote, Facts, HealthPill, MoreButton, Pill, Row } from './kit';
 import { VitalsMultiples } from './charts';
@@ -34,6 +38,10 @@ export default function HealthDetail({ horse, examined = true }) {
   const { treatments } = useTreatments();
   const { injuries } = useInjuries();
   const [examsShown, setExamsShown] = useState(6);
+  const [bodyLayer, setBodyLayer] = useState(null); // 'injury' | 'care'; until chosen, injuries if any are open
+  // The same request as the care history table below, so the two share one fetch.
+  const careQuery = useQuery({ queryKey: ['care-events', id, 'all'], queryFn: () => horsesApi.careEvents(id), enabled: Boolean(id) });
+  const careEvents = useMemo(() => (Array.isArray(careQuery.data?.data) ? careQuery.data.data : []), [careQuery.data]);
 
   const exams = useMemo(() => records.filter((r) => idOf(r.horse) === id), [records, id]);
   const plans = useMemo(
@@ -46,6 +54,8 @@ export default function HealthDetail({ horse, examined = true }) {
   );
   const marks = useMemo(() => injuries.filter((i) => idOf(i.horse) === id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)), [injuries, id]);
   const open = marks.filter(isActiveInjury);
+  const bodyShown = bodyLayer || (open.length > 0 || careEvents.length === 0 ? 'injury' : 'care');
+  const showBody = open.length > 0 || careEvents.length > 0;
   const latest = exams[0];
   const clearance = clearanceOf(horse);
   const vitalSeries = useMemo(() => {
@@ -133,40 +143,49 @@ export default function HealthDetail({ horse, examined = true }) {
       </Card>
 
       <Card title="Chấn thương" icon={<AlertOutlined />} flush extra={open.length > 0 && <Pill tone="bad">{open.length} chưa khỏi</Pill>}>
+        {showBody && (
+          // The horse in 3D, look only: where the vet marked the injuries still open, or where routine care was done.
+          <div className="vet-ui" style={{ padding: 14 }}>
+            <div style={{ marginBottom: 10 }}>
+              <Segmented
+                size="small"
+                value={bodyShown}
+                onChange={setBodyLayer}
+                options={[
+                  { value: 'injury', label: 'Chấn thương' },
+                  { value: 'care', label: 'Chăm sóc định kỳ' },
+                ]}
+              />
+            </div>
+            {bodyShown === 'care' ? <CareBodyMap horse={horse} events={careEvents} /> : <HorseInjuryViewer horse={horse} injuries={open} height={340} />}
+          </div>
+        )}
         {marks.length === 0 ? (
           <EmptyNote>Không có chấn thương nào được ghi nhận.</EmptyNote>
         ) : (
-          <>
-            {open.length > 0 && (
-              // Where the vet marked the injuries that are still open, on the horse in 3D (look only).
-              <div className="vet-ui" style={{ padding: 14 }}>
-                <HorseInjuryViewer horse={horse} injuries={open} height={340} />
-              </div>
-            )}
-            <ul className="own-list">
-              {marks.map((m) => {
-                const severity = SEVERITY_META[m.severity] || { label: m.severity, tone: 'neutral' };
-                const recovery = recoveryMeta(m.recoveryStatus);
-                return (
-                  <li key={m._id}>
-                    <Row
-                      lead={<DateChip date={m.createdAt} />}
-                      title={m.bodyPart}
-                      sub={[`Ghi nhận ${fmtDate(m.createdAt)}`, m.notes].filter(Boolean).join(' · ')}
-                      side={
-                        <>
-                          <Pill tone={recovery.tone}>{recovery.label}</Pill>
-                          <Pill tone={severity.tone} dot={false}>
-                            Mức {severity.label.toLowerCase()}
-                          </Pill>
-                        </>
-                      }
-                    />
-                  </li>
-                );
-              })}
-            </ul>
-          </>
+          <ul className="own-list">
+            {marks.map((m) => {
+              const severity = SEVERITY_META[m.severity] || { label: m.severity, tone: 'neutral' };
+              const recovery = recoveryMeta(m.recoveryStatus);
+              return (
+                <li key={m._id}>
+                  <Row
+                    lead={<DateChip date={m.createdAt} />}
+                    title={m.bodyPart}
+                    sub={[`Ghi nhận ${fmtDate(m.createdAt)}`, m.notes].filter(Boolean).join(' · ')}
+                    side={
+                      <>
+                        <Pill tone={recovery.tone}>{recovery.label}</Pill>
+                        <Pill tone={severity.tone} dot={false}>
+                          Mức {severity.label.toLowerCase()}
+                        </Pill>
+                      </>
+                    }
+                  />
+                </li>
+              );
+            })}
+          </ul>
         )}
       </Card>
 
