@@ -8,6 +8,7 @@ async function main() {
   let vite;
   try {
     const { horse } = await intake(ctx, 'TEST Browser Horse');
+    await ctx.models.Horse.updateOne({ _id: horse._id }, { $set: { weightKg: 500 } });
     // Papers and the club's valuation, for the Owner's horse page (the valuation is the Manager's and the owner's only).
     await ctx.api('manager', 'PUT', `/horses/${horse._id}`, { microchipNumber: '985112345678901', registrationNumber: 'TEST-REG-001', valuationVnd: 750000000 });
     // A zone on the stable map with the horse in its first stall (stable map, horse stall card).
@@ -23,7 +24,8 @@ async function main() {
     await ctx.api('trainer', 'PATCH', `/training/sessions/${run._id}/evaluation`, { performanceRating: 8, trainerComment: 'TEST đi bộ đều, hồi sức tốt' });
     const race = await ctx.api('trainer', 'POST', '/races', { horse: horse._id, raceName: 'TEST Browser Cup', raceDate: day().toISOString(), distance: 1600 }, 201);
     await ctx.api('trainer', 'PATCH', `/races/${race._id}/results`, { position: 1, prizeMoney: 1000000 });
-    await ctx.api('manager', 'POST', '/inventory', { name: 'TEST Browser Feed', category: 'feed', unit: 'kg', quantity: 100 }, 201);
+    await ctx.api('manager', 'POST', '/inventory', { name: 'TEST Browser Feed', category: 'feed', unit: 'kg', quantity: 100, feedType: 'concentrate' }, 201);
+    await ctx.api('manager', 'POST', '/inventory', { name: 'TEST Browser Hay', category: 'feed', unit: 'kg', quantity: 200, feedType: 'forage' }, 201);
     fs.mkdirSync(path.join(root, 'scratch'), { recursive: true });
     const fixture = path.join(root, 'scratch/ui-fixture.json');
     fs.writeFileSync(fixture, JSON.stringify({ horseId: horse._id, password: TEST_PASSWORD, apiUrl: ctx.baseUrl }));

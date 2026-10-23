@@ -11,15 +11,15 @@
  * task carries in API responses, so no screen has to re-derive the rules.
  *
  * States:
- *   upcoming — not yet time (a later day, or a meal more than an hour away)
+ *   upcoming — not yet time (a later day, or a meal before its scheduled hour)
  *   open     — can be done now
  *   late     — its day has passed but the work can still be done and recorded (mucking out, washing)
  *   missed   — its window has closed; it stays on record as not done
  *   closed   — already completed or called off
  */
 
-// A meal can be recorded from an hour before its time (feeding a little early is normal)…
-const MEAL_OPENS_BEFORE_MINUTES = 60;
+// The groom may see the meal beforehand but records it only from the trainer's scheduled time.
+const MEAL_OPENS_BEFORE_MINUTES = 0;
 // …until four hours after, by which point the next meal is due and a "late breakfast" is fiction.
 const MEAL_CLOSES_AFTER_HOURS = 4;
 // Work that belongs to its day and cannot be made up afterwards.
@@ -43,11 +43,11 @@ const day = (date) => {
 };
 
 /** The window of one meal scheduled at `at`: [opensAt, closesAt], never running past its own day. */
-function mealWindow(at) {
+function mealWindow(at, opensBeforeMinutes = MEAL_OPENS_BEFORE_MINUTES) {
   const scheduled = new Date(at);
   const { end } = dayBounds(scheduled);
   const closesAt = new Date(Math.min(scheduled.getTime() + MEAL_CLOSES_AFTER_HOURS * 60 * MINUTE, end.getTime() - 1));
-  return { opensAt: new Date(scheduled.getTime() - MEAL_OPENS_BEFORE_MINUTES * MINUTE), closesAt };
+  return { opensAt: new Date(scheduled.getTime() - opensBeforeMinutes * MINUTE), closesAt };
 }
 
 function taskTiming(task, now = new Date()) {
@@ -62,12 +62,12 @@ function taskTiming(task, now = new Date()) {
     return { state: 'upcoming', canComplete: false, canChange: true, opensAt: start, reason: 'Chưa tới ngày thực hiện công việc này.' };
   }
 
-  // A meal, a vet's dose or a job given at a set time: recordable from an hour before. A meal or a
+  // A meal opens at its scheduled time; a vet's dose keeps the same window used by its order. A meal or a
   // dose that slipped past its window can't be recorded late; other work just shows as overdue.
   const isMeal = task.taskType === 'feeding' && task.mealSlot;
   if (isMeal || task.dueTime) {
     const what = isMeal ? 'bữa này' : task.taskType === 'medication' ? 'liều thuốc này' : 'việc này';
-    const { opensAt, closesAt } = mealWindow(scheduled);
+    const { opensAt, closesAt } = mealWindow(scheduled, isMeal ? MEAL_OPENS_BEFORE_MINUTES : 60);
     if (now < opensAt) {
       return { state: 'upcoming', canComplete: false, canChange: true, opensAt, closesAt, reason: `Chưa tới giờ ${what} — ghi nhận được từ ${clock(opensAt)}.` };
     }

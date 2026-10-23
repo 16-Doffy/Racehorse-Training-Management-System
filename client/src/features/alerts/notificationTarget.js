@@ -8,7 +8,7 @@ import { ROLES } from '../../constants/roles';
  */
 const idOf = (ref) => (ref ? String(ref._id || ref) : '');
 
-const TRAINER_CARE = { meal_missed: 'tasks', task_assigned: 'tasks', care_order: 'tasks', incident_report: 'incidents', incident_update: 'incidents', low_stock: 'rations' };
+const TRAINER_CARE = { meal_missed: 'tasks', task_assigned: 'tasks', care_order: 'tasks', incident_report: 'incidents', incident_update: 'incidents', low_stock: 'rations', ration_review: 'rations' };
 const TRAINER_TRAINING = ['session_completed', 'session_scheduled', 'fitness_alert', 'readiness_override', 'injury_lock', 'training_restricted', 'training_unlocked'];
 const RACES = ['race_review', 'race_decision', 'race_result'];
 const VET_CARE = ['vaccination_due', 'deworming_due', 'farrier_due', 'exam_due'];

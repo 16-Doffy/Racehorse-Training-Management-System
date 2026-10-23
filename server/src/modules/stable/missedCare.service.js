@@ -1,6 +1,6 @@
 const DailyTask = require('../../models/DailyTask');
 const Horse = require('../../models/Horse');
-const { notifyHorseStaff, notifyCaretaker } = require('../alerts/notification.service');
+const { notifyHorseStaff, notifyCaretaker, pushNotification } = require('../alerts/notification.service');
 const { taskTiming } = require('../../utils/taskTiming');
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -51,6 +51,34 @@ async function notifyMissedDoses(now = new Date()) {
 const MEAL_LABELS = { morning: 'Bữa sáng', noon: 'Bữa trưa', evening: 'Bữa chiều' };
 const clockOf = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
+async function notifyDueMeals(now = new Date()) {
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const candidates = await DailyTask.find({ taskType: 'feeding', mealSlot: { $ne: null }, makeUpOf: null,
+    status: 'pending', dueNotifiedAt: null, scheduledDate: { $gte: today, $lte: now } });
+  let told = 0;
+  for (const task of candidates) {
+    if (taskTiming(task, now).state !== 'open') continue;
+    // eslint-disable-next-line no-await-in-loop
+    const claimed = await DailyTask.updateOne({ _id: task._id, dueNotifiedAt: null, status: 'pending' }, { $set: { dueNotifiedAt: now } });
+    if (claimed.modifiedCount !== 1) continue;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const horse = await Horse.findById(task.horse).select('name');
+      // eslint-disable-next-line no-await-in-loop
+      await pushNotification({ recipientUser: task.assignedTo, horse: task.horse, type: 'task_assigned',
+        message: `Đến giờ ${MEAL_LABELS[task.mealSlot].toLowerCase()} ${clockOf(task.scheduledDate)} của ${horse?.name || 'ngựa'}. Mở mục Cho ăn để ghi nhận sau khi cho ăn.` });
+      told += 1;
+    } catch (err) {
+      // Make the reminder retryable if notification storage failed.
+      // eslint-disable-next-line no-await-in-loop
+      await DailyTask.updateOne({ _id: task._id, dueNotifiedAt: now }, { $set: { dueNotifiedAt: null } });
+      throw err;
+    }
+  }
+  return told;
+}
+
 /**
  * A ration meal whose window closed with nobody recording it: the trainer is told (the horse may not
  * have eaten, and harder work is blocked until it has — readiness.service.js), and the groom is
@@ -100,4 +128,4 @@ async function notifyMissedMeals(now = new Date()) {
   return told;
 }
 
-module.exports = { notifyMissedDoses, notifyMissedMeals };
+module.exports = { notifyMissedDoses, notifyMissedMeals, notifyDueMeals };

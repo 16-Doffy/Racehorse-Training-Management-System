@@ -11,6 +11,7 @@ import { raceApi } from '../race/raceApi';
 import { useLockedHorseIds } from './useLockedHorses';
 import PlanTimeline from './PlanTimeline';
 import PlanWizard from './PlanWizard';
+import { RaceFormBlock, RaceFormTag } from './RaceForm';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import {
   PHASE_LABELS,
@@ -164,6 +165,11 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, updati
           </div>
         </div>
 
+        {/* From the plan's start to today (the whole cycle once over): ready for its race or not. */}
+        <div className="light-surface-box rounded-lg border border-[#E4DFD3] bg-[#FAF7F0] px-3 py-2">
+          <RaceFormBlock form={p.form} />
+        </div>
+
         <div className="flex flex-wrap gap-2">
           <Space.Compact size="small">
             <Tooltip title="Lịch tuần này và tuần sau được xếp tự động. Bấm để xếp lại các buổi còn trống, kể cả buổi đã hủy.">
@@ -286,6 +292,8 @@ export default function TrainingPlanPage() {
       render: (_, r) => `${dayjs(r.startDate).format('DD/MM/YYYY')} – ${r.endDate ? dayjs(r.endDate).format('DD/MM/YYYY') : '…'}`,
     },
     { title: 'Buổi đã tập', key: 'done', align: 'right', render: (_, r) => <span className="tabular-nums font-medium">{r.progress?.totalCompleted ?? 0}</span> },
+    // A draft or a dropped plan has nothing to judge; a finished cycle shows how it went, start to end.
+    { title: 'Phong độ cả kỳ', key: 'form', render: (_, r) => (['draft', 'cancelled'].includes(r.status) ? <Text type="secondary">—</Text> : <RaceFormTag form={r.progress?.form} />) },
     {
       title: 'Trạng thái',
       key: 'status',

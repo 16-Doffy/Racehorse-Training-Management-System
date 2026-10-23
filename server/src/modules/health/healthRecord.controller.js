@@ -51,6 +51,12 @@ async function applyReturnAssessment(record, vet) {
     if (cancelled) note += ` Đã hủy ${cancelled} buổi vượt mức cho phép.`;
     if (aborted) note += ` Đã dừng ${aborted} buổi đang chạy.`;
   }
+  // Cleared to work again: the plan's weeks ahead come back at once (lighter work where still limited).
+  if (clearance.level !== 'none') {
+    const { rebookAfterClearance } = require('../training/trainingPlan.service');
+    const rebooked = await rebookAfterClearance(record.horse);
+    if (rebooked) note += ` Đã xếp lại ${rebooked} buổi tập tuần này và tuần sau theo kế hoạch.`;
+  }
   const allowed = record.clearedLevel === 'high' ? 'cho tập lại bình thường' : `cho ${LEVEL_LABELS[record.clearedLevel]}`;
   const other = clearance.restricted && clearance.source !== 'assessment' ? ` Hạn chế khác vẫn còn hiệu lực: ${clearance.label} (${clearance.reason || 'phác đồ đang điều trị'}).` : '';
   await notifyHorseStaff({
@@ -58,7 +64,7 @@ async function applyReturnAssessment(record, vet) {
     horse: record.horse,
     type: clearance.restricted ? 'training_restricted' : 'training_unlocked',
     severity: 'info',
-    message: `🩺 Bác sĩ ${vet.name} đánh giá trở lại tập cho ${horse?.name || 'ngựa'}: ${allowed}.${other}${note} Buổi đã hủy trước đó không tự khôi phục — hãy sinh lại lịch phù hợp.`,
+    message: `🩺 Bác sĩ ${vet.name} đánh giá trở lại tập cho ${horse?.name || 'ngựa'}: ${allowed}.${other}${note}`,
     extraRooms: [`horse:${record.horse}`],
   });
   await logAction({

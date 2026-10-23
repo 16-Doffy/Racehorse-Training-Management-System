@@ -9,6 +9,7 @@ import { raceApi } from './raceApi';
 import { horsesApi } from '../horses/horsesApi';
 import { trainingSessionApi, trainingPlanApi } from '../training/trainingApi';
 import { SURFACE_LABELS, surfaceOptions, DONE_STATUSES } from '../training/trainingVocab';
+import { RaceFormTag } from '../training/RaceForm';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import { newestFirst } from '../../utils/newestFirst';
 
@@ -68,7 +69,7 @@ function TrialCell({ trial }) {
   );
 }
 
-function DecisionCell({ entry }) {
+function DecisionCell({ entry, form }) {
   const d = entry.decision;
   return (
     <div className="flex flex-col gap-1">
@@ -83,12 +84,22 @@ function DecisionCell({ entry }) {
         </Text>
       )}
       {!d?.at && entry.status === 'confirmed' && <Text type="secondary" className="!text-xs">Xác nhận cũ (chưa ghi người quyết định)</Text>}
+      {/* Health changed after the horse was confirmed: the trainer decides again (withdraw, or confirm once fit). */}
       {entry.reviewNeeded && (
-        <Tooltip title={entry.reviewReason}>
+        <>
           <Tag color="warning" icon={<WarningOutlined />} className="!m-0 w-fit">
-            Cần xem lại
+            Cần xem lại quyết định
           </Tag>
-        </Tooltip>
+          {entry.reviewReason && <Text type="warning" className="!text-xs">Sức khỏe thay đổi: {entry.reviewReason}</Text>}
+        </>
+      )}
+      {form && ['registered', 'confirmed'].includes(entry.status) && (
+        <span className="flex flex-wrap items-center gap-1">
+          <Text type="secondary" className="!text-xs">
+            Phong độ theo kế hoạch:
+          </Text>
+          <RaceFormTag form={form} />
+        </span>
       )}
     </div>
   );
@@ -216,6 +227,11 @@ export default function RacePage() {
   const trials = trialsData?.data || [];
   const horseById = new Map((horsesData?.data || []).map((h) => [String(h._id), h]));
   const activePlanByHorse = new Map((plansData?.data || []).filter((p) => p.status === 'active').map((p) => [refId(p.horse), p]));
+  // The horse's form for this race, judged by the active plan that prepares it (server training/raceForm.js).
+  const formFor = (entry) => {
+    const plan = activePlanByHorse.get(refId(entry.horse));
+    return plan && refId(plan.targetRace) === String(entry._id) ? plan.progress?.form : null;
+  };
 
   // A horse the vet has grounded or is still recovering can't be entered (the server refuses it too).
   const horseOptions = (horsesData?.data || []).map((h) => {
@@ -312,7 +328,7 @@ export default function RacePage() {
       width: 240,
       render: (_, r) => (
         <div className="flex flex-col gap-1">
-          <DecisionCell entry={r} />
+          <DecisionCell entry={r} form={formFor(r)} />
           {r.result && (
             <div>
               <span className="font-medium">{r.result}</span>

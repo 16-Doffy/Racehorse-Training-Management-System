@@ -43,6 +43,8 @@ const notificationSchema = new mongoose.Schema(
         'meal_missed',
         // A vet picked up or closed an incident — to the groom who reported it and the trainer.
         'incident_update',
+        // To the trainer: a horse's plan moves to its next phase soon; its suggested ration waits for a click.
+        'ration_review',
         'system',
       ],
       required: true,

@@ -212,6 +212,7 @@ async function applyStatusChange(session, next, { cancelReason }) {
       },
     };
   }
+  if (next === SESSION_STATUS.CANCELLED) session.cancelSource = 'trainer';
   if (next === SESSION_STATUS.CANCELLED && typeof cancelReason === 'string' && cancelReason.trim()) session.cancelReason = cancelReason.trim();
   session.status = next;
   return {};
@@ -404,7 +405,7 @@ const updateSession = asyncHandler(async (req, res) => {
   // Claimed on the status it was read in: a session started meanwhile is not cancelled behind its back.
   const saved = await TrainingSession.findOneAndUpdate(
     { _id: session._id, status: readStatus },
-    { $set: { ...changes, status: session.status, ...(session.cancelReason ? { cancelReason: session.cancelReason } : {}) } },
+    { $set: { ...changes, status: session.status, ...(session.cancelReason ? { cancelReason: session.cancelReason } : {}), ...(session.cancelSource ? { cancelSource: session.cancelSource } : {}) } },
     { new: true }
   );
   if (!saved) return fail(res, 'Buổi tập vừa thay đổi trạng thái — tải lại rồi thử lại.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });

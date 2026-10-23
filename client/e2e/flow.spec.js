@@ -122,6 +122,17 @@ test('the care page opens on the tab and horse a notification names', async ({ p
   await expect(page.getByRole('tab', { name: 'Công việc chăm sóc', selected: true })).toBeVisible();
   await expect(page.getByText(/Đang xem riêng TEST Browser Horse/)).toBeVisible();
 });
+test('the care tab lists the horses; one opens its feeding timetable and its jobs', async ({ page }) => {
+  await login(page, 'trainer');
+  await page.goto('/stable/tasks');
+  await expect(page.getByRole('columnheader', { name: 'Bữa hôm nay' })).toBeVisible();
+  await page.locator('.ant-table-row', { hasText: 'TEST Browser Horse' }).first().click();
+  await expect(page).toHaveURL(/horse=[0-9a-f]{24}/);
+  const timetable = page.getByRole('region', { name: 'Thời khóa biểu cho ăn' });
+  await expect(timetable.getByText(/Nhân viên chăm sóc: TEST groom/)).toBeVisible();
+  await expect(timetable.getByRole('cell', { name: 'Sáng', exact: true })).toBeVisible();
+  await expect(page.getByText('Các việc của ngựa này')).toBeVisible();
+});
 test('trainer opens one horse’s schedule from the sessions page, not its profile', async ({ page }) => {
   await login(page, 'trainer');
   await page.goto('/training/sessions');
@@ -158,7 +169,11 @@ test('trainer horse list counts from the real health status and checklist', asyn
   const tile = (label) => page.getByRole('button').filter({ has: page.getByText(label, { exact: true }) });
   await expect(tile('Đủ điều kiện tập')).toContainText(/1\s*ngựa/);
   await expect(tile('Theo dõi y tế')).toContainText(/0\s*ngựa/);
-  await expect(tile('Chưa có kế hoạch')).toContainText(/0\s*ngựa/);
+  // It has a plan, so it is not among the horses without one (the horse the papers test added is).
+  await expect(page.locator('.ant-table-row', { hasText: 'TEST Browser Horse' })).toBeVisible();
+  await tile('Chưa có kế hoạch').click();
+  await expect(tile('Chưa có kế hoạch')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.ant-table-row', { hasText: 'TEST Browser Horse' })).toHaveCount(0);
 });
 for (const role of ['manager', 'trainer', 'vet', 'owner', 'groom']) {
   test(`${role} gets the light/dark switch and opens dark when a dark canvas is saved in the browser`, async ({ page }) => {

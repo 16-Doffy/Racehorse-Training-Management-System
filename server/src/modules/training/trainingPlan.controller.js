@@ -2,13 +2,16 @@ const TrainingPlan = require('../../models/TrainingPlan');
 const TrainingSession = require('../../models/TrainingSession');
 const RaceEntry = require('../../models/RaceEntry');
 const Horse = require('../../models/Horse');
+const FeedingCalendarDay = require('../../models/FeedingCalendarDay');
 const asyncHandler = require('../../utils/asyncHandler');
 const clubPolicy = require('../../config/clubPolicy');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
+const { notifyHorseStaff } = require('../alerts/notification.service');
 const { horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const pick = require('../../utils/pick');
-const { getMedicalBlock } = require('./readiness.service');
+const { getMedicalBlock, getRaceBlock } = require('./readiness.service');
+const { raceForm } = require('./raceForm');
 const { generatePlanWeek, scheduleAhead, startOfDay, ddmm, DAY_MS, TRIAL_DAYS_BEFORE_RACE } = require('./trainingPlan.service');
 const {
   PHASE_LABELS,
@@ -139,10 +142,10 @@ const activeConflict = (horseName, other) =>
 
 /**
  * Where a plan stands today: week n of N, the current phase, how its sessions are going and the
- * next few booked, and days to the race. Also refreshes the flat "current phase" fields, which are
- * only written when the plan is saved.
+ * next few booked, days to the race and whether the horse is on form for it (raceForm.js). Also
+ * refreshes the flat "current phase" fields, which are only written when the plan is saved.
  */
-function withProgress(plan, stats, upcoming) {
+function withProgress(plan, stats, upcoming, form = {}) {
   const json = plan.toObject ? plan.toObject() : plan;
   const phases = phasesOf(plan);
   const now = new Date();
@@ -178,8 +181,38 @@ function withProgress(plan, stats, upcoming) {
     totalCompleted: (stats || []).filter((s) => SESSION_DONE_STATUSES.includes(s.status)).length,
     raceInDays: raceDate ? Math.ceil((startOfDay(raceDate) - startOfDay(now)) / DAY_MS) : null,
     upcoming: upcoming || [],
+    form: raceForm({ stats, trials: form.trials, race: json.targetRace, raceBlock: form.raceBlock, now }),
   };
   return json;
+}
+
+/**
+ * What raceForm needs besides the plan's own sessions, for many plans: Map(planId → { trials,
+ * raceBlock }). The race's trial runs (linked to the entry, as the race decision counts them), and
+ * for an active plan whose race is ahead, why the vet keeps the horse from racing now.
+ */
+async function formByPlan(plans) {
+  const raceIds = plans.map((p) => p.targetRace?._id).filter(Boolean);
+  const trials = raceIds.length
+    ? await TrainingSession.find({ raceEntry: { $in: raceIds }, status: { $in: SESSION_DONE_STATUSES } })
+        .select('raceEntry scheduledAt outcome.met')
+        .sort({ scheduledAt: -1 })
+        .lean()
+    : [];
+  const today = startOfDay(new Date());
+  const horseOf = (p) => String(p.horse?._id || p.horse);
+  const checked = (p) => p.status === 'active' && p.targetRace && new Date(p.targetRace.raceDate) >= today;
+  const horses = [...new Set(plans.filter(checked).map(horseOf))];
+  const blocks = new Map(await Promise.all(horses.map(async (h) => [h, await getRaceBlock(h)])));
+  return new Map(
+    plans.map((p) => [
+      String(p._id),
+      {
+        trials: trials.filter((t) => String(t.raceEntry) === String(p.targetRace?._id)).map((t) => ({ at: t.scheduledAt, met: t.outcome?.met ?? null })),
+        raceBlock: checked(p) ? blocks.get(horseOf(p)) || null : null,
+      },
+    ])
+  );
 }
 
 /** Session stats and the next bookings for many plans in two queries: Map(planId → …). */
@@ -210,8 +243,8 @@ const listPlans = asyncHandler(async (req, res) => {
   if (horse !== undefined) filter.horse = horse;
 
   const plans = await withRefs(TrainingPlan.find(filter)).sort({ createdAt: -1 });
-  const { stats, upcoming } = await sessionsByPlan(plans.map((p) => p._id));
-  const data = plans.map((p) => withProgress(p, stats.get(String(p._id)), upcoming.get(String(p._id))));
+  const [{ stats, upcoming }, forms] = await Promise.all([sessionsByPlan(plans.map((p) => p._id)), formByPlan(plans)]);
+  const data = plans.map((p) => withProgress(p, stats.get(String(p._id)), upcoming.get(String(p._id)), forms.get(String(p._id))));
   return ok(res, data, 'Training plans fetched.');
 });
 
@@ -219,8 +252,8 @@ const getPlan = asyncHandler(async (req, res) => {
   const plan = await withRefs(TrainingPlan.findById(req.params.id));
   if (!plan) return fail(res, 'Training plan not found.', 404);
   if (!(await canAccessHorse(req.user, plan.horse?._id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
-  const { stats, upcoming } = await sessionsByPlan([plan._id]);
-  return ok(res, withProgress(plan, stats.get(String(plan._id)), upcoming.get(String(plan._id))), 'Training plan fetched.');
+  const [{ stats, upcoming }, forms] = await Promise.all([sessionsByPlan([plan._id]), formByPlan([plan])]);
+  return ok(res, withProgress(plan, stats.get(String(plan._id)), upcoming.get(String(plan._id)), forms.get(String(plan._id))), 'Training plan fetched.');
 });
 
 /**
@@ -343,6 +376,11 @@ const updatePlan = asyncHandler(async (req, res) => {
   const activating = changes.status === 'active' && plan.status !== 'active';
   Object.assign(plan, changes);
   await plan.save();
+  if (plan.status === 'active' && ['phases', 'startDate', 'endDate', 'sessionTime', 'afternoonTime', 'intensity', 'weeklyVolumeKm'].some((key) => changes[key] !== undefined)
+    && await FeedingCalendarDay.exists({ plan: plan._id })) {
+    await notifyHorseStaff({ staff: 'trainer', horse: plan.horse, type: 'ration_review', severity: 'warning',
+      message: 'Kế hoạch tập đã thay đổi. Mở Khẩu phần ăn để xem và xác nhận lại lịch cho ăn của ngựa.' });
+  }
   // A plan put into use, or an active plan whose phases, start or race changed: its weeks ahead now.
   if (plan.status === 'active' && (activating || ['phases', 'startDate', 'targetRace'].some((k) => changes[k] !== undefined))) await bookAhead(plan);
   // Closing a cycle also closes every workout that has not begun, including one whose start
@@ -350,7 +388,7 @@ const updatePlan = asyncHandler(async (req, res) => {
   if (['completed', 'cancelled'].includes(changes.status)) {
     await TrainingSession.updateMany(
       { trainingPlan: plan._id, status: { $in: ['scheduled', 'ready', 'blocked'] } },
-      { status: 'cancelled' }
+      { status: 'cancelled', cancelSource: 'plan' }
     );
   }
   await logAction({ actorId: req.user._id, action: 'trainingPlan.update', targetModel: 'TrainingPlan', targetId: plan._id });

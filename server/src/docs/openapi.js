@@ -192,7 +192,7 @@ module.exports = {
           progress: {
             type: 'object',
             readOnly: true,
-            description: 'week (0 = not started) of totalWeeks, phaseIndex, phaseWeek, phaseSessions {planned, completed, met}, totalCompleted, raceInDays, upcoming (next 3 scheduled sessions)',
+            description: 'week (0 = not started) of totalWeeks, phaseIndex, phaseWeek, phaseSessions {planned, completed, met}, totalCompleted, raceInDays, upcoming (next 3 scheduled sessions), form { status: blocked|pending|not_ready|on_track|ready, label, done, due, met, rated, trial: ahead|missing|failed|ran|passed|null, trialDay, reasons }: on form for its race from the plan so far: share of due sessions run (policy raceFormMinDone), share met (raceFormMinMet), the race trial, and for an active plan with its race ahead the vet (getRaceBlock). A guide; the trainer decides on the race page.',
           },
         },
       },
@@ -1695,6 +1695,24 @@ module.exports = {
     '/feeding': {
       get: { tags: ['Feeding'], summary: 'List feeding schedules', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FeedingSchedule' } }) } },
       post: { tags: ['Feeding'], summary: 'Create feeding schedule (Head Trainer, Manager)', description: 'items: at least one line, each { inventoryItem (a feed item in stock), amount > 0 } — a line typed as text is refused (400), since it cannot leave stock. timeOfDay (HH:mm) must fit the meal: morning before 11:00, noon 11:00–15:59, evening from 16:00; and be at least mealMinGapHours (club policy, default 3) from the horse\'s other rations (400). One ration per horse per meal (409). approvedBy is stamped with the caller; a meal can only be recorded by the groom when its ration has an approver and lines (409 NO_APPROVED_RATION otherwise).', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FeedingSchedule' }), 403: responses[403] } },
+    },
+    '/feeding/suggest': {
+      get: { tags: ['Feeding'], summary: 'Suggest one meal from the plan, the stock and the weight (Head Trainer, Manager)', description: 'For a training day of the current phase of the horse\'s active plan (no plan or no training day: rest). Breakfast mostly forage, lunch light, the evening the main meal with supplements (minerals daily, oil in strength/speed, electrolytes on hard days). Concentrate never above 0.5% of body weight per meal. Items: the one the horse already eats, else enough for a week, expiring first. Returns { phase, work, weightKg, warning, sessionTime, daily { forage, concentrate }, items [{ inventoryItem, name, amount, unit }] }.', parameters: [{ name: 'horse', in: 'query', required: true, schema: { type: 'string' } }, { name: 'slot', in: 'query', required: true, schema: { type: 'string', enum: ['morning', 'noon', 'evening'] } }], responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 403: responses[403] } },
+    },
+    '/feeding/timetable': {
+      get: { tags: ['Feeding'], summary: 'One horse\'s feeding week, meal by meal (Head Trainer, Manager)', description: 'Monday first (week = any day of it, default this week). Today and before: the meal on the groom\'s list and what happened: status fed | skipped | missed | upcoming | open | late, doneAt, doneBy, reason, makeUp { status, time, doneAt, doneBy }. Days ahead: status planned, from the confirmed day of the active plan\'s feeding calendar (source calendar) or the approved standing ration (source ration). A slot with nothing: status null. Returns { horse, caretaker, weekStart, days: [{ date, meals: [{ slot, time, items [{ name, amount, unit }], source, status, ... }] }] }.', parameters: [{ name: 'horse', in: 'query', required: true, schema: { type: 'string' } }, { name: 'week', in: 'query', schema: { type: 'string', example: '2026-10-19' } }], responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 403: responses[403] } },
+    },
+    '/feeding/plan': {
+      post: { tags: ['Feeding'], summary: 'Set a horse\'s three meals in one click (Head Trainer, Manager)', description: 'meals: [{ mealTime, timeOfDay, items }] with the same rules as one ration. from (optional, a later day): kept as upcoming and taking over that day (the next phase). basis: what the amounts were worked out from.', responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 403: responses[403] } },
+    },
+    '/feeding/calendar/{planId}': {
+      get: { tags: ['Feeding'], summary: 'The dated feeding calendar of a whole training plan (Head Trainer, Manager)', description: 'Every day of the plan with its phase, work (the week template trains that day or not) and three meals from the ration rules; confirmed days show what was confirmed. Returns { plan, horse, caretaker, problems, warnings (stock to restock), weightNote, days }.', parameters: [idParam('planId')], responses: { 200: responses[200]({ type: 'object' }), 403: responses[403], 404: responses[404] } },
+    },
+    '/feeding/calendar/{planId}/confirm': {
+      post: { tags: ['Feeding'], summary: 'Confirm the calendar for the rest of the plan (Head Trainer, Manager)', description: 'expectedUpdatedAt must match the plan (409 if it changed); times { morning, noon, evening } optional. Days ahead are saved, a meal edited by hand kept; today\'s meals already given or missed stay. The groom is told.', parameters: [idParam('planId')], responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 409: responses[409] } },
+    },
+    '/feeding/calendar/{planId}/day/{date}/{slot}': {
+      patch: { tags: ['Feeding'], summary: 'Change one meal of one day (Head Trainer, Manager)', description: 'time and items of that meal; marked edited so a later confirm keeps it.', parameters: [idParam('planId'), { name: 'date', in: 'path', required: true, schema: { type: 'string', example: '2026-11-02' } }, { name: 'slot', in: 'path', required: true, schema: { type: 'string', enum: ['morning', 'noon', 'evening'] } }], responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 409: responses[409] } },
     },
     '/feeding/{id}': {
       get: { tags: ['Feeding'], summary: 'Get feeding schedule', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/FeedingSchedule' }), 404: responses[404] } },
