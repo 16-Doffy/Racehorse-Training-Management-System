@@ -99,7 +99,8 @@ export default function Horse3D({ breed, color, height = 280, compact = false, c
           auto-rotate=""
           auto-rotate-delay="2500"
           rotation-per-second="18deg"
-          autoplay=""
+          // A boolean, not "": once <model-viewer> is defined React 19 sets it as a property, and "" turned autoplay off.
+          autoplay
           animation-name={HORSE_MODEL.animation}
           camera-orbit={HORSE_MODEL.cameraOrbit}
           min-camera-orbit="auto 40deg auto"
@@ -108,7 +109,7 @@ export default function Horse3D({ breed, color, height = 280, compact = false, c
           shadow-intensity="1.1"
           shadow-softness="0.85"
           environment-image="neutral"
-          exposure="1.05"
+          exposure={1.05}
           tone-mapping="neutral"
           style={{
             position: 'absolute',

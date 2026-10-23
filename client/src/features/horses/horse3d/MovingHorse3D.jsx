@@ -67,6 +67,12 @@ export default function MovingHorse3D({ breed, color, motion, height = 260, view
     if (viewer.current) viewer.current.timeScale = timeScale;
   }, [timeScale, status]);
 
+  // A looping clip plays as soon as it is picked, even if the viewer was paused.
+  useEffect(() => {
+    const el = viewer.current;
+    if (status === 'ready' && el && !playsOnce) el.play();
+  }, [status, clip, playsOnce]);
+
   // A clip played once (pulling up): when it ends, the next one takes over.
   useEffect(() => {
     const el = viewer.current;
@@ -114,7 +120,8 @@ export default function MovingHorse3D({ breed, color, motion, height = 260, view
           touch-action="pan-y"
           interaction-prompt="none"
           {...(view === 'turntable' ? { 'auto-rotate': '', 'auto-rotate-delay': '2500', 'rotation-per-second': '18deg' } : {})}
-          autoplay=""
+          // A boolean, not "": once <model-viewer> is defined React 19 sets it as a property, and "" turned autoplay off.
+          autoplay
           animation-name={clip}
           animation-crossfade-duration="350"
           camera-orbit={view === 'turntable' ? MOVING_HORSE.turntableOrbit : MOVING_HORSE.sideOrbit}
@@ -124,7 +131,7 @@ export default function MovingHorse3D({ breed, color, motion, height = 260, view
           shadow-intensity="1.1"
           shadow-softness="0.85"
           environment-image="neutral"
-          exposure="1.05"
+          exposure={1.05}
           tone-mapping="neutral"
           style={{
             position: 'absolute',
