@@ -1,4 +1,5 @@
 import { Tag, Tooltip, Typography } from 'antd';
+import { TrophyOutlined, CheckCircleFilled, WarningFilled, CloseCircleFilled, InfoCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useClubPolicy } from './useClubPolicy';
 
@@ -22,7 +23,7 @@ export function RaceFormTag({ form }) {
   if (!form) return null;
   return (
     <Tooltip title={[...form.reasons, formFigures(form)].filter(Boolean).join(' ')}>
-      <Tag color={FORM_COLORS[form.status]} className="!m-0 w-fit">
+      <Tag color={FORM_COLORS[form.status]} className="!m-0 w-fit font-medium">
         {form.label}
       </Tag>
     </Tooltip>
@@ -34,24 +35,52 @@ export function RaceFormBlock({ form }) {
   const policy = useClubPolicy();
   if (!form) return null;
   const pct = (share) => `${Math.round(share * 100)}%`;
+
+  const isReady = form.status === 'ready';
+  const isBlocked = form.status === 'blocked';
+  const isNotReady = form.status === 'not_ready';
+
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex flex-wrap items-center gap-2">
-        <Text type="secondary" className="!text-xs font-medium">
-          Phong độ dự giải
-        </Text>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <TrophyOutlined className="text-amber-700 text-xs" />
+          <span className="text-xs font-semibold text-gray-800">
+            Phong độ dự giải
+          </span>
+        </div>
         <RaceFormTag form={form} />
       </div>
-      <Text className="!text-sm tabular-nums">{formFigures(form)}</Text>
-      {form.reasons.map((r) => (
-        <Text key={r} type={form.status === 'blocked' ? 'danger' : 'warning'} className="!text-xs">
-          {r}
-        </Text>
-      ))}
-      <Text type="secondary" className="!text-[11px] leading-snug">
-        Theo quy định CLB: tập từ {pct(policy.raceFormMinDone)} số buổi đến hạn, đạt chỉ tiêu từ {pct(policy.raceFormMinMet)} số buổi đã tập, chạy thử cho
-        giải đạt, bác sĩ không khóa hay hạn chế. HLV vẫn là người quyết định dự giải.
-      </Text>
+
+      <div className="p-2 rounded-lg bg-white/80 border border-[#E5DEC9] text-xs font-medium text-gray-800 tabular-nums shadow-2xs">
+        {formFigures(form)}
+      </div>
+
+      {form.reasons.length > 0 && (
+        <div className="space-y-1">
+          {form.reasons.map((r) => (
+            <div
+              key={r}
+              className={`text-xs px-2 py-1 rounded flex items-center gap-1.5 ${
+                isBlocked
+                  ? 'bg-rose-50 text-rose-800 border border-rose-200/80'
+                  : 'bg-amber-50 text-amber-900 border border-amber-200/80'
+              }`}
+            >
+              {isBlocked ? (
+                <CloseCircleFilled className="text-rose-600 text-[11px] shrink-0" />
+              ) : (
+                <WarningFilled className="text-amber-600 text-[11px] shrink-0" />
+              )}
+              <span className="leading-snug">{r}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-[11px] text-gray-500 m-0 leading-relaxed">
+        Theo quy định CLB: tập từ {pct(policy.raceFormMinDone)} số buổi đến hạn, đạt chỉ tiêu từ {pct(policy.raceFormMinMet)} số buổi đã tập, chạy thử cho giải đạt, bác sĩ không khóa tập.
+      </p>
     </div>
   );
 }

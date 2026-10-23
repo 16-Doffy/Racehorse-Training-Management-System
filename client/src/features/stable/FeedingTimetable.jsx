@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Empty, Spin, Tag, Tooltip, Typography } from 'antd';
-import { LeftOutlined, RightOutlined } from '@ant-design/icons';
+import { LeftOutlined, RightOutlined, ClockCircleOutlined, CheckCircleOutlined, UserOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { feedingApi } from '../feeding/feedingApi';
@@ -9,43 +9,78 @@ import { MEAL_STATUS_META as MEAL_STATUS } from '../../constants/care';
 
 const { Text } = Typography;
 
-const SLOT_LABELS = { morning: 'Sáng', noon: 'Trưa', evening: 'Chiều' };
+const SLOT_LABELS = { morning: 'Bữa sáng', noon: 'Bữa trưa', evening: 'Bữa chiều' };
 const amount = (n) => Number(n).toLocaleString('vi-VN');
 const itemsText = (items) => (items || []).map((i) => `${amount(i.amount)} ${i.unit} ${i.name}`).join(', ');
 
 function MealCell({ meal, isToday }) {
-  if (!meal?.status) return <span className="block py-1 pl-1 text-[11px] text-gray-400">—</span>;
+  if (!meal?.status) {
+    return (
+      <div className="py-3 text-center text-gray-300 select-none text-xs font-mono">
+        —
+      </div>
+    );
+  }
+
   const meta = MEAL_STATUS[meal.status] || MEAL_STATUS.upcoming;
   const makeUp = meal.makeUp && (MEAL_STATUS[meal.makeUp.status] || MEAL_STATUS.upcoming);
+  const isPlanned = meal.status === 'planned';
+  const isFed = meal.status === 'fed';
+
   return (
     <div
-      className={`rounded-lg border px-2 py-1.5 text-left ${meal.status === 'planned' ? 'border-dashed border-gray-300' : 'border-gray-200 bg-white'} ${
-        isToday && meal.status !== 'planned' ? 'shadow-xs' : ''
-      }`}
+      className={`rounded-xl border p-2 text-left transition-all ${
+        isPlanned
+          ? 'border-dashed border-gray-200/90 bg-[#FAF7F0]/40'
+          : isFed
+          ? 'border-emerald-200 bg-white shadow-2xs'
+          : 'border-gray-200 bg-white shadow-2xs'
+      } ${isToday ? 'ring-1 ring-emerald-500/30' : ''}`}
     >
       <div className="flex items-center justify-between gap-1">
-        <span className="text-xs font-semibold tabular-nums text-gray-800">{meal.time}</span>
-        <Tag color={meta.color} className="!m-0 !px-1.5 !text-[10px] !leading-4">
+        <span className="text-xs font-semibold tabular-nums text-gray-900 flex items-center gap-1">
+          <ClockCircleOutlined className="text-[10px] text-gray-400" />
+          {meal.time}
+        </span>
+        <Tag
+          color={meta.color}
+          className="!m-0 !px-1.5 !text-[10px] !leading-4 !font-medium rounded-full"
+        >
           {meta.label}
         </Tag>
       </div>
-      {meal.status === 'fed' && meal.doneAt && (
-        <div className="mt-0.5 text-[11px] text-gray-600">
-          {meal.doneBy || 'Nhân viên'} · {dayjs(meal.doneAt).format('HH:mm')}
+
+      {isFed && meal.doneAt && (
+        <div className="mt-1 flex items-center gap-1 text-[11px] text-emerald-800 font-medium truncate">
+          <CheckCircleOutlined className="text-[10px] text-emerald-600 shrink-0" />
+          <span className="truncate">{meal.doneBy || 'Nhân viên'}</span>
+          <span className="tabular-nums font-mono text-[10px] text-emerald-700 shrink-0">
+            {dayjs(meal.doneAt).format('HH:mm')}
+          </span>
         </div>
       )}
+
       {meal.status === 'skipped' && (
-        <div className="mt-0.5 text-[11px] text-orange-700">{meal.reason ? `NV báo: ${meal.reason}` : meal.doneBy ? `${meal.doneBy} cho bỏ bữa` : 'Đã bỏ bữa'}</div>
-      )}
-      {makeUp && (
-        <div className="mt-0.5 text-[11px] text-gray-600">
-          Cho ăn bù {meal.makeUp.time}: <span className={meal.makeUp.status === 'fed' ? 'text-green-700' : ''}>{makeUp.label.toLowerCase()}</span>
-          {meal.makeUp.status === 'fed' && meal.makeUp.doneAt ? ` · ${meal.makeUp.doneBy || 'NV'} ${dayjs(meal.makeUp.doneAt).format('HH:mm')}` : ''}
+        <div className="mt-1 text-[11px] text-orange-800 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200/60 truncate">
+          {meal.reason ? `NV báo: ${meal.reason}` : meal.doneBy ? `${meal.doneBy} cho bỏ` : 'Đã bỏ bữa'}
         </div>
       )}
+
+      {makeUp && (
+        <div className="mt-1 text-[11px] text-gray-600 bg-gray-50 px-1.5 py-0.5 rounded">
+          Bù {meal.makeUp.time}:{' '}
+          <span className={meal.makeUp.status === 'fed' ? 'text-emerald-700 font-medium' : ''}>
+            {makeUp.label.toLowerCase()}
+          </span>
+          {meal.makeUp.status === 'fed' && meal.makeUp.doneAt ? ` (${dayjs(meal.makeUp.doneAt).format('HH:mm')})` : ''}
+        </div>
+      )}
+
       {meal.items?.length > 0 && (
         <Tooltip title={itemsText(meal.items)}>
-          <div className="mt-0.5 truncate text-[11px] text-gray-500">{itemsText(meal.items)}</div>
+          <div className="mt-1 truncate text-[11px] text-gray-600 font-medium bg-[#FAF7F0] px-1.5 py-0.5 rounded border border-[#EFE8DA]">
+            {itemsText(meal.items)}
+          </div>
         </Tooltip>
       )}
     </div>
@@ -69,51 +104,83 @@ export default function FeedingTimetable({ horseId }) {
   const timetable = data?.data;
   const days = WEEK_DAYS.map((w, i) => ({ ...w, date: weekStart.add(i, 'day') }));
   const isThisWeek = weekStart.isSame(mondayOf(dayjs()), 'day');
-  const mealOf = (date, slot) => timetable?.days?.find((d) => d.date === date.format('YYYY-MM-DD'))?.meals.find((m) => m.slot === slot);
+  const mealOf = (date, slot) =>
+    timetable?.days?.find((d) => d.date === date.format('YYYY-MM-DD'))?.meals.find((m) => m.slot === slot);
 
   return (
-    <section aria-label="Thời khóa biểu cho ăn">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <Text strong className="!text-sm">
-            Thời khóa biểu cho ăn
-          </Text>
-          {timetable && (
-            <Text type="secondary" className="!text-xs">
-              {timetable.caretaker ? `· Nhân viên chăm sóc: ${timetable.caretaker.name}` : '· Chưa có nhân viên chăm sóc: bữa sẽ không được giao'}
-            </Text>
+    <section aria-label="Thời khóa biểu cho ăn" className="space-y-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 bg-[#FAF7F0] p-3 rounded-xl border border-[#E5DEC9]">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-gray-900 text-sm">Thời khóa biểu cho ăn</span>
+          {timetable?.caretaker ? (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-900 border border-emerald-200">
+              <UserOutlined className="text-[10px] text-emerald-700" />
+              {timetable.caretaker.name}
+            </span>
+          ) : (
+            <span className="text-xs text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+              Chưa phân công người chăm sóc
+            </span>
           )}
         </div>
+
         <div className="flex items-center gap-1.5">
-          <Button size="small" icon={<LeftOutlined />} aria-label="Tuần trước" onClick={() => setWeekStart(weekStart.subtract(7, 'day'))} />
-          <Button size="small" icon={<RightOutlined />} aria-label="Tuần sau" onClick={() => setWeekStart(weekStart.add(7, 'day'))} />
-          <Text className="px-1 !text-xs tabular-nums">
+          <Button
+            size="small"
+            icon={<LeftOutlined />}
+            aria-label="Tuần trước"
+            onClick={() => setWeekStart(weekStart.subtract(7, 'day'))}
+          />
+          <Button
+            size="small"
+            icon={<RightOutlined />}
+            aria-label="Tuần sau"
+            onClick={() => setWeekStart(weekStart.add(7, 'day'))}
+          />
+          <span className="px-2 text-xs font-semibold tabular-nums text-gray-800">
             {weekStart.format('DD/MM')} – {weekStart.add(6, 'day').format('DD/MM/YYYY')}
-          </Text>
+          </span>
           {!isThisWeek && (
-            <Button size="small" type="link" className="!px-1 !text-xs" onClick={() => setWeekStart(mondayOf(dayjs()))}>
+            <Button
+              size="small"
+              type="link"
+              className="!px-1.5 !text-xs !text-[#0F5A43] font-semibold"
+              onClick={() => setWeekStart(mondayOf(dayjs()))}
+            >
               Về tuần này
             </Button>
           )}
         </div>
       </div>
+
       {isLoading ? (
-        <div className="py-8 text-center">
+        <div className="py-8 text-center bg-white rounded-xl border border-gray-200/80">
           <Spin />
         </div>
       ) : !timetable ? (
-        <Empty description="Chưa tải được thời khóa biểu." />
+        <Empty description="Chưa tải được thời khóa biểu." className="py-6 bg-white rounded-xl border border-gray-200/80" />
       ) : (
-        <div className="light-surface-box overflow-x-auto rounded-xl border border-gray-200/80 bg-white">
-          <table className="w-full min-w-[820px] border-collapse text-sm">
+        <div className="light-surface-box overflow-x-auto rounded-xl border border-[#E5DEC9] bg-white shadow-xs">
+          <table className="w-full min-w-[840px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-gray-200/80 bg-gray-50/80">
-                <th className="w-[64px] px-2 py-2 text-left text-xs font-semibold text-gray-700">Bữa</th>
+              <tr className="border-b border-[#E5DEC9] bg-[#FAF7F0]">
+                <th className="w-[84px] px-3 py-2.5 text-left text-xs font-semibold text-gray-700">
+                  Bữa
+                </th>
                 {days.map((d) => {
                   const today = d.date.isSame(dayjs(), 'day');
                   return (
-                    <th key={d.day} className={`px-1.5 py-2 text-left text-xs font-semibold ${today ? 'bg-emerald-50 text-emerald-950' : 'text-gray-600'}`}>
-                      {d.short} <span className="font-normal tabular-nums text-gray-500">{d.date.format('DD/MM')}</span>
+                    <th
+                      key={d.day}
+                      className={`px-2 py-2 text-left text-xs font-semibold ${
+                        today ? 'bg-[#0F5A43]/10 text-[#0F5A43] font-bold' : 'text-gray-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>{d.short}</span>
+                        <span className="font-normal tabular-nums text-gray-500">{d.date.format('DD/MM')}</span>
+                        {today && <span className="h-1.5 w-1.5 rounded-full bg-[#0F5A43] inline-block shrink-0" />}
+                      </div>
                     </th>
                   );
                 })}
@@ -121,12 +188,14 @@ export default function FeedingTimetable({ horseId }) {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {Object.entries(SLOT_LABELS).map(([slot, label]) => (
-                <tr key={slot} className="align-top">
-                  <td className="px-2 py-2 text-xs font-semibold text-gray-700">{label}</td>
+                <tr key={slot} className="align-top hover:bg-gray-50/30 transition-colors">
+                  <td className="px-3 py-3 text-xs font-semibold text-gray-800">
+                    {label}
+                  </td>
                   {days.map((d) => {
                     const today = d.date.isSame(dayjs(), 'day');
                     return (
-                      <td key={d.day} className={`px-1 py-1.5 ${today ? 'bg-emerald-50/30' : ''}`}>
+                      <td key={d.day} className={`px-1.5 py-2 ${today ? 'bg-emerald-50/20' : ''}`}>
                         <MealCell meal={mealOf(d.date, slot)} isToday={today} />
                       </td>
                     );
@@ -137,9 +206,10 @@ export default function FeedingTimetable({ horseId }) {
           </table>
         </div>
       )}
-      <Text type="secondary" className="mt-1 block !text-[11px]">
-        Hôm nay và trước đó: bữa trong danh sách việc của nhân viên và kết quả. Ngày tới: bữa dự kiến theo lịch cho ăn đã xác nhận, nếu chưa có thì theo khẩu phần đang áp dụng.
-      </Text>
+
+      <p className="text-[11px] text-gray-500 m-0 px-1 leading-relaxed">
+        Hôm nay và trước đó: bữa trong danh sách việc của nhân viên và kết quả thực tế. Ngày tới: bữa dự kiến theo lịch cho ăn đã xác nhận hoặc theo khẩu phần áp dụng.
+      </p>
     </section>
   );
 }

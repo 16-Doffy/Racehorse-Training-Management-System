@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Card, Table, Tag, Button, Typography } from 'antd';
+import { Card, Tag, Button, Typography } from 'antd';
+import { ClockCircleOutlined, ExclamationCircleOutlined, CheckCircleOutlined, SendOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { message } from '../../lib/antdStatic';
 import { dailyTaskApi } from '../stable/stableApi';
@@ -18,7 +19,11 @@ const hhmm = (d) => dayjs(d).format('HH:mm');
 export default function MissedMealsCard() {
   const today = dayjs().format('YYYY-MM-DD');
   const queryClient = useQueryClient();
-  const { data } = useQuery({ queryKey: ['daily-tasks', 'missed-meals', today], queryFn: () => dailyTaskApi.list({ date: today }), refetchInterval: 60000 });
+  const { data } = useQuery({
+    queryKey: ['daily-tasks', 'missed-meals', today],
+    queryFn: () => dailyTaskApi.list({ date: today }),
+    refetchInterval: 60000,
+  });
   const tasks = data?.data || [];
   const makeUps = new Map(tasks.filter((t) => t.makeUpOf).map((t) => [String(t.makeUpOf), t]));
   const missed = tasks
@@ -29,72 +34,127 @@ export default function MissedMealsCard() {
   const makeUp = useMutation({
     mutationFn: (id) => dailyTaskApi.makeUpMeal(id),
     onSuccess: () => {
-      message.success('Đã báo nhân viên cho ăn bù. Khi họ ghi nhận, kiểm tra lại buổi tập (nhớ chờ đủ thời gian tiêu hóa).');
+      message.success(
+        'Đã báo nhân viên cho ăn bù. Khi họ ghi nhận, kiểm tra lại buổi tập (nhớ chờ đủ thời gian tiêu hóa).'
+      );
       queryClient.invalidateQueries({ queryKey: ['daily-tasks'] });
     },
     onError: (err) => message.error(err.message || 'Không báo được.'),
   });
 
   if (!missed.length) return null;
+
   return (
     <Card
-      className="shadow-xs border-amber-300/80 bg-amber-50/20 rounded-xl overflow-hidden"
-      styles={{ title: { whiteSpace: 'normal', overflow: 'visible' }, header: { height: 'auto' } }}
-      headStyle={{ whiteSpace: 'normal' }}
+      className="shadow-xs border-rose-300/80 bg-[#FFFDF8] rounded-xl overflow-hidden border-t-3 border-t-rose-600"
+      styles={{
+        title: { whiteSpace: 'normal', overflow: 'visible', padding: '12px 16px' },
+        body: { padding: '12px 16px 16px 16px' },
+      }}
       title={
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
-            <span className="font-semibold text-gray-900 text-base">Bữa ăn bị bỏ lỡ</span>
-            <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-rose-100 text-rose-800 border border-rose-300 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-0.5">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-600 shrink-0 animate-pulse" />
+            <span className="font-semibold text-gray-900 text-sm">Bữa ăn bị bỏ lỡ</span>
+            <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-rose-50 text-rose-800 border border-rose-200 shrink-0 tabular-nums">
               {missed.length} bữa
             </span>
           </div>
-          <Text type="secondary" className="!text-xs font-normal">
+          <span className="text-[11px] font-medium text-rose-800 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
             Chặn bài tập nặng
-          </Text>
+          </span>
         </div>
       }
     >
-      <Table
-        size="small"
-        rowKey="_id"
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        dataSource={missed}
-        columns={[
-          { title: 'Ngựa', key: 'horse', render: (_, t) => <Link to={`/horses/${t.horse?._id || t.horse}`}>{t.horse?.name || 'Ngựa'}</Link> },
-          { title: 'Bữa', key: 'meal', render: (_, t) => `${MEAL_LABELS[t.mealSlot]} ${hhmm(t.scheduledDate)}` },
-          {
-            title: 'Tình trạng',
-            key: 'state',
-            render: (_, t) =>
-              t.status === 'skipped' ? (
-                <span>
-                  <Tag color="orange" className="!m-0">Nhân viên báo không cho ăn</Tag>
-                  {t.skipReason && <Text type="secondary" className="!text-xs ml-2">{t.skipReason}</Text>}
-                </span>
-              ) : (
-                <Tag color="red" className="!m-0">Quá hạn, chưa ghi nhận</Tag>
-              ),
-          },
-          {
-            title: 'Cho ăn bù',
-            key: 'makeUp',
-            render: (_, t) => {
-              const done = makeUps.get(String(t._id));
-              if (done?.status === 'completed') return <Tag color="green" className="!m-0">Đã cho ăn bù lúc {hhmm(done.completedAt)}</Tag>;
-              if (done?.status === 'pending') return <Tag color="blue" className="!m-0">Đã báo — chờ nhân viên</Tag>;
-              if (done?.status === 'skipped') return <Tag className="!m-0">Không cho ăn bù được{done.skipReason ? `: ${done.skipReason}` : ''}</Tag>;
-              return (
-                <Button size="small" type="primary" loading={makeUp.isPending && makeUp.variables === t._id} onClick={() => makeUp.mutate(t._id)}>
-                  Báo nhân viên cho ăn bù
-                </Button>
-              );
-            },
-          },
-        ]}
-      />
+      <div className="space-y-2.5">
+        {missed.map((t) => {
+          const horseId = t.horse?._id || t.horse;
+          const horseName = t.horse?.name || 'Ngựa';
+          const done = makeUps.get(String(t._id));
+          const isSkipped = t.status === 'skipped';
+
+          return (
+            <div
+              key={t._id}
+              className="p-3 rounded-lg border border-rose-100 bg-rose-50/20 hover:bg-rose-50/40 transition-colors flex flex-col gap-2"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <Link
+                    to={`/horses/${horseId}`}
+                    className="font-semibold text-emerald-950 hover:text-emerald-700 text-sm truncate block"
+                  >
+                    {horseName}
+                  </Link>
+                  <div className="flex items-center gap-1.5 mt-0.5 text-xs text-gray-600">
+                    <ClockCircleOutlined className="text-gray-400 text-[11px]" />
+                    <span className="font-medium text-gray-800">
+                      {MEAL_LABELS[t.mealSlot] || 'Bữa ăn'}
+                    </span>
+                    <span className="tabular-nums font-semibold text-rose-700">
+                      {hhmm(t.scheduledDate)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="shrink-0">
+                  {isSkipped ? (
+                    <Tag color="orange" className="!m-0 text-[11px]">
+                      Báo bỏ bữa
+                    </Tag>
+                  ) : (
+                    <Tag color="red" className="!m-0 text-[11px]">
+                      Quá hạn
+                    </Tag>
+                  )}
+                </div>
+              </div>
+
+              {isSkipped && t.skipReason && (
+                <p className="text-xs text-amber-900 bg-amber-50/80 px-2 py-1 rounded border border-amber-200/60 m-0">
+                  Lý do: {t.skipReason}
+                </p>
+              )}
+
+              <div className="pt-1 flex items-center justify-between gap-2 border-t border-rose-100/60">
+                <div className="text-[11px] text-gray-500">
+                  {done ? 'Trạng thái bù:' : 'Yêu cầu hành động:'}
+                </div>
+
+                <div>
+                  {done?.status === 'completed' && (
+                    <Tag color="green" icon={<CheckCircleOutlined />} className="!m-0 text-xs font-medium">
+                      Đã ăn bù lúc {hhmm(done.completedAt)}
+                    </Tag>
+                  )}
+                  {done?.status === 'pending' && (
+                    <Tag color="blue" icon={<ClockCircleOutlined />} className="!m-0 text-xs font-medium">
+                      Đã báo — chờ nhân viên
+                    </Tag>
+                  )}
+                  {done?.status === 'skipped' && (
+                    <Tag className="!m-0 text-xs text-gray-600">
+                      Không bù được{done.skipReason ? `: ${done.skipReason}` : ''}
+                    </Tag>
+                  )}
+                  {!done && (
+                    <Button
+                      size="small"
+                      type="primary"
+                      icon={<SendOutlined />}
+                      loading={makeUp.isPending && makeUp.variables === t._id}
+                      onClick={() => makeUp.mutate(t._id)}
+                      className="!h-7 !px-2.5 !text-xs font-semibold !bg-[#0F5A43] hover:!bg-[#157356] !border-[#0F5A43]"
+                    >
+                      Báo cho ăn bù
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </Card>
   );
 }

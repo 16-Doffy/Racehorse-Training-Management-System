@@ -715,13 +715,25 @@ export default function TrainingSessionPage() {
         }
       />
 
-      <Alert
-        className="light-surface-box !mb-4 border-emerald-200 bg-emerald-50/40 rounded-lg text-xs"
-        type="info"
-        showIcon
-        title="Quy trình: Xếp lịch, kiểm tra sẵn sàng, bắt đầu, kết thúc và đánh giá"
-        description={`${precheckRuleText(policy)} Buổi lỡ giờ có thể xếp lại lịch. Khi buổi đang chạy, kết thúc hoặc dừng giữa chừng để bảo toàn số liệu.${policy.afternoonLightOnly ? ' Buổi chiều chỉ tập nhẹ.' : ''}`}
-      />
+      <div className="rounded-xl border border-[#D4AF37]/35 bg-gradient-to-r from-[#0F3A2C]/5 via-[#0F3A2C]/2 to-transparent p-3.5 mb-4 shadow-2xs flex items-start gap-3">
+        <div className="w-8 h-8 rounded-lg bg-[#0F5A43]/10 border border-[#0F5A43]/20 flex items-center justify-center shrink-0 text-[#0F5A43]">
+          <SafetyCertificateOutlined className="text-base" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-xs text-gray-900 tracking-tight">
+              Quy trình chuẩn: Xếp lịch → Kiểm tra sẵn sàng → Bắt đầu → Kết thúc &amp; Đánh giá
+            </span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#0F5A43]/10 text-[#0F5A43]">
+              Quy định CLB
+            </span>
+          </div>
+          <p className="text-xs text-gray-600 m-0 mt-1 leading-relaxed">
+            {precheckRuleText(policy)} Buổi lỡ giờ có thể xếp lại lịch trực tiếp. Khi buổi đang chạy, kết thúc hoặc dừng giữa chừng để bảo toàn số liệu.
+            {policy.afternoonLightOnly ? ' Buổi chiều chỉ tập nhẹ.' : ''}
+          </p>
+        </div>
+      </div>
 
       {isError && (
         <Alert

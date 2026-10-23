@@ -115,9 +115,20 @@ function HorseFocusTag({ focus, rows }) {
   if (!focus.horse) return null;
   const name = (rows || []).find((r) => horseIdOf(r) === focus.horse)?.horse?.name || 'ngựa được chọn';
   return (
-    <Tag closable onClose={focus.clear} color="gold" className="!mb-3">
-      Đang xem riêng {name} · bấm × để xem tất cả
-    </Tag>
+    <div className="mb-3.5 flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-[#FAF7F0] border border-[#D4AF37]/40 shadow-2xs">
+      <div className="flex items-center gap-2.5 min-w-0">
+        <span className="w-2.5 h-2.5 rounded-full bg-[#0F5A43] shrink-0" />
+        <span className="text-xs text-gray-500 font-medium">Đang xem hồ sơ riêng:</span>
+        <span className="text-sm font-semibold text-emerald-950 truncate">{name}</span>
+      </div>
+      <button
+        type="button"
+        onClick={focus.clear}
+        className="text-xs font-semibold text-emerald-800 hover:text-emerald-950 px-2.5 py-1 rounded-md bg-white border border-[#E5DEC9] hover:border-emerald-700 transition-colors cursor-pointer shrink-0"
+      >
+        ✕ Xem tất cả ngựa
+      </button>
+    </div>
   );
 }
 
@@ -423,7 +434,7 @@ function TaskList() {
             <Table
               className="mt-2"
               rowKey="_id"
-              columns={columns}
+              columns={columns.filter((c) => !focus.horse || c.key !== 'horse')}
               dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
               loading={isLoading}
               scroll={{ x: 'max-content' }}
@@ -804,7 +815,7 @@ function RationList() {
 
             <Table
               rowKey="_id"
-              columns={columns}
+              columns={columns.filter((c) => !focus.horse || c.key !== 'horse')}
               dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
               loading={isLoading}
               scroll={{ x: 'max-content' }}
@@ -1130,7 +1141,7 @@ function IncidentsList() {
       <HorseFocusTag focus={focus} rows={data?.data} />
       <Table
         rowKey="_id"
-        columns={columns}
+        columns={columns.filter((c) => !focus.horse || c.key !== 'horse')}
         dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
         loading={isLoading}
         scroll={{ x: 'max-content' }}
