@@ -26,10 +26,15 @@ test('simulated sensors: a horse that goes lame mid-run is stopped and everyone 
     assert.equal((await simulate('owner', 'injury')).status, 403);
   });
 
-  await t.test('a normal reading, then the injury: the run is stopped as a suspected injury', async () => {
+  await t.test('a normal reading, then the injury: one lame reading, and the next stops the run as a suspected injury', async () => {
     await simulateTick();
     assert.equal((await models.TrainingSession.findById(session._id)).status, 'in_progress');
+    const normalSpeed = (await models.TrainingSession.findById(session._id)).metrics.lastSpeed;
     await api('trainer', 'POST', `/training/sessions/${session._id}/simulate`, { scenario: 'injury' });
+    await simulateTick();
+    const lame = await models.TrainingSession.findById(session._id);
+    assert.equal(lame.status, 'in_progress', 'one bad reading does not stop the run');
+    assert.ok(lame.metrics.lastSpeed < normalSpeed * 0.6, 'the horse goes lame: its speed falls away');
     await simulateTick();
 
     const stopped = await models.TrainingSession.findById(session._id);

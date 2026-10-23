@@ -47,6 +47,8 @@ import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } fro
 import ReadinessPanel from './ReadinessPanel';
 import PreCheckModal from './PreCheckModal';
 import LiveSessionMonitor from './LiveSessionMonitor';
+import MovingHorse3D from '../horses/horse3d/MovingHorse3D';
+import { motionOfKind, surfaceOf } from '../horses/horse3d/horseMotion';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import { useClubPolicy, precheckRuleText, afternoonProblem } from './useClubPolicy';
 import { SESSION_STATUS_LABELS as STATUS_LABELS, SESSION_STATUS_COLORS as STATUS_COLORS } from './sessionStatus';
@@ -118,6 +120,8 @@ export default function TrainingSessionPage() {
   const [abortSession, setAbortSession] = useState(null);
   const [abortForm] = Form.useForm();
   const draftKind = Form.useWatch('kind', createForm);
+  const draftSpeed = Form.useWatch(['prescription', 'targetSpeedKmh'], createForm);
+  const draftPlanId = Form.useWatch('trainingPlan', createForm);
   // The exam request being written: { horseId, session?, defaults? }.
   const [examFor, setExamFor] = useState(null);
   const [preCheckSession, setPreCheckSession] = useState(null);
@@ -188,6 +192,7 @@ export default function TrainingSessionPage() {
 
   const filteredPlan = planFilter ? (plansData?.data || []).find((p) => p._id === planFilter) : null;
   const filteredHorse = horseFilter ? (horsesData?.data || []).find((h) => h._id === horseFilter) : null;
+  const draftHorse = draft.horse ? (horsesData?.data || []).find((h) => String(h._id) === String(draft.horse)) : null;
   const allSessions = sessionsData?.data || [];
 
   const horseOptions = (horsesData?.data || []).map((h) => ({
@@ -715,25 +720,21 @@ export default function TrainingSessionPage() {
         }
       />
 
-      <div className="rounded-xl border border-[#D4AF37]/35 bg-gradient-to-r from-[#0F3A2C]/5 via-[#0F3A2C]/2 to-transparent p-3.5 mb-4 shadow-2xs flex items-start gap-3">
-        <div className="w-8 h-8 rounded-lg bg-[#0F5A43]/10 border border-[#0F5A43]/20 flex items-center justify-center shrink-0 text-[#0F5A43]">
-          <SafetyCertificateOutlined className="text-base" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-xs text-gray-900 tracking-tight">
-              Quy trình chuẩn: Xếp lịch → Kiểm tra sẵn sàng → Bắt đầu → Kết thúc &amp; Đánh giá
-            </span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#0F5A43]/10 text-[#0F5A43]">
-              Quy định CLB
-            </span>
-          </div>
-          <p className="text-xs text-gray-600 m-0 mt-1 leading-relaxed">
-            {precheckRuleText(policy)} Buổi lỡ giờ có thể xếp lại lịch trực tiếp. Khi buổi đang chạy, kết thúc hoặc dừng giữa chừng để bảo toàn số liệu.
-            {policy.afternoonLightOnly ? ' Buổi chiều chỉ tập nhẹ.' : ''}
-          </p>
-        </div>
-      </div>
+      {/* The club's rule in one line; the steps of a session open on demand. */}
+      <details className="light-surface-box mb-4 rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 text-xs text-gray-700">
+        <summary className="cursor-pointer select-none">
+          <SafetyCertificateOutlined className="mr-1.5 text-[#0F5A43]" />
+          <span className="font-medium text-gray-900">Quy định CLB:</span> kiểm tra sẵn sàng từ {policy.precheckOpensBeforeMin} phút trước đến{' '}
+          {policy.precheckClosesAfterMin} phút sau giờ tập{policy.afternoonLightOnly ? ', buổi chiều chỉ tập nhẹ' : ''}.{' '}
+          <span className="font-medium text-[#0F5A43]">Xem các bước</span>
+        </summary>
+        <ol className="m-0 mt-2 pl-5 space-y-0.5 leading-relaxed">
+          <li>Xếp lịch: kế hoạch tự xếp tuần này và tuần sau; buổi lỡ giờ xếp lại được ngay trên lịch.</li>
+          <li>Kiểm tra sẵn sàng. {precheckRuleText(policy)}</li>
+          <li>Bắt đầu: số liệu cảm biến và ngựa chạy 3D hiện ở đầu trang.</li>
+          <li>Kết thúc khi đủ cự ly, hoặc dừng giữa chừng để giữ số liệu; rồi đánh giá buổi.</li>
+        </ol>
+      </details>
 
       {isError && (
         <Alert
@@ -801,7 +802,7 @@ export default function TrainingSessionPage() {
           }
         />
       )}
-      <LiveSessionMonitor sessions={sessionsData?.data || []} onSessionCompleted={offerEvaluation} />
+      <LiveSessionMonitor sessions={sessionsData?.data || []} horses={horsesData?.data || []} plans={plansData?.data || []} onSessionCompleted={offerEvaluation} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Segmented
@@ -1125,6 +1126,19 @@ export default function TrainingSessionPage() {
             </Col>
             <Col xs={24} lg={9}>
               <div className="lg:sticky lg:top-0">
+                {/* The picked horse, in its own coat, doing the picked work at the target speed. */}
+                {draftKind && (
+                  <div className="mb-3">
+                    <MovingHorse3D
+                      breed={draftHorse?.breed}
+                      color={draftHorse?.color}
+                      motion={motionOfKind(draftKind, draftSpeed)}
+                      surface={surfaceOf((plansData?.data || []).find((p) => p._id === draftPlanId), draft.scheduledAt || undefined)}
+                      height={170}
+                      compact
+                    />
+                  </div>
+                )}
                 <ReadinessPanel
                   horse={draft.horse}
                   scheduledAt={draft.scheduledAt}

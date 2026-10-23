@@ -44,6 +44,17 @@ async function main() {
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
     if (!ready) throw new Error('Vite readiness timed out.');
+    // Vite compiles the app on the first page load; on a busy machine that alone outlasted the first
+    // test's 30 s. Load it once here, with time to spare, so every test starts on a compiled app.
+    const { chromium } = require(path.join(root, 'node_modules/@playwright/test'));
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await page.goto('http://127.0.0.1:5180/login', { timeout: 180000 });
+      await page.locator('#email').waitFor({ timeout: 180000 });
+    } finally {
+      await browser.close();
+    }
     const status = await new Promise((resolve, reject) => {
       const tests = spawn(process.execPath, [path.join(root, 'node_modules/@playwright/test/cli.js'), 'test'], {
         cwd: path.join(root, 'client'), stdio: 'inherit', env: { ...process.env, UI_TEST_FIXTURE: fixture },

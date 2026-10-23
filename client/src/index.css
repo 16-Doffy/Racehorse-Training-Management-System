@@ -2,6 +2,9 @@
    resets would otherwise fight Tailwind's. Only theme tokens + utility classes are imported. */
 @import "tailwindcss/theme" layer(theme);
 @import "tailwindcss/utilities" layer(utilities);
+/* public/ holds images and 3D models, no class names: scanning the binary models for classes took the
+   build to 8 GB of memory and killed it on Vercel. */
+@source not "../public";
 
 html,
 body,
@@ -121,3 +124,4 @@ body {
   box-shadow: inset 3px 0 0 #d4af37;
   background: rgba(212, 175, 55, 0.18);
 }
+

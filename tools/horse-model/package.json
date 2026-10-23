@@ -10,6 +10,7 @@
     "@gltf-transform/core": "^4.0.0",
     "@gltf-transform/extensions": "^4.0.0",
     "@gltf-transform/functions": "^4.0.0",
-    "meshoptimizer": "0.22.0"
+    "meshoptimizer": "0.22.0",
+    "sharp": "^0.35.5"
   }
 }
