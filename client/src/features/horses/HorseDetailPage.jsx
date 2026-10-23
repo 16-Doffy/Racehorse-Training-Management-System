@@ -10,7 +10,8 @@ import HorseTimeline from './HorseTimeline';
 import CareHistoryCard from './CareHistoryCard';
 import HorseStallCard from '../stable/HorseStallCard';
 import { stallApi } from '../stable/stableApi';
-import Horse3D from './horse3d/Horse3D';
+import MovingHorse3D from './horse3d/MovingHorse3D';
+import { restingMotion } from './horse3d/horseMotion';
 import { breedLabel, coatLabel } from './horse3d/horseBreeds';
 import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constants/health';
 import RequestExamModal from '../health/RequestExamModal';
@@ -126,9 +127,9 @@ export default function HorseDetailPage() {
       />
 
       <Row gutter={[16, 16]}>
-        {/* The horse in 3D, in the breed and coat the Manager set — the same horse its groom sees. */}
+        {/* The horse in 3D, in the breed and coat the Manager set, doing what its health allows. */}
         <Col xs={24} lg={9}>
-          <Horse3D breed={horse.breed} color={horse.color} height={310} />
+          <MovingHorse3D breed={horse.breed} color={horse.color} motion={restingMotion(horse)} height={310} />
         </Col>
         <Col xs={24} lg={15}>
           <Card className="h-full !rounded-xl !border-[#E2D9C8]" title="Hồ sơ lý lịch">

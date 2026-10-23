@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Alert, Button, DatePicker, Form, Input, InputNumber, Modal, Segmented, Select } from 'antd';
 import { ArrowLeftOutlined, CheckCircleFilled } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import Horse3D from './horse3d/Horse3D';
+import MovingHorse3D from './horse3d/MovingHorse3D';
 import { BREEDS, COATS, REGIONS, coatValueOfBreed } from './horse3d/horseBreeds';
 import { HORSE_SEX_LABELS, horseSexOptions } from '../../constants/horse';
 import { CaretakerSelect, StallPicker } from '../stable/StallPicker';
@@ -20,6 +20,8 @@ const Swatch = ({ color }) => (
 );
 
 const TABS = { profile: 'Hồ sơ', staff: 'Phụ trách', stall: 'Chuồng' };
+// The horse being filled in stands and looks around while it turns, so its coat shows from every side.
+const FORM_MOTION = { clip: 'Idle_Look' };
 const STEP_FIELDS = {
   profile: ['name', 'breed', 'color', 'sex', 'dob', 'weightKg', 'microchipNumber', 'registrationNumber', 'valuationVnd'],
   staff: ['owner', 'assignedTrainer', 'assignedVet'],
@@ -179,7 +181,7 @@ export default function HorseFormModal({
           {/* The horse as everyone it is assigned to will see it, and what has been filled in so far. */}
           <aside className="min-w-0">
             <div className="hf-summary">
-              <Horse3D breed={v.breed} color={v.color} height="var(--hf-stage)" compact />
+              <MovingHorse3D breed={v.breed} color={v.color} motion={FORM_MOTION} view="turntable" height="var(--hf-stage)" compact showCoat />
               <div className={`hf-name mt-2 ${v.name ? '' : 'is-empty'}`}>{v.name || 'Ngựa mới'}</div>
               <div className="hf-muted text-xs">
                 {[breedLabel || 'Chưa chọn giống', HORSE_SEX_LABELS[v.sex], age !== null && age >= 0 ? `${age} tuổi` : null].filter(Boolean).join(' · ')}

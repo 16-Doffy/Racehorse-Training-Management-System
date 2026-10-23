@@ -44,9 +44,9 @@ export function loadModelViewer() {
   return loading;
 }
 
-/** Paints a loaded <model-viewer>'s horse in a coat (horseBreeds.coatFor). */
-export function paintCoat(viewer, coat) {
-  const { body, hair } = HORSE_MODEL.coatMaterials;
+/** Paints a loaded <model-viewer>'s horse in a coat (horseBreeds.coatFor); `materials` names that model's coat and mane. */
+export function paintCoat(viewer, coat, materials = HORSE_MODEL.coatMaterials) {
+  const { body, hair } = materials;
   viewer?.model?.materials.forEach((material) => {
     const part = material.name === body ? 'body' : material.name === hair ? 'hair' : null;
     if (!part || !coat?.[part]) return;
