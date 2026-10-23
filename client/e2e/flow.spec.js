@@ -318,6 +318,8 @@ test('owner horse page shows the horse moving as its health allows', async ({ pa
   // The fixture horse was examined and cleared for full work, and no session is running: it grazes, in the pasture.
   await expect(page.locator('.own-hero canvas')).toHaveAttribute('aria-label', /Khỏe · thư giãn gặm cỏ, trên đồng cỏ/);
   await expect(page.locator('.own-hero').getByText(/Mô hình 3D chuyển động/)).toBeVisible();
+  // The pasture's tree and house are CC BY: their authors are named under the stage.
+  await expect(page.locator('.own-hero').getByText('Cây: atrodler · Nhà: BoredPain666 (Sketchfab, CC BY 4.0)')).toBeVisible();
 });
 test('owner horse page shows the horse in its stall, with no way to move it', async ({ page }) => {
   await login(page, 'owner');

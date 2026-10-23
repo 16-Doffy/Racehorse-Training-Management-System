@@ -40,6 +40,35 @@ const GRASS_DEPTH = { near: 3.2, far: -3.3, mown: 1.0 };
 const LEG = { elbow: 'BN_R_UpperArm', knee: 'BN_R_Forearm', fetlock: 'BN_R_Hand', hoof: 'BN_R_Toe_047_0' };
 const NECK = 'BN_Neck_00';
 
+// The pasture's tree and house, loaded with the pasture only (credits: PASTURE_CREDIT, horseMotion.js).
+// The maple: "Maple tree" by atrodler, its 2,071 pieces merged into a trunk and a crown of leaves. The
+// house: "Farm House" by BoredPain666, its 4096 px texture brought down to 1024. Both Sketchfab, CC BY 4.0.
+const MAPLE_TREE = `${import.meta.env.BASE_URL}models/maple-tree.glb`;
+const FARM_HOUSE = `${import.meta.env.BASE_URL}models/farm-house.glb`;
+const TREE_HEIGHT = 5.8; // metres, against a 1.6 m horse
+const HOUSE_WIDTH = 9;
+const HOUSE_TURN = Math.PI - 0.5; // which side of the house faces the camera
+const scenery = new Map();
+/** A model of the pasture, loaded once for every stage. */
+function loadScenery(src) {
+  if (!scenery.has(src)) {
+    scenery.set(
+      src,
+      new GLTFLoader().loadAsync(src).catch((error) => {
+        scenery.delete(src);
+        throw error;
+      }),
+    );
+  }
+  return scenery.get(src);
+}
+/** A copy of a loaded model, scaled so that one side of it (x: width, y: height) measures `metres`. */
+function sized(gltf, axis, metres) {
+  const copy = gltf.scene.clone();
+  copy.scale.setScalar(metres / new THREE.Box3().setFromObject(copy).getSize(new THREE.Vector3())[axis]);
+  return copy;
+}
+
 let model = null;
 function loadModel() {
   if (!model) {
@@ -192,6 +221,158 @@ ${shader.vertexShader}`.replace(
   return grass;
 }
 
+// The pasture's sky by the hour in Vietnam: dawn, day, late afternoon, night. sky = top of the sky,
+// horizon = the haze at the horizon (and the fog), sun = the key light (the moon at night).
+const PASTURE_SKIES = [
+  { from: 5, sky: '#9db8d9', horizon: '#f3d9b8', sun: ['#ffd9a8', 1.6], fill: ['#f4ead8', 1.0], clouds: '#fff0e0' },
+  { from: 7, sky: '#7fb2df', horizon: '#d3e6f0', sun: ['#fff3dd', 2.2], fill: ['#e8f2ff', 1.3], clouds: '#ffffff' },
+  { from: 16.5, sky: '#7290c4', horizon: '#f2b27c', sun: ['#ffb066', 1.7], fill: ['#f7dcc4', 1.0], clouds: '#ffd3b0' },
+  { from: 18.5, sky: '#0f1d36', horizon: '#33476a', sun: ['#b4c8ff', 1.4], fill: ['#9fb6e0', 1.05], clouds: '#5d6b85' },
+];
+/** The pasture sky for an hour of the day (0–24, Vietnam time); before dawn it is still night. */
+function pastureSkyAt(hour) {
+  return [...PASTURE_SKIES].reverse().find((s) => hour >= s.from) || PASTURE_SKIES[PASTURE_SKIES.length - 1];
+}
+/** The hour of the day in Vietnam (UTC+7, no summer time), whatever the viewer's clock is set to. */
+const vietnamHour = (now = Date.now()) => {
+  const d = new Date(now + 7 * 3600 * 1000);
+  return d.getUTCHours() + d.getUTCMinutes() / 60;
+};
+
+/** A sky painted top to horizon, as the scene's background. */
+function skyTexture(top, horizon) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 256;
+  const g = canvas.getContext('2d');
+  const gradient = g.createLinearGradient(0, 0, 0, 256);
+  gradient.addColorStop(0, top);
+  gradient.addColorStop(0.75, horizon);
+  gradient.addColorStop(1, horizon);
+  g.fillStyle = gradient;
+  g.fillRect(0, 0, 2, 256);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+/** One soft cloud, a few overlapping puffs, painted once and shared by every cloud. */
+function cloudTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 128;
+  const g = canvas.getContext('2d');
+  for (const [x, y, r] of [[70, 80, 38], [115, 62, 48], [165, 74, 40], [200, 86, 28], [45, 90, 24]]) {
+    const puff = g.createRadialGradient(x, y, r * 0.2, x, y, r);
+    puff.addColorStop(0, 'rgba(255,255,255,0.95)');
+    puff.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = puff;
+    g.fillRect(0, 0, 256, 128);
+  }
+  return new THREE.CanvasTexture(canvas);
+}
+
+/** A gable: a triangle `width` wide and `height` high, extruded `length` along x, centred, its base at y 0. */
+function gable(width, height, length, material) {
+  const shape = new THREE.Shape();
+  shape.moveTo(-width / 2, 0);
+  shape.lineTo(0, height);
+  shape.lineTo(width / 2, 0);
+  shape.closePath();
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: length, bevelEnabled: false });
+  geometry.translate(0, 0, -length / 2);
+  geometry.rotateY(Math.PI / 2);
+  return new THREE.Mesh(geometry, material);
+}
+
+/**
+ * A barn drawn in code, for when the farm house cannot be loaded: red board walls on a stone
+ * footing, white trim at the corners and eaves, a charcoal gable roof with an overhang, a row of stall
+ * doors with white cross braces, and a small cupola on the ridge. Its long side faces the camera (+z).
+ * Plain boxes and prisms, so it costs next to nothing.
+ */
+function makeBarn() {
+  const barn = new THREE.Group();
+  const L = 10; // along the barn
+  const D = 4; // front to back
+  const H = 2.4; // walls
+  const RISE = 1.5; // roof, eaves to ridge
+  const mat = (color, roughness = 0.85) => new THREE.MeshStandardMaterial({ color, roughness });
+  const red = mat('#a2372b');
+  const trim = mat('#f3efe6', 0.6);
+  const add = (mesh, x, y, z) => {
+    mesh.position.set(x, y, z);
+    barn.add(mesh);
+    return mesh;
+  };
+
+  add(new THREE.Mesh(new THREE.BoxGeometry(L + 0.2, 0.4, D + 0.2), mat('#8d877c', 1)), 0, 0.2, 0); // stone footing
+  add(new THREE.Mesh(new THREE.BoxGeometry(L, H, D), red), 0, 0.4 + H / 2, 0);
+  // The gable ends in the walls' red, under a roof that overhangs them.
+  add(gable(D, RISE - 0.05, L, red), 0, 0.4 + H, 0);
+  add(gable(D + 0.8, RISE + 0.2, L + 0.7, mat('#3b3f45', 0.7)), 0, 0.4 + H - 0.12, 0);
+  // White trim: the corners and a band under the eaves.
+  for (const x of [-L / 2, L / 2]) for (const z of [-D / 2, D / 2]) add(new THREE.Mesh(new THREE.BoxGeometry(0.16, H, 0.16), trim), x, 0.4 + H / 2, z);
+  add(new THREE.Mesh(new THREE.BoxGeometry(L + 0.1, 0.14, 0.08), trim), 0, 0.4 + H - 0.07, D / 2 + 0.03);
+
+  // Stall doors along the front, each framed in white with an X brace.
+  const DOORS = 6;
+  const doorW = 1.0;
+  const doorH = 1.7;
+  const gap = L / DOORS;
+  const doors = new THREE.InstancedMesh(new THREE.BoxGeometry(doorW, doorH, 0.05), mat('#5a3a26', 0.9), DOORS);
+  const frames = new THREE.InstancedMesh(new THREE.BoxGeometry(doorW + 0.14, doorH + 0.14, 0.03), trim, DOORS);
+  const braces = new THREE.InstancedMesh(new THREE.BoxGeometry(Math.hypot(doorW, doorH) - 0.1, 0.07, 0.03), trim, DOORS * 2);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const one = new THREE.Vector3(1, 1, 1);
+  const angle = Math.atan2(doorH, doorW);
+  for (let i = 0; i < DOORS; i += 1) {
+    const x = -L / 2 + gap * (i + 0.5);
+    const at = new THREE.Vector3(x, 0.4 + doorH / 2, D / 2 + 0.02);
+    frames.setMatrixAt(i, m.makeTranslation(at.x, at.y, at.z - 0.01));
+    doors.setMatrixAt(i, m.makeTranslation(at.x, at.y, at.z + 0.01));
+    for (const [k, a] of [[0, angle], [1, -angle]]) {
+      q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), a);
+      braces.setMatrixAt(i * 2 + k, m.compose(new THREE.Vector3(at.x, at.y, at.z + 0.045), q, one));
+    }
+  }
+  barn.add(frames, doors, braces);
+
+  // A small cupola on the ridge: a white box under its own little pyramid roof.
+  const ridge = 0.4 + H + RISE;
+  add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.7, 0.8), trim), 0, ridge + 0.1, 0);
+  const cap = add(new THREE.Mesh(new THREE.ConeGeometry(0.75, 0.6, 4), mat('#3b3f45', 0.7)), 0, ridge + 0.75, 0);
+  cap.rotation.y = Math.PI / 4;
+  return barn;
+}
+
+/**
+ * A round-crowned shade tree: a trunk and a crown of a few lumpy green balls (flat-shaded, so it
+ * reads as a tree from afar), drawn when the maple cannot be loaded. `crown` is returned too.
+ */
+function makeTree() {
+  const tree = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.28, 2.4, 8), new THREE.MeshStandardMaterial({ color: '#6b4a2e', roughness: 1 }));
+  trunk.position.y = 1.2;
+  tree.add(trunk);
+  const crown = new THREE.Group();
+  crown.position.y = 2.2; // swings from the top of the trunk
+  for (const [x, y, z, r, color] of [
+    [0, 1.3, 0, 1.45, '#3f7d34'],
+    [0.95, 0.9, 0.35, 1.05, '#4a8f3c'],
+    [-0.95, 0.95, -0.2, 1.1, '#356b2c'],
+    [0.25, 2.0, -0.15, 1.0, '#4f9640'],
+    [-0.3, 0.8, 0.8, 0.9, '#3a7530'],
+  ]) {
+    const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), new THREE.MeshStandardMaterial({ color, roughness: 0.95, flatShading: true }));
+    ball.position.set(x, y, z);
+    crown.add(ball);
+  }
+  tree.add(crown);
+  return { tree, crown };
+}
+
 /** The bounds of a skinned model as posed (Box3 alone ignores the bones), from a sample of its vertices. */
 function skinnedBox(root) {
   root.updateMatrixWorld(true);
@@ -236,7 +417,8 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
   const sky = new THREE.Color('#bcd7e6');
   scene.background = sky;
   scene.fog = new THREE.Fog(sky, 14, 42);
-  scene.add(new THREE.HemisphereLight('#e8f2ff', '#5b4a35', 1.3));
+  const fill = new THREE.HemisphereLight('#e8f2ff', '#5b4a35', 1.3);
+  scene.add(fill);
   const sun = new THREE.DirectionalLight('#fff3dd', 2.2);
   sun.position.set(4, 9, 6);
   scene.add(sun);
@@ -305,6 +487,93 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
   // The pasture's long grass: made the first time the pasture is shown, then only hidden or shown.
   let grass = null;
   const grassTime = { value: 0 };
+  // The rest of the pasture, made with the grass: a wooden fence (the posts and rail in wood, a second
+  // rail lower down), the stable block far off, clouds drifting, and the sky of the hour in Vietnam.
+  // Elsewhere the rail is white and the sky plain.
+  const WOOD = '#7a5636';
+  const lowerRail = new THREE.Mesh(new THREE.BoxGeometry(TRACK_LENGTH, 0.07, 0.07), white);
+  lowerRail.position.set(0, 0.55, -3.4);
+  lowerRail.visible = false;
+  world.add(lowerRail);
+  let barn = null;
+  let tree = null;
+  let disposed = false;
+  let clouds = null;
+  let pastureSky = null;
+  let skyCheckedAt = -Infinity;
+  const BARN_X = -5.5;
+  const TREE_X = 4.2;
+  const BARN_LOOP = 40; // walking, the barn comes round again every 40 m
+  const showSky = (now) => {
+    const s = pastureSkyAt(vietnamHour());
+    skyCheckedAt = now;
+    if (s === pastureSky) return;
+    pastureSky = s;
+    if (scene.background?.isTexture) scene.background.dispose();
+    scene.background = skyTexture(s.sky, s.horizon);
+    scene.fog.color.set(s.horizon);
+    sun.color.set(s.sun[0]);
+    sun.intensity = s.sun[1];
+    fill.color.set(s.fill[0]);
+    fill.intensity = s.fill[1];
+    for (const c of clouds?.children || []) c.material.color.set(s.clouds);
+  };
+  const setPasture = (on) => {
+    if (on && !barn) {
+      // The farm house far across the pasture (the drawn barn if it won't load).
+      barn = new THREE.Group();
+      barn.position.set(BARN_X, 0, -18);
+      barn.rotation.y = 0.1;
+      world.add(barn);
+      loadScenery(FARM_HOUSE)
+        .then((gltf) => {
+          if (disposed) return;
+          const house = sized(gltf, 'x', HOUSE_WIDTH);
+          house.rotation.y = HOUSE_TURN;
+          barn.add(house);
+        })
+        .catch(() => {
+          if (disposed) return;
+          const drawn = makeBarn();
+          drawn.scale.setScalar(0.75);
+          barn.add(drawn);
+        });
+      // A maple on the right, nearer than the barn, just behind the fence (the drawn tree if it won't load).
+      tree = new THREE.Group();
+      tree.position.set(TREE_X, 0, -15);
+      world.add(tree);
+      loadScenery(MAPLE_TREE)
+        .then((gltf) => !disposed && tree.add(sized(gltf, 'y', TREE_HEIGHT)))
+        .catch(() => !disposed && tree.add(makeTree().tree));
+      world.add(barn);
+      clouds = new THREE.Group();
+      const puff = cloudTexture();
+      for (let i = 0; i < 7; i += 1) {
+        const cloud = new THREE.Sprite(new THREE.SpriteMaterial({ map: puff, transparent: true, depthWrite: false, fog: false }));
+        cloud.position.set(-30 + i * 9 + (i % 2) * 3, 7.5 + (i % 3) * 1.6, -30 - (i % 4) * 3);
+        cloud.scale.set(9 + (i % 3) * 2, 4 + (i % 2), 1);
+        clouds.add(cloud);
+      }
+      scene.add(clouds);
+    }
+    white.color.set(on ? WOOD : '#f4f2ec');
+    white.roughness = on ? 0.85 : 0.6;
+    lowerRail.visible = on;
+    if (barn) barn.visible = on;
+    if (tree) tree.visible = on;
+    if (clouds) clouds.visible = on;
+    if (on) showSky(performance.now());
+    else if (pastureSky) {
+      pastureSky = null;
+      if (scene.background?.isTexture) scene.background.dispose();
+      scene.background = sky;
+      scene.fog.color.copy(sky);
+      sun.color.set('#fff3dd');
+      sun.intensity = 2.2;
+      fill.color.set('#e8f2ff');
+      fill.intensity = 1.3;
+    }
+  };
 
   // The sore leg: a pulsing red ring at its hoof.
   const marker = new THREE.Mesh(new THREE.RingGeometry(0.11, 0.16, 32), new THREE.MeshBasicMaterial({ color: '#ef4444', transparent: true, opacity: 0.9, depthTest: false }));
@@ -428,8 +697,23 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
       if (trackTexture) trackTexture.offset.x = (travelled / TILE_M) % 1;
       placePosts(travelled);
       if (grass) grass.position.x = -(travelled % GRASS_PATCH);
+      // Walking, the barn and the tree go by and come round again every BARN_LOOP metres.
+      const loop = (x) => ((((x - travelled) % BARN_LOOP) + BARN_LOOP * 1.5) % BARN_LOOP) - BARN_LOOP / 2;
+      if (barn) barn.position.x = loop(BARN_X);
+      if (tree) tree.position.x = loop(TREE_X);
     }
     if (grass?.visible && !reduceMotion) grassTime.value = now / 1000;
+    // The tree leans with the same gusts as the grass, a little, from its foot.
+    if (tree?.visible && !reduceMotion) {
+      const t = now / 1000;
+      tree.rotation.z = -0.006 - 0.008 * Math.sin(t * 1.6 - TREE_X * 0.7);
+      tree.rotation.x = 0.004 * Math.sin(t * 2.2);
+    }
+    // Clouds drift slowly to the right, round and round; the sky follows the clock, checked each minute.
+    if (clouds?.visible) {
+      if (!reduceMotion) for (const c of clouds.children) c.position.x = ((c.position.x + dt * 0.35 + 40) % 80) - 40;
+      if (now - skyCheckedAt > 60000) showSky(now);
+    }
     if (mixer) {
       // Bones a clip doesn't drive keep what they were given last frame: start each frame from rest,
       // so the bends below are applied once, not added up frame after frame.
@@ -493,6 +777,7 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
         world.add(grass);
       }
       if (grass) grass.visible = Boolean(SURFACES[next].grass);
+      setPasture(Boolean(SURFACES[next].grass));
     },
     resize(width, height) {
       renderer.setSize(width, height, false);
@@ -500,12 +785,15 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
       camera.updateProjectionMatrix();
     },
     dispose() {
+      disposed = true;
       cancelAnimationFrame(raf);
       io.disconnect();
       controls.dispose();
       mixer?.stopAllAction();
       trackTexture?.dispose();
       shadowTexture.dispose();
+      if (scene.background?.isTexture) scene.background.dispose();
+      clouds?.children[0]?.material.map?.dispose();
       scene.traverse((o) => {
         if (o.isSkinnedMesh) {
           o.material?.dispose?.();
