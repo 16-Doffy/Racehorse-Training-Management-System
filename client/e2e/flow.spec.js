@@ -302,13 +302,14 @@ test('owner health tab shows routine care on the same 3D horse as the injuries, 
   const body = page.locator('.vet-ui', { has: page.locator('.ant-segmented') });
   // No injury is open, so the care layer opens first: the cracked hoof in red, the shot on the left of the neck.
   await expect(body.getByText('Chăm sóc định kỳ', { exact: true })).toBeVisible();
-  const hoof = body.getByRole('button', { name: /^Móng trước phải: .*Đóng móng mới/ });
+  // The pins are found by their labels, not their role: <model-viewer> hides them while the model is still loading.
+  const hoof = body.locator('button.vet-hs[aria-label^="Móng trước phải:"][aria-label*="Đóng móng mới"]');
   await expect(hoof).toHaveCount(1);
   await expect(hoof).toHaveAttribute('style', /#ef4444/);
-  await expect(body.getByRole('button', { name: /^Tiêm phòng · Cổ trái: .*Cúm ngựa/ })).toHaveCount(1);
+  await expect(body.locator('button.vet-hs[aria-label^="Tiêm phòng · Cổ trái:"][aria-label*="Cúm ngựa"]')).toHaveCount(1);
   // One horse on the tab: the injury layer takes the care pins away.
   await body.getByText('Chấn thương', { exact: true }).click();
-  await expect(body.getByRole('button', { name: /^Móng trước phải/ })).toHaveCount(0);
+  await expect(body.locator('button.vet-hs[aria-label^="Móng trước phải"]')).toHaveCount(0);
   await expect(body.getByRole('radio', { name: /Ngoài da/ })).toBeVisible();
 });
 test('owner horse page shows the horse moving as its health allows', async ({ page }) => {
