@@ -49,6 +49,7 @@ export const NOTIFICATION_TYPE = {
   session_scheduled: { label: 'Lịch tập', icon: 'session' },
   restock_decision: { label: 'Đề xuất kho', icon: 'supplies' },
   low_stock: { label: 'Kho sắp hết', icon: 'supplies' },
+  stock_update: { label: 'Kho vật tư', icon: 'supplies' },
   incident_report: { label: 'Sự cố', icon: 'warning' },
   incident_update: { label: 'Sự cố', icon: 'warning' },
   exam_request: { label: 'Lịch khám', icon: 'exam' },

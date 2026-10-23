@@ -26,6 +26,7 @@ const notificationSchema = new mongoose.Schema(
         // To the Manager: someone asked for supplies (or proposed a new item).
         'restock_request',
         'low_stock', // to the Manager and trainers: an item in use runs out within days
+        'stock_update', // to the grooms: the Manager added an item to the storeroom or counted a delivery in
         'training_restricted', // the vet lowered how hard a recovering horse may work
         'horse_assigned',
         'session_completed',
