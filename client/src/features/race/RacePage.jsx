@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Table, Button, Typography, Modal, Form, Select, DatePicker, InputNumber, Input, Tag, Space, Tooltip, Radio, Alert, Empty } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, FlagOutlined, ScheduleOutlined, WarningOutlined } from '@ant-design/icons';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { raceApi } from './raceApi';
@@ -10,6 +10,7 @@ import { horsesApi } from '../horses/horsesApi';
 import { trainingSessionApi, trainingPlanApi } from '../training/trainingApi';
 import { SURFACE_LABELS, surfaceOptions, DONE_STATUSES } from '../training/trainingVocab';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
+import { newestFirst } from '../../utils/newestFirst';
 
 const { Text } = Typography;
 
@@ -201,6 +202,11 @@ export default function RacePage() {
   const navigate = useNavigate();
 
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
+  // A notification about one horse's race (?horse=<id>) shows that horse's entries only.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusHorse = searchParams.get('horse');
+  const shownRaces = focusHorse ? (data?.data || []).filter((r) => String(r.horse?._id || r.horse) === focusHorse) : data?.data;
+  const focusName = focusHorse ? (data?.data || []).find((r) => String(r.horse?._id || r.horse) === focusHorse)?.horse?.name : null;
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const { data: trialsData } = useQuery({
@@ -425,10 +431,15 @@ export default function RacePage() {
         />
       )}
 
+      {focusHorse && (
+        <Tag closable onClose={() => setSearchParams({}, { replace: true })} color="gold" className="!mb-3">
+          Đang xem riêng {focusName || 'ngựa được chọn'} · bấm × để xem tất cả
+        </Tag>
+      )}
       <Table
         rowKey="_id"
         columns={columns}
-        dataSource={data?.data}
+        dataSource={newestFirst(shownRaces)}
         loading={isLoading && !data}
         scroll={{ x: 'max-content' }}
         locale={{

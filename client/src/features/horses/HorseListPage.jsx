@@ -16,6 +16,7 @@ import HorseNextStep from './HorseNextStep';
 import { HORSE_SEX_LABELS } from '../../constants/horse';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import HorseFormModal from './HorseFormModal';
+import { newestFirst } from '../../utils/newestFirst';
 
 const { Title } = Typography;
 
@@ -466,7 +467,7 @@ export default function HorseListPage() {
       <Table
         rowKey="_id"
         columns={columns}
-        dataSource={view === 'archived' ? archivedHorses : horses}
+        dataSource={newestFirst(view === 'archived' ? archivedHorses : horses)}
         loading={view === 'archived' ? archivedLoading && !archivedData : isLoading && !data}
         scroll={{ x: 'max-content' }}
         locale={{

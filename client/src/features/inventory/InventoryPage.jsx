@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Table,
   Typography,
@@ -32,6 +33,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { inventoryApi } from './inventoryApi';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
+import { newestFirst } from '../../utils/newestFirst';
 
 const { Text } = Typography;
 
@@ -308,7 +310,22 @@ export default function InventoryPage() {
   const { data: forecastData } = useQuery({ queryKey: ['inventory-forecast'], queryFn: () => inventoryApi.forecast() });
   const forecastById = new Map((forecastData?.data || []).map((f) => [String(f._id), f]));
 
-  const [tab, setTab] = useState('feed');
+  const [pickedTab, setTab] = useState(null);
+  // A notification about one item (?item=<id>, with tab=requests for a supply request) opens its row,
+  // highlighted: the item in its category's list, or its requests in the queue above.
+  const [searchParams] = useSearchParams();
+  const focusItem = searchParams.get('item');
+  const focusRequests = searchParams.get('tab') === 'requests';
+  const focusCategory = focusItem && !focusRequests ? items.find((i) => i._id === focusItem)?.category : null;
+  // The tab picked by hand, else the notified item's category, else food.
+  const tab = pickedTab || focusCategory || 'feed';
+  useEffect(() => {
+    if (!focusItem || !data) return undefined;
+    const timer = setTimeout(() => document.querySelector('[data-focus="item"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 400);
+    return () => clearTimeout(timer);
+  }, [focusItem, data, tab]);
+  const itemFocus = (r) => (focusItem && !focusRequests && r._id === focusItem ? { className: 'row-focus', 'data-focus': 'item' } : {});
+  const requestFocus = (r) => (focusItem && r.itemId === focusItem ? { className: 'row-focus', 'data-focus': 'item' } : {});
   const [editing, setEditing] = useState(null); // null = closed, {} = new item, item = edit
   const [receiving, setReceiving] = useState(null);
   const [rejecting, setRejecting] = useState(null);
@@ -364,6 +381,7 @@ export default function InventoryPage() {
         blocking: Boolean(r.task),
         requestedBy: r.requestedBy?.name || r.requestedBy,
         requestedAt: r.requestedAt,
+        lastChange: r.receivedAt || r.reviewedAt || r.requestedAt,
       }))
   );
 
@@ -539,7 +557,7 @@ export default function InventoryPage() {
 
   const stock = items.filter((i) => !i.isProposed);
   const tabItems = CATEGORIES.map((c) => {
-    const rows = stock.filter((i) => i.category === c.key).sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    const rows = newestFirst(stock.filter((i) => i.category === c.key));
     const alerts = rows.filter((r) => r.isActive !== false && (r.quantity <= 0 || (r.reorderLevel > 0 && r.quantity <= r.reorderLevel))).length;
     return {
       key: c.key,
@@ -563,6 +581,7 @@ export default function InventoryPage() {
             rowKey="_id"
             columns={columnsFor(c.key)}
             dataSource={rows}
+            onRow={itemFocus}
             loading={isLoading && !data}
             scroll={{ x: 'max-content' }}
             pagination={{ pageSize: 20, hideOnSinglePage: true }}
@@ -652,7 +671,8 @@ export default function InventoryPage() {
           <Table
             rowKey="key"
             columns={requestColumns}
-            dataSource={pendingRequests}
+            dataSource={newestFirst(pendingRequests, 'lastChange')}
+            onRow={requestFocus}
             loading={isLoading && !data}
             pagination={false}
             scroll={{ x: 'max-content' }}

@@ -9,6 +9,8 @@ const notificationSchema = new mongoose.Schema(
     // Set when the notification is about one specific session, so a fitness alert can be traced
     // back to the workout that produced it instead of only to the horse.
     trainingSession: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingSession', default: null },
+    // The stock item a supply notification is about, so the bell can open that row of the stock list.
+    inventoryItem: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem', default: null },
     type: {
       type: String,
       enum: [

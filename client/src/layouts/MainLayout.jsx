@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ConfigProvider, Layout, Menu, Avatar, Dropdown, Segmented } from 'antd';
+import { ConfigProvider, Layout, Menu, Avatar, Dropdown, Segmented, Badge } from 'antd';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   UserOutlined, 
   LogoutOutlined, 
@@ -15,6 +16,8 @@ import { siderCollapsedSet } from '../store/uiSlice';
 import { getMenuByRole } from './menuConfig';
 import { ROLE_LABELS } from '../constants/roles';
 import AlertBell from '../features/alerts/AlertBell';
+import { notificationsApi } from '../features/alerts/notificationsApi';
+import { notificationTarget, menuKeyFor } from '../features/alerts/notificationTarget';
 import { disconnectSocket } from '../lib/socket';
 import { fileHref } from '../lib/files';
 import { FOREST, MENU_SECTION_LABEL, usesForestTheme, usesCanvasPicker, CANVAS_PRESETS, LIGHT_CANVAS, DARK_CANVAS, FULL_DARK_ROLES, BOOTSTRAP_ROLES, canvasOf, getForestTheme } from './forestTheme';
@@ -61,6 +64,28 @@ export default function MainLayout() {
 
   const menuItems = getMenuByRole(user?.role);
   const currentPath = location.pathname;
+  // Unread notifications by the menu entry they lead to (notificationTarget.js): a red count on the
+  // entry, and clicking it opens the newest one's spot on that page and clears them.
+  const queryClient = useQueryClient();
+  const { data: notifData } = useQuery({ queryKey: ['notifications'], queryFn: () => notificationsApi.list(), enabled: Boolean(user) });
+  const unreadByMenu = new Map();
+  for (const n of notifData?.data || []) {
+    if (n.isRead) continue;
+    const target = notificationTarget(n, user?.role);
+    const key = menuKeyFor(target, menuItems);
+    if (!key) continue;
+    if (!unreadByMenu.has(key)) unreadByMenu.set(key, []);
+    unreadByMenu.get(key).push({ n, target });
+  }
+  const openMenu = (m) => {
+    const waiting = (unreadByMenu.get(m.key) || []).sort((a, b) => new Date(b.n.createdAt) - new Date(a.n.createdAt));
+    navigate(waiting[0]?.target || m.path);
+    if (waiting.length) {
+      Promise.all(waiting.map(({ n }) => notificationsApi.markRead(n._id)))
+        .catch(() => {})
+        .finally(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }));
+    }
+  };
   // Every role gets the forest sidebar and chooses a light or dark canvas (forestTheme.js).
   const forest = usesForestTheme(user?.role);
   const canvas = usesCanvasPicker(user?.role);
@@ -200,10 +225,22 @@ export default function MainLayout() {
             theme={forest ? 'dark' : 'light'}
             mode="inline"
             selectedKeys={[selectedKey]}
-            items={menuItems.map((m) => ({ key: m.key, icon: m.icon, label: <span className="font-medium text-sm">{m.label}</span> }))}
+            items={menuItems.map((m) => {
+              const count = unreadByMenu.get(m.key)?.length || 0;
+              return {
+                key: m.key,
+                icon: siderCollapsed && count ? <Badge dot offset={[2, 0]}>{m.icon}</Badge> : m.icon,
+                label: (
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-sm truncate">{m.label}</span>
+                    {count > 0 && <Badge count={count} size="small" overflowCount={99} title={`${count} thông báo chưa xem`} />}
+                  </span>
+                ),
+              };
+            })}
             onClick={({ key }) => {
               const target = menuItems.find((m) => m.key === key);
-              if (target) navigate(target.path);
+              if (target) openMenu(target);
             }}
             className={forest ? 'border-r-0' : 'border-r-0 !bg-white'}
           />

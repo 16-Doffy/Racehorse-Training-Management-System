@@ -72,6 +72,7 @@ import {
   TRAINER_ABORT_OPTIONS,
   TRIAL_MIN_RACE_SHARE,
 } from './trainingVocab';
+import { newestFirst } from '../../utils/newestFirst';
 
 const { Text } = Typography;
 const { useBreakpoint } = Grid;
@@ -106,7 +107,9 @@ export default function TrainingSessionPage() {
   const [activeSession, setActiveSession] = useState(null);
   const [typeFilter, setTypeFilter] = useState('all');
   // The week view is how a trainer reads training: what each horse does each day.
-  const [view, setView] = useState('week');
+  // A notification about one session (?session=<id>) opens the list on that row, highlighted.
+  const focusSession = searchParams.get('session');
+  const [view, setView] = useState(() => (searchParams.get('session') ? 'list' : 'week'));
   const [weekStart, setWeekStart] = useState(() => mondayOf(dayjs()));
   const [createForm] = Form.useForm();
   const [evalForm] = Form.useForm();
@@ -157,6 +160,13 @@ export default function TrainingSessionPage() {
     },
   });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
+  const listRows = newestFirst(sessionsData?.data);
+  const focusIndex = focusSession ? listRows.findIndex((r) => r._id === focusSession) : -1;
+  useEffect(() => {
+    if (focusIndex < 0) return undefined;
+    const timer = setTimeout(() => document.querySelector('[data-focus="session"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+    return () => clearTimeout(timer);
+  }, [focusIndex]);
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const { data: racesData } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
   const draftSessionType = Form.useWatch('sessionType', createForm);
@@ -824,10 +834,15 @@ export default function TrainingSessionPage() {
 
       <Table
         className={view === 'week' ? 'hidden' : ''}
+        rowClassName={(r) => (focusSession && r._id === focusSession ? 'row-focus' : '')}
+        onRow={(r) => (focusSession && r._id === focusSession ? { 'data-focus': 'session' } : {})}
         rowKey="_id"
         columns={columns}
-        dataSource={sessionsData?.data}
+        dataSource={listRows}
         loading={isLoading && !sessionsData}
+        // Opened on the page holding the session a notification points at (remounted once it is found).
+        key={focusIndex >= 0 ? `focus-${focusSession}` : 'list'}
+        pagination={focusIndex >= 0 ? { defaultCurrent: Math.floor(focusIndex / 10) + 1 } : undefined}
         scroll={{ x: 'max-content' }}
         expandable={{
           expandedRowRender: (r) => (

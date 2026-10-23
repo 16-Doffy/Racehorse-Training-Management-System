@@ -22,6 +22,7 @@ import {
   PLAN_STATUS_COLORS,
   sessionTimeLabel,
 } from './trainingVocab';
+import { newestFirst } from '../../utils/newestFirst';
 
 const { Title, Text } = Typography;
 
@@ -199,8 +200,8 @@ export default function TrainingPlanPage() {
   const { data: racesData } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
   const lockedHorseIds = useLockedHorseIds();
   const plans = plansData?.data || [];
-  const active = plans.filter((p) => p.status === 'active');
-  const others = plans.filter((p) => p.status !== 'active');
+  const active = newestFirst(plans.filter((p) => p.status === 'active'));
+  const others = newestFirst(plans.filter((p) => p.status !== 'active'));
 
   const statusMutation = useMutation({
     mutationFn: ({ id, status }) => trainingPlanApi.update(id, { status }),

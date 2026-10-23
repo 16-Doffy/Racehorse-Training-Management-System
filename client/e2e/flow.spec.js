@@ -84,6 +84,22 @@ test('the ration form names the groom who feeds and suggests a meal from the tra
   await expect(dialog.getByText(/TEST Browser Feed/).first()).toBeVisible();
   await dialog.getByRole('button', { name: /Hủy|Huỷ|Cancel/ }).click();
 });
+test('a notification puts a red count on its menu entry and opens the page it is about', async ({ page }) => {
+  await login(page, 'manager');
+  // The fixture's trainer went past amber gates: the Manager is told, about that horse.
+  await expect(page.locator('.ant-menu-item', { hasText: 'Danh mục Ngựa' }).locator('.ant-badge-count')).toBeVisible();
+  await page.locator('.anticon-bell').click();
+  await page.locator('.ant-list-item', { hasText: 'Ghi đè cảnh báo sẵn sàng' }).first().click();
+  await expect(page).toHaveURL(/\/horses\/[0-9a-f]{24}$/);
+});
+test('the care page opens on the tab and horse a notification names', async ({ page }) => {
+  await login(page, 'trainer');
+  await page.goto('/stable/tasks?tab=rations');
+  await expect(page.getByRole('tab', { name: 'Khẩu phần ăn', selected: true })).toBeVisible();
+  await page.goto(`/stable/tasks?tab=tasks&horse=${fixture.horseId}`);
+  await expect(page.getByRole('tab', { name: 'Công việc chăm sóc', selected: true })).toBeVisible();
+  await expect(page.getByText(/Đang xem riêng TEST Browser Horse/)).toBeVisible();
+});
 test('trainer opens one horse’s schedule from the sessions page, not its profile', async ({ page }) => {
   await login(page, 'trainer');
   await page.goto('/training/sessions');

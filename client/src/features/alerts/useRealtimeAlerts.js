@@ -30,6 +30,7 @@ export const TYPE_LABELS = {
   race_decision: 'Quyết định dự giải',
   race_review: 'Cần xem lại quyết định dự giải',
   incident_update: 'Cập nhật sự cố',
+  meal_missed: 'Bữa ăn bị lỡ',
   system: 'Thông báo hệ thống',
 };
 

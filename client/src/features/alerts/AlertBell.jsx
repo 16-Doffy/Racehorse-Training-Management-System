@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { Badge, Dropdown, List, Typography, Tag, Empty } from 'antd';
 import {
   BellOutlined,
@@ -9,6 +12,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/vi';
 import { useRealtimeAlerts, TYPE_LABELS } from './useRealtimeAlerts';
+import { notificationTarget } from './notificationTarget';
 
 dayjs.extend(relativeTime);
 dayjs.locale('vi');
@@ -25,13 +29,15 @@ const SEVERITY_META = {
   info: { color: '#1677ff', icon: <InfoCircleFilled /> },
 };
 
-function NotificationRow({ item, onMarkRead }) {
+function NotificationRow({ item, onMarkRead, onOpen, target }) {
   const meta = SEVERITY_META[item.severity] || SEVERITY_META.info;
   return (
     <List.Item
       className={`!px-4 !py-3 items-start cursor-pointer hover:bg-gray-50 transition-colors ${!item.isRead ? 'bg-blue-50/60' : ''}`}
       onClick={() => {
         if (!item.isRead && onMarkRead) onMarkRead(item._id);
+        // Opens the page of this role where the thing is dealt with, on that thing.
+        if (target) onOpen(target);
       }}
     >
       <div className="flex gap-3 w-full">
@@ -52,6 +58,7 @@ function NotificationRow({ item, onMarkRead }) {
           </Text>
           <Text type="secondary" className="!text-xs">
             {dayjs(item.createdAt).fromNow()}
+            {target ? ' · Bấm để mở' : ''}
           </Text>
         </div>
         {!item.isRead && <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 shrink-0" title="Chưa đọc - Nhấp để đánh dấu đã đọc" />}
@@ -62,10 +69,19 @@ function NotificationRow({ item, onMarkRead }) {
 
 export default function AlertBell() {
   const { notifications, unreadCount, markAllRead, markOneRead } = useRealtimeAlerts();
+  const role = useSelector((state) => state.auth.user?.role);
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const openTarget = (target) => {
+    setOpen(false);
+    navigate(target);
+  };
 
   return (
     <Dropdown
       trigger={['click']}
+      open={open}
+      onOpenChange={setOpen}
       // Opening the bell deliberately does NOT mark everything read. Glancing at the list is not
       // the same as having dealt with it — an unread training lock or incident report should
       // survive until the reader clears it, either per-row or with the header action below.
@@ -82,7 +98,7 @@ export default function AlertBell() {
           <List
             dataSource={notifications}
             locale={{ emptyText: <Empty description="Không có thông báo" className="!py-6" /> }}
-            renderItem={(item) => <NotificationRow key={item._id} item={item} onMarkRead={markOneRead} />}
+            renderItem={(item) => <NotificationRow key={item._id} item={item} onMarkRead={markOneRead} onOpen={openTarget} target={notificationTarget(item, role)} />}
           />
         </div>
       )}

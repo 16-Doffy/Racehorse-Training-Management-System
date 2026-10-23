@@ -13,8 +13,8 @@ const { ROLES } = require('../../constants/roles');
  * `extraRooms` lets a caller target more than the recipient alone (e.g. also `horse:<id>` so an
  * Owner watching that horse gets it too) — recipientRole/recipientUser are always included.
  */
-async function pushNotification({ recipientUser, recipientRole, horse, trainingSession, type, severity = 'info', message, extraRooms = [] }) {
-  const notification = await Notification.create({ recipientUser, recipientRole, horse, trainingSession, type, severity, message });
+async function pushNotification({ recipientUser, recipientRole, horse, trainingSession, inventoryItem, type, severity = 'info', message, extraRooms = [] }) {
+  const notification = await Notification.create({ recipientUser, recipientRole, horse, trainingSession, inventoryItem, type, severity, message });
   const populated = await notification.populate('horse', 'name');
 
   const io = getIO();

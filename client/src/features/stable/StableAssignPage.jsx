@@ -29,7 +29,7 @@ import {
   StopOutlined,
   MedicineBoxOutlined,
 } from '@ant-design/icons';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { dailyTaskApi, incidentApi, stallApi, stableAssignmentApi } from './stableApi';
@@ -53,6 +53,7 @@ import {
   INCIDENT_SEVERITY_META,
   incidentStatusOf,
 } from '../../constants/care';
+import { newestFirst } from '../../utils/newestFirst';
 
 const { Text } = Typography;
 const STATUS_LABELS = { pending: 'Chưa thực hiện', completed: 'Đã hoàn thành', skipped: 'Đã bỏ qua' };
@@ -76,7 +77,34 @@ const FEED_TYPE_LABELS = Object.fromEntries(FEED_TYPE_OPTIONS.map((o) => [o.valu
 /* Worklist                                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * A notification opens this page on one horse (?horse=<id>): each list shows that horse's rows only,
+ * with a tag to see everything again.
+ */
+function useHorseFocus() {
+  const [params, setParams] = useSearchParams();
+  const horse = params.get('horse');
+  const clear = () => {
+    const next = new URLSearchParams(params);
+    next.delete('horse');
+    setParams(next, { replace: true });
+  };
+  return { horse, clear };
+}
+const horseIdOf = (row) => String(row?.horse?._id || row?.horse || '');
+const ofHorse = (rows, horse) => (horse ? (rows || []).filter((r) => horseIdOf(r) === horse) : rows);
+function HorseFocusTag({ focus, rows }) {
+  if (!focus.horse) return null;
+  const name = (rows || []).find((r) => horseIdOf(r) === focus.horse)?.horse?.name || 'ngựa được chọn';
+  return (
+    <Tag closable onClose={focus.clear} color="gold" className="!mb-3">
+      Đang xem riêng {name} · bấm × để xem tất cả
+    </Tag>
+  );
+}
+
 function TaskList() {
+  const focus = useHorseFocus();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form] = Form.useForm();
@@ -363,10 +391,11 @@ function TaskList() {
         </Button>
       </div>
 
+      <HorseFocusTag focus={focus} rows={data?.data} />
       <Table
         rowKey="_id"
         columns={columns}
-        dataSource={data?.data}
+        dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
         loading={isLoading}
         scroll={{ x: 'max-content' }}
         locale={{ emptyText: 'Chưa có công việc nào. Việc cho ăn sẽ tự xuất hiện khi ngựa đã được xếp chuồng và có người chăm sóc.' }}
@@ -467,6 +496,7 @@ function TaskList() {
 /* -------------------------------------------------------------------------- */
 
 function RationList() {
+  const focus = useHorseFocus();
   const policy = useClubPolicy();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -707,10 +737,11 @@ function RationList() {
         </Button>
       </div>
 
+      <HorseFocusTag focus={focus} rows={data?.data} />
       <Table
         rowKey="_id"
         columns={columns}
-        dataSource={data?.data}
+        dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
         loading={isLoading}
         scroll={{ x: 'max-content' }}
         locale={{ emptyText: 'Chưa có khẩu phần nào. Ngựa không có khẩu phần chỉ được tạo 1 việc cho ăn chung mỗi ngày.' }}
@@ -932,6 +963,7 @@ const INCIDENT_FILTERS = [
  * needs the list because an open report keeps the horse's medical readiness gate amber.
  */
 function IncidentsList() {
+  const focus = useHorseFocus();
   const [filter, setFilter] = useState('unresolved');
   const { data, isLoading } = useQuery({
     queryKey: ['incidents', filter],
@@ -1005,10 +1037,11 @@ function IncidentsList() {
         </Typography.Text>
         <Segmented options={INCIDENT_FILTERS} value={filter} onChange={setFilter} />
       </div>
+      <HorseFocusTag focus={focus} rows={data?.data} />
       <Table
         rowKey="_id"
         columns={columns}
-        dataSource={data?.data}
+        dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
         loading={isLoading}
         scroll={{ x: 'max-content' }}
         locale={{ emptyText: filter === 'unresolved' ? 'Không có sự cố nào đang chờ xử lý.' : 'Chưa có sự cố nào.' }}
@@ -1020,6 +1053,8 @@ function IncidentsList() {
 /* -------------------------------------------------------------------------- */
 
 export default function StableAssignPage() {
+  const [params, setParams] = useSearchParams();
+  const tab = ['tasks', 'rations', 'incidents'].includes(params.get('tab')) ? params.get('tab') : 'tasks';
   return (
     <div>
       <PageHeroBanner
@@ -1030,6 +1065,9 @@ export default function StableAssignPage() {
       />
 
       <Tabs
+        activeKey={tab}
+        onChange={(key) => setParams({ tab: key }, { replace: true })}
+        destroyOnHidden
         items={[
           { key: 'tasks', label: 'Công việc chăm sóc', children: <TaskList /> },
           { key: 'rations', label: 'Khẩu phần ăn', children: <RationList /> },
