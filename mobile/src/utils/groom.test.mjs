@@ -13,6 +13,8 @@ import {
   getStockLevel,
   hasApprovedRation,
   isOpenRequest,
+  needsAction,
+  primaryAction,
   rationLine,
   restockState,
   summarizeTasks,
@@ -316,4 +318,23 @@ test('the stable map: the colour of a stall, its zones in order, and the groom\'
   assert.deepEqual(my.stalls.map((s) => s.code), ['A-01', 'CL-01', 'A-06']);
   assert.deepEqual(my.unplaced.map((u) => u.horse.name), ['Gió Bấc']);
   assert.deepEqual(myStallsOf({ stalls, unplaced }, undefined), { stalls: [], unplaced: [] }, 'nobody signed in owns nothing');
+});
+
+test('each row offers the one button its state calls for', () => {
+  assert.deepEqual(primaryAction(task()), { key: 'complete' });
+  assert.equal(primaryAction(task({ timing: { state: 'upcoming', canComplete: false } })), null, 'not time yet: no button');
+  assert.equal(primaryAction(task({ status: 'completed' })), null);
+  const short = task({ supplyStatus: { ok: false, missing: [{ name: 'Cỏ khô', needed: 5, available: 1, unit: 'kg' }] } });
+  assert.deepEqual(primaryAction(short), { key: 'restock' });
+  const noRation = task({ taskType: 'feeding', mealSlot: null });
+  assert.deepEqual(primaryAction(noRation, { rations: [ration] }), { key: 'notDone', reason: 'Chưa có khẩu phần được duyệt' });
+  const missed = task({ timing: { state: 'missed', canComplete: false } });
+  assert.deepEqual(primaryAction(missed), { key: 'notDone' }, 'missed with no window to record late: report it');
+});
+
+test('a missed meal still needs the groom until it is reported; a recorded one does not', () => {
+  assert.equal(needsAction(task({ timing: { state: 'missed', canComplete: false } })), true);
+  assert.equal(needsAction(task({ status: 'completed' })), false);
+  assert.equal(needsAction(task({ status: 'skipped', skippedBy: GROOM, skipReason: 'x' })), false);
+  assert.equal(needsAction(task({ timing: { state: 'upcoming', canComplete: false } })), true);
 });

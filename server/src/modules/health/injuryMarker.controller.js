@@ -110,13 +110,19 @@ const listMarkers = asyncHandler(async (req, res) => {
   return ok(res, markers, 'Injury markers fetched.');
 });
 
+// POST /health/injury-markers — an injury is recorded as just found: it cannot be filed in treatment
+// or already healed. Its stage moves on afterwards, with its treatment or by the vet (PUT).
 const createMarker = asyncHandler(async (req, res) => {
   const body = pick(req.body, MARKER_FIELDS);
+  if (body.recoveryStatus !== undefined && body.recoveryStatus !== null && body.recoveryStatus !== 'new') {
+    return fail(res, 'Chấn thương mới ghi luôn ở giai đoạn "Mới phát hiện" — chuyển giai đoạn sau khi lưu.', 400);
+  }
+  delete body.recoveryStatus;
   const problem = locationProblem(body);
   if (problem) return fail(res, problem, 400);
   if (!(await canAccessHorse(req.user, body.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
 
-  const marker = await InjuryMarker.create({ ...body, markedBy: req.user._id });
+  const marker = await InjuryMarker.create({ ...body, recoveryStatus: 'new', markedBy: req.user._id });
   await syncHorseHealthStatus(marker.horse);
   return created(res, marker, 'Injury marker created.');
 });

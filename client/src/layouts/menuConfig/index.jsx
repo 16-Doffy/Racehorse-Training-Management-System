@@ -31,7 +31,7 @@ const MENUS = {
     { key: 'horses', icon: <ProfileOutlined />, label: 'Danh mục Ngựa', path: '/horses' },
     { key: 'stables', icon: <HomeOutlined />, label: 'Chuồng trại & NV chăm sóc', path: '/admin/stables' },
     { key: 'reports', icon: <BarChartOutlined />, label: 'Báo cáo Tổng quan', path: '/admin/reports' },
-    { key: 'inventory', icon: <ShoppingOutlined />, label: 'Vật tư & Thức ăn', path: '/inventory' },
+    { key: 'inventory', icon: <ShoppingOutlined />, label: 'Kho vật tư', path: '/inventory' },
     { key: 'finance', icon: <DollarOutlined />, label: 'Báo cáo Tài chính', path: '/finance' },
     { key: 'audit', icon: <FileTextOutlined />, label: 'Nhật ký Hệ thống', path: '/admin/audit-logs' },
   ],

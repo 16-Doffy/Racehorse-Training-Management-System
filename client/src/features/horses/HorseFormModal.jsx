@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Button, DatePicker, Form, Input, InputNumber, Modal, Segmented, Select } from 'antd';
+import { Alert, Button, DatePicker, Form, Input, InputNumber, Modal, Segmented, Select } from 'antd';
+import { ArrowLeftOutlined, CheckCircleFilled } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import Horse3D from './horse3d/Horse3D';
 import { BREEDS, COATS, REGIONS, coatValueOfBreed } from './horse3d/horseBreeds';
@@ -19,18 +20,23 @@ const Swatch = ({ color }) => (
 );
 
 const TABS = { profile: 'Hồ sơ', staff: 'Phụ trách', stall: 'Chuồng' };
-const TAB_OF_FIELD = {
-  name: 'profile', breed: 'profile', color: 'profile', dob: 'profile', weightKg: 'profile', sex: 'profile',
-  microchipNumber: 'profile', registrationNumber: 'profile', valuationVnd: 'profile',
-  owner: 'staff', assignedTrainer: 'staff', assignedVet: 'staff',
-  stall: 'stall', caretaker: 'stall',
+const STEP_FIELDS = {
+  profile: ['name', 'breed', 'color', 'sex', 'dob', 'weightKg', 'microchipNumber', 'registrationNumber', 'valuationVnd'],
+  staff: ['owner', 'assignedTrainer', 'assignedVet'],
+  stall: ['stall', 'caretaker'],
 };
+const TAB_OF_FIELD = Object.fromEntries(Object.entries(STEP_FIELDS).flatMap(([tab, fields]) => fields.map((f) => [f, tab])));
 
 /**
  * The horse's record, for the Manager: the horse in 3D with what has been filled in so far on the left,
- * and the form in three short steps on the right — the horse itself, the people responsible for it,
- * and (for a new horse) the stall it goes into with its groom. Every step stays mounted, so saving
- * from any step checks them all and opens the one with a mistake.
+ * and the form in three steps on the right — the horse itself, the people responsible for it, and
+ * (for a new horse) the stall it goes into with its groom.
+ *
+ * A new horse enters the club only whole: each step is checked before the next one opens, and "Thêm
+ * ngựa" is on the last step alone — a horse without its owner, trainer and vet is seen by nobody who
+ * should see it, and one without a stall gets no groom and no daily care. Editing a horse on record
+ * keeps every step open and saves from any of them. Every step stays mounted, so saving checks them
+ * all and opens the one with a mistake.
  */
 export default function HorseFormModal({
   open,
@@ -50,6 +56,8 @@ export default function HorseFormModal({
 }) {
   const [tab, setTab] = useState('profile');
   const [failed, setFailed] = useState([]);
+  // How far a new horse has got: a step opens once every step before it checks out.
+  const [reached, setReached] = useState(0);
   const v = {
     name: Form.useWatch('name', form),
     breed: Form.useWatch('breed', form),
@@ -64,9 +72,36 @@ export default function HorseFormModal({
   };
   const creating = !editTarget;
   const tabs = Object.keys(TABS);
-  const next = tabs[tabs.indexOf(tab) + 1];
+  const index = tabs.indexOf(tab);
+  const next = tabs[index + 1];
+  const prev = tabs[index - 1];
   const pickedStall = stalls.find((s) => s._id === v.stall) || null;
   const groomOptions = grooms.map((g) => ({ value: g._id, label: g.name }));
+  const freeStalls = stalls.filter((s) => !s.occupied && s.status !== 'maintenance').length;
+  // What a new horse needs on each step before it can be added.
+  const need = (message) => (creating ? [{ required: true, message }] : []);
+  const complete = {
+    profile: !!(v.name?.trim() && v.breed && v.sex && v.dob),
+    staff: !!(v.owner && v.trainer && v.vet),
+    stall: !!(v.stall && v.caretaker),
+  };
+
+  // Forward, a new horse goes one checked step at a time; back, or when editing, anywhere.
+  const goTo = async (target) => {
+    const to = tabs.indexOf(target);
+    if (!creating || to <= index) return setTab(target);
+    for (let i = index; i < to; i += 1) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await form.validateFields(STEP_FIELDS[tabs[i]]);
+      } catch {
+        setFailed((f) => [...new Set([...f, tabs[i]])]);
+        return setTab(tabs[i]);
+      }
+    }
+    setReached((r) => Math.max(r, to));
+    return setTab(target);
+  };
 
   // Picking a breed fills in the coat it is known for, unless the Manager already chose another.
   const onBreedChange = (nextBreed) => {
@@ -84,18 +119,21 @@ export default function HorseFormModal({
     ...(creating && pickedStall ? [['Chăm sóc', labelOf(groomOptions, v.caretaker)]] : []),
   ];
 
-  const okText = editTarget ? 'Lưu' : pickedStall ? `Thêm & xếp vào ${pickedStall.code}` : 'Thêm ngựa';
+  const okText = editTarget ? 'Lưu' : pickedStall ? `Thêm ngựa vào ${pickedStall.code}` : 'Thêm ngựa';
   const refreshFailed = () => setFailed([...new Set(form.getFieldsError().filter((f) => f.errors.length).map((f) => TAB_OF_FIELD[f.name[0]]))]);
+  // A new horse is added from its last step only, once a stall and its groom are chosen.
+  const canAdd = !creating || (tab === tabs[tabs.length - 1] && freeStalls > 0);
 
   return (
     <Modal
-      title={editTarget ? `Sửa hồ sơ — ${editTarget.name}` : 'Thêm ngựa mới'}
+      title={editTarget ? `Sửa hồ sơ — ${editTarget.name}` : `Thêm ngựa mới · bước ${index + 1}/${tabs.length}`}
       open={open}
       onCancel={onCancel}
       afterOpenChange={(isOpen) => {
         if (!isOpen) return;
         setTab('profile');
         setFailed([]);
+        setReached(0);
       }}
       destroyOnHidden
       width={980}
@@ -103,14 +141,21 @@ export default function HorseFormModal({
         <Button key="cancel" onClick={onCancel}>
           Hủy
         </Button>,
+        creating && prev ? (
+          <Button key="back" icon={<ArrowLeftOutlined />} onClick={() => setTab(prev)}>
+            Quay lại
+          </Button>
+        ) : null,
         next ? (
-          <Button key="next" onClick={() => setTab(next)}>
+          <Button key="next" type={creating ? 'primary' : 'default'} onClick={() => goTo(next)}>
             Tiếp: {TABS[next]}
           </Button>
         ) : null,
-        <Button key="ok" type="primary" loading={saving} onClick={() => form.submit()}>
-          {okText}
-        </Button>,
+        canAdd ? (
+          <Button key="ok" type="primary" loading={saving} onClick={() => form.submit()}>
+            {okText}
+          </Button>
+        ) : null,
       ]}
     >
       <Form
@@ -157,24 +202,32 @@ export default function HorseFormModal({
               block
               className="!mb-4"
               value={tab}
-              onChange={setTab}
+              onChange={goTo}
               options={tabs.map((key, i) => ({
                 value: key,
+                // A new horse's later steps open only through the step before them.
+                disabled: creating && i > reached + 1,
                 label: (
                   <span>
-                    {i + 1}. {TABS[key]}
+                    {complete[key] && !failed.includes(key) ? <CheckCircleFilled className="mr-1.5 text-emerald-600" /> : `${i + 1}. `}
+                    {TABS[key]}
                     {failed.includes(key) ? <span className="hf-tab-error" aria-label="có lỗi" /> : null}
                   </span>
                 ),
               }))}
             />
+            {creating && (
+              <p className="hf-muted -mt-2 mb-3 text-xs">
+                Ngựa mới chỉ được thêm khi đủ 3 bước: hồ sơ, người phụ trách (chủ, HLV, bác sĩ) và chuồng cùng nhân viên chăm sóc.
+              </p>
+            )}
 
             <div hidden={tab !== 'profile'}>
               <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
                 <Form.Item name="name" label="Tên ngựa" rules={[{ required: true, message: 'Nhập tên ngựa' }]} className="!mb-3">
                   <Input placeholder="VD: Thunder Bolt" />
                 </Form.Item>
-                <Form.Item name="breed" label="Giống" className="!mb-3">
+                <Form.Item name="breed" label="Giống" rules={need('Chọn giống ngựa')} className="!mb-3">
                   <Select
                     allowClear
                     showSearch
@@ -207,11 +260,11 @@ export default function HorseFormModal({
                     )}
                   />
                 </Form.Item>
-                <Form.Item name="sex" label="Giới tính" className="!mb-3">
+                <Form.Item name="sex" label="Giới tính" rules={need('Chọn giới tính')} className="!mb-3">
                   <Select allowClear placeholder="Chọn giới tính" options={horseSexOptions} />
                 </Form.Item>
-                <Form.Item name="dob" label="Ngày sinh" className="!mb-3">
-                  <DatePicker className="w-full" format="DD/MM/YYYY" placeholder="Chọn ngày" />
+                <Form.Item name="dob" label="Ngày sinh" rules={need('Chọn ngày sinh')} className="!mb-3">
+                  <DatePicker className="w-full" format="DD/MM/YYYY" placeholder="Chọn ngày" disabledDate={(d) => d && d.isAfter(dayjs(), 'day')} />
                 </Form.Item>
                 <Form.Item name="weightKg" label="Cân nặng (kg)" className="!mb-3">
                   <InputNumber min={50} max={1200} className="!w-full" placeholder="VD: 480" />
@@ -244,12 +297,13 @@ export default function HorseFormModal({
             </div>
 
             <div hidden={tab !== 'staff'}>
-              <Form.Item name="owner" label="Chủ sở hữu" className="!mb-3">
+              <Form.Item name="owner" label="Chủ sở hữu" rules={need('Chọn chủ sở hữu')} className="!mb-3">
                 <Select allowClear showSearch optionFilterProp="label" placeholder="Chọn chủ sở hữu" options={ownerOptions} />
               </Form.Item>
               <Form.Item
                 name="assignedTrainer"
                 label="Huấn luyện viên phụ trách"
+                rules={need('Chọn HLV phụ trách')}
                 extra="Chỉ HLV được gán mới thấy và lập kế hoạch huấn luyện cho ngựa này."
                 className="!mb-3"
               >
@@ -258,6 +312,7 @@ export default function HorseFormModal({
               <Form.Item
                 name="assignedVet"
                 label="Bác sĩ thú y phụ trách"
+                rules={need('Chọn bác sĩ phụ trách')}
                 extra="Yêu cầu khám cho ngựa này sẽ gửi thẳng tới bác sĩ được gán."
                 className="!mb-1"
               >
@@ -268,14 +323,29 @@ export default function HorseFormModal({
             <div hidden={tab !== 'stall'}>
               {creating ? (
                 <>
-                  <p className="hf-muted mb-3 text-xs">
-                    Không bắt buộc. Chọn một chuồng trống thì ngựa được xếp vào ngay khi lưu, và người chăm sóc chuồng đó nhận việc cho ăn, cho thuốc của ngựa.
-                  </p>
-                  <Form.Item name="stall" label="Chuồng" className="!mb-3">
+                  {freeStalls === 0 ? (
+                    <Alert
+                      className="!mb-3"
+                      type="error"
+                      showIcon
+                      title="Trại không còn chuồng trống"
+                      description="Ngựa mới phải vào một chuồng. Thêm chuồng hoặc dời một ngựa ra ở trang Chuồng trại, rồi quay lại thêm ngựa."
+                      action={
+                        <Button size="small" onClick={onOpenStable}>
+                          Mở Chuồng trại
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <p className="hf-muted mb-3 text-xs">
+                      Chọn một chuồng trống ({freeStalls} chuồng còn trống). Ngựa vào chuồng ngay khi thêm, và nhân viên chăm sóc chuồng đó nhận việc cho ăn, cho thuốc của ngựa.
+                    </p>
+                  )}
+                  <Form.Item name="stall" label="Chuồng" rules={need('Chọn chuồng cho ngựa')} className="!mb-3">
                     <StallPicker stalls={stalls} allowClear />
                   </Form.Item>
                   {pickedStall && (
-                    <Form.Item name="caretaker" label="Nhân viên chăm sóc" className="!mb-1">
+                    <Form.Item name="caretaker" label="Nhân viên chăm sóc" rules={need('Chọn nhân viên chăm sóc')} className="!mb-1">
                       <CaretakerSelect grooms={grooms} stalls={stalls} unplaced={unplaced} stall={pickedStall} />
                     </Form.Item>
                   )}

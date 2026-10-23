@@ -249,7 +249,7 @@ tự hoàn tất mọi bước hồi phục: tiếp tục theo dõi sức khỏe
 
 **Groom — Thêm → Vật tư; Trainer/Vet có quyền đề xuất tương ứng.**
 
-Đề xuất mặt hàng hiện có/mới → Manager mở **Vật tư & Thức ăn** (`/inventory`)
+Đề xuất mặt hàng hiện có/mới → Manager mở **Kho vật tư** (`/inventory`)
 duyệt/từ chối → duyệt thì chờ hàng, tồn chưa tăng → hàng về, **Nhận hàng** trên
 đề xuất → tồn tăng, đề xuất `received`. Nhận lại cùng đề xuất bị từ chối.
 

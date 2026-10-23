@@ -484,7 +484,11 @@ function ExamForm({ horse, presetLevel }) {
                         <div className="d-flex flex-wrap align-items-center gap-2">
                           <span className="fw-semibold">{shortBodyPart(d.bodyPart)}</span>
                           <Pill tone={SEVERITY_META[d.severity]?.tone}>{SEVERITY_META[d.severity]?.label || d.severity}</Pill>
-                          <Pill tone={recoveryMeta(d.recoveryStatus).tone}>{recoveryMeta(d.recoveryStatus).label}</Pill>
+                          {prescribing ? (
+                            <Pill tone={recoveryMeta('in_treatment').tone}>→ {recoveryMeta('in_treatment').label} khi lưu</Pill>
+                          ) : (
+                            <Pill tone={recoveryMeta('new').tone}>{recoveryMeta('new').label}</Pill>
+                          )}
                         </div>
                         {d.notes && <div className="vet-small vet-muted mt-1">{d.notes}</div>}
                       </div>

@@ -28,14 +28,15 @@ test('manager gives a feed its kind, and the stock list shows it', async ({ page
   await login(page, 'manager');
   await page.goto('/inventory');
   await expect(page.getByRole('row', { name: /TEST Browser Feed/ }).getByText('Thức ăn tinh', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /Thêm vật tư mới/ }).click();
+  await page.getByRole('button', { name: /Thêm vào kho/ }).first().click();
   const dialog = page.getByRole('dialog');
+  // The form opens on feed; the kind of item is chosen from three cards.
+  await expect(dialog.locator('.inv-kind.is-on')).toContainText('Dùng trong khẩu phần');
   await dialog.getByLabel('Tên vật tư').fill('TEST Dầu hạt lanh UI');
-  await dialog.getByLabel('Đơn vị dùng').fill('lít');
-  await dialog.getByLabel('Loại thức ăn').click();
-  await page.getByTitle('Bổ sung', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'lít', exact: true }).click();
+  await dialog.getByText('Bổ sung', { exact: true }).click();
   await expect(dialog.getByText('Không tính là một bữa ăn.', { exact: false })).toBeVisible();
-  await dialog.getByRole('button', { name: 'Thêm', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Thêm thức ăn', exact: true }).click();
   await expect(page.getByRole('row', { name: /TEST Dầu hạt lanh UI/ }).getByText('Bổ sung', { exact: true })).toBeVisible();
 });
 test('trainer sees scheduled training and recorded race result', async ({ page }) => {
@@ -52,13 +53,34 @@ test('a horse added with its papers shows them on its profile', async ({ page })
   await page.goto('/horses');
   await page.getByRole('button', { name: /Thêm ngựa mới/ }).first().click();
   const dialog = page.getByRole('dialog');
+  // A new horse is added only with all three steps done: its record, its people, its stall.
   await dialog.getByLabel('Tên ngựa').fill('TEST Papers Horse');
+  await expect(dialog.getByRole('button', { name: /Thêm ngựa/ })).toHaveCount(0);
+  await dialog.getByRole('button', { name: /Tiếp: Phụ trách/ }).click();
+  // The step refuses to go on without a breed: the field says so (its placeholder reads the same).
+  await expect(dialog.locator('.ant-form-item-explain-error', { hasText: 'Chọn giống ngựa' })).toBeVisible();
+  // The breed picker's search box (the label also names its list and its help line).
+  await dialog.locator('input[id$="breed"]').click();
+  await page.keyboard.type('Thoroughbred');
+  await page.keyboard.press('Enter');
   await dialog.getByLabel('Giới tính').click();
   await page.getByTitle('Ngựa đực giống', { exact: true }).click();
+  await dialog.getByLabel('Ngày sinh').fill('01/01/2020');
+  await page.keyboard.press('Enter');
   await dialog.getByLabel('Số vi mạch').fill('985141000123456');
   await dialog.getByLabel('Số đăng ký').fill('VN-2026-777');
   await dialog.getByLabel('Định giá (₫)').fill('500000000');
-  await dialog.getByRole('button', { name: 'Thêm ngựa', exact: true }).click();
+  await dialog.getByRole('button', { name: /Tiếp: Phụ trách/ }).click();
+  for (const [label, name] of [['Chủ sở hữu', 'TEST owner'], ['Huấn luyện viên phụ trách', 'TEST trainer'], ['Bác sĩ thú y phụ trách', 'TEST vet']]) {
+    await dialog.getByLabel(label).click();
+    // Only the list that is open: an earlier picker's list stays in the page, hidden.
+    await page.locator('.ant-select-dropdown:visible').getByTitle(name, { exact: true }).click();
+  }
+  await dialog.getByRole('button', { name: /Tiếp: Chuồng/ }).click();
+  await dialog.getByRole('radio', { name: /^A-04/ }).click();
+  await dialog.getByLabel('Nhân viên chăm sóc').click();
+  await page.locator('.ant-select-item-option', { hasText: 'TEST groom' }).first().click();
+  await dialog.getByRole('button', { name: 'Thêm ngựa vào A-04', exact: true }).click();
   await expect(dialog).toBeHidden();
   await page.locator('.ant-table-row', { hasText: 'TEST Papers Horse' }).first().click();
   await expect(page).toHaveURL(/\/horses\/[0-9a-f]{24}$/);
@@ -132,11 +154,11 @@ test('trainer horse list counts from the real health status and checklist', asyn
   await login(page, 'trainer');
   await page.goto('/horses');
   // The fixture horse is examined as eligible with no restriction and has an active plan.
-  const bannerStat = (label) => page.locator('span').filter({ hasText: new RegExp(`^${label}:$`, 'i') }).locator('xpath=following-sibling::span[1]');
-  await expect(bannerStat('đủ điều kiện tập')).toHaveText('1 con');
-  await expect(bannerStat('cần theo dõi')).toHaveText('0 con');
-  const kpi = (label) => page.locator('div').filter({ hasText: new RegExp(`^${label}$`, 'i') }).locator('xpath=following-sibling::div[1]');
-  await expect(kpi('chưa có kế hoạch')).toHaveText(/^0\s*ngựa/);
+  // The count tiles (which double as filters) read the real health status and checklist.
+  const tile = (label) => page.getByRole('button').filter({ has: page.getByText(label, { exact: true }) });
+  await expect(tile('Đủ điều kiện tập')).toContainText(/1\s*ngựa/);
+  await expect(tile('Theo dõi y tế')).toContainText(/0\s*ngựa/);
+  await expect(tile('Chưa có kế hoạch')).toContainText(/0\s*ngựa/);
 });
 for (const role of ['manager', 'trainer', 'vet', 'owner', 'groom']) {
   test(`${role} gets the light/dark switch and opens dark when a dark canvas is saved in the browser`, async ({ page }) => {
