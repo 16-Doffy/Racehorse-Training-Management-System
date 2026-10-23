@@ -120,7 +120,9 @@ test('the care page opens on the tab and horse a notification names', async ({ p
   await expect(page.getByRole('tab', { name: 'Khẩu phần ăn', selected: true })).toBeVisible();
   await page.goto(`/stable/tasks?tab=tasks&horse=${fixture.horseId}`);
   await expect(page.getByRole('tab', { name: 'Công việc chăm sóc', selected: true })).toBeVisible();
-  await expect(page.getByText(/Đang xem riêng TEST Browser Horse/)).toBeVisible();
+  await expect(page.getByText('Đang xem riêng:')).toBeVisible();
+  await expect(page.getByText('TEST Browser Horse', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /Xem tất cả ngựa/ })).toBeVisible();
 });
 test('the care tab lists the horses; one opens its feeding timetable and its jobs', async ({ page }) => {
   await login(page, 'trainer');
@@ -129,8 +131,8 @@ test('the care tab lists the horses; one opens its feeding timetable and its job
   await page.locator('.ant-table-row', { hasText: 'TEST Browser Horse' }).first().click();
   await expect(page).toHaveURL(/horse=[0-9a-f]{24}/);
   const timetable = page.getByRole('region', { name: 'Thời khóa biểu cho ăn' });
-  await expect(timetable.getByText(/Nhân viên chăm sóc: TEST groom/)).toBeVisible();
-  await expect(timetable.getByRole('cell', { name: 'Sáng', exact: true })).toBeVisible();
+  await expect(timetable.getByTitle('Nhân viên chăm sóc')).toHaveText('TEST groom');
+  await expect(timetable.getByRole('cell', { name: 'Bữa sáng', exact: true })).toBeVisible();
   await expect(page.getByText('Các việc của ngựa này')).toBeVisible();
 });
 test('trainer opens one horse’s schedule from the sessions page, not its profile', async ({ page }) => {

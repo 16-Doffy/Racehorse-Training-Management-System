@@ -118,7 +118,7 @@ function HorseFocusTag({ focus, rows }) {
     <div className="mb-3.5 flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-[#FAF7F0] border border-[#D4AF37]/40 shadow-2xs">
       <div className="flex items-center gap-2.5 min-w-0">
         <span className="w-2.5 h-2.5 rounded-full bg-[#0F5A43] shrink-0" />
-        <span className="text-xs text-gray-500 font-medium">Đang xem hồ sơ riêng:</span>
+        <span className="text-xs text-gray-500 font-medium">Đang xem riêng:</span>
         <span className="text-sm font-semibold text-emerald-950 truncate">{name}</span>
       </div>
       <button

@@ -111,7 +111,7 @@ export default function FeedingTimetable({ horseId }) {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-gray-900 text-sm">Thời khóa biểu cho ăn</span>
           {timetable?.caretaker ? (
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-900 border border-emerald-200">
+            <span title="Nhân viên chăm sóc" className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-900 border border-emerald-200">
               <UserOutlined className="text-[10px] text-emerald-700" />
               {timetable.caretaker.name}
             </span>
