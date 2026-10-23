@@ -315,8 +315,8 @@ test('owner health tab shows routine care on the same 3D horse as the injuries, 
 test('owner horse page shows the horse moving as its health allows', async ({ page }) => {
   await login(page, 'owner');
   await page.goto(`/horses/${fixture.horseId}`);
-  // The fixture horse was examined and cleared for full work, and no session is running: it grazes.
-  await expect(page.locator('.own-hero canvas')).toHaveAttribute('aria-label', /Khỏe · thư giãn gặm cỏ/);
+  // The fixture horse was examined and cleared for full work, and no session is running: it grazes, in the pasture.
+  await expect(page.locator('.own-hero canvas')).toHaveAttribute('aria-label', /Khỏe · thư giãn gặm cỏ, trên đồng cỏ/);
   await expect(page.locator('.own-hero').getByText(/Mô hình 3D chuyển động/)).toBeVisible();
 });
 test('owner horse page shows the horse in its stall, with no way to move it', async ({ page }) => {

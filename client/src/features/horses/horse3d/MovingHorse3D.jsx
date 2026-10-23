@@ -4,7 +4,7 @@ import { MOVING_HORSE } from './horseMotion';
 
 const GLASS = { background: 'rgba(1,17,12,.62)', border: '1px solid rgba(255,255,255,.14)', backdropFilter: 'blur(6px)' };
 const TONES = { alert: '#fca5a5', warn: '#fde68a' };
-const SURFACE_WORDS = { turf: 'mặt cỏ', dirt: 'mặt đất', sand: 'mặt cát', synthetic: 'mặt tổng hợp' };
+const SURFACE_WORDS = { turf: 'mặt cỏ', dirt: 'mặt đất', sand: 'mặt cát', synthetic: 'mặt tổng hợp', pasture: 'đồng cỏ' };
 
 /**
  * A horse in 3D doing something — walking, trotting, galloping, lame, pulled up, grazing, resting —

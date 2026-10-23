@@ -20,10 +20,20 @@ const SURFACES = {
   dirt: { base: '#8a6646', light: '#9c7652', dark: '#6f4f35', harrow: true },
   sand: { base: '#d2bb8d', light: '#e0cca1', dark: '#b89f72', ripples: true },
   synthetic: { base: '#6a4a40', light: '#7d5a4e', dark: '#553a32', fibre: true },
+  // Not a track: a field of long grass waving in the wind, for a horse at rest (the owner's horse page).
+  pasture: { base: '#35672b', light: '#447d37', dark: '#29521f', grass: true },
 };
 const TILE_M = 4; // one texture tile along the track, in metres
 const POST_EVERY = 3; // rail posts, in metres
 const TRACK_LENGTH = 60;
+// The long grass of the pasture: one patch of blades repeated along the field, so it can stream back
+// with the horse's walk by shifting the whole field less than a patch.
+const GRASS_PATCH = 4; // metres along the field
+const GRASS_PATCHES = 9;
+const GRASS_PER_PATCH = 1900;
+// From near the camera to the far rail; the grass is cut short towards the camera (from `mown` on), where
+// long blades would stand taller than the horse.
+const GRASS_DEPTH = { near: 3.2, far: -3.3, mown: 1.0 };
 // The bones bent by hand, by the start of their names (the exporter adds numbers). The rig names them
 // after a human arm, one joint off: on the right foreleg UpperArm turns at the elbow (0.9 m up),
 // Forearm at the knee (0.48 m), Hand at the fetlock (0.22 m), Toe_047_0 is the hoof.
@@ -96,6 +106,90 @@ function surfaceTexture(kind) {
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
   return texture;
+}
+
+/**
+ * The pasture's blades: thin tapered strips, a few hundred per square metre, each its own height, lean
+ * and green. The wind is in the vertex shader (the tip moves most, the root not at all), so waving costs
+ * nothing on the CPU. `time` is the uniform the stage moves on each frame.
+ */
+function makeGrass(time) {
+  const SEGMENTS = 4;
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  const root = new THREE.Color('#24451a');
+  const tip = new THREE.Color('#9ccc5a');
+  for (let i = 0; i <= SEGMENTS; i += 1) {
+    const h = i / SEGMENTS; // 0 at the root, 1 at the tip
+    const half = 0.5 * (1 - h) ** 0.8;
+    const bend = 0.18 * h * h; // a natural droop forward
+    positions.push(-half, h, bend, half, h, bend);
+    const c = root.clone().lerp(tip, h);
+    colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    if (i < SEGMENTS) {
+      const a = i * 2;
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+  const blade = new THREE.BufferGeometry();
+  blade.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  blade.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  blade.setIndex(indices);
+  blade.computeVertexNormals();
+
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = time;
+    shader.vertexShader = `uniform float uTime;
+${shader.vertexShader}`.replace(
+      '#include <project_vertex>',
+      `vec4 mvPosition = instanceMatrix * vec4(transformed, 1.0);
+      // Gusts roll along the field: the same wind for every blade, a little out of step with its neighbours.
+      float sway = position.y * position.y;
+      float gust = sin(uTime * 1.6 - mvPosition.x * 0.7 + mvPosition.z * 0.3) * 0.65 + sin(uTime * 3.1 + mvPosition.x * 2.3 + mvPosition.z * 1.7) * 0.2;
+      mvPosition.x += (0.06 + gust * 0.09) * sway;
+      mvPosition.z += sin(uTime * 2.2 + mvPosition.x * 1.3) * 0.025 * sway;
+      mvPosition = modelViewMatrix * mvPosition;
+      gl_Position = projectionMatrix * mvPosition;`,
+    );
+  };
+
+  const count = GRASS_PER_PATCH * GRASS_PATCHES;
+  const grass = new THREE.InstancedMesh(blade, material, count);
+  grass.frustumCulled = false;
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  // One patch, then the same patch side by side: the field repeats every GRASS_PATCH metres.
+  const patch = Array.from({ length: GRASS_PER_PATCH }, () => {
+    const z = GRASS_DEPTH.far + rnd() * (GRASS_DEPTH.near - GRASS_DEPTH.far);
+    const mown = z > GRASS_DEPTH.mown ? 1 - 0.7 * ((z - GRASS_DEPTH.mown) / (GRASS_DEPTH.near - GRASS_DEPTH.mown)) : 1;
+    return {
+      x: rnd() * GRASS_PATCH,
+      z,
+      turn: rnd() * Math.PI * 2,
+      height: (0.12 + rnd() * 0.18) * mown,
+      width: 0.035 + rnd() * 0.03,
+      shade: 0.8 + rnd() * 0.35,
+    };
+  });
+  const m = new THREE.Matrix4();
+  const rotation = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const color = new THREE.Color();
+  let i = 0;
+  for (let k = 0; k < GRASS_PATCHES; k += 1) {
+    const start = (k - Math.floor(GRASS_PATCHES / 2)) * GRASS_PATCH;
+    for (const b of patch) {
+      rotation.setFromAxisAngle(up, b.turn);
+      m.compose(new THREE.Vector3(start + b.x, 0, b.z), rotation, new THREE.Vector3(b.width, b.height, b.width));
+      grass.setMatrixAt(i, m);
+      grass.setColorAt(i, color.setScalar(b.shade));
+      i += 1;
+    }
+  }
+  grass.instanceMatrix.needsUpdate = true;
+  return grass;
 }
 
 /** The bounds of a skinned model as posed (Box3 alone ignores the bones), from a sample of its vertices. */
@@ -208,6 +302,9 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
     posts.instanceMatrix.needsUpdate = true;
   };
   placePosts(0);
+  // The pasture's long grass: made the first time the pasture is shown, then only hidden or shown.
+  let grass = null;
+  const grassTime = { value: 0 };
 
   // The sore leg: a pulsing red ring at its hoof.
   const marker = new THREE.Mesh(new THREE.RingGeometry(0.11, 0.16, 32), new THREE.MeshBasicMaterial({ color: '#ef4444', transparent: true, opacity: 0.9, depthTest: false }));
@@ -330,7 +427,9 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
       travelled += ((motion.kmh || 0) / 3.6) * dt;
       if (trackTexture) trackTexture.offset.x = (travelled / TILE_M) % 1;
       placePosts(travelled);
+      if (grass) grass.position.x = -(travelled % GRASS_PATCH);
     }
+    if (grass?.visible && !reduceMotion) grassTime.value = now / 1000;
     if (mixer) {
       // Bones a clip doesn't drive keep what they were given last frame: start each frame from rest,
       // so the bends below are applied once, not added up frame after frame.
@@ -389,6 +488,11 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
       trackTexture.repeat.set(TRACK_LENGTH / TILE_M, 7 / TILE_M);
       track.material.map = trackTexture;
       track.material.needsUpdate = true;
+      if (SURFACES[next].grass && !grass) {
+        grass = makeGrass(grassTime);
+        world.add(grass);
+      }
+      if (grass) grass.visible = Boolean(SURFACES[next].grass);
     },
     resize(width, height) {
       renderer.setSize(width, height, false);

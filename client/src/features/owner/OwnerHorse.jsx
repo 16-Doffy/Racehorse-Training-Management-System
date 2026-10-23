@@ -174,6 +174,8 @@ export default function OwnerHorse() {
               breed={horse.breed}
               color={horse.color}
               motion={motion}
+              // At rest it is out in the long grass of the pasture; in a session, on the track.
+              surface={running ? 'dirt' : 'pasture'}
               height={300}
               compact
             />
