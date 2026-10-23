@@ -25,11 +25,11 @@ const navigationRef = createNavigationContainerRef();
 const STOCK_NOTIFICATIONS = ['stock_update', 'restock_decision', 'low_stock'];
 const openNotification = (notification) => {
   if (!navigationRef.isReady()) return;
-  navigationRef.navigate('Tabs', { screen: STOCK_NOTIFICATIONS.includes(notification?.type) ? 'Kho' : 'Tổng quan' });
+  navigationRef.navigate('Tabs', { screen: STOCK_NOTIFICATIONS.includes(notification?.type) ? 'Kho' : 'Trang chủ' });
 };
 
 const TAB_ICONS = {
-  'Tổng quan': 'dashboard',
+  'Trang chủ': 'dashboard',
   'Chăm sóc': 'care',
   Chuồng: 'stable',
   Kho: 'supplies',
@@ -86,7 +86,7 @@ function Tabs() {
         tabBarIcon: ({ focused }) => <TabIcon name={route.name} focused={focused} badge={badges[route.name] || 0} />,
       })}
     >
-      <Tab.Screen name="Tổng quan" component={DashboardScreen} />
+      <Tab.Screen name="Trang chủ" component={DashboardScreen} />
       <Tab.Screen name="Chăm sóc" component={CareScreen} />
       <Tab.Screen name="Chuồng" component={StableMapScreen} />
       <Tab.Screen name="Kho" component={SuppliesScreen} />

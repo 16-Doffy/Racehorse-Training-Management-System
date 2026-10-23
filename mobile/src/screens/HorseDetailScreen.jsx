@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Icon from '../components/Icon';
-import { Badge, Banner, Button, Card, EmptyState, Loading, Row, SectionTitle, Segments } from '../components/ui';
+import { Badge, Banner, Button, EmptyState, Loading, Row, Segments } from '../components/ui';
 import RestockSheet from '../components/RestockSheet';
 import HorseStage from '../components/HorseStage';
 import {
@@ -38,14 +38,15 @@ import {
   rationLine,
   refId,
   restockRequestFor,
+  stallCodeOf,
   taskState,
 } from '../utils/groom';
 import { coatFor } from '../three/horseBreeds';
 import { colors, font, radius, spacing } from '../theme';
 
-// The status colours, lightened to read on the dark 3D stage.
-const ON_DARK = { eligible: '#86efac', monitoring: '#fde047', injured: '#fca5a5', quarantined: '#fdba74' };
-const ON_DARK_LEVEL = { none: '#fca5a5', light: '#fdba74', moderate: '#fde047', high: '#86efac' };
+const STAGE_HEIGHT = 220;
+// How many lines of a history list show before "Xem thêm".
+const FIRST = 4;
 
 // Icons for the kinds of event the timeline endpoint returns.
 const TIMELINE_KIND = {
@@ -59,21 +60,27 @@ const TIMELINE_KIND = {
   routine_care: { icon: 'syringe', color: colors.forestLight },
 };
 
+// Where a task stands, in a word or two: a line of the day has no room for the full label.
+const SHORT_STATE = { ready: 'Bây giờ', upcoming: 'Sắp tới', late: 'Trễ', missed: 'Quá giờ', blocked: 'Bị chặn', completed: 'Xong', unable: 'Không làm', cancelled: 'Bỏ qua' };
+const badgeOf = (state) => (state ? { label: SHORT_STATE[state.key] || state.label, color: state.color, bg: state.bg } : null);
+
 const TABS = [
   { value: 'today', label: 'Hôm nay', icon: 'clock' },
-  { value: 'care', label: 'Khẩu phần & thuốc', icon: 'rations' },
+  { value: 'care', label: 'Ăn & thuốc', icon: 'rations' },
   { value: 'history', label: 'Lịch sử', icon: 'history' },
 ];
 
 /**
- * One horse, in three parts: what has to happen today, what it is supposed to eat and be given,
- * and what has already happened to it. Splitting them keeps each answer a short screen rather than
- * one long scroll of cards.
+ * One horse, kept short: the horse in 3D (with where it is hurt) and one strip of who looks after it
+ * and how its day stands, then three parts behind tabs that stay at the top while scrolling — what
+ * happens today, what it eats and is given, and what has happened to it. Each list shows its first
+ * lines and the rest on "Xem thêm", so no part becomes a long scroll of cards.
  */
 export default function HorseDetailScreen({ route }) {
   const { horseId } = route.params;
   const [tab, setTab] = useState('today');
   const [restock, setRestock] = useState(null);
+  const [expanded, setExpanded] = useState(() => new Set());
 
   const { data, isLoading } = useHorse(horseId);
   const { assignmentByHorseId, lockedHorseIds } = useStableOverview();
@@ -111,8 +118,9 @@ export default function HorseDetailScreen({ route }) {
   const doneCount = todayTasks.filter((t) => t.status === 'completed').length;
   const mealCount = todayTasks.filter((t) => t.taskType === 'feeding').length;
   const doseCount = todayTasks.filter((t) => ['medication', 'monitoring'].includes(t.taskType)).length;
+  const stall = stallCodeOf(assignment);
 
-  // The horse's day in one ordered list: meals from the ration, training, and the care tasks.
+  // The horse's day in one ordered list: meals from the ration, training, the vet's visit and the care tasks.
   const routine = useMemo(
     () =>
       [
@@ -127,11 +135,13 @@ export default function HorseDetailScreen({ route }) {
             color: colors.gold,
             bg: colors.goldSoft,
             label: meal.label || 'Bữa ăn',
-            detail: (s.items || []).map((i) => {
-              const line = rationLine(i);
-              return `${line.label} ${line.amount}`;
-            }).join(' · '),
-            badge: state ? { label: state.label, color: state.color, bg: state.bg } : null,
+            detail: (s.items || [])
+              .map((i) => {
+                const line = rationLine(i);
+                return `${line.label} ${line.amount}`;
+              })
+              .join(' · '),
+            badge: badgeOf(state),
           };
         }),
         ...todaySessions.map((s) => ({
@@ -142,12 +152,7 @@ export default function HorseDetailScreen({ route }) {
           bg: colors.blueSoft,
           label: s.sessionType === 'trial_run' ? 'Chạy thử' : 'Buổi tập',
           // Called off or stopped: why, so the groom knows the horse isn't going out (or came back early).
-          detail:
-            s.status === 'cancelled' && s.cancelReason
-              ? `Đã hủy: ${s.cancelReason}`
-              : s.status === 'aborted' && s.abortReason
-                ? `Dừng giữa chừng: ${s.abortReason}`
-                : s.objective || '',
+          detail: s.status === 'cancelled' && s.cancelReason ? `Đã hủy: ${s.cancelReason}` : s.status === 'aborted' && s.abortReason ? `Dừng giữa chừng: ${s.abortReason}` : s.objective || '',
           badge: SESSION_STATUS[s.status] || { label: s.status, color: colors.textMuted, bg: colors.graySoft },
         })),
         // The vet's visit, when it is today: the horse has to be in its stall and ready.
@@ -170,13 +175,14 @@ export default function HorseDetailScreen({ route }) {
             const state = taskState(t, { rations: feedings, inventory });
             return {
               key: `task-${t._id}`,
-              time: t.dueTime || info.time,
+              // A watch order is for the whole day; the hour on its task is only when it was written.
+              time: t.dueTime || (t.taskType === 'monitoring' ? null : info.time),
               icon: info.icon,
               color: info.color,
               bg: info.bg,
               label: info.label,
               detail: t.taskType === 'other' ? '' : t.note || '',
-              badge: { label: state.label, color: state.color, bg: state.bg },
+              badge: badgeOf(state),
             };
           }),
       ].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99')),
@@ -185,85 +191,105 @@ export default function HorseDetailScreen({ route }) {
 
   if (isLoading) return <Loading />;
 
+  // A list shows its first lines; "Xem thêm" opens the rest.
+  const firstOf = (key, list) => (expanded.has(key) ? list : list.slice(0, FIRST));
+  const more = (key, list) =>
+    list.length > FIRST ? (
+      <Pressable
+        accessibilityRole="button"
+        onPress={() =>
+          setExpanded((s) => {
+            const next = new Set(s);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+          })
+        }
+        style={styles.more}
+        hitSlop={4}
+      >
+        <Text style={styles.moreText}>{expanded.has(key) ? 'Thu gọn' : `Xem thêm ${list.length - FIRST}`}</Text>
+        <Icon name={expanded.has(key) ? 'chevronUp' : 'chevronDown'} size={14} color={colors.forestLight} />
+      </Pressable>
+    ) : null;
+
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* The horse on its stage: turned 360° by hand, with the injuries the vet marked glowing where they are,
-            and whether it may work — the things to know before opening a stall. */}
-        <HorseStage
-          name={horse?.name}
-          subtitle={[
-            assignment?.stableBlock || 'Chưa xếp chuồng',
-            horse?.breed,
-            coat.from !== 'default' ? coat.label : null,
-            horse?.weightKg ? `${horse.weightKg}kg` : null,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
-          coat={coat}
-          badges={[
-            health ? { label: health.label, color: ON_DARK[horse?.healthStatus] || '#a7f3d0', dot: true } : null,
-            clearanceCfg ? { label: clearanceCfg.label, color: ON_DARK_LEVEL[clearance.level] || '#fde68a' } : null,
-            lockedHorseIds.has(horseId) ? { label: 'Khóa huấn luyện', color: '#fca5a5' } : null,
-          ].filter(Boolean)}
-          markers={markers}
-        />
+      {/* The tabs (the second child) stay at the top while the part under them scrolls. */}
+      <ScrollView contentContainerStyle={styles.content} stickyHeaderIndices={[1]}>
+        <View style={{ gap: spacing.md }}>
+          {/* The horse on its stage: turned 360° by hand, with the injuries the vet marked glowing where
+              they are, and whether it may work — the things to know before opening a stall. */}
+          <HorseStage
+            name={horse?.name}
+            subtitle={[stall || assignment?.stableBlock || 'Chưa xếp chuồng', horse?.breed, coat.from !== 'default' ? coat.label : null, horse?.weightKg ? `${horse.weightKg}kg` : null].filter(Boolean).join(' · ')}
+            coat={coat}
+            height={STAGE_HEIGHT}
+            badges={[
+              health ? { label: health.label, color: health.color, bg: health.bg, dot: true } : null,
+              clearanceCfg ? { label: clearanceCfg.label, color: clearanceCfg.color, bg: clearanceCfg.bg } : null,
+              lockedHorseIds.has(horseId) ? { label: 'Khóa huấn luyện', color: colors.red, bg: colors.redSoft } : null,
+            ].filter(Boolean)}
+            markers={markers}
+          />
 
-        <Card style={styles.hero}>
-          <Row style={{ gap: 5 }}>
-            <Icon name="person" size={13} color={colors.textFaint} />
-            <Text style={font.small}>Phụ trách: {assignment?.assignedCaretaker?.name || 'Chưa có người phụ trách'}</Text>
-          </Row>
-          {clearance?.reason ? <Text style={styles.clearanceNote}>{clearance.reason}</Text> : null}
-        </Card>
-
-        <Row style={{ gap: spacing.sm }}>
-          <MiniStat icon="tasks" label="Việc" value={`${doneCount}/${todayTasks.length}`} tint={colors.forest} />
-          <MiniStat icon="rations" label="Bữa ăn" value={mealCount} tint={colors.gold} />
-          <MiniStat icon="medication" label="Thuốc" value={doseCount} tint={colors.red} />
-        </Row>
-
-        {shortages.length > 0 ? (
-          <Banner tone="danger">
-            <Row style={{ gap: spacing.sm, alignItems: 'flex-start' }}>
-              <Icon name="supplies" size={17} color={colors.red} />
-              <View style={{ flex: 1 }}>
-                <Text style={[font.body, { fontWeight: '700' }]}>Kho không đủ cho một ngày của ngựa này</Text>
-                <Text style={font.small}>
-                  {shortages.map((m) => `${m.name}: thiếu ${m.short} ${m.unit}`).join(' · ')}
-                </Text>
-                <Button
-                  title="Xin bổ sung"
-                  icon="plus"
-                  variant="danger"
-                  size="sm"
-                  style={{ marginTop: spacing.sm, alignSelf: 'flex-start' }}
-                  onPress={() => setRestock(restockRequestFor({ missing: shortages, inventory }))}
-                />
-              </View>
+          {/* Who looks after it and how its day stands, in one strip. */}
+          <View style={styles.strip}>
+            <Row style={{ gap: 6 }}>
+              <Icon name="person" size={14} color={colors.textMuted} />
+              <Text style={styles.stripText} numberOfLines={1}>
+                {assignment?.assignedCaretaker?.name || 'Chưa có người phụ trách'}
+              </Text>
+              {stall ? (
+                <View style={styles.stall}>
+                  <Text style={styles.stallText}>{stall}</Text>
+                </View>
+              ) : null}
             </Row>
-          </Banner>
-        ) : null}
+            <Row style={{ gap: spacing.sm }}>
+              <Stat icon="tasks" label="xong" value={`${doneCount}/${todayTasks.length}`} tint={colors.forest} />
+              <Stat icon="rations" label="bữa" value={mealCount} tint={colors.orange} />
+              <Stat icon="medication" label="thuốc" value={doseCount} tint={colors.red} />
+            </Row>
+            {clearance?.reason ? <Text style={styles.clearanceNote}>{clearance.reason}</Text> : null}
+          </View>
 
-        <Segments options={TABS} value={tab} onChange={setTab} />
+          {shortages.length > 0 ? (
+            <Banner tone="danger" style={{ paddingVertical: spacing.sm }}>
+              <Row style={{ gap: spacing.sm }}>
+                <Icon name="supplies" size={17} color={colors.red} />
+                <Text style={[font.small, { flex: 1, color: colors.text }]} numberOfLines={2}>
+                  <Text style={{ fontWeight: '700' }}>Kho thiếu cho ngựa này: </Text>
+                  {shortages.map((m) => `${m.name} (thiếu ${m.short} ${m.unit})`).join(', ')}
+                </Text>
+                <Button title="Xin thêm" size="sm" variant="danger" style={{ minWidth: 0, paddingHorizontal: 10 }} onPress={() => setRestock(restockRequestFor({ missing: shortages, inventory }))} />
+              </Row>
+            </Banner>
+          ) : null}
+        </View>
+
+        <View style={styles.tabs}>
+          <Segments options={TABS} value={tab} onChange={setTab} />
+        </View>
 
         {tab === 'today' ? (
-          <>
-            <Card>
-              <SectionTitle>Lịch trình trong ngày</SectionTitle>
+          <View style={{ gap: spacing.md }}>
+            <Section title="Lịch trình trong ngày" count={routine.length}>
               {routine.length === 0 ? (
                 <EmptyState icon="calendar" text="Hôm nay chưa có lịch nào cho ngựa này" />
               ) : (
                 routine.map((entry) => (
-                  <Row key={entry.key} style={styles.routineRow}>
-                    <Text style={styles.routineTime}>{entry.time || '--:--'}</Text>
-                    <View style={[styles.routineIcon, { backgroundColor: entry.bg }]}>
+                  <Row key={entry.key} style={styles.line}>
+                    <Text style={[styles.time, !entry.time && styles.allDay]}>{entry.time || 'Cả ngày'}</Text>
+                    <View style={[styles.lineIcon, { backgroundColor: entry.bg }]}>
                       <Icon name={entry.icon} size={15} color={entry.color} />
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={font.h3}>{entry.label}</Text>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.lineTitle} numberOfLines={2}>
+                        {entry.label}
+                      </Text>
                       {entry.detail ? (
-                        <Text style={font.small} numberOfLines={2}>
+                        <Text style={font.small} numberOfLines={1}>
                           {entry.detail}
                         </Text>
                       ) : null}
@@ -272,241 +298,246 @@ export default function HorseDetailScreen({ route }) {
                   </Row>
                 ))
               )}
-            </Card>
+            </Section>
 
             {exams.length > 0 ? (
-              <Card>
-                <SectionTitle>Lịch bác sĩ khám</SectionTitle>
+              <Section title="Lịch bác sĩ khám" count={exams.length} note="Giữ ngựa trong chuồng, sẵn sàng khi bác sĩ tới.">
                 {exams.map((e) => (
-                  <Row key={e._id} style={[styles.listRow, { alignItems: 'flex-start', gap: spacing.sm }]}>
-                    <Icon name="exam" size={16} color={colors.purple} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={font.body}>
+                  <Row key={e._id} style={[styles.line, { alignItems: 'flex-start' }]}>
+                    <View style={[styles.lineIcon, { backgroundColor: colors.purpleSoft }]}>
+                      <Icon name="exam" size={15} color={colors.purple} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.lineTitle}>
                         {e.scheduledFor ? `Hẹn ${formatDateTime(e.scheduledFor)}` : 'Chờ bác sĩ nhận và hẹn giờ'}
                         {e.acceptedBy ? ` · BS ${e.acceptedBy}` : ''}
                       </Text>
-                      {e.reason ? <Text style={font.small}>{e.reason}</Text> : null}
+                      {e.reason ? (
+                        <Text style={font.small} numberOfLines={2}>
+                          {e.reason}
+                        </Text>
+                      ) : null}
                     </View>
-                    {e.priority === 'urgent' || e.priority === 'high' ? (
-                      <Badge label={e.priority === 'urgent' ? 'Khẩn' : 'Ưu tiên'} color={colors.red} bg={colors.redSoft} />
-                    ) : null}
+                    {e.priority === 'urgent' || e.priority === 'high' ? <Badge label={e.priority === 'urgent' ? 'Khẩn' : 'Ưu tiên'} color={colors.red} bg={colors.redSoft} /> : null}
                   </Row>
                 ))}
-                <Text style={[font.small, { marginTop: spacing.sm }]}>Giữ ngựa trong chuồng, sẵn sàng khi bác sĩ tới.</Text>
-              </Card>
+              </Section>
             ) : null}
 
-            <Card style={{ marginBottom: spacing.xxl }}>
-              <SectionTitle>Lịch chăm sóc định kỳ</SectionTitle>
-              {care.length === 0 ? (
-                <Text style={font.small}>Không có lịch tiêm phòng, tẩy giun hay kiểm tra móng trong 30 ngày tới.</Text>
-              ) : (
-                care.map((c) => {
+            {care.length === 0 ? (
+              <Row style={styles.quiet}>
+                <Icon name="checkCircle" size={15} color={colors.green} />
+                <Text style={[font.small, { flex: 1 }]}>Không có lịch tiêm phòng, tẩy giun hay kiểm tra móng trong 30 ngày tới.</Text>
+              </Row>
+            ) : (
+              <Section title="Chăm sóc định kỳ sắp tới" count={care.length}>
+                {care.map((c) => {
                   const last = lastCareOf(c.key);
                   return (
-                    <Row key={c.key} style={styles.listRow}>
-                      <Icon name={c.icon} size={16} color={colors.forestLight} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={font.body}>
+                    <Row key={c.key} style={styles.line}>
+                      <View style={[styles.lineIcon, { backgroundColor: colors.forestSoft }]}>
+                        <Icon name={c.icon} size={15} color={colors.forestLight} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.lineTitle}>
                           {c.label} · {formatDate(c.date)}
                         </Text>
-                        {last ? <Text style={font.small}>Lần trước: {formatDate(last.date)}{last.product ? ` · ${last.product}` : ''}</Text> : null}
+                        {last ? (
+                          <Text style={font.small} numberOfLines={1}>
+                            Lần trước: {formatDate(last.date)}
+                            {last.product ? ` · ${last.product}` : ''}
+                          </Text>
+                        ) : null}
                       </View>
-                      <Badge
-                        label={describeDaysLeft(c.daysLeft)}
-                        color={c.daysLeft < 0 ? colors.red : colors.textMuted}
-                        bg={c.daysLeft < 0 ? colors.redSoft : colors.graySoft}
-                      />
+                      <Badge label={describeDaysLeft(c.daysLeft)} color={c.daysLeft < 0 ? colors.red : colors.textMuted} bg={c.daysLeft < 0 ? colors.redSoft : colors.graySoft} />
                     </Row>
                   );
-                })
-              )}
-            </Card>
-          </>
+                })}
+              </Section>
+            )}
+          </View>
         ) : null}
 
         {tab === 'care' ? (
-          <>
+          <View style={{ gap: spacing.md }}>
             {/* The vet's prescription: dose, the hours it is due, and the stock behind it. */}
             {plan?.prescriptions?.length ? (
               plan.prescriptions.map((prescription) => (
-                <Card key={prescription._id} style={styles.vetCard}>
-                  <SectionTitle right={activeTreatment?.isTrainingLocked ? <Badge label="Khóa tập" color={colors.red} bg={colors.redSoft} /> : null}>
-                    Đơn thuốc đang dùng
-                  </SectionTitle>
-                  <Text style={font.small}>
-                    BS {prescription.prescribedBy || '—'} · từ {formatDate(prescription.startDate)}
-                    {prescription.endDate ? ` đến ${formatDate(prescription.endDate)}` : ''}
-                  </Text>
+                <Section
+                  key={prescription._id}
+                  title="Đơn thuốc đang dùng"
+                  accent={colors.red}
+                  right={activeTreatment?.isTrainingLocked ? <Badge label="Khóa tập" color={colors.red} bg={colors.redSoft} /> : null}
+                  note={`BS ${prescription.prescribedBy || '—'} · từ ${formatDate(prescription.startDate)}${prescription.endDate ? ` đến ${formatDate(prescription.endDate)}` : ''}`}
+                  noteOnTop
+                >
                   {prescription.medications.map((medication, index) => (
-                    <View key={index} style={styles.listRow}>
-                      <Row style={{ gap: spacing.sm }}>
-                        <Icon name="medication" size={16} color={colors.red} />
-                        <Text style={[font.h3, { flex: 1 }]}>{medication.name}</Text>
-                        <Text style={styles.qty}>{medication.dosage}</Text>
-                      </Row>
-                      {medication.times?.length || MEDICATION_ROUTE[medication.route] ? (
-                        <Row style={{ gap: 5, marginLeft: 24, flexWrap: 'wrap' }}>
-                          {MEDICATION_ROUTE[medication.route] ? <Badge label={MEDICATION_ROUTE[medication.route]} /> : null}
-                          {(medication.times || []).map((time) => (
-                            <Badge key={time} label={time} color={colors.forest} bg={colors.forestSoft} />
-                          ))}
+                    <View key={index} style={styles.line}>
+                      <View style={[styles.lineIcon, { backgroundColor: colors.redSoft }]}>
+                        <Icon name="medication" size={15} color={colors.red} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                        <Row style={{ gap: spacing.sm }}>
+                          <Text style={[styles.lineTitle, { flex: 1 }]} numberOfLines={2}>
+                            {medication.name}
+                          </Text>
+                          <Text style={styles.qty}>{medication.dosage}</Text>
                         </Row>
-                      ) : null}
-                      <Text
-                        style={[
-                          font.small,
-                          { marginLeft: 24, color: medication.enough === false ? colors.red : colors.textMuted },
-                        ]}
-                      >
-                        {medication.stock
-                          ? `Kho còn ${formatStock(medication.stock, medication.stock.available)}${
-                              medication.dailyNeed ? ` · cần ${medication.dailyNeed} ${medication.stock.unit}/ngày` : ''
-                            }`
-                          : 'Chưa gắn với mặt hàng trong kho'}
-                      </Text>
+                        {medication.times?.length || MEDICATION_ROUTE[medication.route] ? (
+                          <Row style={{ gap: 5, flexWrap: 'wrap' }}>
+                            {MEDICATION_ROUTE[medication.route] ? <Badge label={MEDICATION_ROUTE[medication.route]} /> : null}
+                            {(medication.times || []).map((time) => (
+                              <Badge key={time} label={time} color={colors.forest} bg={colors.forestSoft} />
+                            ))}
+                          </Row>
+                        ) : null}
+                        <Text style={[font.small, { color: medication.enough === false ? colors.red : colors.textMuted }]} numberOfLines={1}>
+                          {medication.stock
+                            ? `Kho còn ${formatStock(medication.stock, medication.stock.available)}${medication.dailyNeed ? ` · cần ${medication.dailyNeed} ${medication.stock.unit}/ngày` : ''}`
+                            : 'Chưa gắn với mặt hàng trong kho'}
+                        </Text>
+                      </View>
                     </View>
                   ))}
                   {prescription.careInstructions ? (
-                    <Row style={[styles.listRow, { gap: spacing.sm }]}>
-                      <Icon name="monitoring" size={16} color={colors.purple} />
+                    <Row style={[styles.line, { alignItems: 'flex-start' }]}>
+                      <View style={[styles.lineIcon, { backgroundColor: colors.purpleSoft }]}>
+                        <Icon name="monitoring" size={15} color={colors.purple} />
+                      </View>
                       <Text style={[font.body, { flex: 1 }]}>{prescription.careInstructions}</Text>
                     </Row>
                   ) : null}
-                </Card>
+                </Section>
               ))
             ) : (
-              <Card>
-                <SectionTitle>Đơn thuốc</SectionTitle>
-                <Text style={font.small}>Ngựa này không có toa thuốc nào đang áp dụng.</Text>
-              </Card>
+              <Row style={styles.quiet}>
+                <Icon name="treatment" size={15} color={colors.textMuted} />
+                <Text style={[font.small, { flex: 1 }]}>Ngựa này không có toa thuốc nào đang áp dụng.</Text>
+              </Row>
             )}
 
-            <Card style={{ marginBottom: spacing.xxl }}>
-              <SectionTitle>Khẩu phần trong ngày</SectionTitle>
+            <Section title="Khẩu phần trong ngày" count={plan?.rations?.length || 0}>
               {!plan?.rations?.length ? (
-                <EmptyState
-                  icon="rations"
-                  text="Chưa có khẩu phần nào được thiết lập"
-                  hint="HLV Trưởng là người lập và duyệt khẩu phần."
-                />
+                <EmptyState icon="rations" text="Chưa có khẩu phần nào được thiết lập" hint="HLV Trưởng là người lập và duyệt khẩu phần." />
               ) : (
                 plan.rations.map((ration) => {
                   const meal = MEAL_CONFIG[ration.mealTime] || {};
                   return (
-                    <View key={ration._id} style={styles.mealRow}>
-                      <Row style={{ justifyContent: 'space-between' }}>
-                        <Row style={{ gap: 6 }}>
-                          <Icon name={meal.icon || 'rations'} size={15} color={colors.forestLight} />
-                          <Text style={font.h3}>{meal.label || ration.mealTime}</Text>
+                    <View key={ration._id} style={[styles.line, { alignItems: 'flex-start' }]}>
+                      <View style={[styles.lineIcon, { backgroundColor: colors.goldSoft }]}>
+                        <Icon name={meal.icon || 'rations'} size={15} color={colors.gold} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                        <Row style={{ justifyContent: 'space-between' }}>
+                          <Text style={styles.lineTitle}>{meal.label || ration.mealTime}</Text>
+                          <Text style={styles.time}>{ration.timeOfDay || meal.defaultTime}</Text>
                         </Row>
-                        <Badge label={ration.timeOfDay || meal.defaultTime} />
-                      </Row>
-                      {ration.items.map((item, index) => (
-                        <View key={index} style={{ paddingVertical: 3 }}>
-                          <Row style={{ justifyContent: 'space-between' }}>
-                            <Row style={{ gap: 6, flex: 1 }}>
-                              <Icon name={getFeedTypeLabel(item.name).icon} size={14} color={colors.forestLight} />
-                              <Text style={font.body}>{item.stock?.name || item.name}</Text>
-                            </Row>
+                        {ration.items.map((item, index) => (
+                          <Row key={index} style={{ gap: 6 }}>
+                            <Icon name={getFeedTypeLabel(item.name).icon} size={13} color={colors.forestLight} />
+                            <Text style={[font.small, { flex: 1, color: colors.text }]} numberOfLines={1}>
+                              {item.stock?.name || item.name}
+                              <Text style={{ color: item.enough === false ? colors.red : colors.textMuted }}>
+                                {item.stock ? ` · kho còn ${formatStock(item.stock, item.stock.available)}` : ' · chưa gắn kho'}
+                              </Text>
+                            </Text>
                             <Text style={styles.qty}>{item.quantity}</Text>
                           </Row>
-                          <Text
-                            style={[
-                              font.small,
-                              { marginLeft: 20, color: item.enough === false ? colors.red : colors.textMuted },
-                            ]}
-                          >
-                            {item.stock
-                              ? `Kho còn ${formatStock(item.stock, item.stock.available)}`
-                              : 'Chưa gắn với mặt hàng trong kho'}
-                          </Text>
-                        </View>
-                      ))}
+                        ))}
+                      </View>
                     </View>
                   );
                 })
               )}
-            </Card>
-          </>
+            </Section>
+          </View>
         ) : null}
 
         {tab === 'history' ? (
-          <>
+          <View style={{ gap: spacing.md }}>
             {/* One line of time across every role, so the groom sees why a horse is being treated. */}
-            <Card>
-              <SectionTitle>Diễn biến gần đây</SectionTitle>
+            <Section title="Diễn biến gần đây" count={events.length}>
               {events.length === 0 ? (
-                <Text style={font.small}>Chưa có hoạt động nào được ghi nhận.</Text>
+                <Text style={[font.small, styles.pad]}>Chưa có hoạt động nào được ghi nhận.</Text>
               ) : (
-                events.slice(0, 20).map((e, index) => {
+                firstOf('events', events.slice(0, 30)).map((e, index) => {
                   const kind = TIMELINE_KIND[e.kind] || { icon: 'note', color: colors.textMuted };
                   return (
-                    <Row key={`${e.at}-${index}`} style={[styles.listRow, { alignItems: 'flex-start', gap: spacing.sm }]}>
-                      <View style={[styles.timelineIcon, { backgroundColor: colors.graySoft }]}>
+                    <Row key={`${e.at}-${index}`} style={[styles.line, { alignItems: 'flex-start' }]}>
+                      <View style={[styles.lineIcon, { backgroundColor: colors.graySoft }]}>
                         <Icon name={kind.icon} size={14} color={kind.color} />
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={font.body}>{e.title}</Text>
-                        {e.detail ? <Text style={font.small}>{e.detail}</Text> : null}
-                        <Text style={font.small}>{formatDateTime(e.at)}</Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.lineTitle} numberOfLines={2}>
+                          {e.title}
+                        </Text>
+                        {e.detail ? (
+                          <Text style={font.small} numberOfLines={2}>
+                            {e.detail}
+                          </Text>
+                        ) : null}
+                        <Text style={styles.when}>{formatDateTime(e.at)}</Text>
                       </View>
                     </Row>
                   );
                 })
               )}
-            </Card>
+              {more('events', events.slice(0, 30))}
+            </Section>
 
             {/* What the vet recorded doing: the groom is asked "when was he last wormed?". Read-only here. */}
-            <Card>
-              <SectionTitle>Tiêm phòng · tẩy giun · đóng móng</SectionTitle>
+            <Section title="Tiêm phòng · tẩy giun · đóng móng" count={careEvents.length}>
               {careEvents.length === 0 ? (
-                <Text style={font.small}>Bác sĩ chưa ghi lần tiêm phòng, tẩy giun hay đóng móng nào.</Text>
+                <Text style={[font.small, styles.pad]}>Bác sĩ chưa ghi lần tiêm phòng, tẩy giun hay đóng móng nào.</Text>
               ) : (
-                careEvents.slice(0, 10).map((e) => {
+                firstOf('care', careEvents).map((e) => {
                   const kind = CARE_EVENT_KIND[e.kind] || { label: e.kind, icon: 'note' };
                   return (
-                    <Row key={e._id} style={[styles.listRow, { alignItems: 'flex-start', gap: spacing.sm }]}>
-                      <View style={[styles.timelineIcon, { backgroundColor: colors.forestSoft }]}>
+                    <Row key={e._id} style={[styles.line, { alignItems: 'flex-start' }]}>
+                      <View style={[styles.lineIcon, { backgroundColor: colors.forestSoft }]}>
                         <Icon name={kind.icon} size={14} color={colors.forestLight} />
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={font.body}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.lineTitle} numberOfLines={1}>
                           {kind.label}
                           {e.product ? ` — ${e.product}` : ''}
                         </Text>
-                        <Text style={font.small}>
-                          {formatDate(e.date)}
-                          {e.performedBy?.name ? ` · ${e.performedBy.name}` : ''}
-                          {e.batchNumber ? ` · Lô ${e.batchNumber}` : ''}
-                          {e.dose ? ` · ${e.dose}` : ''}
+                        <Text style={font.small} numberOfLines={1}>
+                          {[formatDate(e.date), e.performedBy?.name, e.batchNumber ? `Lô ${e.batchNumber}` : null, e.dose].filter(Boolean).join(' · ')}
                         </Text>
-                        {e.note ? <Text style={font.small}>{e.note}</Text> : null}
                         {e.nextDue ? <Text style={[font.small, { color: colors.forestLight }]}>Hẹn lần sau: {formatDate(e.nextDue)}</Text> : null}
                       </View>
                     </Row>
                   );
                 })
               )}
-            </Card>
+              {more('care', careEvents)}
+            </Section>
 
-            <Card style={{ marginBottom: spacing.xxl }}>
-              <SectionTitle>Hồ sơ khám gần đây</SectionTitle>
+            <Section title="Hồ sơ khám" count={records.length}>
               {records.length === 0 ? (
-                <Text style={font.small}>Chưa có hồ sơ khám bệnh nào.</Text>
+                <Text style={[font.small, styles.pad]}>Chưa có hồ sơ khám bệnh nào.</Text>
               ) : (
-                records.slice(0, 8).map((r) => (
-                  <View key={r._id} style={styles.listRow}>
-                    <Text style={font.body}>{r.diagnosis}</Text>
-                    <Text style={font.small}>
-                      {formatDate(r.date || r.createdAt)}
-                      {r.examinedBy?.name ? ` · BS ${r.examinedBy.name}` : ''}
-                    </Text>
-                  </View>
+                firstOf('records', records).map((r) => (
+                  <Row key={r._id} style={[styles.line, { alignItems: 'flex-start' }]}>
+                    <View style={[styles.lineIcon, { backgroundColor: colors.purpleSoft }]}>
+                      <Icon name="exam" size={14} color={colors.purple} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.lineTitle} numberOfLines={2}>
+                        {r.diagnosis}
+                      </Text>
+                      <Text style={styles.when}>
+                        {formatDate(r.date || r.createdAt)}
+                        {r.examinedBy?.name ? ` · BS ${r.examinedBy.name}` : ''}
+                      </Text>
+                    </View>
+                  </Row>
                 ))
               )}
-            </Card>
-          </>
+              {more('records', records)}
+            </Section>
+          </View>
         ) : null}
       </ScrollView>
 
@@ -515,34 +546,66 @@ export default function HorseDetailScreen({ route }) {
   );
 }
 
-/** Three numbers across the top: the day in one glance, without taking a card each. */
-function MiniStat({ icon, label, value, tint }) {
+/** A part of the horse page: its title (and count), a note, and its lines in one card. */
+function Section({ title, count, right, note, noteOnTop = false, accent, children }) {
   return (
-    <Card style={styles.stat}>
-      <Row style={{ gap: 5 }}>
-        <Icon name={icon} size={13} color={tint} />
-        <Text style={font.tiny} numberOfLines={1}>
-          {label}
-        </Text>
+    <View style={[styles.card, accent && { borderLeftWidth: 4, borderLeftColor: accent }]}>
+      <Row style={styles.cardHead}>
+        <Text style={styles.cardTitle}>{title}</Text>
+        {count ? (
+          <View style={styles.count}>
+            <Text style={styles.countText}>{count}</Text>
+          </View>
+        ) : null}
+        <View style={{ marginLeft: 'auto' }}>{right}</View>
       </Row>
+      {note && noteOnTop ? <Text style={[font.small, styles.pad, { marginTop: -4 }]}>{note}</Text> : null}
+      {children}
+      {note && !noteOnTop ? <Text style={[font.small, styles.pad, { paddingBottom: spacing.md }]}>{note}</Text> : null}
+    </View>
+  );
+}
+
+/** One number of the day, beside its label. */
+function Stat({ icon, label, value, tint }) {
+  return (
+    <View style={styles.stat}>
+      <Icon name={icon} size={14} color={tint} />
       <Text style={[styles.statValue, { color: tint }]}>{value}</Text>
-    </Card>
+      <Text style={styles.statLabel} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.cream },
-  content: { padding: spacing.lg, gap: spacing.md },
-  hero: { padding: spacing.md },
-  clearanceNote: { ...font.small, color: colors.orange, marginTop: spacing.sm },
-  stat: { flex: 1, padding: spacing.md, gap: 2 },
-  statValue: { fontSize: 18, fontWeight: '800' },
-  vetCard: { borderLeftWidth: 4, borderLeftColor: colors.red },
-  mealRow: { borderTopWidth: 1, borderTopColor: colors.borderSoft, paddingVertical: spacing.sm, gap: 2 },
+  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
+  strip: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSoft, backgroundColor: colors.white },
+  stripText: { flex: 1, fontSize: 13.5, fontWeight: '700', color: colors.text },
+  stall: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.forest },
+  stallText: { fontSize: 12, fontWeight: '800', color: colors.gold, letterSpacing: 0.3 },
+  stat: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 6, borderRadius: radius.sm, backgroundColor: colors.cream },
+  statValue: { fontSize: 15, fontWeight: '800' },
+  statLabel: { flexShrink: 1, fontSize: 11, color: colors.textMuted, fontWeight: '600' },
+  clearanceNote: { ...font.small, color: colors.orange },
+  // The sticky tabs need their own background, or the cards scroll visibly under them.
+  tabs: { backgroundColor: colors.cream, paddingVertical: spacing.xs },
+  card: { borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSoft, backgroundColor: colors.white, overflow: 'hidden' },
+  cardHead: { gap: 6, paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.sm },
+  cardTitle: { fontSize: 15, fontWeight: '800', color: colors.forest, flexShrink: 1 },
+  count: { minWidth: 20, paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.pill, backgroundColor: colors.graySoft, alignItems: 'center' },
+  countText: { fontSize: 11, fontWeight: '800', color: colors.textMuted },
+  pad: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  line: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 9, borderTopWidth: 1, borderTopColor: colors.borderSoft },
+  lineIcon: { width: 30, height: 30, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
+  lineTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
+  time: { fontSize: 12.5, fontWeight: '800', color: colors.forest, width: 44, fontVariant: ['tabular-nums'] },
+  allDay: { fontSize: 11, color: colors.purple },
+  when: { fontSize: 11.5, color: colors.textFaint, marginTop: 1 },
   qty: { fontWeight: '800', color: colors.text },
-  listRow: { borderTopWidth: 1, borderTopColor: colors.borderSoft, paddingVertical: spacing.sm, gap: 4 },
-  routineRow: { gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderSoft },
-  routineTime: { ...font.small, fontWeight: '700', color: colors.forest, width: 42 },
-  routineIcon: { width: 30, height: 30, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
-  timelineIcon: { width: 28, height: 28, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
+  quiet: { gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSoft, backgroundColor: colors.white },
+  more: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.borderSoft },
+  moreText: { fontSize: 13, fontWeight: '700', color: colors.forestLight },
 });
