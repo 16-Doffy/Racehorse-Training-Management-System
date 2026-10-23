@@ -28,6 +28,7 @@ import {
   DeleteOutlined,
   StopOutlined,
   MedicineBoxOutlined,
+  ProfileOutlined,
 } from '@ant-design/icons';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,6 +43,7 @@ import { feedingApi } from '../feeding/feedingApi';
 import FeedingCalendarPanel from './FeedingCalendarPanel';
 import FeedingTimetable from './FeedingTimetable';
 import CareHorseList from './CareHorseList';
+import RationHorseList from './RationHorseList';
 import { useClubPolicy } from '../training/useClubPolicy';
 import { inventoryApi } from '../inventory/inventoryApi';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
@@ -625,13 +627,14 @@ function RationList() {
   });
 
   const openModal = (record) => {
-    setEditing(record || null);
+    const isEdit = Boolean(record?._id);
+    setEditing(isEdit ? record : null);
     form.setFieldsValue(
       record
         ? {
-            horse: record.horse?._id || record.horse,
-            mealTime: record.mealTime,
-            timeOfDay: dayjs(record.timeOfDay || DEFAULT_MEAL_TIMES[record.mealTime], 'HH:mm'),
+            horse: record.horse?._id || record.horse || focus.horse || undefined,
+            mealTime: record.mealTime || 'morning',
+            timeOfDay: dayjs(record.timeOfDay || DEFAULT_MEAL_TIMES[record.mealTime || 'morning'], 'HH:mm'),
             // Linked items load as stock item + amount; older text items are kept and shown so
             // the trainer can re-pick them from stock.
             items: record.items?.length
@@ -640,7 +643,7 @@ function RationList() {
                 )
               : [{}],
           }
-        : { mealTime: 'morning', timeOfDay: dayjs(DEFAULT_MEAL_TIMES.morning, 'HH:mm'), items: [{}] }
+        : { horse: focus.horse || undefined, mealTime: 'morning', timeOfDay: dayjs(DEFAULT_MEAL_TIMES.morning, 'HH:mm'), items: [{}] }
     );
     setOpen(true);
   };
@@ -650,7 +653,19 @@ function RationList() {
       title: 'Ngựa',
       dataIndex: ['horse', 'name'],
       key: 'horse',
-      render: (name, r) => <Link to={`/horses/${r.horse?._id}`}>{name}</Link>,
+      // The name opens the horse's feeding timetable on this tab; the icon opens its profile.
+      render: (name, r) => (
+        <span className="inline-flex items-center gap-2">
+          <Button type="link" className="!h-auto !p-0" onClick={() => focus.select(horseIdOf(r))}>
+            {name}
+          </Button>
+          <Tooltip title="Hồ sơ ngựa">
+            <Link to={`/horses/${horseIdOf(r)}`} aria-label={`Hồ sơ ${name}`} className="text-gray-400 hover:text-emerald-700">
+              <ProfileOutlined />
+            </Link>
+          </Tooltip>
+        </span>
+      ),
     },
     {
       // The groom who feeds the horse, and what became of this meal today.
@@ -766,26 +781,60 @@ function RationList() {
 
   return (
     <div>
-      <FeedingCalendarPanel plans={plansData?.data || []} horseId={focus.horse} feedItems={feedItems} />
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
-        <Typography.Text type="secondary" className="text-sm max-w-3xl">
-          Mẫu khẩu phần dùng cho ngựa chưa có lịch ăn theo kế hoạch tập. Với ngựa đã có lịch được xác nhận,
-          xem từng ngày và chỉnh giờ ở bảng phía trên. Giờ ăn thực tế là căn cứ kiểm tra trước buổi tập.
-        </Typography.Text>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
-          Thêm khẩu phần
-        </Button>
-      </div>
+      {focus.horse ? (
+        // One horse picked: its feeding week first, meal by meal, then its plan calendar, then standing rations.
+        <div className="flex flex-col gap-4">
+          <div>
+            <HorseFocusTag focus={focus} rows={[...(data?.data || []), ...(horsesData?.data || []).map((h) => ({ horse: h }))]} />
+          </div>
+          <FeedingTimetable horseId={focus.horse} />
+          <FeedingCalendarPanel plans={plansData?.data || []} horseId={focus.horse} feedItems={feedItems} />
+          <div className="mt-4">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
+              <div>
+                <h3 className="text-base font-semibold m-0">Khẩu phần mẫu của ngựa này</h3>
+                <Typography.Text type="secondary" className="text-sm">
+                  Dùng cho các ngày không có lịch ăn theo kế hoạch tập. Giờ ăn thực tế là căn cứ kiểm tra trước buổi tập.
+                </Typography.Text>
+              </div>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal({ horse: focus.horse })}>
+                Thêm khẩu phần
+              </Button>
+            </div>
 
-      <HorseFocusTag focus={focus} rows={data?.data} />
-      <Table
-        rowKey="_id"
-        columns={columns}
-        dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
-        loading={isLoading}
-        scroll={{ x: 'max-content' }}
-        locale={{ emptyText: 'Chưa có khẩu phần nào. Ngựa không có khẩu phần chỉ được tạo 1 việc cho ăn chung mỗi ngày.' }}
-      />
+            <Table
+              rowKey="_id"
+              columns={columns}
+              dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
+              loading={isLoading}
+              scroll={{ x: 'max-content' }}
+              locale={{ emptyText: 'Ngựa này chưa có khẩu phần mẫu nào.' }}
+            />
+          </div>
+        </div>
+      ) : (
+        // Overview of all horses: how many horses, each horse's feed status, standing rations, warnings. Click to open details.
+        <>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
+            <Typography.Text type="secondary" className="text-sm max-w-3xl">
+              Mỗi chiến mã có lịch ăn riêng theo kế hoạch tập và khẩu phần mẫu. Bấm vào một ngựa để xem chi tiết lịch từng ngày,
+              thời khóa biểu tuần và quản lý khẩu phần.
+            </Typography.Text>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
+              Thêm khẩu phần
+            </Button>
+          </div>
+          <RationHorseList
+            rations={data?.data || []}
+            horses={horsesData?.data || []}
+            tasks={tasksData?.data || []}
+            assignmentOf={assignmentOf}
+            planOf={planOf}
+            onSelect={focus.select}
+            loading={isLoading}
+          />
+        </>
+      )}
 
       <Modal
         title={editing ? 'Sửa khẩu phần' : 'Thêm khẩu phần'}

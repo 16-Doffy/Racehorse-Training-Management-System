@@ -102,9 +102,18 @@ export default function FeedingCalendarPanel({ plans = [], horseId, feedItems = 
         {available.length > 0 && <Select aria-label="Chọn kế hoạch huấn luyện" value={planId} className="w-full sm:!w-72" onChange={(value) => { setChosenPlan(value); setPage(null); }} options={available.map((p) => ({ value: p._id, label: `${p.horse?.name || 'Ngựa'}: ${p.goal || PHASE_LABELS[p.phase] || 'Kế hoạch tập'}` }))} />}
       </div>
       {!available.length ? (
-        <Empty description={<span>Chưa có kế hoạch tập đang áp dụng. <Link to="/training/plans">Mở kế hoạch huấn luyện</Link> để lập lịch ăn.</span>} />
+        <Empty description={<span>{horseId ? 'Ngựa này chưa có kế hoạch tập đang áp dụng.' : 'Chưa có kế hoạch tập đang áp dụng.'} <Link to="/training/plans">Mở kế hoạch huấn luyện</Link> để lập lịch ăn.</span>} />
       ) : isError ? (
-        <Alert type="error" title="Không tải được lịch ăn" description={<Space><span>{error?.message}</span><Button size="small" onClick={() => refetch()}>Thử lại</Button></Space>} />
+        <Alert
+          type="error"
+          title="Không tải được lịch ăn"
+          description={
+            <Space direction="vertical" size={2}>
+              <span>{error?.message?.includes('Route not found') ? 'API lịch ăn cần máy chủ mới nhất (nhánh NDuy). Hãy chạy server local hoặc kiểm tra deploy.' : error?.message}</span>
+              <Button size="small" onClick={() => refetch()}>Thử lại</Button>
+            </Space>
+          }
+        />
       ) : (
         <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3 border-y border-current/10 py-3">

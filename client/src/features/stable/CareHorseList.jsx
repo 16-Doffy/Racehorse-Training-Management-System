@@ -21,7 +21,7 @@ function mealOf(task, makeUp) {
   return { state, at: task.completedAt, by: task.completedBy || task.assignedTo, time: dayjs(task.scheduledDate).format('HH:mm') };
 }
 
-function MealChip({ label, meal }) {
+export function MealChip({ label, meal }) {
   const meta = MEAL_STATUS_META[meal.state] || MEAL_STATUS_META.upcoming;
   const text =
     meal.state === 'fed'

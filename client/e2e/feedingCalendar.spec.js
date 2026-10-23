@@ -13,6 +13,11 @@ test('trainer sees the full feeding timetable and confirms it once', async ({ pa
   await page.locator('#password').fill(fixture.password);
   await page.locator('button[type="submit"]').click();
   await page.goto('/stable/tasks?tab=rations');
+  // First, outside view: list of horses with their ration overview
+  await expect(page.getByRole('region', { name: 'Khẩu phần theo ngựa' })).toBeVisible();
+  // Click on TEST Browser Horse to view its detailed feeding calendar & timetable
+  await page.locator('.ant-table-row', { hasText: 'TEST Browser Horse' }).first().click();
+  await expect(page).toHaveURL(/horse=[0-9a-f]{24}/);
   await expect(page.getByRole('heading', { name: 'Lịch cho ăn theo kế hoạch tập' })).toBeVisible();
   await expect(page.getByText('28 ngày', { exact: false })).toBeVisible();
   const section = page.getByRole('region', { name: 'Lịch cho ăn theo kế hoạch huấn luyện' });
@@ -23,5 +28,9 @@ test('trainer sees the full feeding timetable and confirms it once', async ({ pa
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(section.getByRole('heading', { name: 'Lịch cho ăn theo kế hoạch tập' })).toBeVisible();
   await expect(section.getByRole('button', { name: '7 ngày sau' })).toBeVisible();
+
+  // The feeding timetable is also visible for this selected horse
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await expect(page.getByRole('region', { name: 'Thời khóa biểu cho ăn' })).toBeVisible();
   expect(errors).toEqual([]);
 });
