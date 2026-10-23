@@ -1,10 +1,10 @@
 # Tình hình dự án: 23/10/2026
 
-Duy cập nhật (Claude soạn). Mục 0b: lịch ăn cả kỳ kế hoạch, 23/10, mới có trên `NDuy`, chưa lên `main`. Mục 0a: kiểm tra bữa ăn trước buổi tập, tối 22/10. Mục 0: thay đổi API chiều 22/10. Mục 1: `main` đã xanh trở lại.
+Duy cập nhật (Claude soạn). Mục 0b: lịch ăn cả kỳ kế hoạch, 23/10, đã lên `main`. Mục 0a: kiểm tra bữa ăn trước buổi tập, tối 22/10. Mục 0: thay đổi API chiều 22/10. Mục 1: `main` đã xanh trở lại.
 
-## 0b. Lịch ăn, lịch tập và chăm sóc theo ngựa (23/10, chỉ có trên `NDuy`, chưa lên `main`)
+## 0b. Lịch ăn, lịch tập và chăm sóc theo ngựa (23/10, đã lên `main`)
 
-Web thật (Render) chạy theo `main`, nên tới khi merge thì trang Khẩu phần ăn sẽ báo "Route not found" ở khung lịch ăn. Lỗi này là bình thường, không phải bug.
+Đã triển khai lên `main` để Render cập nhật backend và client. Khung lịch ăn và thời khóa biểu theo ngựa hoạt động bình thường sau khi deploy hoàn tất.
 
 - HLV xem lịch ăn cho toàn kỳ kế hoạch, gồm ngày nghỉ và khẩu phần theo vai trò từng bữa. Xác nhận lịch một lần qua `GET /feeding/calendar/:planId` và `POST /feeding/calendar/:planId/confirm`; lịch đã xác nhận có thể sửa từng bữa tương lai. `GET /feeding/suggest` gợi ý món hiện có trong kho; `GET /feeding/timetable` trả thời khóa biểu ăn theo tuần và trạng thái thực hiện.
 - Tab Công việc chăm sóc của HLV nhóm theo ngựa, vẫn xem được người làm, giờ và trạng thái từng việc.
