@@ -18,6 +18,12 @@ export const MOVING_HORSE = {
   // Shown under the viewer, as the model's licence (CC BY 4.0) requires, with what was changed.
   credit: 'Mô hình 3D chuyển động: “Horse” · henrysteve973 (Sketchfab) · CC BY 4.0 · đã đổi lông sang xám để tô màu, lược bớt chuyển động',
 };
+// The pasture's tree and house (horseStage.js), shown under the stage when the horse is in the pasture,
+// as their licence (CC BY 4.0) requires: short to fit under a card, in full on hover.
+export const PASTURE_CREDIT = {
+  short: 'Cây: atrodler · Nhà: BoredPain666 (Sketchfab, CC BY 4.0)',
+  full: 'Cây: “Maple tree” · atrodler (Sketchfab) · CC BY 4.0 · đã gộp các mảnh. Nhà: “Farm House” · BoredPain666 (Sketchfab) · CC BY 4.0 · đã giảm texture',
+};
 
 // How fast each clip carries a horse at normal speed (km/h), so it is played at the horse's own pace.
 const WALK_KMH = 6;

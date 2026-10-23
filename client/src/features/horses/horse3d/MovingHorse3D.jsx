@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { coatFor } from './horseBreeds';
-import { MOVING_HORSE } from './horseMotion';
+import { MOVING_HORSE, PASTURE_CREDIT } from './horseMotion';
 
 const GLASS = { background: 'rgba(1,17,12,.62)', border: '1px solid rgba(255,255,255,.14)', backdropFilter: 'blur(6px)' };
 const TONES = { alert: '#fca5a5', warn: '#fde68a' };
@@ -110,6 +110,11 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
       <div className="text-right text-gray-400 mt-1 truncate" style={{ fontSize: compact ? 9 : 10 }} title={MOVING_HORSE.credit}>
         {MOVING_HORSE.credit}
       </div>
+      {surface === 'pasture' && (
+        <div className="text-right text-gray-400 truncate" style={{ fontSize: compact ? 9 : 10 }} title={PASTURE_CREDIT.full}>
+          {PASTURE_CREDIT.short}
+        </div>
+      )}
     </div>
   );
 }

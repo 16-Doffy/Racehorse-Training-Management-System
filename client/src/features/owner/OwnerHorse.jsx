@@ -82,7 +82,15 @@ export default function OwnerHorse() {
   // A horse no vet has examined yet is not called fit: it grazes, but the caption says it has no exam.
   const resting = restingMotion(horse);
   const live = running && liveMotion(running, running.metrics?.lastSpeed);
-  const motion = live ? { ...live, label: `Đang tập · ${live.label}` } : examined || resting.tone ? resting : { ...resting, label: 'Chưa có hồ sơ khám · thư giãn gặm cỏ' };
+  // The caption agrees with the health pill beside it: a horse to be watched is not called fit either.
+  const restingNow = resting.tone
+    ? resting
+    : !examined
+      ? { ...resting, label: 'Chưa có hồ sơ khám · thư giãn gặm cỏ' }
+      : horse.healthStatus === 'monitoring'
+        ? { ...resting, label: 'Cần theo dõi · thư giãn gặm cỏ', tone: 'warn' }
+        : resting;
+  const motion = live ? { ...live, label: `Đang tập · ${live.label}` } : restingNow;
   const clearance = clearanceOf(horse);
   const stats = row?.raceStats;
 
