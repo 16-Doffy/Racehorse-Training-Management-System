@@ -1,35 +1,49 @@
 import { useState } from 'react';
-import { Table, Tag, Typography, Button, Modal, Form, Input, InputNumber, Select, DatePicker, Alert, Empty, Tooltip, Popconfirm, Segmented } from 'antd';
+import { Table, Tag, Typography, Button, Modal, Form, Input, Select, Alert, Empty, Tooltip, Popconfirm, Segmented, Avatar } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { PlusOutlined, EditOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined, SearchOutlined } from '@ant-design/icons';
 import { downloadFile } from '../../lib/files';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import dayjs from 'dayjs';
+import { newestFirst } from '../../utils/newestFirst';
 import { horsesApi } from './horsesApi';
 import { usersApi } from '../admin/usersApi';
-import { stallApi } from '../stable/stableApi';
+import { stableAssignmentApi, stallApi } from '../stable/stableApi';
 import { ROLES } from '../../constants/roles';
 import { HEALTH_LABELS, HEALTH_COLORS, TRAINING_LEVEL_META } from '../../constants/health';
 import HorseNextStep from './HorseNextStep';
-import { HORSE_SEX_LABELS, horseSexOptions } from '../../constants/horse';
+import { HORSE_SEX_LABELS } from '../../constants/horse';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
-import Horse3D from './horse3d/Horse3D';
-import { BREEDS, COATS, REGIONS, coatValueOfBreed } from './horse3d/horseBreeds';
+import HorseFormModal from './HorseFormModal';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
-// The Manager picks a breed and sees the horse in 3D, in the coat the breed is known for.
-const breedOptions = REGIONS.map((region) => ({
-  label: region,
-  options: BREEDS.filter((b) => b.region === region).map((b) => ({ value: b.value, label: b.label, origin: b.origin, coat: COATS[b.coat] })),
-}));
-const coatOptions = Object.values(COATS).map((c) => ({ value: c.value, label: c.label, hint: c.hint, swatch: c.swatch }));
-const Swatch = ({ color }) => (
-  <span className="inline-block rounded-full shrink-0" style={{ width: 12, height: 12, background: color, boxShadow: '0 0 0 1px rgba(0,0,0,.25)' }} />
-);
+// Accent-insensitive contains, so "thunder" finds "Thunder Bolt" and "chu" finds "Chủ".
+const fold = (text = '') => String(text).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase();
 
+/** One line of who looks after the horse: the role, then the name — or the gap, for the Manager to fill. */
+function Person({ label, name, gap }) {
+  return (
+    <div className="flex min-w-0 items-baseline gap-2 text-[13px] leading-5">
+      <Text type="secondary" className="!w-[30px] shrink-0 !text-[11px] uppercase tracking-wide">
+        {label}
+      </Text>
+      {name ? (
+        <span className="truncate font-medium" title={name}>
+          {name}
+        </span>
+      ) : gap ? (
+        <Text type="danger" className="!text-[12.5px]">
+          Chưa gán
+        </Text>
+      ) : (
+        <Text type="secondary">—</Text>
+      )}
+    </div>
+  );
+}
 
 export default function HorseListPage() {
   const navigate = useNavigate();
@@ -38,22 +52,16 @@ export default function HorseListPage() {
   // (POST/PUT /horses is Manager-only on the server); every other role sees the same read-only
   // roster they always had.
   const isManager = user?.role === ROLES.MANAGER;
-  const isOwner = user?.role === ROLES.OWNER;
+  // The Horse Owner has their own list (features/owner/OwnerHorses.jsx).
   // The Manager and the trainer run a horse from arrival to training: they see its next step.
   const showsNextStep = [ROLES.MANAGER, ROLES.HEAD_TRAINER].includes(user?.role);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [form] = Form.useForm();
-  const breedValue = Form.useWatch('breed', form);
-  const colorValue = Form.useWatch('color', form);
   const queryClient = useQueryClient();
-
-  // Picking a breed fills in the coat it is known for, unless the Manager already chose another.
-  const onBreedChange = (next) => {
-    const current = form.getFieldValue('color');
-    if (!current || current === coatValueOfBreed(breedValue)) form.setFieldValue('color', coatValueOfBreed(next) || undefined);
-  };
+  const [search, setSearch] = useState('');
+  const [focus, setFocus] = useState('all');
 
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const horses = data?.data || [];
@@ -65,17 +73,9 @@ export default function HorseListPage() {
     ...(stallsData?.data?.unplaced || []).map((u) => [String(u.horse._id), u.stableBlock]),
     ...(stallsData?.data?.stalls || []).filter((st) => st.occupant?.horse).map((st) => [String(st.occupant.horse._id), st.code]),
   ]);
-  // The checklist is for the staff. The Owner's own view of whether a vet has seen each horse comes from the owner summary.
-  const { data: ownerSummaryData } = useQuery({ queryKey: ['owner-summary'], queryFn: () => horsesApi.ownerSummary(), enabled: isOwner });
-  const summaryByHorse = new Map((ownerSummaryData?.data || []).map((r) => [String(r.horse._id), r]));
+  const mapStalls = stallsData?.data?.stalls || [];
   // Has a vet examined the horse? true / false, or undefined while that is still loading.
-  const examined = (h) => {
-    if (isOwner) {
-      const row = summaryByHorse.get(String(h._id));
-      return row ? Boolean(row.health.lastExam) : undefined;
-    }
-    return checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === 'health')?.done;
-  };
+  const examined = (h) => checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === 'health')?.done;
 
   // Manager: horses the club no longer manages, kept for their records.
   const [view, setView] = useState('active');
@@ -127,24 +127,22 @@ export default function HorseListPage() {
   // A horse with an empty slot is invisible to whoever should have been in it — no owner means
   // its owner can't follow it, no trainer means no one plans its training, no vet means no one
   // watches its health. Only the Manager can see the gap, so only the Manager can close it.
-  const incomplete = isManager
-    ? horses.filter((h) => !h.owner || !h.assignedTrainer || !h.assignedVet)
-    : [];
+  const hasGap = (h) => !h.owner || !h.assignedTrainer || !h.assignedVet;
+  const incomplete = isManager ? horses.filter(hasGap) : [];
 
   // Counted the way the dashboard counts them. A new horse is "eligible" in the record before any vet
   // has seen it, so "ready" also needs an exam on file and no medical restriction; an unexamined horse
   // is counted on its own rather than as healthy.
   const checkItem = (h, key) => checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === key)?.done;
-  const readyCount = horses.filter((h) =>
-    isOwner
-      ? h.healthStatus === 'eligible' && examined(h) && !h.trainingClearance?.restricted
-      : h.healthStatus === 'eligible' && checkItem(h, 'health') && checkItem(h, 'clearance')
-  ).length;
+  const isReady = (h) => h.healthStatus === 'eligible' && checkItem(h, 'health') && checkItem(h, 'clearance');
+  const needsWatch = (h) => ['monitoring', 'injured', 'quarantined'].includes(h.healthStatus) || h.trainingClearance?.restricted;
+  // The Manager closes staffing gaps; the trainer closes planning gaps.
+  const isGap = (h) => (isManager ? hasGap(h) : checkItem(h, 'plan') === false);
+  const readyCount = horses.filter(isReady).length;
   const unexaminedCount = horses.filter((h) => examined(h) === false).length;
   const restrictedCount = horses.filter((h) => h.trainingClearance?.restricted).length;
-  const watchCount = horses.filter((h) => ['monitoring', 'injured', 'quarantined'].includes(h.healthStatus) || h.trainingClearance?.restricted).length;
-  // The Manager closes staffing gaps; the trainer closes planning gaps.
-  const gapCount = isManager ? incomplete.length : horses.filter((h) => checkItem(h, 'plan') === false).length;
+  const watchCount = horses.filter(needsWatch).length;
+  const gapCount = horses.filter(isGap).length;
 
   // Assignee dropdowns — only fetched for the Manager, who is the only role that can assign.
   const { data: trainersData } = useQuery({
@@ -162,6 +160,13 @@ export default function HorseListPage() {
     queryFn: () => usersApi.list({ role: ROLES.OWNER }),
     enabled: isManager,
   });
+  // A new horse goes straight into a stall, with its groom.
+  const { data: groomsData } = useQuery({
+    queryKey: ['users', ROLES.GROOM],
+    queryFn: () => usersApi.list({ role: ROLES.GROOM }),
+    enabled: isManager,
+  });
+  const grooms = (groomsData?.data || []).filter((u) => u.isActive !== false);
 
   const activeOptions = (res) =>
     (res?.data || [])
@@ -171,11 +176,29 @@ export default function HorseListPage() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['horses'] });
 
   const saveMutation = useMutation({
-    mutationFn: (payload) =>
-      editTarget ? horsesApi.update(editTarget._id, payload) : horsesApi.create(payload),
-    onSuccess: () => {
-      message.success(editTarget ? 'Đã cập nhật hồ sơ ngựa.' : 'Đã thêm ngựa mới.');
+    mutationFn: async ({ stall, caretaker, ...payload }) => {
+      if (editTarget) return { horse: (await horsesApi.update(editTarget._id, payload)).data };
+      const horse = (await horsesApi.create(payload)).data;
+      if (!stall) return { horse };
+      // The horse exists from here on. A stall someone took in the meantime leaves it without a stall
+      // (said below, placed from the Chuồng column), never makes the Manager create it twice.
+      try {
+        await stableAssignmentApi.upsert({ horse: horse._id, stall, assignedCaretaker: caretaker || undefined });
+        return { horse, stall: mapStalls.find((s) => s._id === stall) };
+      } catch (placeError) {
+        return { horse, placeError };
+      }
+    },
+    onSuccess: ({ horse, stall, placeError }) => {
+      if (editTarget) message.success('Đã cập nhật hồ sơ ngựa.');
+      else if (placeError) message.warning(`Đã thêm ${horse?.name || 'ngựa'} nhưng chưa xếp được chuồng: ${placeError.message || 'lỗi không rõ'}. Bấm vào ô Chuồng của ngựa để xếp lại.`, 8);
+      else if (stall) message.success(`Đã thêm ${horse?.name || 'ngựa'} vào chuồng ${stall.code}.`);
+      else message.success('Đã thêm ngựa mới.');
       invalidate();
+      if (stall || placeError) {
+        queryClient.invalidateQueries({ queryKey: ['stalls'] });
+        queryClient.invalidateQueries({ queryKey: ['stable-assignments'] });
+      }
       setFormOpen(false);
       setEditTarget(null);
       form.resetFields();
@@ -208,209 +231,238 @@ export default function HorseListPage() {
     setFormOpen(true);
   };
 
+  const archived = view === 'archived';
+  const stallCell = (h) => {
+    const code = stallByHorse.get(String(h._id));
+    // The Manager places horses: the cell opens that horse's stall form on the stable page.
+    if (isManager) {
+      return (
+        <Button
+          size="small"
+          type={code ? 'default' : 'dashed'}
+          className="tabular-nums !font-semibold"
+          onClick={(e) => {
+            e.stopPropagation(); // not the row's click, which opens the horse
+            navigate(`/admin/stables?horse=${h._id}`);
+          }}
+        >
+          {code || 'Xếp chuồng'}
+        </Button>
+      );
+    }
+    return code ? <Tag className="!m-0 tabular-nums">{code}</Tag> : <Tag className="!m-0">Chưa xếp</Tag>;
+  };
+
+  // A handful of columns, each answering one question — who the horse is, how it is, who looks
+  // after it, what comes next — so the list fits the page instead of scrolling sideways.
   const columns = [
-    { title: 'Tên ngựa', dataIndex: 'name', key: 'name' },
-    { title: 'Giống', dataIndex: 'breed', key: 'breed' },
-    { title: 'Giới tính', dataIndex: 'sex', key: 'sex', render: (v) => HORSE_SEX_LABELS[v] || '—' },
-    { title: 'Màu lông', dataIndex: 'color', key: 'color' },
     {
-      title: 'Chủ sở hữu',
-      dataIndex: ['owner', 'name'],
-      key: 'owner',
-      // For the Manager this is an actionable gap, not just a blank — same treatment as the
-      // trainer/vet columns below.
-      render: (v) => v || (isManager ? <Tag>Chưa gán</Tag> : '—'),
-    },
-    {
-      title: 'Trạng thái sức khỏe',
-      dataIndex: 'healthStatus',
-      key: 'healthStatus',
-      // A horse nobody has examined yet starts as "eligible" in the record; say what is true instead.
-      render: (status, h) =>
-        examined(h) === false ? (
-          <Tooltip title="Bác sĩ chưa khám tiếp nhận ngựa này — bài nặng và chạy thử cần giấy khám.">
-            <Tag>Chưa khám</Tag>
-          </Tooltip>
-        ) : (
-          <Tag color={HEALTH_COLORS[status]}>{HEALTH_LABELS[status] || status}</Tag>
-        ),
-    },
-    {
-      title: 'Tập luyện',
-      key: 'trainingClearance',
-      render: (_, h) => {
-        const c = h.trainingClearance || { level: 'high' };
-        const meta = TRAINING_LEVEL_META[c.level];
-        return c.restricted ? (
-          <Tooltip title={[c.reason, c.prescribedBy && `Bác sĩ ${c.prescribedBy}`].filter(Boolean).join(' — ') || 'Theo phác đồ điều trị'}>
-            <Tag color={meta.color}>{meta.short}</Tag>
-          </Tooltip>
-        ) : (
-          <Tag color={meta.color}>{meta.short}</Tag>
-        );
-      },
+      title: 'Ngựa',
+      key: 'horse',
+      render: (_, h) => (
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar shape="square" size={40} style={{ background: '#0F5A43', color: '#D4AF37', fontWeight: 700, flexShrink: 0 }}>
+            {h.name?.[0]?.toUpperCase() || '?'}
+          </Avatar>
+          <div className="min-w-0">
+            <div className="truncate font-semibold" title={h.name}>
+              {h.name}
+            </div>
+            <Text type="secondary" className="!text-xs">
+              {[h.breed, HORSE_SEX_LABELS[h.sex], h.color].filter(Boolean).join(' · ') || 'Chưa có lý lịch'}
+            </Text>
+          </div>
+        </div>
+      ),
     },
   ];
-
-  if (showsNextStep && view === 'active') {
-    columns.splice(1, 0, {
-      title: 'Chuồng',
-      key: 'stall',
-      render: (_, h) => {
-        const code = stallByHorse.get(String(h._id));
-        return code ? <span className="tabular-nums whitespace-nowrap">{code}</span> : <Tag>Chưa xếp</Tag>;
-      },
-    });
-    columns.push({
-      title: 'Bước tiếp theo',
-      key: 'nextStep',
-      width: 220,
-      render: (_, h) => <HorseNextStep checklist={checklistByHorse.get(String(h._id))} />,
-    });
-  }
-
-  // Who's responsible matters to the Manager (they assign it) — other roles already only see the
-  // horses assigned to them, so the columns would just repeat their own name on every row.
-  if (isManager) {
-    columns.push(
-      {
-        title: 'HLV phụ trách',
-        dataIndex: ['assignedTrainer', 'name'],
-        key: 'assignedTrainer',
-        render: (v) => v || <Tag>Chưa gán</Tag>,
-      },
-      {
-        title: 'Bác sĩ phụ trách',
-        dataIndex: ['assignedVet', 'name'],
-        key: 'assignedVet',
-        render: (v) => v || <Tag>Chưa gán</Tag>,
-      },
-      {
-        title: '',
-        key: 'actions',
-        render: (_, record) =>
-          view === 'archived' ? (
-            <Button
-              size="small"
-              icon={<RollbackOutlined />}
-              loading={unarchiveMutation.isPending && unarchiveMutation.variables?._id === record._id}
-              onClick={(e) => {
-                e.stopPropagation();
-                unarchiveMutation.mutate(record);
-              }}
-            >
-              Khôi phục
-            </Button>
+  if (showsNextStep && !archived) columns.push({ title: 'Chuồng', key: 'stall', width: 120, render: (_, h) => stallCell(h) });
+  columns.push({
+    title: 'Sức khỏe & tập',
+    key: 'health',
+    width: 170,
+    render: (_, h) => {
+      const c = h.trainingClearance || { level: 'high' };
+      const meta = TRAINING_LEVEL_META[c.level] || TRAINING_LEVEL_META.high;
+      return (
+        <div className="flex flex-col items-start gap-1">
+          {/* A horse nobody has examined yet starts as "eligible" in the record; say what is true instead. */}
+          {examined(h) === false ? (
+            <Tooltip title="Bác sĩ chưa khám tiếp nhận ngựa này — bài nặng và chạy thử cần giấy khám.">
+              <Tag className="!m-0">Chưa khám</Tag>
+            </Tooltip>
           ) : (
-            <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-              <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>
-                Sửa
-              </Button>
-              <Popconfirm
-                title={`Xoá ngựa "${record.name}"?`}
-                description="Chỉ xoá được ngựa chưa có buổi tập, hồ sơ khám hay giải đua."
-                okText="Xoá"
-                cancelText="Huỷ"
-                okButtonProps={{ danger: true }}
-                onConfirm={() => deleteMutation.mutate(record)}
-              >
-                <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMutation.isPending && deleteMutation.variables?._id === record._id}>
-                  Xoá
-                </Button>
-              </Popconfirm>
-            </div>
-          ),
-      }
-    );
-    if (view === 'archived') {
-      columns.splice(columns.length - 1, 0, {
-        title: 'Ngừng quản lý',
-        key: 'archived',
-        render: (_, h) => (
-          <span className="text-sm">
-            {h.archivedReason || '—'}
-            {h.archivedAt && <span className="text-gray-400"> · {dayjs(h.archivedAt).format('DD/MM/YYYY')}</span>}
-          </span>
-        ),
-      });
-    }
+            <Tag className="!m-0" color={HEALTH_COLORS[h.healthStatus]}>
+              {HEALTH_LABELS[h.healthStatus] || h.healthStatus}
+            </Tag>
+          )}
+          <Tooltip title={c.restricted ? [c.reason, c.prescribedBy && `Bác sĩ ${c.prescribedBy}`].filter(Boolean).join(' — ') || 'Theo phác đồ điều trị' : undefined}>
+            <Tag className="!m-0" color={meta.color} bordered={false}>
+              {meta.short}
+            </Tag>
+          </Tooltip>
+        </div>
+      );
+    },
+  });
+  // Who's responsible matters to the Manager (they assign it) — other roles already only see the
+  // horses assigned to them, so they get the owner alone.
+  columns.push({
+    title: isManager ? 'Phụ trách' : 'Chủ sở hữu',
+    key: 'people',
+    width: isManager ? 210 : 170,
+    render: (_, h) =>
+      isManager ? (
+        <div className="flex min-w-0 flex-col">
+          <Person label="Chủ" name={h.owner?.name} gap />
+          <Person label="HLV" name={h.assignedTrainer?.name} gap />
+          <Person label="BS" name={h.assignedVet?.name} gap />
+        </div>
+      ) : (
+        <span className="truncate">{h.owner?.name || '—'}</span>
+      ),
+  });
+  if (showsNextStep && !archived) {
+    columns.push({ title: 'Bước tiếp theo', key: 'nextStep', width: 220, render: (_, h) => <HorseNextStep checklist={checklistByHorse.get(String(h._id))} /> });
   }
+  if (isManager && archived) {
+    columns.push({
+      title: 'Ngừng quản lý',
+      key: 'archived',
+      width: 220,
+      render: (_, h) => (
+        <span className="text-sm">
+          {h.archivedReason || '—'}
+          {h.archivedAt && <Text type="secondary"> · {dayjs(h.archivedAt).format('DD/MM/YYYY')}</Text>}
+        </span>
+      ),
+    });
+  }
+  if (isManager) {
+    columns.push({
+      title: '',
+      key: 'actions',
+      width: archived ? 120 : 92,
+      align: 'right',
+      render: (_, record) =>
+        archived ? (
+          <Button
+            size="small"
+            icon={<RollbackOutlined />}
+            loading={unarchiveMutation.isPending && unarchiveMutation.variables?._id === record._id}
+            onClick={(e) => {
+              e.stopPropagation();
+              unarchiveMutation.mutate(record);
+            }}
+          >
+            Khôi phục
+          </Button>
+        ) : (
+          <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <Tooltip title="Sửa hồ sơ">
+              <Button size="small" icon={<EditOutlined />} aria-label={`Sửa ${record.name}`} onClick={() => openEdit(record)} />
+            </Tooltip>
+            <Popconfirm
+              title={`Xoá ngựa "${record.name}"?`}
+              description="Chỉ xoá được ngựa chưa có buổi tập, hồ sơ khám hay giải đua."
+              okText="Xoá"
+              cancelText="Huỷ"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => deleteMutation.mutate(record)}
+            >
+              <Tooltip title="Xoá">
+                <Button size="small" danger icon={<DeleteOutlined />} aria-label={`Xoá ${record.name}`} loading={deleteMutation.isPending && deleteMutation.variables?._id === record._id} />
+              </Tooltip>
+            </Popconfirm>
+          </div>
+        ),
+    });
+  }
+
+  // The list as narrowed by the search box and the chosen tile.
+  const q = fold(search.trim());
+  const matches = (h) =>
+    !q || fold([h.name, h.breed, h.color, h.owner?.name, h.assignedTrainer?.name, h.assignedVet?.name, stallByHorse.get(String(h._id))].join(' ')).includes(q);
+  const FOCUS = { all: () => true, ready: isReady, watch: needsWatch, gap: isGap, unexamined: (h) => examined(h) === false };
+  const source = archived ? archivedHorses : horses;
+  // Newest first: a horse just added or changed is the first row.
+  const rows = newestFirst(source.filter(matches).filter((h) => archived || (FOCUS[focus] || FOCUS.all)(h)));
+
+  const tiles = [
+    { key: 'all', label: 'Tổng đàn ngựa', value: horses.length, tone: 'text-[#0F5A43]' },
+    { key: 'ready', label: 'Đủ điều kiện tập', value: readyCount, tone: 'text-emerald-700', hint: unexaminedCount ? `${unexaminedCount} ngựa chưa khám` : null },
+    { key: 'watch', label: 'Theo dõi y tế', value: watchCount, tone: watchCount ? 'text-amber-700' : 'text-slate-700', hint: restrictedCount ? `${restrictedCount} ngựa bị hạn chế tập` : null },
+    { key: 'gap', label: isManager ? 'Khuyết phụ trách' : 'Chưa có kế hoạch', value: gapCount, tone: gapCount ? 'text-rose-600' : 'text-slate-700' },
+  ];
 
   return (
-    <div className={isOwner ? 'owner-ui' : undefined}>
-      {showsNextStep || isOwner ? (
-      <PageHeroBanner
-        eyebrow={isOwner ? 'TEAM 8 • QUẢN LÝ ĐÀN CHIẾN MÃ' : 'Hồ sơ & danh mục ngựa'}
-        roleLabel={isManager ? 'Quản lý CLB' : isOwner ? 'Horse Owner' : 'HLV trưởng'}
-        title={isManager ? 'Danh mục & quản lý đàn ngựa' : isOwner ? 'Chiến Mã Của Tôi' : 'Danh sách ngựa phụ trách'}
-        subtitle={
-          isManager
-            ? 'Cập nhật hồ sơ lý lịch và phân công huấn luyện viên, bác sĩ thú y phụ trách từng ngựa.'
-            : isOwner
-              ? 'Hồ sơ, sức khỏe và người phụ trách của từng chiến mã bạn sở hữu.'
+    <div>
+      {showsNextStep ? (
+        <PageHeroBanner
+          eyebrow="Hồ sơ & danh mục ngựa"
+          roleLabel={isManager ? 'Quản lý CLB' : 'HLV trưởng'}
+          title={isManager ? 'Danh mục & quản lý đàn ngựa' : 'Danh sách ngựa phụ trách'}
+          subtitle={
+            isManager
+              ? 'Cập nhật hồ sơ lý lịch và phân công huấn luyện viên, bác sĩ thú y phụ trách từng ngựa.'
               : 'Theo dõi thể trạng, mức độ cho phép tập luyện và bước chuẩn bị tiếp theo của từng ngựa.'
-        }
-        stats={[
-          { label: 'Tổng đàn', value: `${horses.length} con` },
-          { label: 'Đủ điều kiện tập', value: `${readyCount} con` },
-          { label: 'Cần theo dõi', value: `${watchCount} con` },
-        ]}
-        actionButton={
-          isManager ? (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                icon={<DownloadOutlined />}
-                onClick={() => downloadFile('/export/horses', `danh-sach-ngua-${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => message.error(e.message || 'Xuất file thất bại.'))}
-                className="!h-9 !rounded-lg !bg-white/10 hover:!bg-white/15 !border-white/20 !text-white"
-              >
-                Xuất CSV
-              </Button>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={openCreate}
-                className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
-              >
-                Thêm ngựa mới
-              </Button>
-            </div>
-          ) : null
-        }
-      />
+          }
+          actionButton={
+            isManager ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  icon={<DownloadOutlined />}
+                  onClick={() => downloadFile('/export/horses', `danh-sach-ngua-${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => message.error(e.message || 'Xuất file thất bại.'))}
+                  className="!h-9 !rounded-lg !bg-white/10 hover:!bg-white/15 !border-white/20 !text-white"
+                >
+                  Xuất CSV
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={openCreate}
+                  className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
+                >
+                  Thêm ngựa mới
+                </Button>
+              </div>
+            ) : null
+          }
+        />
       ) : (
         <Title level={3} className="!mb-4">
           Danh sách Ngựa
         </Title>
       )}
 
+      {/* The counts double as filters: a tile narrows the list below to its horses. */}
       {showsNextStep && (
-        <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
-          <div className="p-3.5 sm:p-4">
-            <div className="text-xs font-medium text-slate-600">Tổng đàn ngựa</div>
-            <div className="text-xl sm:text-2xl font-bold text-[#0F5A43] tabular-nums mt-1">{horses.length} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
-          </div>
-          <div className="p-3.5 sm:p-4">
-            <div className="text-xs font-medium text-slate-600">Đủ điều kiện tập</div>
-            <div className="text-xl sm:text-2xl font-bold text-emerald-700 tabular-nums mt-1">{readyCount} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
-            {unexaminedCount > 0 && <div className="text-[11px] text-slate-500 mt-0.5">{unexaminedCount} ngựa chưa khám</div>}
-          </div>
-          <div className="p-3.5 sm:p-4">
-            <div className="text-xs font-medium text-slate-600">Theo dõi y tế</div>
-            <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${watchCount > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
-              {watchCount} <span className="text-xs font-normal text-slate-500">ngựa</span>
-            </div>
-            {restrictedCount > 0 && <div className="text-[11px] text-slate-500 mt-0.5">{restrictedCount} ngựa bị hạn chế tập</div>}
-          </div>
-          <div className="p-3.5 sm:p-4">
-            <div className="text-xs font-medium text-slate-600">{isManager ? 'Khuyết phụ trách' : 'Chưa có kế hoạch'}</div>
-            <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${gapCount > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
-              {gapCount} <span className="text-xs font-normal text-slate-500">ngựa</span>
-            </div>
-          </div>
+        <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-4 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
+          {tiles.map((t) => {
+            const on = focus === t.key && !archived;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                aria-pressed={on}
+                onClick={() => {
+                  setView('active');
+                  setFocus(on && t.key !== 'all' ? 'all' : t.key);
+                }}
+                className={`cursor-pointer border-0 p-3.5 text-left transition-colors sm:p-4 ${on ? 'bg-[#0F5A43]/10 shadow-[inset_0_-3px_0_#0F5A43]' : 'bg-transparent hover:bg-black/[0.03]'}`}
+              >
+                <div className="text-xs font-medium text-slate-600">{t.label}</div>
+                <div className={`mt-1 text-xl font-bold tabular-nums sm:text-2xl ${t.tone}`}>
+                  {t.value} <span className="text-xs font-normal text-slate-500">ngựa</span>
+                </div>
+                {t.hint && <div className="mt-0.5 text-[11px] text-slate-500">{t.hint}</div>}
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {!isOwner && isError && (
+      {isError && (
         <Alert
           className="mb-3"
           type="error"
@@ -425,63 +477,94 @@ export default function HorseListPage() {
         />
       )}
 
-      {incomplete.length > 0 && (
+      {incomplete.length > 0 && focus !== 'gap' && !archived && (
         <Alert
           className="mb-3"
           type="warning"
           showIcon
-          title={`${incomplete.length} ngựa chưa đủ người phụ trách`}
-          description={
-            <>
-              Ngựa thiếu <b>chủ sở hữu</b> thì không chủ ngựa nào theo dõi được, thiếu <b>HLV</b>{' '}
-              thì không ai lập kế hoạch huấn luyện, thiếu <b>bác sĩ</b> thì không ai theo dõi sức
-              khỏe. Bấm “Sửa” ở các dòng bên dưới để bổ sung:{' '}
-              <b>{incomplete.map((h) => h.name).join(', ')}</b>.
-            </>
+          title={`${incomplete.length} ngựa chưa đủ người phụ trách: ${incomplete.map((h) => h.name).join(', ')}`}
+          action={
+            <Button size="small" onClick={() => setFocus('gap')}>
+              Xem các ngựa này
+            </Button>
           }
         />
       )}
 
-      {isManager && (
-        <div className="mb-3 max-w-full overflow-x-auto">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {isManager && (
           <Segmented
-            size="small"
             value={view}
-            onChange={setView}
+            onChange={(v) => {
+              setView(v);
+              setFocus('all');
+            }}
             options={[
               { value: 'active', label: `Đang quản lý (${horses.length})` },
               { value: 'archived', label: 'Đã ngừng quản lý' },
             ]}
           />
-        </div>
-      )}
+        )}
+        <Input
+          allowClear
+          prefix={<SearchOutlined className="text-slate-400" />}
+          placeholder="Tìm tên, giống, chủ, HLV, bác sĩ, chuồng…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="!w-full sm:!w-80"
+        />
+        {focus !== 'all' && !archived && (
+          <Tag closable onClose={() => setFocus('all')} className="!m-0 !py-1">
+            Đang lọc: {tiles.find((t) => t.key === focus)?.label}
+          </Tag>
+        )}
+        <Text type="secondary" className="!text-xs sm:ml-auto">
+          {rows.length}/{source.length} ngựa
+        </Text>
+      </div>
 
       <Table
         rowKey="_id"
+        size="middle"
         columns={columns}
-        dataSource={view === 'archived' ? archivedHorses : horses}
-        loading={view === 'archived' ? archivedLoading && !archivedData : isLoading && !data}
-        scroll={{ x: 'max-content' }}
+        dataSource={rows}
+        loading={archived ? archivedLoading && !archivedData : isLoading && !data}
+        tableLayout="fixed"
+        scroll={{ x: isManager ? 1060 : 900 }}
+        pagination={rows.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
         locale={{
-          emptyText: isManager ? (
-            <Empty description='Chưa có ngựa nào trong danh mục. Nhấn "Thêm ngựa mới" để bắt đầu.'>
-              {view === 'active' && (
-                <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openCreate}>
-                  Thêm ngựa mới
+          emptyText:
+            source.length > 0 ? (
+              <Empty description="Không có ngựa nào khớp tìm kiếm / bộ lọc.">
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setSearch('');
+                    setFocus('all');
+                  }}
+                >
+                  Bỏ lọc
                 </Button>
-              )}
-            </Empty>
-          ) : (
-            <Empty
-              description={
-                <span>
-                  Bạn chưa được phân công phụ trách con ngựa nào.
-                  <br />
-                  Liên hệ Quản lý Câu lạc bộ để được phân công.
-                </span>
-              }
-            />
-          ),
+              </Empty>
+            ) : isManager ? (
+              <Empty description='Chưa có ngựa nào trong danh mục. Nhấn "Thêm ngựa mới" để bắt đầu.'>
+                {!archived && (
+                  <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openCreate}>
+                    Thêm ngựa mới
+                  </Button>
+                )}
+              </Empty>
+            ) : (
+              <Empty
+                description={
+                  <span>
+                    Bạn chưa được phân công phụ trách con ngựa nào.
+                    <br />
+                    Liên hệ Quản lý Câu lạc bộ để được phân công.
+                  </span>
+                }
+              />
+            ),
         }}
         onRow={(record) => ({ onClick: () => navigate(`/horses/${record._id}`) })}
         rowClassName="cursor-pointer"
@@ -519,146 +602,37 @@ export default function HorseListPage() {
       )}
 
       {isManager && (
-        <Modal
-          title={editTarget ? `Sửa hồ sơ — ${editTarget.name}` : 'Thêm ngựa mới'}
+        <HorseFormModal
           open={formOpen}
+          editTarget={editTarget}
+          form={form}
+          saving={saveMutation.isPending}
           onCancel={() => {
             setFormOpen(false);
             setEditTarget(null);
           }}
-          onOk={() => form.submit()}
-          confirmLoading={saveMutation.isPending}
-          destroyOnHidden
-          width={620}
-        >
-          <Form
-            form={form}
-            layout="vertical"
-            onFinish={(values) =>
-              // Cleared optional fields are sent as '' / null so the server removes them.
-              saveMutation.mutate({
-                ...values,
-                dob: values.dob ? values.dob.toISOString() : undefined,
-                breed: values.breed ?? '',
-                color: values.color ?? '',
-                sex: values.sex ?? '',
-                microchipNumber: values.microchipNumber ?? '',
-                registrationNumber: values.registrationNumber ?? '',
-                valuationVnd: values.valuationVnd ?? null,
-              })
-            }
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-              <Form.Item name="name" label="Tên ngựa" rules={[{ required: true }]} className="!mb-3">
-                <Input placeholder="VD: Thunder Bolt" />
-              </Form.Item>
-              <Form.Item name="breed" label="Giống" className="!mb-3">
-                <Select
-                  allowClear
-                  showSearch
-                  optionFilterProp="label"
-                  placeholder="Chọn giống ngựa"
-                  popupMatchSelectWidth={400}
-                  options={breedOptions}
-                  onChange={onBreedChange}
-                  optionRender={(option) => (
-                    <div className="flex items-center gap-2">
-                      <Swatch color={option.data.coat.swatch} />
-                      <span>{option.data.label}</span>
-                      <span className="ml-auto text-xs text-gray-400">{option.data.origin} · {option.data.coat.label}</span>
-                    </div>
-                  )}
-                />
-              </Form.Item>
-            </div>
-            {/* The horse as everyone it is assigned to will see it in 3D, the groom's phone included. */}
-            <Horse3D breed={breedValue} color={colorValue} height={230} className="!mb-3" />
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4">
-              <Form.Item name="color" label="Màu lông" className="!mb-3">
-                <Select
-                  allowClear
-                  placeholder="Theo giống"
-                  options={coatOptions}
-                  optionRender={(option) => (
-                    <div className="flex items-center gap-2" title={option.data.hint}>
-                      <Swatch color={option.data.swatch} />
-                      <span>{option.data.label}</span>
-                    </div>
-                  )}
-                />
-              </Form.Item>
-              <Form.Item name="dob" label="Ngày sinh" className="!mb-3">
-                <DatePicker className="w-full" format="DD/MM/YYYY" />
-              </Form.Item>
-              <Form.Item name="weightKg" label="Cân nặng (kg)" className="!mb-3">
-                <InputNumber min={50} max={1200} className="w-full" />
-              </Form.Item>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4">
-              <Form.Item name="sex" label="Giới tính" className="!mb-3">
-                <Select allowClear placeholder="Chọn giới tính" options={horseSexOptions} />
-              </Form.Item>
-              <Form.Item
-                name="microchipNumber"
-                label="Số vi mạch"
-                className="!mb-3"
-                rules={[{ pattern: /^[A-Za-z0-9]{9,15}$/, message: '9–15 chữ số hoặc chữ cái' }]}
-              >
-                <Input placeholder="VD: 985141002345678" maxLength={15} />
-              </Form.Item>
-              <Form.Item name="registrationNumber" label="Số đăng ký" className="!mb-3">
-                <Input placeholder="Số trong sổ giống" maxLength={40} />
-              </Form.Item>
-            </div>
-            <Form.Item name="valuationVnd" label="Định giá (₫)" className="!mb-3" extra="Chỉ Quản lý và chủ ngựa thấy.">
-              <InputNumber
-                min={0}
-                step={1000000}
-                className="w-full"
-                formatter={(v) => (v === undefined || v === null || v === '' ? '' : Number(v).toLocaleString('vi-VN'))}
-                parser={(v) => (v ? v.replace(/[^0-9]/g, '') : '')}
-                placeholder="VD: 500.000.000"
-              />
-            </Form.Item>
-            <Form.Item name="owner" label="Chủ sở hữu" className="!mb-3">
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                placeholder="Chọn chủ sở hữu"
-                options={activeOptions(ownersData)}
-              />
-            </Form.Item>
-            <Form.Item
-              name="assignedTrainer"
-              label="Huấn luyện viên phụ trách"
-              extra="Chỉ HLV được gán mới thấy và lập kế hoạch huấn luyện cho ngựa này."
-              className="!mb-3"
-            >
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                placeholder="Chưa gán — chưa HLV nào thấy ngựa này"
-                options={activeOptions(trainersData)}
-              />
-            </Form.Item>
-            <Form.Item
-              name="assignedVet"
-              label="Bác sĩ thú y phụ trách"
-              extra="Yêu cầu khám cho ngựa này sẽ gửi thẳng tới bác sĩ được gán."
-              className="!mb-3"
-            >
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                placeholder="Chưa gán — chưa bác sĩ nào thấy ngựa này"
-                options={activeOptions(vetsData)}
-              />
-            </Form.Item>
-          </Form>
-        </Modal>
+          onFinish={(values) =>
+            // Cleared optional fields are sent as '' / null so the server removes them.
+            saveMutation.mutate({
+              ...values,
+              dob: values.dob ? values.dob.toISOString() : undefined,
+              breed: values.breed ?? '',
+              color: values.color ?? '',
+              sex: values.sex ?? '',
+              microchipNumber: values.microchipNumber ?? '',
+              registrationNumber: values.registrationNumber ?? '',
+              valuationVnd: values.valuationVnd ?? null,
+            })
+          }
+          ownerOptions={activeOptions(ownersData)}
+          trainerOptions={activeOptions(trainersData)}
+          vetOptions={activeOptions(vetsData)}
+          stalls={mapStalls}
+          unplaced={stallsData?.data?.unplaced || []}
+          grooms={grooms}
+          currentStall={editTarget ? stallByHorse.get(String(editTarget._id)) : undefined}
+          onOpenStable={() => navigate(editTarget ? `/admin/stables?horse=${editTarget._id}` : '/admin/stables')}
+        />
       )}
     </div>
   );

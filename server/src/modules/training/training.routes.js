@@ -36,6 +36,7 @@ router.post('/sessions/:id/reschedule', authorize(ROLES.HEAD_TRAINER), sessionCt
 // End (completed) or stop part-way (aborted) a running session; each claims in_progress atomically.
 router.post('/sessions/:id/end', authorize(ROLES.HEAD_TRAINER), sessionCtrl.endSession);
 router.post('/sessions/:id/abort', authorize(ROLES.HEAD_TRAINER), sessionCtrl.abortSession);
+router.post('/sessions/:id/simulate', authorize(ROLES.HEAD_TRAINER), sessionCtrl.simulateScenario);
 router.patch('/sessions/:id/evaluation', authorize(ROLES.HEAD_TRAINER), sessionCtrl.recordEvaluation);
 router.delete('/sessions/:id', authorize(ROLES.HEAD_TRAINER), sessionCtrl.deleteSession);
 

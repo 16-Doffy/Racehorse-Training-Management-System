@@ -107,6 +107,59 @@ export function HorseAvatar({ name, size = 44, tone = 'forest' }) {
   );
 }
 
+/**
+ * A stall's code as the plate on its door ("A-03"), so a row reads the way the groom walks the
+ * stable. A horse not on the map yet shows its initial instead.
+ */
+export function StallPlate({ code, name, size = 'md', muted = false }) {
+  const dims = size === 'sm' ? { width: 46, height: 36, fontSize: 12 } : { width: 54, height: 44, fontSize: 14 };
+  if (!code) return <HorseAvatar name={name} size={dims.height} tone={muted ? 'gold' : 'forest'} />;
+  return (
+    <View style={[styles.plate, { width: dims.width, height: dims.height }, muted && styles.plateMuted]}>
+      <Text style={[styles.plateText, { fontSize: dims.fontSize }, muted && { color: colors.forest }]} numberOfLines={1} adjustsFontSizeToFit>
+        {code}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Tabs with a count under each label — the day's meals, a list's parts. `options`:
+ * { value, label, sub?, icon?, done?, total?, alert? }; `done/total` shows "2/6", `alert` a red dot.
+ */
+export function CountTabs({ options, value, onChange, style }) {
+  return (
+    <View style={[styles.countTabs, style]}>
+      {options.map((o) => {
+        const on = o.value === value;
+        const complete = o.total > 0 && o.done === o.total;
+        return (
+          <Pressable
+            key={o.value}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={`${o.label}${o.total ? `, ${o.done} trên ${o.total}` : ''}`}
+            onPress={() => onChange(o.value)}
+            style={({ pressed }) => [styles.countTab, on && styles.countTabOn, pressed && styles.pressed]}
+          >
+            <Row style={{ gap: 5 }}>
+              {o.icon ? <Icon name={o.icon} size={15} color={on ? colors.gold : colors.forestLight} /> : null}
+              <Text style={[styles.countTabLabel, on && { color: colors.white }]} numberOfLines={1}>
+                {o.label}
+              </Text>
+              {o.alert ? <View style={styles.countTabAlert} /> : null}
+            </Row>
+            <Text style={[styles.countTabSub, on && { color: 'rgba(255,255,255,0.75)' }]} numberOfLines={1}>
+              {o.total > 0 ? (complete ? `✓ ${o.done}/${o.total}` : `${o.done}/${o.total}`) : o.sub || '—'}
+              {o.total > 0 && o.sub ? ` · ${o.sub}` : ''}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export function StatTile({ label, value, suffix, tint = colors.forest, icon, onPress, style }) {
   return (
     <Card style={[styles.stat, style]} onPress={onPress}>
@@ -411,6 +464,26 @@ const styles = StyleSheet.create({
   },
   iconBadgeText: { color: colors.white, fontSize: 10, fontWeight: '800' },
   avatar: { alignItems: 'center', justifyContent: 'center' },
+  plate: { borderRadius: radius.sm, backgroundColor: colors.forest, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  plateMuted: { backgroundColor: colors.goldSoft },
+  plateText: { color: colors.gold, fontWeight: '800', letterSpacing: 0.3 },
+  countTabs: { flexDirection: 'row', gap: 6 },
+  countTab: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    gap: 2,
+  },
+  countTabOn: { backgroundColor: colors.forest, borderColor: colors.forest },
+  countTabLabel: { fontSize: 13.5, fontWeight: '800', color: colors.forest },
+  countTabSub: { fontSize: 11.5, fontWeight: '600', color: colors.textMuted },
+  countTabAlert: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.red },
   stat: { flex: 1, minWidth: 0, padding: spacing.md, paddingTop: spacing.lg, gap: 4, overflow: 'hidden' },
   statStripe: { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
   statValueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },

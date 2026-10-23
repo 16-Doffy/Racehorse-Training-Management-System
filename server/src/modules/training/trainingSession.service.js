@@ -107,6 +107,8 @@ async function raiseExamIfOverexerted(session, user, horse) {
     requestedBy: user,
     reason,
     priority: 'high',
+    symptoms: ['fatigue'],
+    observedAt: session.actualEndAt || new Date(),
     trainingSession: session._id,
     message: `🩺 [ƯU TIÊN CAO] Hệ thống đề nghị khám ${horse.name} sau buổi tập: ${reason}`,
   });
@@ -327,11 +329,58 @@ async function onAborted(session, actor) {
         requestedBy: actor,
         reason: `Dừng buổi ${what} giữa chừng — ${why}.`,
         priority: 'high',
+        observedAt: new Date(),
         trainingSession: session._id,
         message: `🩺 [ƯU TIÊN CAO] ${horse.name} phải dừng buổi ${what} giữa chừng — ${why}. Cần bác sĩ khám.`,
       });
     }
   }
+}
+
+/**
+ * The sensors say the horse went lame mid-run (speed fell away, heart rate shot up, the stride went
+ * uneven): the run is stopped as "Nghi chấn thương" without waiting for anyone. Stopping it does
+ * what a trainer's injury stop does (the owner told, the vet asked for an urgent exam, confirmed
+ * races flagged); on top of that the trainer is told the system stopped it, and the groom is given
+ * the first aid to do now. Returns the stopped session, or null if the run had already ended.
+ */
+async function stopForSuspectedInjury(session, { speed, heartRate, targetSpeed }) {
+  const reason = `Cảm biến: tốc độ tụt còn ${speed} km/h (mục tiêu ${targetSpeed} km/h), nhịp tim ${heartRate} bpm, bước chạy lệch — hệ thống tự dừng`;
+  const stopped = await closeRun(session._id, { to: SESSION_STATUS.ABORTED, abortCategory: 'injury', abortReason: reason });
+  if (!stopped) return null;
+  const horse = await Horse.findById(stopped.horse).select('name');
+  const where = stopped.metrics?.distance ? ` sau ${stopped.metrics.distance} m` : '';
+  await notifyHorseStaff({
+    staff: 'trainer',
+    horse: stopped.horse,
+    trainingSession: stopped._id,
+    type: 'fitness_alert',
+    severity: 'critical',
+    message: `🚨 ${horse?.name || 'Ngựa'} nghi chấn thương${where}: ${reason}. Đã gửi yêu cầu khám gấp cho bác sĩ và giao việc sơ cứu cho nhân viên chăm sóc.`,
+  });
+  const assignment = await StableAssignment.findOne({ horse: stopped.horse });
+  if (assignment?.assignedCaretaker && !(await DailyTask.exists({ trainingSession: stopped._id, taskType: 'icing' }))) {
+    const now = dueAt(0);
+    await DailyTask.create({
+      horse: stopped.horse,
+      assignedTo: assignment.assignedCaretaker,
+      taskType: 'icing',
+      source: 'system',
+      trainingSession: stopped._id,
+      note: 'Nghi chấn thương khi đang tập: dắt ngựa về chuồng, chườm lạnh chân ngay, không cho tập và chờ bác sĩ khám.',
+      scheduledDate: now,
+      dueTime: hhmm(now),
+      status: 'pending',
+    });
+    await notifyCaretaker({
+      horse: stopped.horse,
+      trainingSession: stopped._id,
+      type: 'task_assigned',
+      severity: 'critical',
+      message: `🚨 ${horse?.name || 'Ngựa'} nghi chấn thương khi đang tập: chườm lạnh chân ngay, giữ ngựa trong chuồng và chờ bác sĩ.`,
+    });
+  }
+  return stopped;
 }
 
 /** The sensor feed covered the workout: the run is completed, its simulated work kept apart. */
@@ -410,6 +459,7 @@ module.exports = {
   onCompleted,
   buildFromKind,
   autoComplete,
+  stopForSuspectedInjury,
   closeRun,
   OVEREXERTION_RATIO,
 };

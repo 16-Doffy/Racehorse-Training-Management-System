@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { FEED_TYPES, guessFeedType } = require('../modules/inventory/feedType');
 
 const CODE_PREFIX = { feed: 'TA', medicine: 'YT', equipment: 'DC' };
 
@@ -40,6 +41,9 @@ const inventoryItemSchema = new mongoose.Schema(
     code: { type: String, trim: true },
     name: { type: String, required: true, trim: true },
     category: { type: String, enum: ['feed', 'medicine', 'equipment'], required: true },
+    // Feed only: forage, concentrate or supplement — how long a horse waits after eating it before
+    // harder work. Guessed from the name when the Manager leaves it out.
+    feedType: { type: String, enum: FEED_TYPES },
     description: { type: String, trim: true }, // what it is for
     // The unit it is used and counted in: rations, doses and stock all use it (kg, g, ml, viên…).
     unit: { type: String, required: true, trim: true },
@@ -66,6 +70,16 @@ const inventoryItemSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// A feed always has a kind (the Manager's, or a guess from its name); nothing else has one.
+inventoryItemSchema.pre('validate', function setFeedType() {
+  if (this.category !== 'feed') this.feedType = undefined;
+  else if (!this.feedType) this.feedType = guessFeedType(this.name);
+});
+// A feed stocked before kinds existed shows the guess, so the Manager sees it and can correct it.
+inventoryItemSchema.post('init', function guessOldFeedType(doc) {
+  if (doc.category === 'feed' && !doc.feedType) doc.feedType = guessFeedType(doc.name);
+});
 
 // Gives a new item the next code of its category (TA-007…).
 inventoryItemSchema.pre('validate', async function assignCode() {

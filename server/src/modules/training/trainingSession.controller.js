@@ -212,6 +212,7 @@ async function applyStatusChange(session, next, { cancelReason }) {
       },
     };
   }
+  if (next === SESSION_STATUS.CANCELLED) session.cancelSource = 'trainer';
   if (next === SESSION_STATUS.CANCELLED && typeof cancelReason === 'string' && cancelReason.trim()) session.cancelReason = cancelReason.trim();
   session.status = next;
   return {};
@@ -404,7 +405,7 @@ const updateSession = asyncHandler(async (req, res) => {
   // Claimed on the status it was read in: a session started meanwhile is not cancelled behind its back.
   const saved = await TrainingSession.findOneAndUpdate(
     { _id: session._id, status: readStatus },
-    { $set: { ...changes, status: session.status, ...(session.cancelReason ? { cancelReason: session.cancelReason } : {}) } },
+    { $set: { ...changes, status: session.status, ...(session.cancelReason ? { cancelReason: session.cancelReason } : {}), ...(session.cancelSource ? { cancelSource: session.cancelSource } : {}) } },
     { new: true }
   );
   if (!saved) return fail(res, 'Buổi tập vừa thay đổi trạng thái — tải lại rồi thử lại.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });
@@ -635,6 +636,8 @@ async function blockForFever(res, session, bodyTempC, user) {
       requestedBy: user,
       reason: `Sốt ${bodyTempC} °C khi kiểm tra trước buổi tập.`,
       priority: 'high',
+      symptoms: ['fever'],
+      observedAt: new Date(),
       trainingSession: session._id,
       message: `🌡️ [ƯU TIÊN CAO] ${horse.name} sốt ${bodyTempC} °C khi kiểm tra trước buổi tập — buổi tập đã bị chặn, cần bác sĩ khám.`,
     });
@@ -755,6 +758,25 @@ const abortSession = asyncHandler(async (req, res) => {
   return ok(res, closed, 'Training session aborted.');
 });
 
+/**
+ * POST /training/sessions/:id/simulate { scenario: 'normal' | 'tired' | 'injury' } — only while the
+ * sensors are simulated (ENABLE_SENSOR_SIMULATOR): plays out a scenario on a running session, so a
+ * demo shows what the system does when a horse tires or goes lame (realtime/sensorSimulator.js).
+ */
+const simulateScenario = asyncHandler(async (req, res) => {
+  if (process.env.ENABLE_SENSOR_SIMULATOR !== 'true') return fail(res, 'Chỉ dùng được khi hệ thống chạy cảm biến mô phỏng.', 409);
+  const session = await loadSession(req, res);
+  if (!session) return undefined;
+  const scenario = req.body?.scenario;
+  if (!TrainingSession.schema.path('simScenario').enumValues.includes(scenario)) {
+    return fail(res, 'Kịch bản chỉ là normal, tired hoặc injury.', 400);
+  }
+  const updated = await TrainingSession.findOneAndUpdate({ _id: session._id, status: SESSION_STATUS.IN_PROGRESS }, { $set: { simScenario: scenario } }, { new: true });
+  if (!updated) return fail(res, 'Chỉ áp dụng cho buổi đang diễn ra.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });
+  await logAction({ actorId: req.user._id, action: 'trainingSession.simulate', targetModel: 'TrainingSession', targetId: session._id, metadata: { scenario } });
+  return ok(res, { simScenario: scenario }, 'Simulation scenario set.');
+});
+
 // A finished session is the record of work done and what came of it; only bookings that never
 // happened can be removed.
 const deleteSession = asyncHandler(async (req, res) => {
@@ -848,5 +870,6 @@ module.exports = {
   recordEvaluation,
   endSession,
   abortSession,
+  simulateScenario,
   deleteSession,
 };

@@ -53,6 +53,9 @@ test('groom care work against real MongoDB', { skip: !process.env.TEST_MONGO_URI
     const saved = await models.DailyTask.findById(meal._id);
     assert.equal(saved.status, 'completed');
     assert.equal(saved.observation.appetite, 'partial');
+    // The trainer sees who fed the horse.
+    const seen = (await api('trainer', 'GET', `/stable/tasks?horse=${horse._id}`)).find((t) => String(t._id) === String(meal._id));
+    assert.equal(seen.completedBy?.name, 'TEST groom');
     assert.equal(saved.observation.amountEatenPercent, 60, 'eaten is kept apart from what was issued');
     assert.equal(saved.supplies[0].amount, 3);
   });

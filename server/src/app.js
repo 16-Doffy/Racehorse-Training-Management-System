@@ -5,6 +5,7 @@ const path = require('path');
 const swaggerUi = require('swagger-ui-express');
 const { clientOrigins } = require('./config/env');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
+const rejectOperatorKeys = require('./middlewares/rejectOperatorKeys');
 const openapiSpec = require('./docs/openapi');
 
 const authRoutes = require('./modules/auth/auth.routes');
@@ -25,6 +26,7 @@ const app = express();
 
 app.use(cors({ origin: clientOrigins, credentials: true }));
 app.use(express.json());
+app.use(rejectOperatorKeys);
 app.use(morgan('dev'));
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 

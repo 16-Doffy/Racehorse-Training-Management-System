@@ -2,14 +2,16 @@ import { useState } from 'react';
 import { Table, Button, Typography, Modal, Form, Select, DatePicker, InputNumber, Input, Tag, Space, Tooltip, Radio, Alert, Empty } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, FlagOutlined, ScheduleOutlined, WarningOutlined } from '@ant-design/icons';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { raceApi } from './raceApi';
 import { horsesApi } from '../horses/horsesApi';
 import { trainingSessionApi, trainingPlanApi } from '../training/trainingApi';
 import { SURFACE_LABELS, surfaceOptions, DONE_STATUSES } from '../training/trainingVocab';
+import { RaceFormTag } from '../training/RaceForm';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
+import { newestFirst } from '../../utils/newestFirst';
 
 const { Text } = Typography;
 
@@ -67,7 +69,7 @@ function TrialCell({ trial }) {
   );
 }
 
-function DecisionCell({ entry }) {
+function DecisionCell({ entry, form }) {
   const d = entry.decision;
   return (
     <div className="flex flex-col gap-1">
@@ -82,12 +84,22 @@ function DecisionCell({ entry }) {
         </Text>
       )}
       {!d?.at && entry.status === 'confirmed' && <Text type="secondary" className="!text-xs">Xác nhận cũ (chưa ghi người quyết định)</Text>}
+      {/* Health changed after the horse was confirmed: the trainer decides again (withdraw, or confirm once fit). */}
       {entry.reviewNeeded && (
-        <Tooltip title={entry.reviewReason}>
+        <>
           <Tag color="warning" icon={<WarningOutlined />} className="!m-0 w-fit">
-            Cần xem lại
+            Cần xem lại quyết định
           </Tag>
-        </Tooltip>
+          {entry.reviewReason && <Text type="warning" className="!text-xs">Sức khỏe thay đổi: {entry.reviewReason}</Text>}
+        </>
+      )}
+      {form && ['registered', 'confirmed'].includes(entry.status) && (
+        <span className="flex flex-wrap items-center gap-1">
+          <Text type="secondary" className="!text-xs">
+            Phong độ theo kế hoạch:
+          </Text>
+          <RaceFormTag form={form} />
+        </span>
       )}
     </div>
   );
@@ -201,6 +213,11 @@ export default function RacePage() {
   const navigate = useNavigate();
 
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
+  // A notification about one horse's race (?horse=<id>) shows that horse's entries only.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusHorse = searchParams.get('horse');
+  const shownRaces = focusHorse ? (data?.data || []).filter((r) => String(r.horse?._id || r.horse) === focusHorse) : data?.data;
+  const focusName = focusHorse ? (data?.data || []).find((r) => String(r.horse?._id || r.horse) === focusHorse)?.horse?.name : null;
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const { data: trialsData } = useQuery({
@@ -210,6 +227,11 @@ export default function RacePage() {
   const trials = trialsData?.data || [];
   const horseById = new Map((horsesData?.data || []).map((h) => [String(h._id), h]));
   const activePlanByHorse = new Map((plansData?.data || []).filter((p) => p.status === 'active').map((p) => [refId(p.horse), p]));
+  // The horse's form for this race, judged by the active plan that prepares it (server training/raceForm.js).
+  const formFor = (entry) => {
+    const plan = activePlanByHorse.get(refId(entry.horse));
+    return plan && refId(plan.targetRace) === String(entry._id) ? plan.progress?.form : null;
+  };
 
   // A horse the vet has grounded or is still recovering can't be entered (the server refuses it too).
   const horseOptions = (horsesData?.data || []).map((h) => {
@@ -254,12 +276,14 @@ export default function RacePage() {
       title: 'Ngựa',
       dataIndex: ['horse', 'name'],
       key: 'horse',
+      width: 180,
       render: (name, record) => <Link to={`/horses/${record.horse?._id}`}>{name}</Link>,
     },
     {
       title: 'Giải đua',
       dataIndex: 'raceName',
       key: 'raceName',
+      width: 190,
       render: (name, r) => (
         <div>
           <div>{name}</div>
@@ -271,6 +295,7 @@ export default function RacePage() {
       title: 'Ngày đua',
       dataIndex: 'raceDate',
       key: 'raceDate',
+      width: 115,
       render: (d, r) => {
         const days = dayjs(d).startOf('day').diff(dayjs().startOf('day'), 'day');
         return (
@@ -286,6 +311,7 @@ export default function RacePage() {
     {
       title: 'Cự ly · mặt sân',
       key: 'distance',
+      width: 130,
       render: (_, r) => [r.distance ? `${r.distance}m` : null, SURFACE_LABELS[r.surface]].filter(Boolean).join(' · ') || '—',
     },
     {
@@ -295,40 +321,40 @@ export default function RacePage() {
       render: (_, r) => (r.status === 'withdrawn' ? <Text type="secondary" className="!text-xs">—</Text> : <TrialCell trial={trialFor(r, trials)} />),
     },
     {
-      title: 'Quyết định',
+      // The result sits under the decision: one column fewer, so the table fits the page and the
+      // pinned actions column never covers it.
+      title: 'Quyết định · kết quả',
       key: 'status',
-      width: 230,
-      render: (_, r) => <DecisionCell entry={r} />,
-    },
-    {
-      title: 'Kết quả',
-      dataIndex: 'result',
-      key: 'result',
-      render: (v, r) =>
-        v ? (
-          <div>
-            <div>{v}</div>
-            {r.prizeMoney > 0 && (
-              <Text type="success" className="!text-xs">
-                Thưởng {Number(r.prizeMoney).toLocaleString('vi-VN')} ₫
-              </Text>
-            )}
-          </div>
-        ) : (
-          <span className="text-gray-400">Chưa có kết quả</span>
-        ),
+      width: 240,
+      render: (_, r) => (
+        <div className="flex flex-col gap-1">
+          <DecisionCell entry={r} form={formFor(r)} />
+          {r.result && (
+            <div>
+              <span className="font-medium">{r.result}</span>
+              {r.prizeMoney > 0 && (
+                <Text type="success" className="block !text-xs">
+                  Thưởng {Number(r.prizeMoney).toLocaleString('vi-VN')} ₫
+                </Text>
+              )}
+            </div>
+          )}
+        </div>
+      ),
     },
     {
       title: '',
       key: 'actions',
-      // Pinned so the actions stay in view when the table scrolls sideways.
+      // Pinned so the actions stay in view when the table scrolls sideways; one button per line and a
+      // set width, so the pinned column never covers the result next to it.
       fixed: 'right',
+      width: 180,
       render: (_, record) => {
         const open = ['registered', 'confirmed'].includes(record.status);
         const plan = activePlanByHorse.get(refId(record.horse));
         const planForThis = plan && refId(plan.targetRace) === String(record._id);
         return (
-          <Space size={4} wrap>
+          <Space size={4} orientation="vertical" align="start">
             {open && !isPast(record) && !plan && (
               <Button size="small" icon={<ScheduleOutlined />} onClick={() => navigate(`/training/plans?race=${record._id}`)}>
                 Lập kế hoạch
@@ -421,10 +447,15 @@ export default function RacePage() {
         />
       )}
 
+      {focusHorse && (
+        <Tag closable onClose={() => setSearchParams({}, { replace: true })} color="gold" className="!mb-3">
+          Đang xem riêng {focusName || 'ngựa được chọn'} · bấm × để xem tất cả
+        </Tag>
+      )}
       <Table
         rowKey="_id"
         columns={columns}
-        dataSource={data?.data}
+        dataSource={newestFirst(shownRaces)}
         loading={isLoading && !data}
         scroll={{ x: 'max-content' }}
         locale={{

@@ -49,6 +49,7 @@ export const NOTIFICATION_TYPE = {
   session_scheduled: { label: 'Lịch tập', icon: 'session' },
   restock_decision: { label: 'Đề xuất kho', icon: 'supplies' },
   low_stock: { label: 'Kho sắp hết', icon: 'supplies' },
+  stock_update: { label: 'Kho vật tư', icon: 'supplies' },
   incident_report: { label: 'Sự cố', icon: 'warning' },
   incident_update: { label: 'Sự cố', icon: 'warning' },
   exam_request: { label: 'Lịch khám', icon: 'exam' },
@@ -272,6 +273,45 @@ export const canRecordLate = (task, ctx, now = new Date()) =>
 /** A meal or dose whose window closed can still be reported as not done (the trainer / vet is told). */
 export const canReportNotDone = (task) => task?.status === 'pending';
 
+export const NO_RATION_REASON = 'Chưa có khẩu phần được duyệt';
+export const EXPIRED_REASON = 'Thuốc/vật tư đã hết hạn';
+
+/**
+ * The one thing to do with a pending meal, dose or chore straight from its row, by where it stands:
+ * record it (`complete`), record it at its real time (`late`), ask the Manager for what the store is
+ * short of (`restock`), or tell the trainer why it can't be done (`notDone`, with the reason when it
+ * is known). null when there is nothing to do yet (not time yet) or any more (recorded, reported) —
+ * the detail sheet still carries every action.
+ */
+export function primaryAction(task, ctx, now = new Date()) {
+  if (task?.status !== 'pending') return null;
+  if (canCompleteTask(task, ctx)) return { key: 'complete' };
+  const state = taskState(task, ctx);
+  if (state?.key === 'missed') return canRecordLate(task, ctx, now) ? { key: 'late' } : { key: 'notDone' };
+  if (state?.key !== 'blocked') return null;
+  const codes = state.blockers.map((b) => b.code);
+  if (codes.includes('NO_APPROVED_RATION')) return { key: 'notDone', reason: NO_RATION_REASON };
+  if (codes.includes('SHORT_OF_STOCK')) return { key: 'restock' };
+  if (codes.includes('EXPIRED_SUPPLY')) return { key: 'notDone', reason: EXPIRED_REASON };
+  return null;
+}
+
+// Work that needs the groom first, then what is waiting, then what is settled.
+const STATE_RANK = { late: 0, ready: 1, missed: 2, blocked: 3, upcoming: 4, unable: 5, cancelled: 6, completed: 7 };
+export const stateRank = (state) => STATE_RANK[state?.key] ?? 8;
+
+/** Still on the groom's plate: to do now or later, or missed and not yet reported either way. */
+export const needsAction = (task, ctx) => {
+  const state = taskState(task, ctx);
+  return !!state && (state.open || (state.key === 'missed' && task.status === 'pending'));
+};
+
+/** The stall a horse stands in, as its door plate reads ("A-03"), or null when it has none. */
+export function stallCodeOf(assignment) {
+  if (!assignment?.stableBlock) return null;
+  return parseStableBlock(assignment.stableBlock).stall;
+}
+
 /** What the Manager approved of a request: all of it unless they approved less (approvedQuantity). */
 export const approvedOf = (request) => request?.approvedQuantity ?? request?.quantity;
 
@@ -364,6 +404,22 @@ export const describeObservation = (observation) =>
 export const APPETITE_OPTIONS = ['Bình thường', 'Tốt', 'Kém', 'Bỏ ăn'];
 export const MANURE_OPTIONS = ['Bình thường', 'Khô / Táo bón', 'Lỏng / Tiêu chảy', 'Không thấy phân'];
 export const WATER_OPTIONS = ['Bình thường', 'Uống nhiều', 'Uống ít'];
+
+/** A feed's kind (InventoryItem.feedType), as the Manager's storeroom names it. */
+export const FEED_TYPE = {
+  concentrate: { label: 'Thức ăn tinh', color: '#ea580c', bg: '#ffedd5' },
+  forage: { label: 'Cỏ', color: '#16a34a', bg: '#dcfce7' },
+  supplement: { label: 'Bổ sung', color: '#2563eb', bg: '#dbeafe' },
+};
+
+/** "2 bao + 5 kg" — the stock in the packs it is bought in, or null when it isn't bought in packs. */
+export const packsText = (item, quantity = item?.quantity) => formatStock(item, quantity).split(' · ')[1] || null;
+
+/**
+ * The zones a groom works in that a delivery can go to: real zones of the stable map ("Khu A"), not
+ * the free text of a stall written by hand before the map existed.
+ */
+export const deliveryBlocks = (blocks = []) => [...new Set(blocks.filter((b) => /^Khu\s+\S+$/i.test(String(b || '').trim())))];
 
 export const INVENTORY_CATEGORY = {
   feed: { label: 'Thức ăn', icon: 'feed', color: '#16a34a', bg: '#dcfce7' },
@@ -550,14 +606,82 @@ export function rationLine(item = {}) {
   return { label: linked ? item.type : feed.label, icon: feed.icon, amount, linked };
 }
 
-/** "Block A - Stall 12" -> { block: "Block A", stall: "Stall 12" } */
+// A stall on the Manager's stable map has a code: its zone (1-4 letters or digits) and its number,
+// "A-03", "CL-01". A horse placed on the map carries that code as its stableBlock.
+const STALL_CODE = /^([A-Z0-9]{1,4})-(\d{2,})$/;
+
+/**
+ * Where a stableBlock puts the horse. A stall code keeps the whole code as the stall and its zone as
+ * the block: "A-03" -> { block: "Khu A", stall: "A-03" }. Free text from before the map is split at
+ * its dash: "Block A - Stall 12" -> { block: "Block A", stall: "Stall 12" }.
+ */
 export function parseStableBlock(stableBlock = '') {
-  const match = stableBlock.match(/^(.*?)\s*-\s*(.+)$/);
-  if (!match) return { block: stableBlock || 'Khác', stall: stableBlock || '—' };
+  const text = String(stableBlock || '').trim();
+  const code = text.match(STALL_CODE);
+  if (code) return { block: `Khu ${code[1]}`, stall: text, zone: code[1] };
+  const match = text.match(/^(.*?)\s*-\s*(.+)$/);
+  if (!match) return { block: text || 'Khác', stall: text || '—' };
   return { block: match[1], stall: match[2] };
 }
 
+/** "Block A", "Khu A" and the zone of "A-03" are one area: compared without the word in front. */
+export function areaKey(block = '') {
+  return normalize(block).replace(/^(block|khu|day)\s+/, '');
+}
+
 export const refId = (ref) => (ref && typeof ref === 'object' ? ref._id : ref);
+
+// ---------- The stable map (GET /stable/stalls) ----------
+
+export const STALL_TYPES = {
+  standard: { label: 'Chuồng thường' },
+  isolation: { label: 'Chuồng cách ly', color: '#ea580c', bg: '#ffedd5' },
+  recovery: { label: 'Chuồng hồi phục', color: '#2563eb', bg: '#dbeafe' },
+};
+
+const STALL_STATES = {
+  maintenance: { key: 'maintenance', label: 'Bảo trì', color: '#b45309', bg: '#fef3c7' },
+  empty: { key: 'empty', label: 'Trống', color: '#9ca3af', bg: '#f3f4f6' },
+  taken: { key: 'taken', label: 'Có ngựa', color: '#6b7280', bg: '#f3f4f6' },
+};
+
+/**
+ * How a stall on the map stands: under maintenance, empty, or the health of the horse in it — the
+ * same colours as the horse's health everywhere else in the app. A horse the server hides from this
+ * user (`occupant: { hidden: true }`) is only "taken".
+ */
+export function stallState(stall) {
+  if (!stall || stall.status === 'maintenance') return stall ? STALL_STATES.maintenance : STALL_STATES.empty;
+  if (!stall.occupied || !stall.occupant) return STALL_STATES.empty;
+  const health = stall.occupant.horse?.healthStatus;
+  if (stall.occupant.hidden || !stall.occupant.horse) return STALL_STATES.taken;
+  return { key: health || 'eligible', ...(HEALTH_STATUS[health] || HEALTH_STATUS.eligible) };
+}
+
+/** The zones in the map's own order (the server sorts by zone, then position), each with its stalls. */
+export function groupZones(stalls = []) {
+  const zones = new Map();
+  for (const stall of stalls) {
+    if (!zones.has(stall.zone)) {
+      zones.set(stall.zone, { key: stall.zone, name: stall.zoneName || `Khu ${stall.zone}`, purpose: stall.zonePurpose || '', stalls: [] });
+    }
+    zones.get(stall.zone).stalls.push(stall);
+  }
+  return [...zones.values()];
+}
+
+/**
+ * The groom's own stalls: those the Manager gave them (`caretaker`, empty stalls too) or whose horse
+ * they look after, and their horses still on a free-text stall from before the map (`unplaced`), which
+ * the Manager has yet to put on it.
+ */
+export function myStallsOf(map, userId) {
+  const mine = (caretaker) => !!userId && String(refId(caretaker) || '') === String(userId);
+  return {
+    stalls: (map?.stalls || []).filter((s) => mine(s.caretaker) || (!s.occupant?.hidden && mine(s.occupant?.caretaker))),
+    unplaced: (map?.unplaced || []).filter((u) => mine(u.caretaker)),
+  };
+}
 
 /** Accent-insensitive contains, so searching "co kho" finds "Cỏ khô". */
 export function normalize(text = '') {

@@ -39,7 +39,8 @@ export default function CareScreen({ navigation, route }) {
   const bar = (
     <View style={styles.barWrap}>
       <Segments
-        options={SEGMENTS.map((segment) => ({ ...segment, value: segment.key, count: counts[segment.key] }))}
+        // Labels and counts only: with an icon too, "Việc chuồng" no longer fits a narrow phone.
+        options={SEGMENTS.map(({ key, label }) => ({ label, value: key, count: counts[key] }))}
         value={active}
         onChange={setActive}
       />

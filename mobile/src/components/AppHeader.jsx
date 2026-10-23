@@ -42,7 +42,7 @@ export default function AppHeader({ title, subtitle, eyebrow, right, bell = fals
 }
 
 /** The bell with its unread count, and the list behind it. Notifications are fetched only here. */
-function NotificationBell() {
+export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const { notifications } = useNotifications();
   const unread = notifications.filter((n) => !n.isRead).length;

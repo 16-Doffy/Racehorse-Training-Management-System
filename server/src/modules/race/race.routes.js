@@ -40,7 +40,22 @@ const recordResults = asyncHandler(async (req, res) => {
  * Checked when an entry is created, moved to another horse, or put back to registered/confirmed —
  * recording a result or withdrawing a grounded horse stays possible.
  */
+// What a run race was: the prize money and the horse's achievement are booked from these, so once it
+// has a result they stay. The result itself is corrected through PATCH /:id/results.
+const RECORDED_FIELDS = {
+  horse: (a, b) => String(a) === String(b),
+  raceName: (a, b) => String(a ?? '').trim() === String(b ?? '').trim(),
+  raceDate: (a, b) => new Date(a).toDateString() === new Date(b).toDateString(),
+  distance: (a, b) => Number(a) === Number(b),
+};
+
 async function refuseGroundedHorse(req, { existing }) {
+  if (existing?.status === 'completed') {
+    const changed = Object.entries(RECORDED_FIELDS).filter(([f, same]) => req.body[f] !== undefined && !same(req.body[f], existing[f]));
+    if (changed.length) {
+      return { status: 409, message: 'Giải đã có kết quả: không đổi ngựa, tên giải, ngày đua hay cự ly nữa (tiền thưởng và thành tích đã ghi theo lượt này). Sửa thứ hạng, thời gian, tiền thưởng ở "Cập nhật kết quả".' };
+    }
+  }
   const invalid = entryProblem(req.body, existing);
   if (invalid) return { status: 400, message: invalid };
   const horseId = req.body.horse || existing?.horse;

@@ -1,5 +1,5 @@
 import { Text, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Icon from '../components/Icon';
@@ -14,13 +14,22 @@ import IncidentsScreen from '../screens/IncidentsScreen';
 import HorseDetailScreen from '../screens/HorseDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { Loading } from '../components/ui';
+import LiveUpdates from '../realtime/LiveUpdates';
 import { colors } from '../theme';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+const navigationRef = createNavigationContainerRef();
+
+// Where tapping a live notification takes the groom: stock news to the storeroom, the rest home.
+const STOCK_NOTIFICATIONS = ['stock_update', 'restock_decision', 'low_stock'];
+const openNotification = (notification) => {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate('Tabs', { screen: STOCK_NOTIFICATIONS.includes(notification?.type) ? 'Kho' : 'Trang chủ' });
+};
 
 const TAB_ICONS = {
-  'Tổng quan': 'dashboard',
+  'Trang chủ': 'dashboard',
   'Chăm sóc': 'care',
   Chuồng: 'stable',
   Kho: 'supplies',
@@ -77,7 +86,7 @@ function Tabs() {
         tabBarIcon: ({ focused }) => <TabIcon name={route.name} focused={focused} badge={badges[route.name] || 0} />,
       })}
     >
-      <Tab.Screen name="Tổng quan" component={DashboardScreen} />
+      <Tab.Screen name="Trang chủ" component={DashboardScreen} />
       <Tab.Screen name="Chăm sóc" component={CareScreen} />
       <Tab.Screen name="Chuồng" component={StableMapScreen} />
       <Tab.Screen name="Kho" component={SuppliesScreen} />
@@ -98,7 +107,7 @@ export default function RootNavigator() {
   if (restoring) return <Loading text="Đang mở phiên làm việc..." />;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
           <>
@@ -115,6 +124,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Login" component={LoginScreen} />
         )}
       </Stack.Navigator>
+      {user ? <LiveUpdates onOpen={openNotification} /> : null}
     </NavigationContainer>
   );
 }

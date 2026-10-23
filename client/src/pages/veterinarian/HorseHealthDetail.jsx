@@ -1,16 +1,19 @@
 import { useMemo, useState } from 'react';
-import { Button, Spinner } from 'react-bootstrap';
+import { Button } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import vetApi from '../../api/veterinarianApi';
 import CareModal from '../../components/veterinarian/CareModal';
-import HorseInjuryViewer from '../../components/veterinarian/HorseInjuryViewer';
+import DetailDrawer, { useDetailDrawer } from '../../components/veterinarian/DetailDrawer';
 import IncidentModal from '../../components/veterinarian/IncidentModal';
+import InjuryBoard from '../../components/veterinarian/InjuryBoard';
 import InjuryModal from '../../components/veterinarian/InjuryModal';
+import InjuryStageControl from '../../components/veterinarian/InjuryStageControl';
+import RequestDetails from '../../components/veterinarian/RequestDetails';
 import TrainingLevelModal from '../../components/veterinarian/TrainingLevelModal';
-import TreatmentCard from '../../components/veterinarian/TreatmentCard';
+import TreatmentList from '../../components/veterinarian/TreatmentList';
 import useConfirm from '../../components/veterinarian/useConfirm';
-import { deleteInjury, endTreatment, setInjuryStage } from '../../components/veterinarian/vetActions';
+import { endTreatment } from '../../components/veterinarian/vetActions';
 import {
   ActionMenu,
   Callout,
@@ -21,7 +24,6 @@ import {
   LevelPill,
   LoadingBlock,
   Pill,
-  RecoveryStepper,
   Tabs,
   VetCard,
   Vitals,
@@ -35,6 +37,7 @@ import {
   VITALS,
   ago,
   clearanceOf,
+  clinicalFindings,
   errorText,
   fmtDate,
   fmtDateTime,
@@ -45,8 +48,8 @@ import {
   vitalOff,
 } from '../../components/veterinarian/vetFormat';
 import Horse3D from '../../features/horses/horse3d/Horse3D';
+import { careEventDetails } from '../../constants/care';
 import { message } from '../../lib/antdStatic';
-import { fileHref } from '../../lib/files';
 import { useCareEvents, useCareOrders, useExamRequests, useHealthRecords, useIncidents, useInjuries, useTreatments, useVetHorse, useVetRefresh } from '../../hooks/useVetData';
 
 const TABS = ['overview', 'exams', 'treatments', 'injuries', 'care'];
@@ -59,6 +62,21 @@ function VitalsLine({ vitalSigns }) {
       {shown.map((v) => (
         <span key={v.key} className={vitalOff(v, vitalSigns[v.key]) ? 'vet-text-bad fw-semibold' : 'vet-muted'}>
           {v.label} {vitalSigns[v.key]} {v.unit}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Weight, gums, refill, gut sounds, hydration, lameness — what the exam found, those off normal in red. */
+function ClinicalLine({ record }) {
+  const findings = clinicalFindings(record);
+  if (!findings.length) return null;
+  return (
+    <div className="vet-small d-flex flex-wrap gap-3 mt-1">
+      {findings.map((f) => (
+        <span key={f.key} className={f.off ? 'vet-text-bad fw-semibold' : 'vet-muted'}>
+          {f.text}
         </span>
       ))}
     </div>
@@ -102,13 +120,20 @@ function OverviewTab({ horse, records, ongoing, progressOf, injuries, onTab, act
                 </span>
               </div>
               <div className="fw-semibold mb-3">{latest.diagnosis}</div>
+              {latest.history && <div className="vet-muted mb-3" style={{ whiteSpace: 'pre-wrap' }}>{latest.history}</div>}
               <Vitals vitalSigns={latest.vitalSigns} />
+              <ClinicalLine record={latest} />
               {latest.notes && <div className="vet-muted mt-3" style={{ whiteSpace: 'pre-wrap' }}>{latest.notes}</div>}
-              {latest.attachments?.length > 0 && (
-                <button type="button" className="vet-link vet-small mt-2" onClick={() => onTab('exams')}>
-                  <i className="bi bi-paperclip" aria-hidden="true" /> {latest.attachments.length} tệp đính kèm
+              <div className="d-flex flex-wrap gap-3 mt-2">
+                <button type="button" className="vet-link vet-small" onClick={() => actions.openExam(latest._id)}>
+                  <i className="bi bi-file-earmark-medical" aria-hidden="true" /> Xem toàn bộ phiếu khám
                 </button>
-              )}
+                {latest.attachments?.length > 0 && (
+                  <button type="button" className="vet-link vet-small" onClick={() => actions.openExam(latest._id)}>
+                    <i className="bi bi-paperclip" aria-hidden="true" /> {latest.attachments.length} tệp đính kèm
+                  </button>
+                )}
+              </div>
             </>
           ) : (
             <EmptyNote
@@ -139,9 +164,15 @@ function OverviewTab({ horse, records, ongoing, progressOf, injuries, onTab, act
           {ongoing.length === 0 ? (
             <EmptyNote icon="bi-capsule" title="Không có điều trị đang áp dụng" />
           ) : (
-            ongoing.map((t) => (
-              <TreatmentCard key={t._id} treatment={t} progress={progressOf(t._id)} onEdit={() => actions.editTreatment(t)} onEnd={() => actions.endTreatment(t)} onLevel={actions.changeLevel} />
-            ))
+            <TreatmentList
+              treatments={ongoing}
+              progressOf={progressOf}
+              onOpen={actions.openTreatment}
+              onOpenExam={(t) => actions.openExam(t.healthRecord)}
+              onEnd={actions.endTreatment}
+              onReplace={actions.replaceTreatment}
+              onLevel={actions.changeLevel}
+            />
           )}
         </VetCard>
       </div>
@@ -170,9 +201,16 @@ function OverviewTab({ horse, records, ongoing, progressOf, injuries, onTab, act
           count={active.length || null}
           flush
           extra={
-            <button type="button" className="vet-link vet-small" onClick={() => actions.newInjury()}>
-              Ghi chấn thương
-            </button>
+            <div className="d-flex align-items-center gap-3">
+              {active.length > 0 && (
+                <button type="button" className="vet-link vet-small" onClick={() => onTab('injuries')}>
+                  Xem trên 3D
+                </button>
+              )}
+              <button type="button" className="vet-link vet-small" onClick={() => actions.newInjury()}>
+                Ghi chấn thương
+              </button>
+            </div>
           }
         >
           {active.length === 0 ? (
@@ -181,14 +219,13 @@ function OverviewTab({ horse, records, ongoing, progressOf, injuries, onTab, act
             <div className="vet-list">
               {active.map((m) => (
                 <div key={m._id} className="vet-row">
+                  <span className={`vet-inj-sev is-${m.severity}`} style={{ alignSelf: 'stretch' }} aria-hidden="true" />
                   <div className="vet-row-main">
-                    <div className="d-flex flex-wrap align-items-center gap-2">
+                    <div className="d-flex flex-wrap align-items-center gap-2 mb-1">
                       <span className="fw-semibold">{shortBodyPart(m.bodyPart)}</span>
                       <Pill tone={SEVERITY_META[m.severity]?.tone}>{SEVERITY_META[m.severity]?.label || m.severity}</Pill>
                     </div>
-                    <div className="mt-1">
-                      <RecoveryStepper value={m.recoveryStatus} onChange={(stage) => actions.injuryStage(m, stage)} />
-                    </div>
+                    <InjuryStageControl marker={m} refresh={actions.refresh} compact />
                   </div>
                 </div>
               ))}
@@ -221,7 +258,11 @@ function OverviewTab({ horse, records, ongoing, progressOf, injuries, onTab, act
   );
 }
 
-function ExamsTab({ records, onExamine, onEdit, onDeleteAttachment, deletingId }) {
+/**
+ * The horse's exams; one opens on its own page with its injuries and prescriptions. A filed exam is not
+ * edited (nor its files removed): a later finding is a new exam.
+ */
+function ExamsTab({ records, onExamine, onOpen }) {
   return (
     <VetCard
       title="Phiếu khám"
@@ -239,7 +280,16 @@ function ExamsTab({ records, onExamine, onEdit, onDeleteAttachment, deletingId }
       ) : (
         <div className="vet-list">
           {records.map((r) => (
-            <div key={r._id} className="vet-row" style={{ alignItems: 'flex-start' }}>
+            <div
+              key={r._id}
+              className="vet-row is-clickable"
+              style={{ alignItems: 'flex-start' }}
+              role="button"
+              tabIndex={0}
+              title="Xem toàn bộ phiếu khám"
+              onClick={() => onOpen(r._id)}
+              onKeyDown={(e) => e.key === 'Enter' && onOpen(r._id)}
+            >
               <div className="vet-date-block" aria-hidden="true">
                 <span>{new Date(r.date || r.createdAt).getDate()}</span>
                 <small>Th{new Date(r.date || r.createdAt).getMonth() + 1}</small>
@@ -249,31 +299,26 @@ function ExamsTab({ records, onExamine, onEdit, onDeleteAttachment, deletingId }
                   <span className="fw-semibold">{r.diagnosis}</span>
                   <HealthPill status={r.resultStatus} />
                   <ClearedPill level={r.clearedLevel} />
+                  {r.answeredRequests > 0 && (
+                    <Pill tone="info" icon="bi-reply">
+                      Theo yêu cầu khám
+                    </Pill>
+                  )}
                 </div>
+                {r.history && <div className="vet-small vet-muted mt-1 vet-clamp-1">Bệnh sử: {r.history}</div>}
                 <VitalsLine vitalSigns={r.vitalSigns} />
-                {r.notes && <div className="vet-muted mt-1" style={{ whiteSpace: 'pre-wrap' }}>{r.notes}</div>}
-                {r.attachments?.length > 0 && (
-                  <div className="d-flex flex-wrap gap-2 mt-2">
-                    {r.attachments.map((att) => (
-                      <span key={att._id} className="vet-attachment">
-                        <a href={fileHref(att.url)} target="_blank" rel="noopener noreferrer" title={`Mở ${att.name}`}>
-                          <i className={`bi ${att.contentType?.startsWith('image/') ? 'bi-image' : 'bi-file-earmark-pdf'}`} aria-hidden="true" />
-                          <span className="text-truncate">{att.name}</span>
-                        </a>
-                        <button type="button" onClick={() => onDeleteAttachment(r, att)} disabled={deletingId === att._id} title="Xóa tệp" aria-label={`Xóa ${att.name}`}>
-                          {deletingId === att._id ? <Spinner animation="border" size="sm" /> : <i className="bi bi-x" aria-hidden="true" />}
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <ClinicalLine record={r} />
                 <div className="vet-small vet-faint mt-1">
                   {fmtDateTime(r.date || r.createdAt)} · {r.examinedBy?.name || 'Bác sĩ'}
+                  {r.attachments?.length > 0 && (
+                    <>
+                      {' · '}
+                      <i className="bi bi-paperclip" aria-hidden="true" /> {r.attachments.length} tệp
+                    </>
+                  )}
                 </div>
               </div>
-              <Button size="sm" variant="vet-ghost" onClick={() => onEdit(r)}>
-                Sửa
-              </Button>
+              <i className="bi bi-chevron-right vet-faint align-self-center" aria-hidden="true" />
             </div>
           ))}
         </div>
@@ -282,53 +327,78 @@ function ExamsTab({ records, onExamine, onEdit, onDeleteAttachment, deletingId }
   );
 }
 
-function InjuriesTab({ horse, injuries, onNew, onEdit, onStage, onDelete }) {
-  const sorted = [...injuries].sort((a, b) => Number(isActiveInjury(b)) - Number(isActiveInjury(a)) || new Date(b.createdAt) - new Date(a.createdAt));
+/**
+ * The horse's injuries: the list beside the horse in 3D (InjuryBoard). Once recorded, only their
+ * recovery moves on (by hand, or with the treatment); the exam that recorded one opens in place.
+ */
+function InjuriesTab({ horse, injuries, onNew, refresh, onOpenExam }) {
   return (
-    <div className="vet-grid-2 is-even">
-      <HorseInjuryViewer horse={horse} injuries={injuries.filter(isActiveInjury)} height={420} />
-      <VetCard
-        title="Chấn thương"
-        icon="bi-bandaid"
-        count={injuries.length || null}
-        flush
-        extra={
-          <Button size="sm" variant="vet" onClick={onNew}>
-            <i className="bi bi-plus-lg" aria-hidden="true" /> Ghi chấn thương
-          </Button>
-        }
-      >
-        {sorted.length === 0 ? (
+    <div>
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+        <div className="vet-small vet-muted">
+          {injuries.filter(isActiveInjury).length} đang theo dõi · {injuries.length} đã ghi
+        </div>
+        <Button size="sm" variant="vet" onClick={onNew}>
+          <i className="bi bi-plus-lg" aria-hidden="true" /> Ghi chấn thương
+        </Button>
+      </div>
+      {injuries.length === 0 ? (
+        <div className="vet-card">
           <EmptyNote icon="bi-shield-check" title="Chưa ghi chấn thương nào" />
-        ) : (
-          <div className="vet-list">
-            {sorted.map((m) => (
-              <div key={m._id} className="vet-row" style={{ alignItems: 'flex-start' }}>
-                <div className="vet-row-main">
-                  <div className="d-flex flex-wrap align-items-center gap-2">
-                    <span className="fw-semibold" title={m.bodyPart}>
-                      {shortBodyPart(m.bodyPart)}
-                    </span>
-                    <Pill tone={SEVERITY_META[m.severity]?.tone}>{SEVERITY_META[m.severity]?.label || m.severity}</Pill>
-                  </div>
-                  {m.notes && <div className="vet-small vet-muted mt-1">{m.notes}</div>}
-                  <div className="mt-2">
-                    <RecoveryStepper value={m.recoveryStatus} onChange={(stage) => onStage(m, stage)} />
-                  </div>
-                  <div className="vet-small vet-faint mt-1">Ghi {fmtDate(m.createdAt)}</div>
-                </div>
-                <ActionMenu
-                  items={[
-                    { label: 'Sửa', icon: 'bi-pencil', onClick: () => onEdit(m) },
-                    { label: 'Xóa (ghi nhầm)', icon: 'bi-trash', onClick: () => onDelete(m), danger: true },
-                  ]}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </VetCard>
+        </div>
+      ) : (
+        <InjuryBoard injuries={injuries} horse={horse} refresh={refresh} onOpenExam={onOpenExam} />
+      )}
     </div>
+  );
+}
+
+/** The horse's treatments: those running, then the ones that ended, each a line that opens in place. */
+function TreatmentsTab({ treatments, progressOf, actions }) {
+  const [showEnded, setShowEnded] = useState(false);
+  const running = treatments.filter((t) => t.status === 'ongoing');
+  const ended = treatments.filter((t) => t.status !== 'ongoing').sort((a, b) => new Date(b.endDate || b.updatedAt) - new Date(a.endDate || a.updatedAt));
+  const list = (items) => (
+    <TreatmentList
+      treatments={items}
+      progressOf={progressOf}
+      onOpen={actions.openTreatment}
+      onOpenExam={(t) => actions.openExam(t.healthRecord)}
+      onEnd={actions.endTreatment}
+      onReplace={actions.replaceTreatment}
+      onLevel={actions.changeLevel}
+    />
+  );
+  return (
+    <VetCard
+      title="Điều trị"
+      icon="bi-capsule"
+      count={treatments.length || null}
+      flush
+      extra={
+        <Button size="sm" variant="vet" onClick={actions.prescribe}>
+          <i className="bi bi-plus-lg" aria-hidden="true" /> Kê đơn
+        </Button>
+      }
+    >
+      {treatments.length === 0 ? (
+        <EmptyNote icon="bi-capsule" title="Chưa có điều trị nào" />
+      ) : (
+        <>
+          <div className="vet-tx-section">Đang điều trị ({running.length})</div>
+          {running.length ? list(running) : <div className="vet-small vet-faint px-3 py-3">Không có đơn nào đang áp dụng.</div>}
+          {ended.length > 0 && (
+            <>
+              <button type="button" className="vet-tx-section w-100 text-start border-0 d-flex align-items-center" onClick={() => setShowEnded((v) => !v)} aria-expanded={showEnded}>
+                Đã kết thúc ({ended.length})
+                <i className={`bi ${showEnded ? 'bi-chevron-up' : 'bi-chevron-down'} ms-auto`} aria-hidden="true" />
+              </button>
+              {showEnded && list(ended)}
+            </>
+          )}
+        </>
+      )}
+    </VetCard>
   );
 }
 
@@ -348,9 +418,10 @@ function CareTab({ horse, onCare, onDeleteEvent, userId }) {
               <i className={`bi ${CARE_KINDS[kind].icon} vet-faint`} aria-hidden="true" />
               {CARE_KINDS[kind].label}
             </div>
-            <DueChip date={horse.careSchedule?.[CARE_KINDS[kind].field]} onClick={() => onCare(kind, 'due')} title="Đổi ngày hẹn" />
+            <div className="vet-small vet-muted">Lần tới</div>
+            <DueChip date={horse.careSchedule?.[CARE_KINDS[kind].field]} onClick={() => onCare(kind, 'due')} title="Đặt / đổi ngày hẹn lần tới" />
             <Button size="sm" variant="vet-outline" onClick={() => onCare(kind, 'record')}>
-              {kind === 'exam' ? 'Đặt hạn / khám' : 'Ghi nhận đã làm'}
+              {kind === 'exam' ? 'Hẹn khám lần tới' : 'Ghi nhận đã làm'}
             </Button>
           </div>
         ))}
@@ -377,6 +448,7 @@ function CareTab({ horse, onCare, onDeleteEvent, userId }) {
                       {ev.product && <span>{ev.product}</span>}
                       {(ev.batchNumber || ev.dose) && <span className="vet-small vet-muted">{[ev.batchNumber && `Lô ${ev.batchNumber}`, ev.dose].filter(Boolean).join(' · ')}</span>}
                     </div>
+                    {careEventDetails(ev).length > 0 && <div className="vet-small vet-muted mt-1">{careEventDetails(ev).join(' · ')}</div>}
                     <div className="vet-small vet-faint mt-1">
                       {fmtDate(ev.date)} · {ev.performedBy?.name || 'Bác sĩ'}
                       {ev.nextDue && <> · hẹn lần sau {fmtDate(ev.nextDue)}</>}
@@ -413,7 +485,8 @@ export default function HorseHealthDetail() {
   const incidentsQ = useIncidents();
   const ordersQ = useCareOrders();
   const [dialog, setDialog] = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
+  // Treatments and exams open in a drawer on this page.
+  const drawer = useDetailDrawer();
 
   const tab = TABS.includes(params.get('tab')) ? params.get('tab') : 'overview';
   const setTab = (next) =>
@@ -462,31 +535,29 @@ export default function HorseHealthDetail() {
   }
 
   const clearance = clearanceOf(horse);
+  const lastExam = records[0];
+  const lastExamAt = lastExam && (lastExam.date || lastExam.createdAt);
+  const headerFacts = [
+    { label: 'Chủ ngựa', icon: 'bi-person', value: horse.owner?.name },
+    { label: 'Huấn luyện viên', icon: 'bi-stopwatch', value: horse.assignedTrainer?.name },
+    { label: 'Cân nặng', icon: 'bi-speedometer', value: horse.weightKg ? `${horse.weightKg} kg` : null },
+    { label: 'Khám gần nhất', icon: 'bi-clipboard2-pulse', value: lastExam ? fmtDate(lastExamAt) : null, sub: lastExam ? ago(lastExamAt) : null },
+  ];
   const close = () => setDialog(null);
   const actions = {
+    refresh,
     examine: () => navigate(`/veterinarian/examinations/new/${id}`),
+    openExam: (record) => drawer.openOnly({ type: 'exam', id: idOf(record) }),
+    openTreatment: (t) => drawer.openOnly({ type: 'treatment', treatment: t }),
     prescribe: () => navigate(`/veterinarian/treatments/new?horseId=${id}`),
-    editTreatment: (t) => navigate(`/veterinarian/treatments/${t._id}/edit`),
-    endTreatment: (t) => endTreatment({ ...t, horse }, { confirm, refresh }),
+    // A prescription is not edited: a new one, started from it, takes over.
+    replaceTreatment: (t) => navigate(`/veterinarian/treatments/new?horseId=${id}&replace=${t._id}`),
+    endTreatment: async (t) => {
+      if (await endTreatment({ ...t, horse }, { confirm, refresh })) drawer.close();
+    },
     changeLevel: () => setDialog({ type: 'level' }),
     newInjury: () => setDialog({ type: 'injury' }),
-    injuryStage: (m, stage) => setInjuryStage(m, stage, { refresh }),
     care: (kind, mode = 'record') => setDialog({ type: 'care', kind, mode }),
-  };
-
-  const deleteAttachment = async (record, att) => {
-    const ok = await confirm({ title: 'Xóa tệp đính kèm', body: `Xóa "${att.name}" khỏi phiếu khám ngày ${fmtDate(record.date)}?`, confirmLabel: 'Xóa', danger: true });
-    if (!ok) return;
-    setDeletingId(att._id);
-    try {
-      await vetApi.deleteRecordAttachment(record._id, att._id);
-      message.success('Đã xóa tệp.');
-      await refresh();
-    } catch (err) {
-      message.error(errorText(err, 'Không xóa được tệp.'));
-    } finally {
-      setDeletingId(null);
-    }
   };
 
   const deleteCareEvent = async (ev) => {
@@ -508,53 +579,69 @@ export default function HorseHealthDetail() {
       </button>
 
       <div className="vet-card vet-horse-head">
-        <div className="vet-horse-visual">
-          {horse.photoUrl ? <HorseAvatar horse={horse} size={128} /> : <Horse3D breed={horse.breed} color={horse.color} height={140} compact />}
-        </div>
-        <div className="vet-horse-info">
-          <h1 className="vet-title" style={{ fontSize: 28 }}>
-            {horse.name}
-          </h1>
-          <div className="vet-muted">{horseFacts(horse) || 'Chưa có thông tin giống / tuổi'}</div>
-          <div className="vet-small vet-faint mt-1">
-            {[horse.owner?.name && `Chủ: ${horse.owner.name}`, horse.assignedTrainer?.name && `HLV: ${horse.assignedTrainer.name}`, horse.weightKg && `${horse.weightKg} kg`].filter(Boolean).join(' · ')}
+        <div className="vet-horse-grid">
+          <div className="vet-horse-visual">
+            {horse.photoUrl ? <HorseAvatar horse={horse} size={128} /> : <Horse3D breed={horse.breed} color={horse.color} height="var(--vet-horse-stage)" compact />}
           </div>
-          <div className="d-flex flex-wrap gap-2 mt-3">
-            <HealthPill status={horse.healthStatus} lg />
-            <LevelPill level={clearance.level} lg />
+          <div className="vet-horse-body">
+            <div className="vet-horse-top">
+              <div className="vet-horse-info">
+                <h1 className="vet-title vet-horse-name">{horse.name}</h1>
+                <div className="vet-muted">{horseFacts(horse) || 'Chưa có thông tin giống / tuổi'}</div>
+              </div>
+              <div className="vet-horse-actions">
+                <Button variant="vet-outline" onClick={actions.prescribe}>
+                  <i className="bi bi-capsule" aria-hidden="true" /> Kê đơn
+                </Button>
+                <Button variant="vet" onClick={actions.examine}>
+                  <i className="bi bi-clipboard2-pulse" aria-hidden="true" /> Khám bệnh
+                </Button>
+                <ActionMenu
+                  size={null}
+                  items={[
+                    { label: 'Đổi mức tập', icon: 'bi-speedometer2', onClick: actions.changeLevel },
+                    { label: 'Ghi chấn thương', icon: 'bi-bandaid', onClick: actions.newInjury },
+                    { divider: true },
+                    { label: 'Ghi tiêm phòng', icon: CARE_KINDS.vaccination.icon, onClick: () => actions.care('vaccination') },
+                    { label: 'Ghi tẩy giun', icon: CARE_KINDS.deworming.icon, onClick: () => actions.care('deworming') },
+                    { label: 'Ghi đóng móng', icon: CARE_KINDS.farrier.icon, onClick: () => actions.care('farrier') },
+                    { divider: true },
+                    { label: 'Làm mới', icon: 'bi-arrow-clockwise', onClick: refresh },
+                  ]}
+                />
+              </div>
+            </div>
+            <div className="d-flex flex-wrap gap-2">
+              <HealthPill status={horse.healthStatus} lg />
+              <LevelPill level={clearance.level} lg />
+            </div>
+            <dl className="vet-horse-facts">
+              {headerFacts.map((f) => (
+                <div key={f.label} className="vet-horse-fact">
+                  <dt>
+                    <i className={`bi ${f.icon}`} aria-hidden="true" /> {f.label}
+                  </dt>
+                  <dd title={f.value || undefined}>{f.value || <span className="vet-faint">Chưa có</span>}</dd>
+                  {f.sub && <div className="vet-small vet-faint">{f.sub}</div>}
+                </div>
+              ))}
+            </dl>
           </div>
-        </div>
-        <div className="vet-horse-actions">
-          <Button variant="vet-outline" onClick={actions.prescribe}>
-            <i className="bi bi-capsule" aria-hidden="true" /> Kê đơn
-          </Button>
-          <Button variant="vet" onClick={actions.examine}>
-            <i className="bi bi-clipboard2-pulse" aria-hidden="true" /> Khám bệnh
-          </Button>
-          <ActionMenu
-            size={null}
-            items={[
-              { label: 'Đổi mức tập', icon: 'bi-speedometer2', onClick: actions.changeLevel },
-              { label: 'Ghi chấn thương', icon: 'bi-bandaid', onClick: actions.newInjury },
-              { divider: true },
-              { label: 'Ghi tiêm phòng', icon: CARE_KINDS.vaccination.icon, onClick: () => actions.care('vaccination') },
-              { label: 'Ghi tẩy giun', icon: CARE_KINDS.deworming.icon, onClick: () => actions.care('deworming') },
-              { label: 'Ghi đóng móng', icon: CARE_KINDS.farrier.icon, onClick: () => actions.care('farrier') },
-              { divider: true },
-              { label: 'Làm mới', icon: 'bi-arrow-clockwise', onClick: refresh },
-            ]}
-          />
         </div>
       </div>
 
       {(requests.length > 0 || incidents.length > 0) && (
         <div className="d-flex flex-column gap-2 mt-3">
           {requests.map((r) => (
-            <Callout key={r._id} tone="info" icon="bi-clipboard2-pulse">
-              <strong>{r.requestedBy?.name || 'HLV'}</strong> yêu cầu khám{r.reason ? `: ${r.reason}` : '.'}
-              {r.scheduledFor && <span className="vet-muted"> · hẹn {fmtDateTime(r.scheduledFor)}</span>}
-              <span className="vet-muted"> Lưu phiếu khám sẽ trả lời yêu cầu này.</span>
-            </Callout>
+            <div key={r._id}>
+              <RequestDetails request={r} />
+              <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-1 px-1">
+                <span className="vet-small vet-muted">Lưu phiếu khám sẽ trả lời yêu cầu này.</span>
+                <Button size="sm" variant={r.priority === 'urgent' ? 'vet-danger' : 'vet'} onClick={actions.examine}>
+                  Khám ngay
+                </Button>
+              </div>
+            </div>
           ))}
           {incidents.map((t) => (
             <Callout
@@ -587,53 +674,15 @@ export default function HorseHealthDetail() {
         />
 
         {tab === 'overview' && <OverviewTab horse={horse} records={records} ongoing={ongoing} progressOf={progressOf} injuries={injuries} onTab={setTab} actions={actions} />}
-        {tab === 'exams' && (
-          <ExamsTab records={records} onExamine={actions.examine} onEdit={(r) => navigate(`/veterinarian/examinations/${r._id}/edit`)} onDeleteAttachment={deleteAttachment} deletingId={deletingId} />
-        )}
-        {tab === 'treatments' && (
-          <VetCard
-            title="Điều trị"
-            icon="bi-capsule"
-            count={treatments.length || null}
-            flush
-            extra={
-              <Button size="sm" variant="vet" onClick={actions.prescribe}>
-                <i className="bi bi-plus-lg" aria-hidden="true" /> Kê đơn
-              </Button>
-            }
-          >
-            {treatments.length === 0 ? (
-              <EmptyNote icon="bi-capsule" title="Chưa có điều trị nào" />
-            ) : (
-              treatments.map((t) => (
-                <TreatmentCard
-                  key={t._id}
-                  treatment={t}
-                  progress={progressOf(t._id)}
-                  awaitingReturn={clearance.source === 'awaiting_return' && String(clearance.treatment) === t._id}
-                  onEdit={() => actions.editTreatment(t)}
-                  onEnd={() => actions.endTreatment(t)}
-                  onLevel={actions.changeLevel}
-                />
-              ))
-            )}
-          </VetCard>
-        )}
-        {tab === 'injuries' && (
-          <InjuriesTab
-            horse={horse}
-            injuries={injuries}
-            onNew={actions.newInjury}
-            onEdit={(m) => setDialog({ type: 'injury', injury: m })}
-            onStage={actions.injuryStage}
-            onDelete={(m) => deleteInjury(m, { confirm, refresh })}
-          />
-        )}
+        {tab === 'exams' && <ExamsTab records={records} onExamine={actions.examine} onOpen={actions.openExam} />}
+        {tab === 'treatments' && <TreatmentsTab treatments={treatments} progressOf={progressOf} actions={actions} />}
+        {tab === 'injuries' && <InjuriesTab horse={horse} injuries={injuries} onNew={actions.newInjury} refresh={refresh} onOpenExam={actions.openExam} />}
         {tab === 'care' && <CareTab horse={horse} onCare={actions.care} onDeleteEvent={deleteCareEvent} userId={userId} />}
       </div>
 
+      <DetailDrawer drawer={drawer} horseOf={() => horse} progressOf={progressOf} onEnd={actions.endTreatment} onReplace={actions.replaceTreatment} onLevel={actions.changeLevel} />
       {dialog?.type === 'level' && <TrainingLevelModal horse={horse} treatments={treatments} injuries={injuries} latestRecord={records[0] || null} onHide={close} onDone={refresh} />}
-      {dialog?.type === 'injury' && <InjuryModal horse={horse} injury={dialog.injury} injuries={injuries} onHide={close} onDone={refresh} />}
+      {dialog?.type === 'injury' && <InjuryModal horse={horse} injuries={injuries} onHide={close} onDone={refresh} />}
       {dialog?.type === 'care' && <CareModal horse={horse} kind={dialog.kind} initialMode={dialog.mode} onHide={close} onDone={refresh} />}
       {dialog?.type === 'incident' && <IncidentModal task={dialog.task} onHide={close} onDone={refresh} />}
       {confirmDialog}

@@ -12,7 +12,6 @@ import {
   ProfileOutlined,
   HeartOutlined,
   CalendarOutlined,
-  StarOutlined,
   MobileOutlined,
   AppstoreOutlined,
   CarryOutOutlined,
@@ -32,7 +31,7 @@ const MENUS = {
     { key: 'horses', icon: <ProfileOutlined />, label: 'Danh mục Ngựa', path: '/horses' },
     { key: 'stables', icon: <HomeOutlined />, label: 'Chuồng trại & NV chăm sóc', path: '/admin/stables' },
     { key: 'reports', icon: <BarChartOutlined />, label: 'Báo cáo Tổng quan', path: '/admin/reports' },
-    { key: 'inventory', icon: <ShoppingOutlined />, label: 'Vật tư & Thức ăn', path: '/inventory' },
+    { key: 'inventory', icon: <ShoppingOutlined />, label: 'Kho vật tư', path: '/inventory' },
     { key: 'finance', icon: <DollarOutlined />, label: 'Báo cáo Tài chính', path: '/finance' },
     { key: 'audit', icon: <FileTextOutlined />, label: 'Nhật ký Hệ thống', path: '/admin/audit-logs' },
   ],
@@ -58,15 +57,16 @@ const MENUS = {
   // Groom / Stable Hand works from the Expo mobile app (/mobile), so the web menu only carries
   // the notice that points there.
   [ROLES.GROOM]: [{ key: 'dashboard', icon: <MobileOutlined />, label: 'Dùng trên điện thoại', path: '/' }],
+  // The owner follows their horses: one page per part of a horse's life at the club. The trainer's
+  // reviews are the "Nhận xét HLV" tab of the training page.
   [ROLES.OWNER]: [
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
     { key: 'my-horses', icon: <ProfileOutlined />, label: 'Ngựa của tôi', path: '/horses' },
-    { key: 'owner-health', icon: <HeartOutlined />, label: 'Sức khỏe Ngựa', path: '/owner/health' },
-    { key: 'owner-training', icon: <CalendarOutlined />, label: 'Lịch Huấn luyện', path: '/owner/training' },
-    { key: 'owner-stable', icon: <HomeOutlined />, label: 'Chuồng trại & Chăm sóc', path: '/owner/stable' },
-    { key: 'owner-races', icon: <TrophyOutlined />, label: 'Lịch Cuộc Đua', path: '/owner/races' },
-    { key: 'owner-evaluations', icon: <StarOutlined />, label: 'Đánh giá HLV', path: '/owner/evaluations' },
-    { key: 'finance', icon: <DollarOutlined />, label: 'Chi phí & Doanh thu', path: '/finance' },
+    { key: 'owner-health', icon: <HeartOutlined />, label: 'Sức khỏe', path: '/owner/health' },
+    { key: 'owner-training', icon: <CalendarOutlined />, label: 'Huấn luyện', path: '/owner/training' },
+    { key: 'owner-races', icon: <TrophyOutlined />, label: 'Giải đua', path: '/owner/races' },
+    { key: 'owner-stable', icon: <HomeOutlined />, label: 'Chuồng & chăm sóc', path: '/owner/stable' },
+    { key: 'finance', icon: <DollarOutlined />, label: 'Thu chi', path: '/finance' },
   ],
 };
 

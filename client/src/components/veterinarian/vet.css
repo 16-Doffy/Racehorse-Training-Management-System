@@ -163,6 +163,120 @@ body[data-bs-theme='dark'] .vet-ui {
   border-radius: 12px;
 }
 
+/* ---------- A filed exam, read as a sheet (ExamRecordPage) ---------- */
+.vet-ui .vet-sheet {
+  padding: 18px 20px;
+}
+.vet-ui .vet-sheet-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.vet-ui .vet-sheet-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vet-brass);
+}
+.vet-ui .vet-sheet-horse {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--vet-ink);
+}
+.vet-ui .vet-sheet-conclusion {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--vet-border-soft);
+}
+.vet-ui .vet-sheet-label {
+  margin-bottom: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-sheet-diagnosis {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--vet-ink);
+}
+.vet-ui .vet-sheet-block + .vet-sheet-block {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--vet-border-soft);
+}
+/* Every field of the exam form with its value, or "Không ghi". */
+.vet-ui .vet-sheet-facts {
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
+.vet-ui .vet-sheet-facts dt {
+  color: var(--vet-muted);
+  font-weight: 400;
+}
+.vet-ui .vet-sheet-facts dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--vet-ink);
+}
+.vet-ui .vet-vitals.vet-vitals-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 720px) {
+  .vet-ui .vet-vitals.vet-vitals-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .vet-ui .vet-sheet-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .vet-ui .vet-sheet-facts dd {
+    margin-bottom: 8px;
+  }
+}
+
+/* ---------- An exam request, as the vet reads it ---------- */
+.vet-ui .vet-request {
+  padding: 12px 14px;
+}
+.vet-ui .vet-sign {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--vet-border);
+  background: var(--vet-card);
+  color: var(--vet-ink);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.vet-ui .vet-request-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 14px;
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+.vet-ui .vet-request-facts dt {
+  color: var(--vet-muted);
+  font-weight: 400;
+}
+.vet-ui .vet-request-facts dd {
+  margin: 0;
+  color: var(--vet-ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vet-ui .vet-request-facts .contents {
+  display: contents;
+}
+
 /* ---------- Pills ---------- */
 .vet-ui .vet-pill {
   display: inline-flex;
@@ -512,6 +626,47 @@ body[data-bs-theme='dark'] .vet-menu .dropdown-item.is-danger {
 .vet-ui .vet-choice-hint {
   margin-top: 8px;
   font-size: 12.5px;
+  color: var(--vet-muted);
+}
+
+/* ---------- A prescription inside another form (PrescriptionFields compact) ---------- */
+.vet-ui .vet-rx-label {
+  margin-bottom: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-rx-block {
+  margin-top: 14px;
+}
+.vet-ui .vet-rx-foot {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--vet-border-soft);
+}
+.vet-ui .vet-rx .vet-choice {
+  padding: 5px 10px;
+  font-size: 12.5px;
+}
+.vet-ui .vet-rx .vet-choices {
+  gap: 6px;
+}
+.vet-ui .vet-rx-quick {
+  padding: 2px 9px;
+  border: 1px solid var(--vet-border);
+  border-radius: 999px;
+  background: var(--vet-card);
+  color: var(--vet-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vet-ui .vet-rx-quick:hover {
+  background: var(--vet-hover);
+}
+.vet-ui .vet-rx-quick.is-ghost {
+  border-color: transparent;
+  background: transparent;
   color: var(--vet-muted);
 }
 
@@ -977,26 +1132,51 @@ body[data-bs-theme='dark'] .vet-ui .vet-due:hover {
   min-width: 110px;
   margin-right: 4px;
 }
+/* The medicines of a treatment: one line each, in one box. */
 .vet-ui .vet-meds {
   list-style: none;
   margin: 10px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-.vet-ui .vet-meds > li {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 12px;
   border-radius: 10px;
   background: var(--vet-card-2);
   border: 1px solid var(--vet-border-soft);
+  overflow: hidden;
+}
+.vet-ui .vet-meds > li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+}
+.vet-ui .vet-meds > li + li {
+  border-top: 1px solid var(--vet-border-soft);
 }
 .vet-ui .vet-meds > li > .bi {
   color: var(--vet-faint);
-  margin-top: 2px;
+  font-size: 13px;
+}
+.vet-ui .vet-med-line {
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.vet-ui .vet-tr-notes {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.vet-ui .vet-tr-notes dt {
+  color: var(--vet-faint);
+  font-weight: 400;
+}
+.vet-ui .vet-tr-notes dd {
+  margin: 0;
+  color: var(--vet-ink);
+  min-width: 0;
 }
 .vet-ui .vet-meds > li.is-stopped {
   opacity: 0.6;
@@ -1018,27 +1198,51 @@ body[data-bs-theme='dark'] .vet-ui .vet-due:hover {
 }
 
 /* ---------- Horse page header ---------- */
+/* The 3D horse on the left, as tall as the details beside it; sized by the card's own width (the
+   sidebar takes part of the screen), stacked when the card is narrow. */
 .vet-ui .vet-horse-head {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 16px 18px;
-  flex-wrap: wrap;
+  container: vet-horse-head / inline-size;
+  padding: 18px;
+}
+.vet-ui .vet-horse-grid {
+  --vet-horse-stage: 300px;
+  display: grid;
+  grid-template-columns: minmax(0, 460px) minmax(0, 1fr);
+  gap: 24px;
 }
 .vet-ui .vet-horse-visual {
-  flex: 0 0 auto;
-  width: 200px;
-  max-width: 100%;
-  border-radius: 14px;
-  overflow: hidden;
+  min-width: 0;
 }
 .vet-ui .vet-horse-visual .vet-avatar {
   width: 100% !important;
-  height: 140px !important;
+  height: var(--vet-horse-stage) !important;
+  border-radius: 14px;
+}
+.vet-ui .vet-horse-body {
+  container: vet-horse-body / inline-size;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+}
+.vet-ui .vet-horse-top {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-wrap: wrap;
 }
 .vet-ui .vet-horse-info {
-  flex: 1 1 260px;
+  flex: 1 1 220px;
   min-width: 0;
+}
+.vet-ui .vet-horse-name {
+  font-size: 34px;
+  line-height: 1.15;
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
 }
 .vet-ui .vet-horse-actions {
   display: flex;
@@ -1046,15 +1250,73 @@ body[data-bs-theme='dark'] .vet-ui .vet-due:hover {
   gap: 8px;
   flex-wrap: wrap;
 }
-@media (max-width: 640px) {
-  .vet-ui .vet-horse-visual {
-    width: 100%;
+.vet-ui .vet-horse-facts {
+  margin: 4px 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@container vet-horse-body (min-width: 600px) {
+  .vet-ui .vet-horse-facts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.vet-ui .vet-horse-fact {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--vet-card-2);
+  border: 1px solid var(--vet-border-soft);
+}
+.vet-ui .vet-horse-fact dt {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vet-faint);
+  margin-bottom: 2px;
+}
+.vet-ui .vet-horse-fact dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+@container vet-horse-head (max-width: 900px) {
+  .vet-ui .vet-horse-grid {
+    --vet-horse-stage: 250px;
+    grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+    gap: 20px;
+  }
+  .vet-ui .vet-horse-name {
+    font-size: 30px;
+  }
+}
+@container vet-horse-head (max-width: 640px) {
+  .vet-ui .vet-horse-grid {
+    --vet-horse-stage: 240px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .vet-ui .vet-horse-name {
+    font-size: 26px;
+  }
+  /* The "…" menu moves up beside the name, so the two buttons share one row. */
+  .vet-ui .vet-horse-info {
+    padding-right: 48px;
   }
   .vet-ui .vet-horse-actions {
     width: 100%;
   }
   .vet-ui .vet-horse-actions > .btn {
     flex: 1 1 auto;
+  }
+  .vet-ui .vet-horse-actions > .dropdown {
+    position: absolute;
+    top: 0;
+    right: 0;
+  }
+}
+@media (max-width: 640px) {
+  .vet-ui .vet-horse-head {
+    padding: 14px;
   }
 }
 
@@ -1422,6 +1684,275 @@ body[data-bs-theme='dark'] .vet-ui .vet-due:hover {
 }
 .vet-ui.modal .modal-footer > * {
   margin: 0;
+}
+
+/* ---------- Treatments as a table (TreatmentList) ---------- */
+.vet-ui .vet-tx {
+  --tx-cols: 132px minmax(0, 1fr) 150px 120px auto;
+}
+.vet-ui .vet-tx.has-horse {
+  --tx-cols: minmax(150px, 210px) 132px minmax(0, 1fr) 150px 120px auto;
+}
+.vet-ui .vet-tx-head,
+.vet-ui .vet-tx-row {
+  display: grid;
+  grid-template-columns: var(--tx-cols);
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 18px;
+}
+.vet-ui .vet-tx-head {
+  padding-block: 8px;
+  border-bottom: 1px solid var(--vet-border-soft);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vet-faint);
+}
+.vet-ui .vet-tx-row {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.vet-ui .vet-tx-row + .vet-tx-row {
+  border-top: 1px solid var(--vet-border-soft);
+}
+.vet-ui .vet-tx-row:hover {
+  background: var(--vet-hover);
+}
+.vet-ui .vet-tx-row:focus-visible {
+  outline: 2px solid var(--vet-focus);
+  outline-offset: -2px;
+}
+.vet-ui .vet-tx-row.is-ended {
+  color: var(--vet-muted);
+}
+.vet-ui .vet-tx-row.is-ended .vet-tx-names {
+  font-weight: 500;
+}
+.vet-ui .vet-tx-horse {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-weight: 600;
+}
+.vet-ui .vet-tx-meds,
+.vet-ui .vet-tx-period,
+.vet-ui .vet-tx-today {
+  min-width: 0;
+}
+.vet-ui .vet-tx-names {
+  font-weight: 600;
+  color: var(--vet-ink);
+}
+.vet-ui .vet-tx-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 3px;
+}
+.vet-ui .vet-tx-today .vet-progress {
+  margin-top: 3px;
+}
+.vet-ui .vet-tx-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.vet-ui .vet-tx-today-box {
+  padding: 12px 14px;
+  border: 1px solid var(--vet-border-soft);
+  border-radius: 12px;
+  background: var(--vet-card-2);
+}
+.vet-ui .vet-tx-section {
+  padding: 10px 18px;
+  background: var(--vet-card-2);
+  border-top: 1px solid var(--vet-border-soft);
+  border-bottom: 1px solid var(--vet-border-soft);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vet-muted);
+}
+@media (max-width: 900px) {
+  .vet-ui .vet-tx-head {
+    display: none;
+  }
+  .vet-ui .vet-tx-row,
+  .vet-ui .vet-tx.has-horse .vet-tx-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .vet-ui .vet-tx-row > [role='cell'] {
+    grid-column: 1;
+  }
+  .vet-ui .vet-tx-row > .vet-tx-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+/* ---------- Injuries: the list beside the horse in 3D (InjuryBoard) ---------- */
+.vet-ui .vet-inj {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.9fr);
+  gap: 18px;
+  align-items: start;
+}
+.vet-ui .vet-inj-side {
+  position: sticky;
+  top: 12px;
+  min-width: 0;
+}
+.vet-ui .vet-inj-panel {
+  overflow: hidden;
+}
+.vet-ui .vet-inj-panel .vet-3d {
+  border-radius: 0;
+}
+.vet-ui .vet-inj-detail {
+  padding: 14px 16px 16px;
+}
+.vet-ui .vet-inj-group {
+  overflow: hidden;
+}
+.vet-ui .vet-inj-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--vet-border-soft);
+  background: var(--vet-card-2);
+  color: inherit;
+  text-align: left;
+}
+.vet-ui .vet-inj-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px 10px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vet-ui .vet-inj-row + .vet-inj-row {
+  border-top: 1px solid var(--vet-border-soft);
+}
+.vet-ui .vet-inj-row:hover {
+  background: var(--vet-hover);
+}
+.vet-ui .vet-inj-row.is-active {
+  background: var(--vet-hover);
+  box-shadow: inset 3px 0 0 var(--vet-primary);
+}
+.vet-ui .vet-inj-sev {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: var(--vet-neutral);
+}
+.vet-ui .vet-inj-sev.is-mild {
+  background: #38bdf8;
+}
+.vet-ui .vet-inj-sev.is-moderate {
+  background: #f59e0b;
+}
+.vet-ui .vet-inj-sev.is-severe {
+  background: #ef4444;
+}
+.vet-ui .vet-inj-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .vet-ui .vet-inj {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vet-ui .vet-inj-side {
+    position: static;
+    order: -1;
+  }
+}
+
+/* An injury's stage and the way on (InjuryStageControl). */
+.vet-ui .vet-stage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.vet-ui .vet-stage-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.vet-ui .vet-stage.is-compact .vet-stage-actions .btn {
+  padding: 2px 10px;
+  font-size: 12.5px;
+}
+
+/* Two columns on a page, one inside a drawer. */
+.vet-ui .vet-grid-2.is-stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ---------- Drawer (details opened from a list, without leaving the page) ---------- */
+.vet-ui.vet-drawer {
+  background: var(--vet-card);
+  color: var(--vet-ink);
+  border-left: 1px solid var(--vet-border);
+}
+.vet-ui.vet-drawer .offcanvas-header {
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--vet-border-soft);
+}
+.vet-ui.vet-drawer .offcanvas-title {
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vet-ui.vet-drawer .offcanvas-body {
+  padding: 16px 18px 24px;
+  background: var(--vet-card);
+}
+body[data-bs-theme='dark'] .vet-ui.vet-drawer .btn-close {
+  filter: invert(1) grayscale(1) brightness(1.6);
+}
+.vet-ui .vet-drawer-back {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--vet-border);
+  border-radius: 10px;
+  background: var(--vet-card);
+  color: var(--vet-ink);
+}
+.vet-ui .vet-drawer-back:hover {
+  background: var(--vet-hover);
+}
+.vet-ui .vet-drawer-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--vet-border-soft);
+  background: var(--vet-card);
 }
 
 /* ---------- Page layout ---------- */

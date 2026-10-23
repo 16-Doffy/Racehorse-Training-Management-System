@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { healthRecordApi } from '../health/healthApi';
 import { HEALTH_LABELS, HEALTH_COLORS } from '../../constants/health';
+import { areasText, dueByOf, symptomsText } from '../../constants/examRequest';
 
 const { Text } = Typography;
 
@@ -77,10 +78,21 @@ export default function ExamRequestsCard() {
                       {PRIORITY_META[r.priority].label}
                     </Tag>
                   )}
+                  {r.status === 'pending' && r.holdTraining && (
+                    <Tag color="red" className="!m-0">
+                      Đang dừng tập
+                    </Tag>
+                  )}
                   <Text type="secondary" className="!text-xs">
                     gửi {dayjs(r.createdAt).format('DD/MM HH:mm')}
+                    {r.status === 'pending' ? ` · bác sĩ khám trước ${dayjs(dueByOf(r)).format('HH:mm DD/MM')}` : ''}
                   </Text>
                 </div>
+                {(r.symptoms?.length > 0 || r.bodyAreas?.length > 0) && (
+                  <Text className="!text-sm text-gray-600">
+                    Dấu hiệu: {[symptomsText(r.symptoms), areasText(r.bodyAreas)].filter(Boolean).join(' · ')}
+                  </Text>
+                )}
                 {r.reason && <Text className="!text-sm text-gray-600">Lý do: {r.reason}</Text>}
                 {accepted && (
                   <Text className="!text-sm">

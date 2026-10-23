@@ -23,6 +23,20 @@ const feedingScheduleSchema = new mongoose.Schema(
     timeOfDay: { type: String, default: null },
     items: [feedingItemSchema],
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    // Amounts the trainer confirmed ahead for the training plan's next phase: on `from` they replace
+    // `items` (realtime/dailyTaskGenerator.js), so the next phase's meals are ready before it starts.
+    upcoming: {
+      type: new mongoose.Schema(
+        {
+          from: { type: Date, required: true },
+          items: [feedingItemSchema],
+          approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+          basis: { type: String, trim: true }, // e.g. "Sức mạnh · tập nặng"
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
   },
   { timestamps: true }
 );

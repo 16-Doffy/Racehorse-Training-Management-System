@@ -124,6 +124,8 @@ const listTasks = asyncHandler(async (req, res) => {
   const tasks = await DailyTask.find(filter)
     .populate('horse', 'name')
     .populate('assignedTo', 'name')
+    .populate('completedBy', 'name')
+    .populate('skippedBy', 'name')
     .sort({ scheduledDate: -1 });
   // A make-up meal stands in for the meal it makes up for, so it goes just before it: a screen that
   // shows one task per meal (the groom app) then shows the one still to do. Its time alone does not
@@ -450,6 +452,7 @@ const completeTask = asyncHandler(async (req, res) => {
       if (!timing.canComplete) throw operationError(409, timing.reason, { timing, performedAt: action.performedAt });
       task.status = 'completed';
       task.completedAt = action.performedAt;
+      task.completedBy = req.user._id;
       task.receivedAt = new Date();
       task.recordedLate = action.late;
       if (!task.acknowledgedAt) task.acknowledgedAt = action.performedAt;

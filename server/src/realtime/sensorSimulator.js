@@ -2,7 +2,7 @@ const TrainingSession = require('../models/TrainingSession');
 const { evaluateMetrics } = require('./alertEvaluator');
 const { getIO } = require('./socketServer');
 const { SESSION_KINDS } = require('../constants/training');
-const { autoComplete } = require('../modules/training/trainingSession.service');
+const { autoComplete, stopForSuspectedInjury } = require('../modules/training/trainingSession.service');
 const { pushReading, clearReadings } = require('./liveReadings');
 
 const TICK_MS = 5000;
@@ -43,78 +43,109 @@ function targetsOf(session) {
  * avgHeartRate is a true running mean; distance accumulates from speed and never runs past the
  * workout — the feed used to keep adding distance for as long as nobody closed the session.
  */
+// The scenario a trainer can play out on a running session (POST /training/sessions/:id/simulate).
+// "tired": the horse slows and its heart works harder, so the run ends short of its targets.
+// "injury": on the next reading the horse goes lame — speed falls away, heart rate shoots up — and
+// the feed stops the run as a suspected injury (stopForSuspectedInjury).
+const TIRED_FORM = 0.8;
+
+/** One reading for every running session; startSensorSimulator calls it every tick. */
+async function simulateTick() {
+  const sessions = await TrainingSession.find({ status: 'in_progress' }).populate('horse', 'assignedTrainer');
+  if (sessions.length === 0) return;
+
+  const io = getIO();
+
+  for (const session of sessions) {
+    const target = targetsOf(session);
+    const key = String(session._id);
+    const trainer = session.horse.assignedTrainer;
+    const rooms = [`horse:${session.horse._id}`, trainer ? `user:${trainer}` : 'role:head_trainer'];
+    if (!formOfSession.has(key)) formOfSession.set(key, 0.9 + Math.random() * 0.15); // 90–105% of target pace
+    const scenario = session.simScenario || 'normal';
+    const form = scenario === 'tired' ? Math.min(formOfSession.get(key), TIRED_FORM) : formOfSession.get(key);
+
+    if (scenario === 'injury') {
+      const speed = round1(jitter(target.speed * 0.3, 0.1));
+      const heartRate = Math.round(jitter(target.heartRateMax * 1.12, 0.02));
+      formOfSession.delete(key);
+      clearReadings(key);
+      // eslint-disable-next-line no-await-in-loop
+      await TrainingSession.updateOne(
+        { _id: session._id, status: 'in_progress' },
+        { $set: { 'metrics.lastHeartRate': heartRate, 'metrics.lastSpeed': speed }, $max: { 'metrics.maxHeartRate': heartRate } }
+      );
+      // eslint-disable-next-line no-await-in-loop
+      const stopped = await stopForSuspectedInjury(session, { speed, heartRate, targetSpeed: target.speed });
+      if (stopped) {
+        io.to(rooms).emit('session:completed', { sessionId: session._id, horseId: session.horse._id, aborted: true, reason: stopped.abortReason });
+      }
+      continue;
+    }
+
+    const spike = Math.random() < (scenario === 'tired' ? SPIKE_CHANCE * 3 : SPIKE_CHANCE);
+    const baseHeart = scenario === 'tired' ? 0.97 : 0.86;
+    const speed = round1(jitter(target.speed * form, 0.06));
+    const heartRate = Math.round(spike ? jitter(target.heartRateMax * 1.06, 0.03) : jitter(target.heartRateMax * baseHeart, 0.06));
+
+    const m = session.metrics;
+    const n = m.sampleCount || 0;
+    m.avgHeartRate = round1(((m.avgHeartRate || 0) * n + heartRate) / (n + 1));
+    m.sampleCount = n + 1;
+    m.maxHeartRate = Math.max(m.maxHeartRate || 0, heartRate);
+    m.maxSpeed = Math.max(m.maxSpeed || 0, speed);
+    m.distance = Math.min(target.distance, Math.round((m.distance || 0) + (speed / 3.6) * SIM_SECONDS_PER_TICK));
+    const elapsedMinutes = (m.sampleCount * SIM_SECONDS_PER_TICK) / 60;
+    const done = m.distance >= target.distance || (target.durationMinutes && elapsedMinutes >= target.durationMinutes);
+    // Written only while the run is still on: a reading that lands after the trainer stopped it, or
+    // after the vet's lock, must not change what was recorded at that moment.
+    // eslint-disable-next-line no-await-in-loop
+    const kept = await TrainingSession.updateOne(
+      { _id: session._id, status: 'in_progress' },
+      { $set: { 'metrics.avgHeartRate': m.avgHeartRate, 'metrics.sampleCount': m.sampleCount, 'metrics.maxHeartRate': m.maxHeartRate, 'metrics.maxSpeed': m.maxSpeed, 'metrics.distance': m.distance, 'metrics.lastHeartRate': heartRate, 'metrics.lastSpeed': speed } }
+    );
+    if (!kept.modifiedCount) {
+      formOfSession.delete(key);
+      clearReadings(key);
+      continue;
+    }
+    pushReading(key, { hr: heartRate, speed, distance: m.distance, targetDistance: target.distance, at: Date.now() });
+
+    const horseId = session.horse._id;
+    // Live readings go to people watching this horse: its owner's horse room and the trainer
+    // responsible for it — not every trainer in the club.
+    io.to(rooms).emit('sensor:reading', {
+      sessionId: session._id,
+      horseId,
+      heartRate,
+      speed,
+      distance: m.distance,
+      targetDistance: target.distance,
+      timestamp: Date.now(),
+    });
+
+    // eslint-disable-next-line no-await-in-loop
+    await evaluateMetrics({ horseId, sessionId: session._id, heartRate, speed });
+
+    if (done) {
+      formOfSession.delete(key);
+      clearReadings(key);
+      // eslint-disable-next-line no-await-in-loop
+      const closed = await autoComplete(session, { workedSeconds: m.sampleCount * SIM_SECONDS_PER_TICK });
+      if (closed) io.to(rooms).emit('session:completed', { sessionId: session._id, horseId });
+    }
+  }
+}
+
 function startSensorSimulator() {
   console.log(`[simulator] sensor simulator started (tick every ${TICK_MS}ms, ${SIM_SECONDS_PER_TICK}s of work per tick)`);
-
   setInterval(async () => {
     try {
-      const sessions = await TrainingSession.find({ status: 'in_progress' }).populate('horse', 'assignedTrainer');
-      if (sessions.length === 0) return;
-
-      const io = getIO();
-
-      for (const session of sessions) {
-        const target = targetsOf(session);
-        const key = String(session._id);
-        if (!formOfSession.has(key)) formOfSession.set(key, 0.9 + Math.random() * 0.15); // 90–105% of target pace
-        const form = formOfSession.get(key);
-
-        const spike = Math.random() < SPIKE_CHANCE;
-        const speed = round1(jitter(target.speed * form, 0.06));
-        const heartRate = Math.round(spike ? jitter(target.heartRateMax * 1.06, 0.03) : jitter(target.heartRateMax * 0.86, 0.06));
-
-        const m = session.metrics;
-        const n = m.sampleCount || 0;
-        m.avgHeartRate = round1(((m.avgHeartRate || 0) * n + heartRate) / (n + 1));
-        m.sampleCount = n + 1;
-        m.maxHeartRate = Math.max(m.maxHeartRate || 0, heartRate);
-        m.maxSpeed = Math.max(m.maxSpeed || 0, speed);
-        m.distance = Math.min(target.distance, Math.round((m.distance || 0) + (speed / 3.6) * SIM_SECONDS_PER_TICK));
-        const elapsedMinutes = (m.sampleCount * SIM_SECONDS_PER_TICK) / 60;
-        const done = m.distance >= target.distance || (target.durationMinutes && elapsedMinutes >= target.durationMinutes);
-        // Written only while the run is still on: a reading that lands after the trainer stopped it, or
-        // after the vet's lock, must not change what was recorded at that moment.
-        // eslint-disable-next-line no-await-in-loop
-        const kept = await TrainingSession.updateOne(
-          { _id: session._id, status: 'in_progress' },
-          { $set: { 'metrics.avgHeartRate': m.avgHeartRate, 'metrics.sampleCount': m.sampleCount, 'metrics.maxHeartRate': m.maxHeartRate, 'metrics.maxSpeed': m.maxSpeed, 'metrics.distance': m.distance, 'metrics.lastHeartRate': heartRate, 'metrics.lastSpeed': speed } }
-        );
-        if (!kept.modifiedCount) {
-          formOfSession.delete(key);
-          clearReadings(key);
-          continue;
-        }
-        pushReading(key, { hr: heartRate, speed, distance: m.distance, targetDistance: target.distance, at: Date.now() });
-
-        const horseId = session.horse._id;
-        // Live readings go to people watching this horse: its owner's horse room and the trainer
-        // responsible for it — not every trainer in the club.
-        const trainer = session.horse.assignedTrainer;
-        io.to([`horse:${horseId}`, trainer ? `user:${trainer}` : 'role:head_trainer']).emit('sensor:reading', {
-          sessionId: session._id,
-          horseId,
-          heartRate,
-          speed,
-          distance: m.distance,
-          targetDistance: target.distance,
-          timestamp: Date.now(),
-        });
-
-        // eslint-disable-next-line no-await-in-loop
-        await evaluateMetrics({ horseId, sessionId: session._id, heartRate, speed });
-
-        if (done) {
-          formOfSession.delete(key);
-          clearReadings(key);
-          // eslint-disable-next-line no-await-in-loop
-          const closed = await autoComplete(session, { workedSeconds: m.sampleCount * SIM_SECONDS_PER_TICK });
-          if (closed) io.to([`horse:${horseId}`, trainer ? `user:${trainer}` : 'role:head_trainer']).emit('session:completed', { sessionId: session._id, horseId });
-        }
-      }
+      await simulateTick();
     } catch (err) {
       console.error('[simulator] tick failed:', err.message);
     }
   }, TICK_MS);
 }
 
-module.exports = { startSensorSimulator, targetsOf };
+module.exports = { startSensorSimulator, simulateTick, targetsOf, SCENARIOS: ['normal', 'tired', 'injury'] };

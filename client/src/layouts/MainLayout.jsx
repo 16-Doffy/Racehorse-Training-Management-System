@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ConfigProvider, Layout, Menu, Avatar, Dropdown, Segmented } from 'antd';
+import { ConfigProvider, Layout, Menu, Avatar, Dropdown, Segmented, Badge } from 'antd';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   UserOutlined, 
   LogoutOutlined, 
@@ -15,6 +16,8 @@ import { siderCollapsedSet } from '../store/uiSlice';
 import { getMenuByRole } from './menuConfig';
 import { ROLE_LABELS } from '../constants/roles';
 import AlertBell from '../features/alerts/AlertBell';
+import { notificationsApi } from '../features/alerts/notificationsApi';
+import { notificationTarget, menuKeyFor } from '../features/alerts/notificationTarget';
 import { disconnectSocket } from '../lib/socket';
 import { fileHref } from '../lib/files';
 import { FOREST, MENU_SECTION_LABEL, usesForestTheme, usesCanvasPicker, CANVAS_PRESETS, LIGHT_CANVAS, DARK_CANVAS, FULL_DARK_ROLES, BOOTSTRAP_ROLES, canvasOf, getForestTheme } from './forestTheme';
@@ -61,6 +64,28 @@ export default function MainLayout() {
 
   const menuItems = getMenuByRole(user?.role);
   const currentPath = location.pathname;
+  // Unread notifications by the menu entry they lead to (notificationTarget.js): a red count on the
+  // entry, and clicking it opens the newest one's spot on that page and clears them.
+  const queryClient = useQueryClient();
+  const { data: notifData } = useQuery({ queryKey: ['notifications'], queryFn: () => notificationsApi.list(), enabled: Boolean(user) });
+  const unreadByMenu = new Map();
+  for (const n of notifData?.data || []) {
+    if (n.isRead) continue;
+    const target = notificationTarget(n, user?.role);
+    const key = menuKeyFor(target, menuItems);
+    if (!key) continue;
+    if (!unreadByMenu.has(key)) unreadByMenu.set(key, []);
+    unreadByMenu.get(key).push({ n, target });
+  }
+  const openMenu = (m) => {
+    const waiting = (unreadByMenu.get(m.key) || []).sort((a, b) => new Date(b.n.createdAt) - new Date(a.n.createdAt));
+    navigate(waiting[0]?.target || m.path);
+    if (waiting.length) {
+      Promise.all(waiting.map(({ n }) => notificationsApi.markRead(n._id)))
+        .catch(() => {})
+        .finally(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }));
+    }
+  };
   // Every role gets the forest sidebar and chooses a light or dark canvas (forestTheme.js).
   const forest = usesForestTheme(user?.role);
   const canvas = usesCanvasPicker(user?.role);
@@ -77,7 +102,7 @@ export default function MainLayout() {
   const currentTheme = getForestTheme(canvasKey);
   const isDarkCanvas = canvas && canvasKey === DARK_CANVAS;
   const isStaff = FULL_DARK_ROLES.includes(user?.role);
-  // The staff's pages go fully dark; the Owner's pages keep their light panels.
+  // Every role's pages go fully dark on the dark canvas.
   const staffDark = isDarkCanvas && isStaff;
   // The vet's Bootstrap pages use Bootstrap's own dark mode, recoloured to the forest palette below.
   const bootstrapDark = isDarkCanvas && BOOTSTRAP_ROLES.includes(user?.role);
@@ -200,10 +225,22 @@ export default function MainLayout() {
             theme={forest ? 'dark' : 'light'}
             mode="inline"
             selectedKeys={[selectedKey]}
-            items={menuItems.map((m) => ({ key: m.key, icon: m.icon, label: <span className="font-medium text-sm">{m.label}</span> }))}
+            items={menuItems.map((m) => {
+              const count = unreadByMenu.get(m.key)?.length || 0;
+              return {
+                key: m.key,
+                icon: siderCollapsed && count ? <Badge dot offset={[2, 0]}>{m.icon}</Badge> : m.icon,
+                label: (
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-sm truncate">{m.label}</span>
+                    {count > 0 && <Badge count={count} size="small" overflowCount={99} title={`${count} thông báo chưa xem`} />}
+                  </span>
+                ),
+              };
+            })}
             onClick={({ key }) => {
               const target = menuItems.find((m) => m.key === key);
-              if (target) navigate(target.path);
+              if (target) openMenu(target);
             }}
             className={forest ? 'border-r-0' : 'border-r-0 !bg-white'}
           />
@@ -693,8 +730,8 @@ export default function MainLayout() {
           box-shadow: 0 1px 2px rgba(48, 40, 20, 0.06);
         }
 
-        /* A page built from light boxes (the Owner's pages) keeps its antd cards and tables light on a dark
-           canvas too; otherwise they turn dark while the text inside stays dark. */
+        /* A light box keeps its antd cards and tables light on a dark canvas, so they never turn dark while the
+           text inside stays dark; the fully dark pages (.staff-dark) recolour the box itself further down. */
         .forest-layout.is-dark-canvas .light-surface-box .ant-card,
         .forest-layout.is-dark-canvas .light-surface-box .ant-card-body,
         .forest-layout.is-dark-canvas .light-surface-box .ant-table,
@@ -745,43 +782,9 @@ export default function MainLayout() {
           color: #6B7280 !important;
         }
 
-        /* Horse Owner pages (.owner-ui): compact tables. Only spacing and type; colours stay with the rules above. */
-        .forest-layout .owner-ui .ant-table-thead > tr > th {
-          padding: 9px 14px !important;
-          font-size: 11px !important;
-          font-weight: 600 !important;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          white-space: nowrap;
-        }
-        .forest-layout .owner-ui .ant-table-thead > tr > th::before {
-          display: none !important;
-        }
-        .forest-layout .owner-ui .ant-table-tbody > tr:not(.ant-table-measure-row) > td {
-          padding: 10px 14px !important;
-          font-size: 13.5px;
-        }
-        .forest-layout .owner-ui .ant-table-tbody > tr:not(.ant-table-measure-row):last-child > td {
-          border-bottom: 0 !important;
-        }
-        /* On a dark canvas the light page panel gets a little inner margin, so bare text (the horse picker, the counts) is not on its edge. */
-        .forest-layout.is-dark-canvas .light-surface-box.owner-ui {
-          padding: 0 8px 8px;
-        }
-        .forest-layout .owner-ui .ant-pagination {
-          margin: 10px 16px !important;
-        }
-        .forest-layout .owner-ui .ant-btn {
-          border-radius: 8px;
-        }
-        .forest-layout .owner-ui .ant-segmented {
-          border-radius: 8px;
-        }
-
-        /* Manager / Head Trainer on the dark canvas: the boxes that stay light on the light canvas (KPI
-           strips, ribbons, the week calendar, empty states) go dark as well, with cream text, so the page
-           has no white blocks. The Owner's pages keep their own light panels (rules above). These win over
-           the light-box rules by one more class. */
+        /* On the dark canvas the boxes that stay light on the light canvas (KPI strips, ribbons, the week
+           calendar, empty states) go dark as well, with cream text, so the page has no white blocks. These
+           win over the light-box rules above by one more class. */
         .forest-layout.is-dark-canvas.staff-dark .light-surface-box {
           background-color: #10261E !important;
           background-image: none !important;

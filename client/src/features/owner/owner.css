@@ -1,0 +1,1409 @@
+/* The Horse Owner's pages: one calm look on the light and the dark canvas. Colours are tokens on .own-ui,
+   set again for the dark canvas (MainLayout puts wdp-dark-portals on <body> then, which also reaches
+   the popups rendered on <body>), so every piece below reads in both. */
+.own-ui {
+  --o-card: #fffdf8;
+  --o-card-2: #f6f1e6;
+  --o-sunk: #f1ebdd;
+  --o-border: #e5dac6;
+  --o-border-soft: #eee6d6;
+  --o-ink: #1a2b22;
+  --o-muted: rgba(26, 43, 34, 0.72);
+  --o-faint: rgba(26, 43, 34, 0.55);
+  --o-primary: #0f5a43;
+  --o-primary-ink: #ffffff;
+  --o-link: #0f5a43;
+  --o-hover: #f4eee2;
+  --o-ring: rgba(15, 90, 67, 0.28);
+  --o-shadow: 0 1px 2px rgba(48, 40, 20, 0.06), 0 6px 18px -8px rgba(48, 40, 20, 0.12);
+
+  --o-good: #2e7d4f;
+  --o-good-bg: #e2f1e6;
+  --o-watch: #8a5a00;
+  --o-watch-bg: #f8eccc;
+  --o-bad: #b3261e;
+  --o-bad-bg: #f8e2de;
+  --o-quar: #5b3e8a;
+  --o-quar-bg: #ece4f6;
+  --o-info: #1d4e89;
+  --o-info-bg: #e3ecf7;
+  --o-neutral: #4a5a50;
+  --o-neutral-bg: #ebe6dc;
+  --o-brass: #8f6a12;
+  --o-brass-bg: #f6ebcf;
+  /* Charts (checked with the dataviz palette validator on this card surface): one blue for a single
+     series, its lighter step for the rest of a part-to-whole bar, orange for a second series beside it. */
+  --o-series-1: #2a78d6;
+  --o-series-1-soft: #86b6ef;
+  --o-series-2: #eb6834;
+  --o-grid: #ebe4d6;
+  --o-axis: #7d796b;
+
+  color: var(--o-ink);
+  font-size: 14px;
+}
+body.wdp-dark-portals .own-ui {
+  --o-card: #0d211a;
+  --o-card-2: #11291f;
+  --o-sunk: #0a1a14;
+  --o-border: rgba(212, 175, 55, 0.22);
+  --o-border-soft: rgba(255, 255, 255, 0.07);
+  --o-ink: #f4f1e8;
+  --o-muted: rgba(230, 237, 232, 0.78);
+  --o-faint: rgba(230, 237, 232, 0.58);
+  --o-primary: #d4af37;
+  --o-primary-ink: #0d211a;
+  --o-link: #f6d57a;
+  --o-hover: rgba(255, 255, 255, 0.05);
+  --o-ring: rgba(212, 175, 55, 0.35);
+  --o-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+
+  --o-good: #6ee7b7;
+  --o-good-bg: rgba(16, 185, 129, 0.15);
+  --o-watch: #fcd34d;
+  --o-watch-bg: rgba(245, 158, 11, 0.15);
+  --o-bad: #fda4af;
+  --o-bad-bg: rgba(244, 63, 94, 0.16);
+  --o-quar: #c4b5fd;
+  --o-quar-bg: rgba(139, 92, 246, 0.18);
+  --o-info: #93c5fd;
+  --o-info-bg: rgba(59, 130, 246, 0.17);
+  --o-neutral: #c3d4ca;
+  --o-neutral-bg: rgba(255, 255, 255, 0.07);
+  --o-brass: #f6d57a;
+  --o-brass-bg: rgba(212, 175, 55, 0.16);
+  --o-series-1: #3987e5;
+  --o-series-1-soft: #184f95;
+  --o-series-2: #d95926;
+  --o-grid: rgba(255, 255, 255, 0.08);
+  --o-axis: #93ab9e;
+}
+
+/* ---------- Page ---------- */
+.own-ui.own-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.own-ui a {
+  color: var(--o-link);
+}
+.own-ui .own-ink {
+  color: var(--o-ink);
+}
+.own-ui .own-muted {
+  color: var(--o-muted);
+}
+.own-ui .own-faint {
+  color: var(--o-faint);
+}
+.own-ui .own-num {
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-good {
+  color: var(--o-good);
+}
+.own-ui .own-bad {
+  color: var(--o-bad);
+}
+.own-ui .own-watch {
+  color: var(--o-watch);
+}
+
+/* The page title: a calm line instead of a banner. (The global Bootstrap h1 rule is outranked here.) */
+.own-ui .own-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 4px 2px 0;
+}
+.own-ui .own-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--o-brass);
+}
+.own-ui h1.own-title {
+  margin: 2px 0 0;
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 1.2;
+  color: var(--o-ink);
+}
+.own-ui .own-sub {
+  margin-top: 4px;
+  color: var(--o-muted);
+  max-width: 720px;
+}
+.own-ui .own-head-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .own-head-stat {
+  white-space: nowrap;
+}
+.own-ui .own-head-stat > span + span {
+  margin-left: 4px;
+  font-weight: 600;
+  color: var(--o-ink);
+}
+.own-ui .own-head-main {
+  min-width: 0;
+}
+.own-ui p.own-sub {
+  margin: 4px 0 0;
+}
+.own-ui .own-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.own-ui .own-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--o-muted);
+  text-decoration: none;
+}
+.own-ui .own-back:hover {
+  color: var(--o-link);
+}
+
+/* ---------- Card ---------- */
+.own-ui .own-card {
+  background: var(--o-card);
+  border: 1px solid var(--o-border);
+  border-radius: 14px;
+  box-shadow: var(--o-shadow);
+  min-width: 0;
+}
+.own-ui .own-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--o-border-soft);
+}
+.own-ui .own-card-title {
+  margin: 0;
+  line-height: 1.35;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--o-ink);
+}
+.own-ui .own-card-title .anticon {
+  color: var(--o-brass);
+}
+.own-ui .own-card-body {
+  padding: 16px 18px;
+}
+.own-ui .own-card.is-flush .own-card-body {
+  padding: 0;
+}
+
+/* ---------- Pills ---------- */
+.own-ui .own-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+  background: var(--o-neutral-bg);
+  color: var(--o-neutral);
+}
+.own-ui .own-pill::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.8;
+  flex: 0 0 auto;
+}
+.own-ui .own-pill.no-dot::before {
+  display: none;
+}
+.own-ui .own-pill.is-wrap {
+  white-space: normal;
+}
+.own-ui .own-pill.is-good {
+  background: var(--o-good-bg);
+  color: var(--o-good);
+}
+.own-ui .own-pill.is-watch {
+  background: var(--o-watch-bg);
+  color: var(--o-watch);
+}
+.own-ui .own-pill.is-bad {
+  background: var(--o-bad-bg);
+  color: var(--o-bad);
+}
+.own-ui .own-pill.is-quar {
+  background: var(--o-quar-bg);
+  color: var(--o-quar);
+}
+.own-ui .own-pill.is-info {
+  background: var(--o-info-bg);
+  color: var(--o-info);
+}
+.own-ui .own-pill.is-brass {
+  background: var(--o-brass-bg);
+  color: var(--o-brass);
+}
+
+/* ---------- Stats ---------- */
+.own-ui .own-stats {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+  gap: 12px;
+}
+.own-ui .own-stat {
+  background: var(--o-card);
+  border: 1px solid var(--o-border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: var(--o-shadow);
+  min-width: 0;
+}
+.own-ui .own-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--o-muted);
+}
+.own-ui .own-stat-label .anticon {
+  color: var(--o-brass);
+}
+.own-ui .own-stat-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 6px;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--o-ink);
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-stat-value.is-good {
+  color: var(--o-good);
+}
+.own-ui .own-stat-value.is-watch {
+  color: var(--o-watch);
+}
+.own-ui .own-stat-value.is-bad {
+  color: var(--o-bad);
+}
+.own-ui .own-stat-change {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.own-ui .own-stat-change.is-up {
+  color: var(--o-good);
+}
+.own-ui .own-stat-change.is-down {
+  color: var(--o-bad);
+}
+.own-ui .own-stat-sub {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--o-faint);
+}
+
+/* ---------- Horse picker: the horse the page is about, the list of the others under it ---------- */
+.own-ui .own-switch {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  width: min(100%, 520px);
+}
+.own-ui .own-switch-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px 8px 8px;
+  border: 1px solid var(--o-border);
+  border-radius: 14px;
+  background: var(--o-card);
+  box-shadow: var(--o-shadow);
+  color: var(--o-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.own-ui .own-switch-btn:hover:not(:disabled) {
+  border-color: var(--o-primary);
+}
+.own-ui .own-switch-btn[aria-expanded='true'] {
+  border-color: var(--o-primary);
+  box-shadow: 0 0 0 3px var(--o-ring);
+}
+.own-ui .own-switch-btn:focus-visible {
+  outline: 2px solid var(--o-ring);
+  outline-offset: 2px;
+}
+.own-ui .own-switch-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.own-ui .own-switch-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.own-ui .own-switch-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 15.5px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.own-ui .own-switch-name > span:first-child,
+.own-ui .own-switch-opt-name,
+.own-ui .own-switch-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.own-ui .own-switch-meta {
+  font-size: 12.5px;
+  color: var(--o-muted);
+}
+.own-ui .own-switch-caret {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--o-faint);
+  transition: transform 0.15s ease;
+}
+.own-ui .own-switch-btn[aria-expanded='true'] .own-switch-caret {
+  transform: rotate(180deg);
+}
+.own-ui .own-switch-step {
+  flex: 0 0 auto;
+  display: flex;
+  border: 1px solid var(--o-border);
+  border-radius: 14px;
+  background: var(--o-card);
+  box-shadow: var(--o-shadow);
+  overflow: hidden;
+}
+.own-ui .own-switch-step button {
+  width: 42px;
+  border: 0;
+  background: transparent;
+  color: var(--o-ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+.own-ui .own-switch-step button + button {
+  border-left: 1px solid var(--o-border-soft);
+}
+.own-ui .own-switch-step button:hover:not(:disabled) {
+  background: var(--o-hover);
+  color: var(--o-link);
+}
+.own-ui .own-switch-step button:focus-visible {
+  outline: 2px solid var(--o-ring);
+  outline-offset: -2px;
+}
+.own-ui .own-switch-step button:disabled {
+  color: var(--o-faint);
+  opacity: 0.45;
+  cursor: default;
+}
+.own-ui .own-switch-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  border: 1px solid var(--o-border);
+  border-radius: 14px;
+  background: var(--o-card);
+  box-shadow: 0 16px 36px -14px rgba(0, 0, 0, 0.32), var(--o-shadow);
+  overflow: hidden;
+}
+.own-ui .own-switch-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--o-border-soft);
+  color: var(--o-faint);
+  cursor: text;
+}
+.own-ui .own-switch-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--o-ink);
+  font: inherit;
+}
+.own-ui .own-switch-search input::placeholder {
+  color: var(--o-faint);
+}
+.own-ui .own-switch-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: min(360px, 60vh);
+  overflow-y: auto;
+  outline: 0;
+}
+.own-ui .own-switch-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px 7px 7px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.own-ui .own-switch-opt.is-cursor {
+  background: var(--o-hover);
+}
+.own-ui .own-switch-opt-name {
+  font-weight: 600;
+  color: var(--o-ink);
+}
+.own-ui .own-switch-opt.is-selected .own-switch-opt-name {
+  color: var(--o-link);
+}
+.own-ui .own-switch-health {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--o-neutral);
+}
+.own-ui .own-switch-health::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.own-ui .own-switch-health.is-good {
+  color: var(--o-good);
+}
+.own-ui .own-switch-health.is-watch {
+  color: var(--o-watch);
+}
+.own-ui .own-switch-health.is-bad {
+  color: var(--o-bad);
+}
+.own-ui .own-switch-health.is-quar {
+  color: var(--o-quar);
+}
+.own-ui .own-switch-check {
+  flex: 0 0 auto;
+  width: 14px;
+  color: var(--o-link);
+  visibility: hidden;
+}
+.own-ui .own-switch-opt.is-selected .own-switch-check {
+  visibility: visible;
+}
+.own-ui .own-switch-none {
+  padding: 16px 10px;
+  text-align: center;
+  color: var(--o-faint);
+}
+.own-ui .own-herd {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--o-brass-bg);
+  color: var(--o-brass);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* A health dot beside a name. */
+.own-ui .own-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--o-neutral);
+}
+.own-ui .own-dot.is-good {
+  background: var(--o-good);
+}
+.own-ui .own-dot.is-watch {
+  background: var(--o-watch);
+}
+.own-ui .own-dot.is-bad {
+  background: var(--o-bad);
+}
+.own-ui .own-dot.is-quar {
+  background: var(--o-quar);
+}
+
+/* ---------- Horse avatar: the coat colour behind the initial ---------- */
+.own-ui .own-avatar {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+/* ---------- Horse tiles (overview, my horses) ---------- */
+.own-ui .own-horses {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 430px), 1fr));
+  gap: 12px;
+}
+.own-ui .own-horse {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--o-card);
+  border: 1px solid var(--o-border);
+  border-radius: 14px;
+  box-shadow: var(--o-shadow);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+  min-width: 0;
+}
+.own-ui a.own-horse:hover {
+  border-color: var(--o-primary);
+}
+.own-ui a.own-horse:focus-visible {
+  outline: 2px solid var(--o-ring);
+  outline-offset: 2px;
+}
+.own-ui .own-horse-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.own-ui .own-horse-name {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--o-ink);
+}
+.own-ui .own-horse-meta {
+  font-size: 12.5px;
+  color: var(--o-muted);
+}
+.own-ui .own-horse-reason {
+  font-size: 12.5px;
+  color: var(--o-watch);
+}
+.own-ui .own-kv {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+.own-ui .own-kv-item {
+  min-width: 0;
+}
+.own-ui .own-kv-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--o-faint);
+}
+.own-ui .own-kv-value {
+  font-size: 13.5px;
+  color: var(--o-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Lists: attention, agenda, rows ---------- */
+.own-ui .own-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.own-ui .own-list > li + li {
+  border-top: 1px solid var(--o-border-soft);
+}
+.own-ui .own-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 18px;
+  color: inherit;
+  text-decoration: none;
+}
+.own-ui a.own-row:hover {
+  background: var(--o-hover);
+}
+.own-ui .own-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.own-ui .own-row-title {
+  font-weight: 600;
+  color: var(--o-ink);
+}
+.own-ui .own-row-sub {
+  font-size: 12.5px;
+  color: var(--o-muted);
+}
+.own-ui .own-row-side {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+.own-ui .own-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--o-neutral-bg);
+  color: var(--o-neutral);
+  font-size: 15px;
+}
+.own-ui .own-icon.is-bad {
+  background: var(--o-bad-bg);
+  color: var(--o-bad);
+}
+.own-ui .own-icon.is-watch {
+  background: var(--o-watch-bg);
+  color: var(--o-watch);
+}
+.own-ui .own-icon.is-good {
+  background: var(--o-good-bg);
+  color: var(--o-good);
+}
+.own-ui .own-icon.is-info {
+  background: var(--o-info-bg);
+  color: var(--o-info);
+}
+.own-ui .own-icon.is-brass {
+  background: var(--o-brass-bg);
+  color: var(--o-brass);
+}
+.own-ui .own-date {
+  flex: 0 0 auto;
+  width: 48px;
+  padding: 5px 0;
+  border-radius: 10px;
+  background: var(--o-card-2);
+  border: 1px solid var(--o-border-soft);
+  text-align: center;
+  line-height: 1.1;
+}
+.own-ui .own-date b {
+  display: block;
+  font-size: 17px;
+  color: var(--o-ink);
+}
+.own-ui .own-date span {
+  font-size: 11px;
+  color: var(--o-faint);
+}
+.own-ui .own-empty {
+  padding: 22px 18px;
+  text-align: center;
+  color: var(--o-faint);
+}
+
+/* ---------- Facts, progress, quote ---------- */
+.own-ui .own-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
+.own-ui .own-facts dt {
+  color: var(--o-muted);
+  font-weight: 400;
+}
+.own-ui .own-facts dd {
+  margin: 0;
+  font-weight: 600;
+  color: var(--o-ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.own-ui .own-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--o-sunk);
+  overflow: hidden;
+}
+.own-ui .own-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--o-good);
+}
+.own-ui .own-quote {
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--o-brass);
+  border-radius: 0 10px 10px 0;
+  background: var(--o-card-2);
+  color: var(--o-ink);
+  font-size: 13.5px;
+}
+
+/* ---------- Grid helpers ---------- */
+.own-ui .own-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.own-ui .own-grid-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+/* ---------- Toolbar: search, filters ---------- */
+.own-ui .own-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+}
+.own-ui .own-toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.own-ui h2.own-section-title {
+  margin: 0;
+  font-family: 'Lora', Georgia, serif;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--o-ink);
+}
+.own-ui .own-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.own-ui .own-section-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--o-faint);
+}
+.own-ui .own-more {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-top: 1px solid var(--o-border-soft);
+  border-radius: 0 0 14px 14px;
+  background: transparent;
+  color: var(--o-link);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.own-ui .own-more:hover {
+  background: var(--o-hover);
+}
+
+/* ---------- The horse page header: the horse in 3D beside its name and key facts ---------- */
+.own-ui .own-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+  overflow: hidden;
+}
+.own-ui .own-hero-visual {
+  position: relative;
+  min-height: 280px;
+  background: var(--o-card-2);
+  border-right: 1px solid var(--o-border-soft);
+}
+.own-ui .own-hero-visual img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.own-ui .own-hero-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 22px;
+  min-width: 0;
+}
+.own-ui .own-hero-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.own-ui .own-tiles {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+  gap: 10px;
+}
+.own-ui .own-tile {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--o-border-soft);
+  border-radius: 12px;
+  background: var(--o-card-2);
+}
+.own-ui .own-tile-label {
+  font-size: 12px;
+  color: var(--o-muted);
+}
+.own-ui .own-tile-value {
+  margin-top: 2px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--o-ink);
+  overflow-wrap: anywhere;
+}
+.own-ui .own-tile-sub {
+  font-size: 12px;
+  color: var(--o-faint);
+}
+.own-ui .own-note {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--o-watch-bg);
+  color: var(--o-watch);
+  font-size: 13.5px;
+}
+.own-ui .own-note.is-bad {
+  background: var(--o-bad-bg);
+  color: var(--o-bad);
+}
+.own-ui .own-note.is-info {
+  background: var(--o-info-bg);
+  color: var(--o-info);
+}
+
+/* ---------- Charts ---------- */
+.own-ui .own-chart {
+  width: 100%;
+  min-width: 0;
+}
+.own-ui .own-chart .recharts-cartesian-axis-tick-value {
+  fill: var(--o-axis);
+  font-size: 11px;
+}
+.own-ui .own-chart .recharts-cartesian-grid line {
+  stroke: var(--o-grid);
+}
+.own-ui .own-chart .recharts-tooltip-cursor {
+  fill: var(--o-hover);
+}
+.own-ui .own-chart .recharts-reference-line line {
+  stroke: var(--o-axis);
+}
+/* Bars: a 2px surface gap between neighbours and stacked segments. */
+.own-ui .own-chart .recharts-rectangle {
+  stroke: var(--o-card);
+  stroke-width: 1px;
+}
+.own-ui .own-chart .is-series-1 .recharts-rectangle {
+  fill: var(--o-series-1);
+}
+.own-ui .own-chart .is-series-1-soft .recharts-rectangle {
+  fill: var(--o-series-1-soft);
+}
+.own-ui .own-chart .is-series-2 .recharts-rectangle {
+  fill: var(--o-series-2);
+}
+.own-ui .own-chart .is-line .recharts-curve {
+  stroke: var(--o-series-1);
+  stroke-width: 2px;
+}
+.own-ui .own-chart .is-line .recharts-dot {
+  fill: var(--o-card);
+  stroke: var(--o-series-1);
+  stroke-width: 2px;
+}
+.own-ui .own-chart .recharts-active-dot .recharts-dot {
+  fill: var(--o-series-1);
+  stroke: var(--o-card);
+}
+.own-ui .own-tip {
+  min-width: 140px;
+  padding: 8px 10px;
+  border: 1px solid var(--o-border);
+  border-radius: 10px;
+  background: var(--o-card);
+  box-shadow: var(--o-shadow);
+  font-size: 12.5px;
+  color: var(--o-ink);
+}
+.own-ui .own-tip-title {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.own-ui .own-tip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--o-muted);
+}
+.own-ui .own-tip-row b {
+  color: var(--o-ink);
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-swatch {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 3px;
+  background: var(--o-series-1);
+}
+.own-ui .own-swatch.is-soft {
+  background: var(--o-series-1-soft);
+}
+.own-ui .own-swatch.is-2 {
+  background: var(--o-series-2);
+}
+.own-ui .own-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12.5px;
+  color: var(--o-muted);
+}
+.own-ui .own-legend > span {
+  display: inline-flex;
+  align-items: center;
+}
+.own-ui .own-multiples {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.own-ui .own-multiple-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .own-multiple-title b {
+  font-size: 15px;
+  color: var(--o-ink);
+}
+
+/* ---------- Horizontal bars in HTML (money by category) ---------- */
+.own-ui .own-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.own-ui .own-bar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 120px) minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.own-ui .own-bar-track {
+  height: 10px;
+  border-radius: 0 4px 4px 0;
+  background: var(--o-sunk);
+  overflow: hidden;
+}
+.own-ui .own-bar-track > span {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--o-series-1);
+}
+
+/* ---------- The stable page: the zone, then the stall, then the horse in it ---------- */
+.own-ui .own-step + .own-step {
+  margin-top: 18px;
+}
+.own-ui .own-step-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--o-faint);
+}
+.own-ui .own-step-label b {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--o-brass-bg);
+  color: var(--o-brass);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.own-ui .own-zones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.own-ui .own-zone {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 150px;
+  max-width: 100%;
+  padding: 8px 14px;
+  border: 1px solid var(--o-border);
+  border-radius: 12px;
+  background: var(--o-card);
+  color: var(--o-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.own-ui .own-zone b {
+  font-size: 14.5px;
+}
+.own-ui .own-zone span {
+  font-size: 12px;
+  color: var(--o-muted);
+}
+.own-ui .own-zone:hover {
+  border-color: var(--o-primary);
+}
+.own-ui .own-zone:focus-visible {
+  outline: 2px solid var(--o-ring);
+  outline-offset: 2px;
+}
+.own-ui .own-zone.is-active {
+  background: var(--o-primary);
+  border-color: var(--o-primary);
+  color: var(--o-primary-ink);
+}
+.own-ui .own-zone.is-active span {
+  color: inherit;
+  opacity: 0.85;
+}
+.own-ui .own-barn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+}
+.own-ui .own-barn-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.own-ui .own-stall-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--o-border-soft);
+  border-radius: 12px;
+  background: var(--o-card-2);
+}
+.own-ui .own-stall-horse {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.own-ui .own-stall-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.own-ui .own-stall-link .anticon {
+  font-size: 10px;
+}
+.own-ui .own-stall-link:hover {
+  text-decoration: underline;
+}
+.own-ui .own-offmap {
+  border: 1px solid var(--o-border-soft);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.own-ui button.own-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.own-ui button.own-row:hover {
+  background: var(--o-hover);
+}
+.own-ui button.own-row.is-active {
+  background: var(--o-hover);
+  box-shadow: inset 3px 0 0 var(--o-primary);
+}
+
+/* ---------- Meals ---------- */
+.own-ui .own-meals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.own-ui .own-meal {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--o-border-soft);
+  border-radius: 12px;
+  background: var(--o-card-2);
+}
+.own-ui .own-meal-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: var(--o-ink);
+}
+.own-ui .own-meal-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--o-border-soft);
+  font-size: 13px;
+}
+.own-ui .own-meal-item:last-child {
+  border-bottom: 0;
+}
+
+/* ---------- Pedigree ---------- */
+.own-ui .own-tree-wrap {
+  overflow-x: auto;
+}
+.own-ui .own-tree {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  grid-template-rows: repeat(4, auto);
+  gap: 8px 14px;
+  min-width: 500px;
+}
+.own-ui .own-node {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--o-border);
+  border-radius: 10px;
+  background: var(--o-card-2);
+}
+.own-ui .own-node.is-self {
+  grid-row: 1 / span 4;
+  border-color: var(--o-primary);
+}
+.own-ui .own-node.is-parent {
+  grid-row: span 2;
+}
+.own-ui .own-node.is-empty {
+  border-style: dashed;
+  background: transparent;
+}
+.own-ui .own-node-label {
+  font-size: 11.5px;
+  color: var(--o-faint);
+}
+.own-ui .own-node-name {
+  font-weight: 600;
+  color: var(--o-ink);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- antd inside the owner pages ---------- */
+.own-ui .ant-table {
+  background: transparent;
+}
+.own-ui .ant-table-thead > tr > th {
+  background: var(--o-card-2) !important;
+  color: var(--o-muted) !important;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.own-ui .ant-table-tbody > tr > td {
+  border-bottom-color: var(--o-border-soft) !important;
+}
+.own-ui .ant-tabs-nav {
+  margin-bottom: 14px;
+}
+
+@media (max-width: 1100px) {
+  .own-ui .own-grid-main,
+  .own-ui .own-barn {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 900px) {
+  .own-ui .own-stats,
+  .own-ui .own-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .own-ui .own-grid-2,
+  .own-ui .own-hero,
+  .own-ui .own-meals,
+  .own-ui .own-multiples {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .own-ui .own-hero-visual {
+    min-height: 240px;
+    border-right: 0;
+    border-bottom: 1px solid var(--o-border-soft);
+  }
+}
+@media (max-width: 560px) {
+  .own-ui h1.own-title {
+    font-size: 23px;
+  }
+  .own-ui .own-stat-value {
+    font-size: 20px;
+  }
+  .own-ui .own-kv {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .own-ui .own-row {
+    padding: 10px 14px;
+  }
+  .own-ui .own-card-body {
+    padding: 14px;
+  }
+  .own-ui .own-hero-body {
+    padding: 16px;
+  }
+  .own-ui .own-tile-value {
+    font-size: 14px;
+    overflow-wrap: normal;
+  }
+  /* A phone has room for one figure per line: big money values never fit two side by side. */
+  .own-ui .own-stats {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  /* The horse card: its health pill goes under the name instead of squeezing it. */
+  .own-ui .own-horse-top {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 6px;
+  }
+  .own-ui .own-horse-top > .own-pill {
+    grid-column: 2;
+    justify-self: start;
+  }
+  /* Facts: the label above its value, so a long label does not squeeze the value into a narrow column. */
+  .own-ui .own-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .own-ui .own-facts dt {
+    font-size: 12.5px;
+  }
+  .own-ui .own-facts dd {
+    margin-bottom: 10px;
+  }
+  /* A row's status goes under its title instead of beside it. */
+  .own-ui .own-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 6px;
+  }
+  .own-ui .own-row-side {
+    grid-column: 2;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+  }
+  .own-ui .own-bar-row {
+    grid-template-columns: minmax(0, 90px) minmax(0, 1fr) max-content;
+  }
+  /* The horse list: health as its dot alone, so the name keeps the width. */
+  .own-ui .own-switch-health {
+    font-size: 0;
+    gap: 0;
+  }
+}
+
+.own-ui .own-link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--o-link);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.own-ui .own-link-btn:hover {
+  text-decoration: underline;
+}

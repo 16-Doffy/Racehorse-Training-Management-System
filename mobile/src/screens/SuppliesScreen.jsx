@@ -1,50 +1,27 @@
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  SectionList,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { FlatList, Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
 import RestockSheet from '../components/RestockSheet';
-import {
-  Badge,
-  Button,
-  Card,
-  ChipGroup,
-  ChipRow,
-  EmptyState,
-  IconButton,
-  LoadError,
-  Loading,
-  Row,
-  SearchInput,
-  Sheet,
-} from '../components/ui';
-import { inventoryApi } from '../api/endpoints';
+import ProposeItemSheet from '../components/ProposeItemSheet';
+import { Badge, Button, Card, ChipRow, EmptyState, IconButton, LoadError, Loading, Row, SearchInput, Sheet } from '../components/ui';
 import { useAuth } from '../auth/AuthContext';
 import { useInventory, useRefreshAll, useStableOverview } from '../hooks/useGroomData';
 import {
+  FEED_TYPE,
   INVENTORY_CATEGORY,
   approvedOf,
+  areaKey,
+  deliveryBlocks,
   formatDate,
   formatDateTime,
-  formatStock,
+  formatDays,
   isOpenRequest,
   levelOf,
   matchesSearch,
+  packsText,
+  parseStableBlock,
   refId,
   restockState,
 } from '../utils/groom';
@@ -55,10 +32,14 @@ import { colors, font, radius, spacing } from '../theme';
 
 const CATEGORY_ORDER = ['feed', 'medicine', 'equipment'];
 
-/** Items with no stableBlock are shared stock; otherwise they belong to a block like "Block A". */
+/**
+ * Items with no stableBlock are shared stock; otherwise they belong to a block like "Block A", which
+ * is the same area as "Khu A" and the zone of stall "A-03".
+ */
 function isInMyArea(item, myBlocks) {
   if (!item.stableBlock) return true;
-  return myBlocks.some((b) => item.stableBlock.toLowerCase().startsWith(b.toLowerCase()));
+  const area = areaKey(parseStableBlock(item.stableBlock).block);
+  return myBlocks.some((b) => areaKey(b) === area);
 }
 
 /**
@@ -144,6 +125,9 @@ export default function SuppliesScreen() {
       .sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt))[0];
 
   const lowCount = areaItems.filter((i) => levelOf(i).short).length;
+  // The real zones the groom works in, not the free text of hand-written stalls.
+  const zones = deliveryBlocks(myBlocks);
+  const zonesLabel = zones.length ? zones.join(', ') : '';
   // Still in the Manager's hands: waiting for a decision, or approved and waiting for the delivery.
   const pendingCount = myRequests.filter(isOpenRequest).length;
 
@@ -166,7 +150,7 @@ export default function SuppliesScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <AppHeader
         title="Kho vật tư"
-        subtitle={`${visible.length}/${areaItems.length} mặt hàng${myBlocks.length ? ` · khu ${myBlocks.join(', ')}` : ''}`}
+        subtitle={`${areaItems.length} mặt hàng${lowCount ? ` · ${lowCount} cần bổ sung` : ''}${pendingCount ? ` · ${pendingCount} đề xuất đang chờ` : ''}${zonesLabel ? ` · ${zonesLabel}` : ''}`}
         right={
           <Row style={{ gap: spacing.sm }}>
             <IconButton
@@ -273,7 +257,7 @@ export default function SuppliesScreen() {
         requests={myRequests}
         pendingCount={pendingCount}
       />
-      <ProposeItemModal visible={proposing} onClose={() => setProposing(false)} blocks={myBlocks} />
+      <ProposeItemSheet visible={proposing} onClose={() => setProposing(false)} blocks={myBlocks} items={items} onUseExisting={(item) => setTarget(item)} />
     </SafeAreaView>
   );
 }
@@ -290,7 +274,11 @@ function Toggle({ on, label, onPress, disabled, tint = colors.forest }) {
   );
 }
 
-/** One line of the storeroom: what it is, how much is left, and the way to ask for more. */
+/**
+ * One line of the storeroom, in full: the name (on two lines if it needs them), its code, place and
+ * kind, then how much is left — in its unit and in packs — how many days that lasts, its expiry, and
+ * any request of mine still open; "Xin thêm" asks for more. The line opens the item in full too.
+ */
 function ItemRow({ item, request, onRestock, last }) {
   const level = levelOf(item);
   const config = INVENTORY_CATEGORY[item.category] || {
@@ -299,53 +287,56 @@ function ItemRow({ item, request, onRestock, last }) {
     color: colors.textMuted,
     bg: colors.graySoft,
   };
+  const feed = item.category === 'feed' ? FEED_TYPE[item.feedType] : null;
   // Asked for, or approved and on its way — either way it is not on the shelf yet.
   const status = request ? restockState(request) : null;
-  const showExpiry = item.expiryDate && (level.key === 'expired' || level.key === 'expiring');
+  const packs = packsText(item);
+  const days = item.dailyUsage ? (item.daysLeft != null ? formatDays(item.daysLeft) : null) : null;
 
+  // Two touch targets side by side, never nested: the line opens the item, the button asks for more.
   return (
+    <View style={[styles.row, last && styles.rowLast]}>
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Đề xuất bổ sung ${item.name}`}
+      accessibilityLabel={`${item.name}, còn ${item.quantity} ${item.unit}, ${level.label}`}
       onPress={onRestock}
-      style={({ pressed }) => [styles.row, last && styles.rowLast, pressed && { opacity: 0.6 }]}
+      style={({ pressed }) => [styles.rowMain, pressed && { opacity: 0.6 }]}
     >
       <View style={[styles.rowIcon, { backgroundColor: config.bg }]}>
         <Icon name={config.icon} size={16} color={config.color} />
       </View>
 
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={font.h3} numberOfLines={1}>
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+        <Text style={styles.itemName} numberOfLines={2}>
           {item.name}
         </Text>
-        <Row style={{ gap: 6, flexWrap: 'wrap' }}>
-          <Text style={font.small}>
-            {item.code ? `${item.code} · ` : ''}
-            {item.stableBlock || 'Kho chung'}
-          </Text>
+        <Text style={font.small} numberOfLines={1}>
+          {[item.code, item.stableBlock || 'Kho chung', feed?.label].filter(Boolean).join(' · ')}
+        </Text>
+        <Text style={[styles.stock, { color: level.short ? level.color : colors.text }]}>
+          Còn {item.quantity} {item.unit}
+          {packs ? <Text style={styles.stockPacks}> ({packs})</Text> : null}
+          {level.key !== 'ok' ? <Text style={{ color: level.color }}> · {level.label}</Text> : null}
+        </Text>
+      </View>
+    </Pressable>
+      {/* The state in badges, and the button beside them — the line above keeps the whole width. */}
+      <Row style={styles.rowFoot}>
+        <Row style={{ flex: 1, gap: 6, flexWrap: 'wrap' }}>
+          {days ? <Badge label={`Đủ ${days}`} color={item.daysLeft < 3 ? colors.red : colors.textMuted} bg={item.daysLeft < 3 ? colors.redSoft : colors.graySoft} /> : null}
+          {item.expiryDate ? <Badge label={`HSD ${formatDate(item.expiryDate)}`} color={level.key === 'expired' || level.key === 'expiring' ? level.color : colors.textMuted} bg={level.key === 'expired' || level.key === 'expiring' ? level.bg : colors.graySoft} /> : null}
           {status ? (
             <Badge
-              label={`${status.key === 'approved' ? 'Chờ hàng về' : request.priority === 'urgent' ? 'Đã xin khẩn' : 'Đã xin'} +${
-                status.key === 'approved' ? approvedOf(request) : request.quantity
-              } ${item.unit}`}
+              label={`${status.key === 'approved' ? 'Chờ hàng về' : request.priority === 'urgent' ? 'Đã xin khẩn' : 'Đã xin'} +${status.key === 'approved' ? approvedOf(request) : request.quantity} ${item.unit}`}
               color={status.color}
               bg={status.bg}
             />
           ) : null}
           {item.isProposed ? <Badge label="Chờ duyệt" color={colors.orange} bg={colors.orangeSoft} /> : null}
-          {showExpiry ? (
-            <Text style={[font.small, { color: level.color }]}>HSD {formatDate(item.expiryDate)}</Text>
-          ) : null}
         </Row>
-      </View>
-
-      <View style={{ alignItems: 'flex-end', gap: 3 }}>
-        <Text style={[font.h3, { color: level.color }]}>{formatStock(item)}</Text>
-        {level.key === 'ok' ? null : <Badge label={level.label} color={level.color} bg={level.bg} />}
-      </View>
-
-      <Icon name="plus" size={16} color={colors.forestLight} />
-    </Pressable>
+        <Button title="Xin thêm" icon="plus" size="sm" variant={level.short ? 'danger' : 'ghost'} style={styles.askBtn} onPress={onRestock} />
+      </Row>
+    </View>
   );
 }
 
@@ -435,160 +426,6 @@ function RequestHistorySheet({ visible, onClose, requests, pendingCount }) {
   );
 }
 
-/**
- * Asks for something the club does not stock yet. The Manager approves it into the catalogue —
- * until then the item shows as "chờ duyệt" with zero stock.
- */
-function ProposeItemModal({ visible, onClose, blocks }) {
-  const insets = useSafeAreaInsets();
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState('feed');
-  const [unit, setUnit] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [note, setNote] = useState('');
-  const [urgent, setUrgent] = useState(false);
-  const queryClient = useQueryClient();
-
-  const close = () => {
-    setName('');
-    setCategory('feed');
-    setUnit('');
-    setQuantity('');
-    setNote('');
-    setUrgent(false);
-    onClose();
-  };
-
-  const mutation = useMutation({
-    mutationFn: (payload) => inventoryApi.proposeItem(payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      Alert.alert('Đã gửi đề xuất', 'Quản lý CLB sẽ xem xét đưa vật tư này vào danh mục.');
-      close();
-    },
-    onError: (err) => Alert.alert('Gửi thất bại', err?.message || 'Thử lại sau.'),
-  });
-
-  const submit = () => {
-    const value = Number(quantity);
-    if (!name.trim()) return Alert.alert('Thiếu tên vật tư', 'Nhập tên vật tư cần đề xuất.');
-    if (!unit.trim()) return Alert.alert('Thiếu đơn vị', 'Ví dụ: kg, bó, chai, cái.');
-    if (!Number.isFinite(value) || value <= 0) return Alert.alert('Số lượng chưa hợp lệ', 'Nhập một số lớn hơn 0.');
-    return mutation.mutate({
-      name: name.trim(),
-      category,
-      unit: unit.trim(),
-      quantity: value,
-      note: note.trim() || undefined,
-      stableBlock: blocks?.[0],
-      destinationBlock: blocks?.[0],
-      priority: urgent ? 'urgent' : 'normal',
-    });
-  };
-
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={close}
-    >
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
-        <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
-          <Row style={styles.sheetHeader}>
-            <Text style={font.h2}>Đề xuất vật tư mới</Text>
-            <Pressable onPress={close} hitSlop={10}>
-              <Icon name="close" size={20} color={colors.textMuted} />
-            </Pressable>
-          </Row>
-
-          <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }} keyboardShouldPersistTaps="handled">
-            <Text style={font.small}>Dùng khi vật tư cần dùng chưa có trong danh mục của câu lạc bộ.</Text>
-
-            <View>
-              <Text style={styles.label}>Tên vật tư</Text>
-              <TextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder="Ví dụ: Gel bôi móng"
-                placeholderTextColor={colors.textFaint}
-              />
-            </View>
-
-            <View>
-              <Text style={styles.label}>Danh mục</Text>
-              <ChipGroup
-                options={CATEGORY_ORDER.map((value) => ({ value, label: INVENTORY_CATEGORY[value].label }))}
-                value={category}
-                onChange={setCategory}
-                size="sm"
-              />
-            </View>
-
-            <Row style={{ gap: spacing.md, alignItems: 'flex-start' }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Đơn vị</Text>
-                <TextInput
-                  style={styles.input}
-                  value={unit}
-                  onChangeText={setUnit}
-                  placeholder="kg, chai, cái..."
-                  placeholderTextColor={colors.textFaint}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Số lượng</Text>
-                <TextInput
-                  style={styles.input}
-                  value={quantity}
-                  onChangeText={setQuantity}
-                  keyboardType="number-pad"
-                  inputMode="numeric"
-                  placeholder="10"
-                  placeholderTextColor={colors.textFaint}
-                />
-              </View>
-            </Row>
-
-            <View>
-              <Text style={styles.label}>Mức độ cần{blocks?.[0] ? ` · giao về ${blocks[0]}` : ''}</Text>
-              <ChipGroup
-                options={[
-                  { value: false, label: 'Bình thường' },
-                  { value: true, label: 'Khẩn' },
-                ]}
-                value={urgent}
-                onChange={setUrgent}
-                size="sm"
-              />
-            </View>
-
-            <View>
-              <Text style={styles.label}>Lý do cần dùng (tuỳ chọn)</Text>
-              <TextInput
-                style={[styles.input, styles.inputMultiline]}
-                value={note}
-                onChangeText={setNote}
-                multiline
-                placeholder="Ví dụ: móng ngựa khu A khô nứt, cần bôi hằng ngày."
-                placeholderTextColor={colors.textFaint}
-              />
-            </View>
-
-            <Row style={{ gap: spacing.md }}>
-              <Button title="Huỷ" variant="subtle" style={{ flex: 1 }} onPress={close} />
-              <Button title="Gửi đề xuất" style={{ flex: 2 }} loading={mutation.isPending} onPress={submit} />
-            </Row>
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.cream },
   toolbar: {
@@ -617,10 +454,9 @@ const styles = StyleSheet.create({
   groupHeaderClosed: { borderBottomWidth: 1, borderBottomLeftRadius: radius.md, borderBottomRightRadius: radius.md },
   groupIcon: { width: 26, height: 26, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
   groupFooter: { height: spacing.md },
+  // A line is the item (full width) over its badges and button.
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     backgroundColor: colors.white,
@@ -631,7 +467,13 @@ const styles = StyleSheet.create({
     borderTopColor: colors.borderSoft,
   },
   rowLast: { borderBottomWidth: 1, borderBottomLeftRadius: radius.md, borderBottomRightRadius: radius.md },
-  rowIcon: { width: 34, height: 34, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
+  rowMain: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  rowFoot: { gap: spacing.sm, paddingLeft: 34 + spacing.md, alignItems: 'center' },
+  rowIcon: { width: 34, height: 34, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
+  itemName: { fontSize: 15, fontWeight: '800', color: colors.text, lineHeight: 20 },
+  stock: { fontSize: 14, fontWeight: '800' },
+  stockPacks: { fontSize: 12.5, fontWeight: '600', color: colors.textMuted },
+  askBtn: { alignSelf: 'center', minWidth: 0, paddingHorizontal: 10 },
   historyRow: { paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderSoft, gap: spacing.sm },
   backdrop: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.cream, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, maxHeight: '90%' },

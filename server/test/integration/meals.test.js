@@ -87,6 +87,107 @@ test('meals: ration times, missed meals, hard work on an empty stomach, make-up,
     assert.equal((await raw('trainer', 'POST', `/stable/tasks/${notToday._id}/make-up`)).status, 409, 'only today\'s meals');
   });
 
+  await t.test('a meal given ahead of its hour counts from when it was eaten', async () => {
+    const { computeReadiness } = require('../../src/modules/training/readiness.service');
+    await models.DailyTask.deleteMany({ horse: horse._id, taskType: 'feeding' });
+    const ago = (n) => new Date(Date.now() - n * 60000);
+    const meal = { horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', status: 'completed' };
+    await models.DailyTask.create({ ...meal, mealSlot: 'morning', scheduledDate: ago(13 * 60), completedAt: ago(13 * 60) });
+    // Planned for after the session, given two minutes ago: the horse has a full stomach, not an empty one.
+    await models.DailyTask.create({ ...meal, mealSlot: 'evening', scheduledDate: laterToday(20), completedAt: ago(2) });
+    const nutrition = async (scheduledAt, intensity = 'high') => (await computeReadiness(horse._id, { scheduledAt, intensity })).gates.find((g) => g.key === 'nutrition');
+    const gate = await nutrition(laterToday(1));
+    assert.doesNotMatch(gate.detail, /đói/, gate.detail);
+    assert.equal(gate.status, 'blocked', gate.detail);
+    assert.match(gate.detail, /Bữa chiều cho ăn lúc .*, mới \d+ phút trước giờ tập/);
+
+    // Hay eaten after grain does not shorten the grain's digestion.
+    await models.DailyTask.deleteMany({ horse: horse._id, taskType: 'feeding' });
+    await models.DailyTask.create({ ...meal, source: 'trainer', mealSlot: 'morning', scheduledDate: ago(20), completedAt: ago(20), supplies: [{ name: 'TEST oats', amount: 2 }] });
+    await models.DailyTask.create({ ...meal, mealSlot: 'evening', scheduledDate: laterToday(20), completedAt: ago(2), supplies: [{ name: 'Cỏ khô Timothy', amount: 1 }] });
+    const grain = await nutrition(laterToday(1));
+    assert.equal(grain.status, 'blocked', grain.detail);
+    assert.match(grain.detail, /Bữa sáng cho ăn lúc .*, mới 2\d phút trước giờ tập/);
+    assert.equal((await nutrition(laterToday(1), 'light')).status, 'caution', 'light work only warns');
+
+    // A meal planned just over 24 hours before the session but eaten inside them is still seen.
+    await models.DailyTask.deleteMany({ horse: horse._id, taskType: 'feeding' });
+    const at = laterToday(1);
+    await models.DailyTask.create({ ...meal, mealSlot: 'morning', scheduledDate: new Date(at.getTime() - 24 * 3600000 - 1), completedAt: new Date(at.getTime() - 23 * 3600000) });
+    const old = await nutrition(at);
+    assert.doesNotMatch(old.detail, /Không có bữa ăn nào/, old.detail);
+    assert.match(old.detail, /có thể đã đói/);
+  });
+
+  await t.test('a feed has the kind the Manager gives it; supplements alone are not a meal', async () => {
+    const { computeReadiness } = require('../../src/modules/training/readiness.service');
+    const item = (body, expected = 201) => api('manager', 'POST', '/inventory', { category: 'feed', unit: 'kg', quantity: 50, ...body }, expected);
+    assert.equal((await item({ name: 'TEST Cỏ khô loại 1' })).feedType, 'forage', 'guessed from the name when left out');
+    assert.equal((await item({ name: 'TEST Cám hỗn hợp' })).feedType, 'concentrate');
+    const greens = await item({ name: 'TEST Bó xanh', feedType: 'forage' });
+    const oil = await item({ name: 'TEST Flaxseed', unit: 'lít', feedType: 'supplement' });
+    assert.equal(greens.feedType, 'forage', 'the Manager’s choice over the name');
+    assert.equal((await raw('manager', 'POST', '/inventory', { name: 'TEST x', category: 'feed', unit: 'kg', feedType: 'grain' })).status, 400);
+    assert.equal((await raw('manager', 'POST', '/inventory', { name: 'TEST y', category: 'medicine', unit: 'viên', feedType: 'forage' })).status, 400);
+    const fixed = await api('manager', 'PUT', `/inventory/${greens._id}`, { feedType: 'concentrate' });
+    assert.equal(fixed.feedType, 'concentrate');
+    await api('manager', 'PUT', `/inventory/${greens._id}`, { feedType: 'forage' });
+
+    const ago = (n) => new Date(Date.now() - n * 60000);
+    const meal = { horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', status: 'completed' };
+    const line = (stock, amount = 1) => [{ inventoryItem: stock._id, name: stock.name, amount }];
+    const nutrition = async (intensity = 'high') => (await computeReadiness(horse._id, { scheduledAt: laterToday(1), intensity })).gates.find((g) => g.key === 'nutrition');
+
+    // Hay by the Manager's word, eaten two minutes ago: a warning, not the grain block its name would get.
+    await models.DailyTask.deleteMany({ horse: horse._id, taskType: 'feeding' });
+    await models.DailyTask.create({ ...meal, mealSlot: 'evening', scheduledDate: ago(2), completedAt: ago(2), supplies: line(greens, 2) });
+    const hay = await nutrition();
+    assert.equal(hay.status, 'caution', hay.detail);
+    assert.match(hay.detail, /chỉ cỏ khô/);
+
+    // Oil alone two minutes ago, the last real meal seven hours ago: no digestion wait, and still hungry.
+    await models.DailyTask.deleteMany({ horse: horse._id, taskType: 'feeding' });
+    await models.DailyTask.create({ ...meal, mealSlot: 'morning', scheduledDate: ago(7 * 60), completedAt: ago(7 * 60), supplies: line(oats, 2) });
+    await models.DailyTask.create({ ...meal, mealSlot: 'evening', scheduledDate: ago(2), completedAt: ago(2), supplies: line(oil, 0.1) });
+    const oilOnly = await nutrition();
+    assert.notEqual(oilOnly.status, 'blocked', oilOnly.detail);
+    assert.match(oilOnly.detail, /Bữa sáng cho ăn lúc .*có thể đã đói/);
+
+    // Oil was all the horse had: that is no meal in 24 hours.
+    await models.DailyTask.deleteMany({ horse: horse._id, taskType: 'feeding', mealSlot: 'morning' });
+    assert.match((await nutrition()).detail, /Không có bữa ăn nào trong 24 giờ/);
+  });
+
+  await t.test('a meal missed earlier today and not made up is a warning, even after a later meal', async () => {
+    const { computeReadiness } = require('../../src/modules/training/readiness.service');
+    await models.DailyTask.deleteMany({ horse: horse._id, taskType: 'feeding' });
+    const hay = await api('manager', 'POST', '/inventory', { name: 'TEST cỏ trưa', category: 'feed', unit: 'kg', quantity: 20 }, 201);
+    const base = { horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system' };
+    const missedAt = new Date(Math.max(day().getTime(), Date.now() - 3 * 3600000));
+    const skipped = await models.DailyTask.create({ ...base, mealSlot: 'morning', scheduledDate: missedAt, status: 'skipped', skipReason: 'TEST hết cám' });
+    const fedAt = new Date(Math.max(missedAt.getTime() + 60000, Date.now() - 90 * 60000));
+    await models.DailyTask.create({ ...base, mealSlot: 'noon', scheduledDate: fedAt, status: 'completed', completedAt: fedAt, supplies: [{ inventoryItem: hay._id, name: hay.name, amount: 2 }] });
+    const nutrition = async (intensity = 'high') => (await computeReadiness(horse._id, { scheduledAt: laterToday(1), intensity })).gates.find((g) => g.key === 'nutrition');
+
+    const short = await nutrition();
+    assert.equal(short.status, 'caution', short.detail);
+    assert.match(short.detail, /Hôm nay bữa sáng \(.*\) nhân viên báo không cho ăn được \(TEST hết cám\) và chưa được ăn bù/);
+    assert.equal(short.action, 'make_up_meal');
+    assert.equal(String(short.taskId), String(skipped._id));
+
+    // Asked for, not given yet: still short, and no second make-up button.
+    const makeUp = await api('trainer', 'POST', `/stable/tasks/${skipped._id}/make-up`, undefined, 201);
+    const waiting = await nutrition();
+    assert.equal(waiting.status, 'caution', waiting.detail);
+    assert.match(waiting.detail, /đã báo cho ăn bù, đang chờ nhân viên/);
+    assert.equal(waiting.action, undefined);
+
+    await api('groom', 'PATCH', `/stable/tasks/${makeUp._id}/complete`, { clientOpId: 'short-make-up' });
+    const fed = await nutrition('light');
+    assert.doesNotMatch(fed.detail, /ăn thiếu/, fed.detail);
+    assert.match(fed.detail, /mới \d+ phút trước giờ tập/, 'the digestion wait starts from the make-up');
+  });
+
   await t.test('the trainer deletes a ration; today\'s meal not given yet goes with it, history stays', async () => {
     const upcoming = await models.DailyTask.create({ horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', mealSlot: 'morning', scheduledDate: new Date(Date.now() + 30 * 60000) });
     const given = await models.DailyTask.create({ horse: horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', mealSlot: 'morning', scheduledDate: new Date(), status: 'completed', completedAt: new Date() });

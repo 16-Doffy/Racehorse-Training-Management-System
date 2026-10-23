@@ -17,6 +17,8 @@ async function startIntegration(label = 'flow') {
   process.env.APP_TIMEZONE = 'Asia/Ho_Chi_Minh';
   process.env.AFTERNOON_LIGHT_ONLY = 'false';
   process.env.ENABLE_SENSOR_SIMULATOR = 'false';
+  // Tests book their own sessions; the timetable that books plans ahead is turned on where tested.
+  process.env.AUTO_SCHEDULE_PLANS = 'false';
   process.env.CLIENT_URL = 'http://127.0.0.1:5180';
   await mongoose.connect(uri, { dbName, serverSelectionTimeoutMS: 10000 });
   let server, io;

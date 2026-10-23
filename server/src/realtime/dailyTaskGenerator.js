@@ -1,5 +1,7 @@
 const StableAssignment = require('../models/StableAssignment');
 const FeedingSchedule = require('../models/FeedingSchedule');
+const FeedingCalendarDay = require('../models/FeedingCalendarDay');
+const TrainingPlan = require('../models/TrainingPlan');
 const DailyTask = require('../models/DailyTask');
 const { syncAllCareTasks } = require('../modules/health/treatmentCare.service');
 const { mealWindow } = require('../utils/taskTiming');
@@ -49,14 +51,59 @@ async function ensureFeedingTasks({ horseIds } = {}) {
 
   const { start, end } = todayBounds();
   const now = new Date();
+  const date = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+  const calendarDays = await FeedingCalendarDay.find({ horse: { $in: assignments.map((a) => a.horse) }, date });
+  const activePlans = await TrainingPlan.find({ _id: { $in: calendarDays.map((d) => d.plan) }, status: 'active' }).select('_id');
+  const activeIds = new Set(activePlans.map((p) => String(p._id)));
+  const calendarByHorse = new Map(calendarDays.filter((d) => activeIds.has(String(d.plan))).map((d) => [String(d.horse), d]));
   const schedules = await FeedingSchedule.find({ horse: { $in: assignments.map((a) => a.horse) } }).select(
-    'horse mealTime timeOfDay items'
+    'horse mealTime timeOfDay items upcoming approvedBy'
   );
+  // Amounts confirmed ahead for a plan's next phase take over on their day, before today's meals are made.
+  for (const schedule of schedules) {
+    if (calendarByHorse.has(String(schedule.horse))) continue;
+    if (!schedule.upcoming?.from || new Date(schedule.upcoming.from) > now) continue;
+    schedule.items = schedule.upcoming.items;
+    if (schedule.upcoming.approvedBy) schedule.approvedBy = schedule.upcoming.approvedBy;
+    schedule.upcoming = null;
+    // eslint-disable-next-line no-await-in-loop
+    await schedule.save();
+    // A meal of today already on the groom's list takes the new amounts too.
+    // eslint-disable-next-line no-await-in-loop
+    await DailyTask.updateMany(
+      { horse: schedule.horse, taskType: 'feeding', mealSlot: schedule.mealTime, status: 'pending', makeUpOf: null, scheduledDate: { $gte: start, $lt: end } },
+      { $set: { supplies: (schedule.items || []).filter((i) => i.inventoryItem && i.amount).map((i) => ({ inventoryItem: i.inventoryItem, name: i.type, amount: i.amount, unit: i.unit })) } }
+    );
+  }
 
   let createdCount = 0;
   for (const assignment of assignments) {
+    const calendar = calendarByHorse.get(String(assignment.horse));
     const meals = schedules.filter((s) => String(s.horse) === String(assignment.horse));
-    const slots = meals.length
+    if (calendar) {
+      for (const meal of calendar.meals) {
+        let ration = meals.find((s) => s.mealTime === meal.slot);
+        if (!ration) {
+          ration = new FeedingSchedule({ horse: assignment.horse, mealTime: meal.slot });
+          meals.push(ration);
+        }
+        const items = meal.items.map((i) => ({ type: i.name, quantity: `${i.amount} ${i.unit}`, inventoryItem: i.inventoryItem, amount: i.amount, unit: i.unit }));
+        const same = ration.timeOfDay === meal.time && JSON.stringify(ration.items.map((i) => `${i.inventoryItem}:${i.amount}`)) === JSON.stringify(items.map((i) => `${i.inventoryItem}:${i.amount}`));
+        if (!same || !ration.approvedBy || ration.upcoming) {
+          ration.timeOfDay = meal.time;
+          ration.items = items;
+          ration.approvedBy = calendar.approvedBy;
+          ration.upcoming = null;
+          // eslint-disable-next-line no-await-in-loop
+          await ration.save();
+        }
+      }
+    }
+    const slots = calendar ? calendar.meals.map((m) => ({
+      mealSlot: m.slot,
+      at: atClock(start, m.time),
+      supplies: m.items.map((i) => ({ inventoryItem: i.inventoryItem, name: i.name, amount: i.amount, unit: i.unit })),
+    })) : meals.length
       ? meals.map((m) => ({
           mealSlot: m.mealTime,
           at: atClock(start, m.timeOfDay || DEFAULT_MEAL_TIMES[m.mealTime]),
@@ -78,7 +125,21 @@ async function ensureFeedingTasks({ horseIds } = {}) {
         makeUpOf: null,
         scheduledDate: { $gte: start, $lt: end },
       });
-      if (exists) continue;
+      if (exists) {
+        if (calendar) {
+          // A newly confirmed calendar can change an open meal, never one already done or missed.
+          // eslint-disable-next-line no-await-in-loop
+          const pending = await DailyTask.findOne({ horse: assignment.horse, taskType: 'feeding', mealSlot: slot.mealSlot, makeUpOf: null, status: 'pending', scheduledDate: { $gte: start, $lt: end } });
+          if (pending && pending.timing.state !== 'missed') {
+            if (pending.scheduledDate.getTime() !== slot.at.getTime()) pending.dueNotifiedAt = null;
+            pending.scheduledDate = slot.at;
+            pending.supplies = slot.supplies;
+            // eslint-disable-next-line no-await-in-loop
+            await pending.save();
+          }
+        }
+        continue;
+      }
 
       // eslint-disable-next-line no-await-in-loop
       await DailyTask.create({
@@ -96,7 +157,7 @@ async function ensureFeedingTasks({ horseIds } = {}) {
 
     // Once a horse has per-meal tasks, a leftover generic "feed the horse" task for today is a
     // duplicate — and a pending one would make the nutrition check think a meal was skipped.
-    if (meals.length) {
+    if (meals.length || calendar) {
       // eslint-disable-next-line no-await-in-loop
       await DailyTask.deleteMany({
         horse: assignment.horse,

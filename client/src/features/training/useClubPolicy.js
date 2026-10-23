@@ -20,6 +20,8 @@ export const DEFAULT_POLICY = {
   bathingAfterMin: 45,
   missedMealBlocksHardWork: true,
   mealMinGapHours: 3,
+  raceFormMinDone: 0.8,
+  raceFormMinMet: 0.7,
 };
 
 /** The club's training and care policy, so every screen words the rules the same way the server applies them. */

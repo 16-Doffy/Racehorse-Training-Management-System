@@ -171,7 +171,7 @@ async function warnLowStock(itemIds) {
           : `📦 "${f.name}" còn ${f.quantity} ${f.unit} — đã chạm mức tồn tối thiểu ${f.reorderLevel} ${f.unit}.`;
     for (const role of [ROLES.MANAGER, ROLES.HEAD_TRAINER]) {
       // eslint-disable-next-line no-await-in-loop
-      await pushNotification({ recipientRole: role, type: 'low_stock', severity: f.quantity <= 0 ? 'critical' : 'warning', message });
+      await pushNotification({ recipientRole: role, type: 'low_stock', inventoryItem: f._id, severity: f.quantity <= 0 ? 'critical' : 'warning', message });
     }
     // eslint-disable-next-line no-await-in-loop
     await InventoryItem.updateOne({ _id: f._id }, { lowStockNotifiedAt: new Date() });

@@ -6,10 +6,12 @@ import { fmtShort, isMedActive, medTimes, periodText, routeLabel, treatmentLevel
  * One treatment as the vet reads it: the medicines with their times, the training level it sets,
  * the care orders, and — while it runs — how far the groom has got with today's doses.
  *
+ * An issued prescription is not edited: it is ended, or replaced by a new one (onReplace).
+ *
  * progress: the treatment's row from GET /health/care-orders (today), when there is one.
  * awaitingReturn: it ended while still restricting and nobody has cleared the horse since.
  */
-export default function TreatmentCard({ treatment: t, progress, showHorse = false, awaitingReturn = false, onEdit, onEnd, onLevel, onOpenHorse }) {
+export default function TreatmentCard({ treatment: t, progress, showHorse = false, awaitingReturn = false, onReplace, onEnd, onLevel, onOpenHorse, onOpenExam }) {
   const ongoing = t.status === 'ongoing';
   const level = treatmentLevel(t);
   const meds = t.medications || [];
@@ -30,7 +32,16 @@ export default function TreatmentCard({ treatment: t, progress, showHorse = fals
             Chờ đánh giá cho tập lại
           </Pill>
         )}
-        <span className="vet-small vet-muted">{ongoing ? periodText(t.startDate || t.createdAt, t.endDate) : `Từ ${fmtShort(t.startDate || t.createdAt)}`}</span>
+        <span className="vet-small vet-muted">
+          {ongoing ? periodText(t.startDate || t.createdAt, t.endDate) : `Từ ${fmtShort(t.startDate || t.createdAt)}`}
+          {t.prescribedBy?.name ? ` · BS ${t.prescribedBy.name}` : ''}
+        </span>
+        {onOpenExam && t.healthRecord && (
+          <button type="button" className="vet-link vet-small" onClick={onOpenExam} title="Mở phiếu khám của đơn này">
+            <i className="bi bi-clipboard2-pulse" aria-hidden="true" /> Phiếu khám
+          </button>
+        )}
+        {t.replacedBy && <Pill tone="neutral">Đã được thay bằng đơn mới</Pill>}
 
         <div className="vet-tr-actions">
           {ongoing && p && p.total > 0 && (
@@ -41,16 +52,16 @@ export default function TreatmentCard({ treatment: t, progress, showHorse = fals
               <Progress value={p.done} max={p.total} tone={p.missed || p.notDone ? 'bad' : 'good'} />
             </div>
           )}
-          {ongoing && onEdit && (
-            <Button size="sm" variant="vet-outline" onClick={onEdit}>
-              Sửa
+          {ongoing && onEnd && (
+            <Button size="sm" variant="vet-outline" onClick={onEnd}>
+              Kết thúc
             </Button>
           )}
-          {ongoing && (onEnd || onLevel) && (
+          {ongoing && (onReplace || onLevel) && (
             <ActionMenu
               items={[
+                onReplace && { label: 'Kê đơn mới thay đơn này', icon: 'bi-arrow-repeat', onClick: onReplace },
                 onLevel && { label: 'Đổi mức tập', icon: 'bi-speedometer2', onClick: onLevel },
-                onEnd && { label: 'Kết thúc điều trị', icon: 'bi-check2-square', onClick: onEnd },
               ]}
             />
           )}
@@ -72,21 +83,20 @@ export default function TreatmentCard({ treatment: t, progress, showHorse = fals
               // eslint-disable-next-line react/no-array-index-key
               <li key={`${m.name}-${i}`} className={stopped ? 'is-stopped' : ''}>
                 <i className="bi bi-capsule" aria-hidden="true" />
-                <div style={{ minWidth: 0 }}>
-                  <div>
-                    <strong>{m.name}</strong>
-                    <span className="vet-muted"> — {[m.dosage, routeLabel(m.route)].filter(Boolean).join(' · ')}</span>
-                    {stopped && <span className="vet-small vet-faint"> (đã dừng)</span>}
-                  </div>
-                  {m.instructions && <div className="vet-small vet-muted">{m.instructions}</div>}
+                <div className="vet-med-line">
+                  <strong>{m.name}</strong>
+                  <span className="vet-muted"> · {[m.dosage, routeLabel(m.route)].filter(Boolean).join(' · ')}</span>
+                  {m.instructions && <span className="vet-faint"> — {m.instructions}</span>}
                   {(m.startDate || m.endDate) && (
-                    <div className="vet-small vet-faint">
-                      {m.startDate ? `Từ ${fmtShort(m.startDate)}` : ''}
-                      {m.endDate ? ` đến ${fmtShort(m.endDate)}` : ''}
-                    </div>
+                    <span className="vet-faint">
+                      {' '}
+                      ({m.startDate ? `từ ${fmtShort(m.startDate)}` : ''}
+                      {m.endDate ? ` đến ${fmtShort(m.endDate)}` : ''})
+                    </span>
                   )}
+                  {stopped && <span className="vet-faint"> (đã dừng)</span>}
                 </div>
-                <div className="ms-auto">
+                <div className="ms-auto flex-shrink-0">
                   <TimeChips times={medTimes(m)} />
                 </div>
               </li>
@@ -95,18 +105,23 @@ export default function TreatmentCard({ treatment: t, progress, showHorse = fals
         </ul>
       )}
 
-      {t.careInstructions && (
-        <div className="vet-small mt-2">
-          <span className="vet-faint">Y lệnh chăm sóc:</span> {t.careInstructions}
-        </div>
-      )}
-      {ongoing && level !== 'high' && t.lockReason && (
-        <div className="vet-small mt-1">
-          <span className="vet-faint">Lý do hạn chế tập:</span> {t.lockReason}
-        </div>
+      {(t.careInstructions || (ongoing && level !== 'high' && t.lockReason)) && (
+        <dl className="vet-tr-notes">
+          {t.careInstructions && (
+            <>
+              <dt>Y lệnh</dt>
+              <dd>{t.careInstructions}</dd>
+            </>
+          )}
+          {ongoing && level !== 'high' && t.lockReason && (
+            <>
+              <dt>Hạn chế tập</dt>
+              <dd>{t.lockReason}</dd>
+            </>
+          )}
+        </dl>
       )}
       {meds.length === 0 && !t.careInstructions && !(ongoing && level !== 'high') && <div className="vet-small vet-faint mt-1">Không kê thuốc.</div>}
-      {t.prescribedBy?.name && <div className="vet-small vet-faint mt-2">Kê bởi {t.prescribedBy.name}</div>}
     </div>
   );
 }

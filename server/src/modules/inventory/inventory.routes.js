@@ -11,6 +11,8 @@ const DailyTask = require('../../models/DailyTask');
 const { computeForecast, itemInUse } = require('./stock.service');
 const { logAction } = require('../audit/audit.service');
 const { canAccessHorse } = require('../../utils/horseScope');
+const { FEED_TYPES } = require('./feedType');
+const { broadcastWrites, announceNewItem, announceDelivery } = require('./stockEvents');
 
 // Restock requests are reviewed by name on the Manager's screen, so the requester is populated
 // here — otherwise the list hands back a raw ObjectId and the UI has nothing to show.
@@ -31,6 +33,10 @@ function itemProblem(req, { existing }) {
     if (typeof b.unit !== 'string' || !b.unit.trim()) return 'Đơn vị tính không được để trống.';
   }
   if ((!existing || b.category !== undefined) && !CATEGORIES.includes(b.category)) return 'Danh mục không hợp lệ.';
+  if (b.feedType !== undefined) {
+    if ((b.category ?? existing?.category) !== 'feed') return 'Chỉ vật tư nhóm thức ăn mới có loại thức ăn.';
+    if (!FEED_TYPES.includes(b.feedType)) return 'Loại thức ăn chỉ là cỏ (forage), thức ăn tinh (concentrate) hoặc bổ sung (supplement).';
+  }
   if (b.quantity !== undefined && (!Number.isFinite(Number(b.quantity)) || Number(b.quantity) < 0)) {
     return 'Số lượng tồn phải là số không âm.';
   }
@@ -79,13 +85,17 @@ const ctrl = crudFactory(InventoryItem, {
     { path: 'proposedBy', select: 'name role' },
   ],
   // The request history and proposal flags are managed by the endpoints below, not the item form.
-  fields: ['name', 'category', 'description', 'quantity', 'unit', 'packUnit', 'packSize', 'reorderLevel', 'price', 'expiryDate', 'stableBlock', 'isActive'],
+  fields: ['name', 'category', 'feedType', 'description', 'quantity', 'unit', 'packUnit', 'packSize', 'reorderLevel', 'price', 'expiryDate', 'stableBlock', 'isActive'],
   validate: checkItem,
+  // A new item is news to the grooms who use it; an edit only reloads the open screens (broadcastWrites).
+  afterWrite: async (item, _req, existing) => {
+    if (!existing) await announceNewItem(item);
+  },
 });
 
 /** Tells the Manager(s) there is a request to review — it used to wait until someone opened the page. */
-async function tellManagers(message) {
-  await pushNotification({ recipientRole: ROLES.MANAGER, type: 'restock_request', severity: 'info', message });
+async function tellManagers(message, inventoryItem) {
+  await pushNotification({ recipientRole: ROLES.MANAGER, type: 'restock_request', inventoryItem, severity: 'info', message });
 }
 
 /** priority (normal | urgent) and destinationBlock from a request body. Returns { priority, destinationBlock } or { error }. */
@@ -123,6 +133,7 @@ const requestRestock = asyncHandler(async (req, res) => {
   await pushNotification({
     recipientRole: ROLES.MANAGER,
     type: 'restock_request',
+    inventoryItem: item._id,
     severity: task || meta.priority === 'urgent' ? 'warning' : 'info',
     message: `${urgentMark(meta.priority)}📦 ${req.user.name} đề xuất bổ sung ${quantity} ${item.unit}${packNote(item, quantity)} "${item.name}"${meta.destinationBlock ? ` cho ${meta.destinationBlock}` : ''}${blocking}${note ? `: ${note}` : '.'}`,
   });
@@ -161,7 +172,7 @@ const proposeItem = asyncHandler(async (req, res) => {
     proposedBy: req.user._id,
     restockRequests: [{ requestedBy: req.user._id, quantity, note, priority: meta.priority, destinationBlock: meta.destinationBlock || stableBlock || null }],
   });
-  await tellManagers(`${urgentMark(meta.priority)}🆕 ${req.user.name} đề xuất vật tư mới: ${quantity} ${item.unit} "${item.name}"${note ? ` — ${note}` : '.'}`);
+  await tellManagers(`${urgentMark(meta.priority)}🆕 ${req.user.name} đề xuất vật tư mới: ${quantity} ${item.unit} "${item.name}"${note ? ` — ${note}` : '.'}`, item._id);
   return ok(res, item, 'New item proposed.');
 });
 
@@ -280,10 +291,13 @@ const receiveStock = asyncHandler(async (req, res) => {
       message: `📦 Đã nhận ${quantity} ${item.unit} "${item.name}" theo đề xuất của bạn. Tồn kho hiện tại: ${updated.quantity} ${item.unit}.${request.task ? ' Bạn có thể hoàn thành công việc đang chờ.' : ''}`,
     });
   }
+  await announceDelivery(item, quantity, updated.quantity);
   return ok(res, updated, `Đã nhập thêm ${quantity} ${item.unit}${packNote(item, quantity)}${request ? ' theo đề xuất' : ''}.`);
 });
 
 router.use(protect);
+// Every write that succeeds reloads the open stock screens (groom app, storeroom page) over the socket.
+router.use(broadcastWrites);
 router.get('/', ctrl.list);
 // Daily use from rations and ongoing treatments, and how many days the stock lasts.
 router.get('/forecast', asyncHandler(async (req, res) => ok(res, await computeForecast(), 'Inventory forecast computed.')));

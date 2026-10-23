@@ -59,8 +59,14 @@ const trainingSessionSchema = new mongoose.Schema(
     evaluatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     abortReason: { type: String },
     abortCategory: { type: String, enum: ABORT_CATEGORIES },
+    // What the simulated sensors play out on this run (demo only, set while it runs): a horse that
+    // tires, or one that goes lame part-way — the sensor feed then stops the run itself.
+    simScenario: { type: String, enum: ['normal', 'tired', 'injury'], default: 'normal' },
     blockedReason: { type: String },
     cancelReason: { type: String },
+    // Who called it off: the trainer, the vet's lock or lower level, the plan ending, the horse leaving the club.
+    // The timetable keeps only a trainer's cancellation off; the others are booked again when they no longer apply.
+    cancelSource: { type: String, enum: ['trainer', 'medical', 'plan', 'archive'], default: null },
     evaluatedAt: { type: Date, default: null },
     metrics: {
       avgHeartRate: { type: Number },

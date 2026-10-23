@@ -56,7 +56,8 @@ module.exports = {
       'veterinarian, groom, owner, manager). All responses use the shape `{ success, data, message }`. ' +
       'Authenticate with `POST /auth/login`, then send `Authorization: Bearer <token>` on every other ' +
       'request. Socket.io connects to the server root (not under /api/v1) with `auth: { token }` and ' +
-      'emits `fitness:alert` / `sensor:reading` — see README.md for details, not covered by this spec.',
+      'emits `fitness:alert` / `sensor:reading` — see README.md for details, not covered by this spec. ' +
+      'A body or query with a key starting with `$` (a MongoDB operator) is refused with 400.',
   },
   servers: [
     { url: 'https://racehorse-tms-server.onrender.com/api/v1', description: 'Production (shared, Render + Atlas)' },
@@ -191,7 +192,7 @@ module.exports = {
           progress: {
             type: 'object',
             readOnly: true,
-            description: 'week (0 = not started) of totalWeeks, phaseIndex, phaseWeek, phaseSessions {planned, completed, met}, totalCompleted, raceInDays, upcoming (next 3 scheduled sessions)',
+            description: 'week (0 = not started) of totalWeeks, phaseIndex, phaseWeek, phaseSessions {planned, completed, met}, totalCompleted, raceInDays, upcoming (next 3 scheduled sessions), form { status: blocked|pending|not_ready|on_track|ready, label, done, due, met, rated, trial: ahead|missing|failed|ran|passed|null, trialDay, reasons }: on form for its race from the plan so far: share of due sessions run (policy raceFormMinDone), share met (raceFormMinMet), the race trial, and for an active plan with its race ahead the vet (getRaceBlock). A guide; the trainer decides on the race page.',
           },
         },
       },
@@ -202,7 +203,14 @@ module.exports = {
           horse: { type: 'string' },
           requestedBy: { type: 'string' },
           reason: { type: 'string' },
-          priority: { type: 'string', enum: ['normal', 'high', 'urgent'] },
+          priority: { type: 'string', enum: ['normal', 'high', 'urgent'], description: 'urgent: seen within 1 hour, never booked for later; high: within 6 hours; normal: within 3 days' },
+          symptoms: { type: 'array', items: { type: 'string', enum: ['lameness', 'swelling', 'wound', 'breathing', 'nasal', 'fever', 'appetite', 'colic', 'fatigue', 'behaviour', 'other'] } },
+          bodyAreas: { type: 'array', items: { type: 'string', enum: ['head', 'chest', 'back', 'belly', 'fore_left', 'fore_right', 'hind_left', 'hind_right', 'hooves', 'skin', 'whole'] } },
+          observedAt: { type: 'string', format: 'date-time', nullable: true, description: 'When the requester noticed the problem' },
+          firstAid: { type: 'string', description: 'What was already done for the horse (cold hosing, the session stopped)' },
+          holdTraining: { type: 'boolean', description: 'While the request is open, the medical gate blocks every session of the horse' },
+          dueBy: { type: 'string', format: 'date-time', description: 'When the vet must have seen the horse by, from the priority' },
+          auto: { type: 'boolean', description: 'Raised by the system from a session (older requests: absent, and those with a session were the system’s)' },
           status: { type: 'string', enum: ['pending', 'done', 'cancelled'] },
           resolvedBy: { type: 'string', nullable: true },
           resolvedAt: { type: 'string', format: 'date-time', nullable: true },
@@ -214,7 +222,7 @@ module.exports = {
           trainingSession: {
             type: 'string',
             nullable: true,
-            description: 'Set when the system raised the request itself: a finished session averaged 10%+ over its heart-rate limit',
+            description: 'The session it came from: picked by the requester, or set when the system raised the request (a finished session averaged 10%+ over its heart-rate limit, a fever at the pre-check). Populated in lists.',
           },
         },
       },
@@ -331,9 +339,21 @@ module.exports = {
           examinedBy: { type: 'string' },
           date: { type: 'string', format: 'date-time' },
           diagnosis: { type: 'string' },
+          history: { type: 'string', description: 'The complaint and how it came about, as the vet was told and saw it' },
           vitalSigns: {
             type: 'object',
-            properties: { temperatureC: { type: 'number' }, heartRate: { type: 'number' }, respiratoryRate: { type: 'number' } },
+            properties: { temperatureC: { type: 'number' }, heartRate: { type: 'number' }, respiratoryRate: { type: 'number' }, weightKg: { type: 'number', description: 'The newest exam that weighs the horse also sets Horse.weightKg' } },
+          },
+          clinical: {
+            type: 'object',
+            properties: {
+              mucousMembrane: { type: 'string', nullable: true, enum: ['pink', 'pale', 'congested', 'icteric', 'cyanotic'] },
+              capillaryRefillSec: { type: 'number', minimum: 0, maximum: 10 },
+              gutSounds: { type: 'string', nullable: true, enum: ['normal', 'reduced', 'increased', 'absent'] },
+              hydration: { type: 'string', nullable: true, enum: ['normal', 'mild', 'moderate', 'severe'] },
+              lamenessGrade: { type: 'number', minimum: 0, maximum: 5, description: 'AAEP scale' },
+              lamenessLimb: { type: 'string', nullable: true, enum: ['fore_left', 'fore_right', 'hind_left', 'hind_right'] },
+            },
           },
           resultStatus: { type: 'string', enum: ['eligible', 'monitoring', 'injured', 'quarantined'] },
           clearedLevel: { type: 'string', nullable: true, enum: ['none', 'light', 'moderate', 'high'], description: 'Return-to-training assessment: how hard the horse may work from now on. The newest one caps the training level until a later one raises it; it also ends the hold of a treatment that ended while still restricting (Treatment.returnLevel). Bookings above the new level are cancelled and not restored.' },
@@ -405,7 +425,7 @@ module.exports = {
             },
           },
           severity: { type: 'string', enum: ['mild', 'moderate', 'severe'] },
-          recoveryStatus: { type: 'string', enum: ['new', 'in_treatment', 'recovering', 'recovered'] },
+          recoveryStatus: { type: 'string', enum: ['new', 'in_treatment', 'recovering', 'recovered'], description: "Always 'new' when recorded (any other value is refused); moves on with its treatment or by PUT" },
         },
       },
       PrescriptionTemplate: {
@@ -484,7 +504,8 @@ module.exports = {
           },
           acknowledgedAt: { type: 'string', format: 'date-time', nullable: true, description: 'When the groom took the task on (PATCH /stable/tasks/{id}/acknowledge)' },
           skipReason: { type: 'string', description: 'Why it was not done, when the groom reported it (PATCH /stable/tasks/{id}/not-done)' },
-          skippedBy: { type: 'string', nullable: true, description: 'Who called it off: the trainer, or the groom reporting it could not be done' },
+          skippedBy: { type: 'string', nullable: true, description: 'Who called it off: the trainer, or the groom reporting it could not be done. GET /stable/tasks populates { _id, name }.' },
+          completedBy: { type: 'string', nullable: true, description: 'Who recorded it done (the groom who fed / gave the dose). GET /stable/tasks populates { _id, name }.' },
           timing: {
             type: 'object',
             readOnly: true,
@@ -585,6 +606,13 @@ module.exports = {
               hidden: { type: 'boolean' },
             },
           },
+          caretaker: {
+            type: 'object', nullable: true,
+            description:
+              "The stall's groom, empty stall or not: their app lists it, and the horse in it has them as caretaker. The Manager and grooms see every stall's groom; " +
+              "other roles only the groom of a horse they may see. inactive: the account was locked or moved to another role. A stall from before stalls had grooms shows the groom of its horse.",
+            properties: { _id: { type: 'string' }, name: { type: 'string' }, inactive: { type: 'boolean' } },
+          },
         },
       },
       FeedingSchedule: {
@@ -609,6 +637,10 @@ module.exports = {
           code: { type: 'string', readOnly: true, example: 'TA-001', description: 'Auto per category: TA (food), YT (medical), DC (equipment)' },
           name: { type: 'string' },
           category: { type: 'string', enum: ['feed', 'medicine', 'equipment'] },
+          feedType: {
+            type: 'string', enum: ['forage', 'concentrate', 'supplement'],
+            description: 'Feed only (400 on other categories). Readiness: a meal with a concentrate blocks moderate/hard work for 60 min, forage only warns, supplements alone are not a meal. Guessed from the name when left out.',
+          },
           description: { type: 'string', description: 'What it is for' },
           quantity: { type: 'number' },
           unit: { type: 'string', description: 'Unit rations / doses and stock are counted in (kg, g, ml, viên…)' },
@@ -703,7 +735,7 @@ module.exports = {
           recipientUser: { type: 'string', nullable: true },
           recipientRole: { type: 'string', nullable: true },
           horse: { type: 'string' },
-          type: { type: 'string', enum: ['fitness_alert', 'injury_lock', 'vaccination_due', 'deworming_due', 'farrier_due', 'incident_report', 'exam_request', 'restock_decision', 'horse_assigned', 'session_completed', 'readiness_override', 'training_unlocked', 'system'] },
+          type: { type: 'string', enum: ['fitness_alert', 'injury_lock', 'vaccination_due', 'deworming_due', 'farrier_due', 'incident_report', 'exam_request', 'restock_decision', 'stock_update', 'horse_assigned', 'session_completed', 'readiness_override', 'training_unlocked', 'system'], description: "stock_update: to every groom, live over Socket.io ('notification:new'), when the Manager adds an item or counts a delivery in; stock writes also emit 'inventory:changed'" },
           trainingSession: { type: 'string', nullable: true, description: 'Set when the notification is about one specific session' },
           severity: { type: 'string', enum: ['info', 'warning', 'critical'] },
           message: { type: 'string' },
@@ -858,11 +890,12 @@ module.exports = {
       put: {
         tags: ['Users (Manager)'],
         summary: 'Update user (profile, role, isActive, or reset password)',
+        description: 'Locking a groom (isActive false) or moving them to another role while they still hold stalls, horses or unfinished work from today on: 409 with data { needsReplacement, stalls, horses, pendingTasks } unless replacementCaretaker names another active groom; then it all goes over to them in the same save (data.handedOver has the counts).',
         parameters: [idParam('id')],
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string' }, role: { type: 'string' }, isActive: { type: 'boolean' }, password: { type: 'string' } } } } } },
-        responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 404: responses[404] },
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string' }, role: { type: 'string' }, isActive: { type: 'boolean' }, password: { type: 'string' }, replacementCaretaker: { type: 'string', description: 'Active groom who takes over a groom being locked or moved to another role.' } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 400: responses[400], 404: responses[404], 409: responses[409] },
       },
-      delete: { tags: ['Users (Manager)'], summary: 'Deactivate user (soft delete)', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 404: responses[404] } },
+      delete: { tags: ['Users (Manager)'], summary: 'Deactivate user (soft delete)', description: 'Same rule as PUT for a groom who still holds stalls, horses or work: body { replacementCaretaker } or 409.', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/User' }), 400: responses[400], 404: responses[404], 409: responses[409] } },
     },
     '/users/{id}/approval': {
       patch: {
@@ -891,8 +924,8 @@ module.exports = {
     },
     '/horses/{id}': {
       get: { tags: ['Horses'], summary: 'Get horse by id', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404] } },
-      put: { tags: ['Horses'], summary: 'Update horse (Manager only)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Horse' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404] } },
-      delete: { tags: ['Horses'], summary: 'Delete horse (Manager only)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
+      put: { tags: ['Horses'], summary: 'Update horse (Manager only)', description: 'Writes only: name, breed, dob, color, sex, weightKg, microchipNumber, registrationNumber, valuationVnd, owner, assignedTrainer, assignedVet, sire, dam, photoUrl. Health status and the care schedule are the vet’s; archiving goes through PATCH /archive.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Horse' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/Horse' }), 403: responses[403], 404: responses[404] } },
+      delete: { tags: ['Horses'], summary: 'Delete horse (Manager only)', description: 'Only a horse with nothing on record. Sessions, exams, treatments, race entries, financial records, routine care, exam requests or finished care tasks → 409 with data.canArchive: archive it instead.', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404], 409: responses[409] } },
     },
     '/horses/{id}/archive': {
       patch: {
@@ -1201,6 +1234,19 @@ module.exports = {
         responses: { 200: responses[200]({ $ref: '#/components/schemas/TrainingSession' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
+    '/training/sessions/{id}/simulate': {
+      post: {
+        tags: ['Training (Head Trainer)'],
+        summary: 'Play out a scenario on a running session (simulated sensors only)',
+        description:
+          'Only while ENABLE_SENSOR_SIMULATOR=true (409 otherwise) and only on an in_progress session (409). scenario: normal, tired (the horse slows, heart rate climbs, the run ends short of its targets) ' +
+          'or injury: on the next sensor tick the run is stopped as aborted/injury with the readings in abortReason, the vet gets a high-priority exam request, ' +
+          'the groom an icing task now, the trainer a critical fitness_alert, the owner a message; the socket sends session:completed with aborted: true.',
+        parameters: [idParam('id')],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['scenario'], properties: { scenario: { type: 'string', enum: ['normal', 'tired', 'injury'] } } } } } },
+        responses: { 200: responses[200]({ type: 'object', properties: { simScenario: { type: 'string' } } }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
     '/training/sessions/{id}/evaluation': {
       patch: {
         tags: ['Training (Head Trainer)'],
@@ -1260,8 +1306,8 @@ module.exports = {
       },
     },
     '/health/records/{id}': {
-      get: { tags: ['Health (Veterinarian)'], summary: 'Get health record', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/HealthRecord' }), 404: responses[404] } },
-      put: { tags: ['Health (Veterinarian)'], summary: 'Update health record', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/HealthRecord' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/HealthRecord' }), 404: responses[404] } },
+      get: { tags: ['Health (Veterinarian)'], summary: 'Get health record, with the injuries recorded with it, the treatments written against it and the exam requests it answered (`injuries`, `treatments`, `requests`)', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/HealthRecord' }), 404: responses[404] } },
+      put: { tags: ['Health (Veterinarian)'], summary: 'Refused (409): a filed exam is not edited — a later finding is a new exam. Files can still be added (POST …/attachments); removing one is refused too.', parameters: [idParam('id')], responses: { 404: responses[404], 409: responses[409] } },
     },
     '/health/exam-requests': {
       post: {
@@ -1274,10 +1320,17 @@ module.exports = {
               schema: {
                 type: 'object',
                 required: ['horse'],
+                description: 'A reason or at least one symptom is required.',
                 properties: {
                   horse: { type: 'string' },
                   reason: { type: 'string' },
                   priority: { type: 'string', enum: ['normal', 'high', 'urgent'], default: 'normal' },
+                  symptoms: { type: 'array', items: { type: 'string' } },
+                  bodyAreas: { type: 'array', items: { type: 'string' } },
+                  observedAt: { type: 'string', format: 'date-time' },
+                  firstAid: { type: 'string' },
+                  holdTraining: { type: 'boolean', default: false },
+                  trainingSession: { type: 'string', description: 'A session of this horse the request is about' },
                 },
               },
             },
@@ -1303,6 +1356,8 @@ module.exports = {
         description:
           '`action: accept` — sets acceptedBy/acceptedAt and `scheduledFor` (optional, not in the past); the request stays pending ' +
           'and is closed by the exam as before; sending accept again moves the appointment. The requester is notified. ' +
+          'The priority decides the booking (400 otherwise): an urgent request takes no `scheduledFor` (accept means the vet is on the way); ' +
+          'a high or normal one only up to its `dueBy`. ' +
           '`action: decline` — needs `note` (400 without), closes the request as cancelled, the requester is notified. ' +
           'Without `action`, `status: done|cancelled` closes it as before. 409 once the request is no longer pending.',
         parameters: [idParam('id')],
@@ -1359,7 +1414,14 @@ module.exports = {
     },
     '/health/treatments/{id}': {
       get: { tags: ['Health (Veterinarian)'], summary: 'Get treatment', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/Treatment' }), 404: responses[404] } },
-      put: { tags: ['Health (Veterinarian)'], summary: 'Update treatment', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Treatment' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/Treatment' }), 404: responses[404] } },
+      put: {
+        tags: ['Health (Veterinarian)'],
+        summary: 'End a treatment: only { status: "completed" } (400 for anything else, 409 once ended)',
+        description: 'An issued prescription is not rewritten. To change it, POST /health/treatments with `replaces: <id>`: the new one takes over and the old one ends without holding the horse at its old level. Ending the last treatment moves the horse’s injuries in treatment to recovering.',
+        parameters: [idParam('id')],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string', enum: ['completed'] } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/Treatment' }), 400: responses[400], 404: responses[404], 409: responses[409] },
+      },
     },
     '/health/treatments/{id}/lock-training': {
       post: {
@@ -1376,8 +1438,8 @@ module.exports = {
       post: { tags: ['Health (Veterinarian)'], summary: 'Create injury marker', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/InjuryMarker' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/InjuryMarker' }), 403: responses[403] } },
     },
     '/health/injury-markers/{id}': {
-      put: { tags: ['Health (Veterinarian)'], summary: 'Update injury marker (e.g. recoveryStatus)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/InjuryMarker' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InjuryMarker' }), 404: responses[404] } },
-      delete: { tags: ['Health (Veterinarian)'], summary: 'Delete injury marker — for one placed on the wrong body part, which previously could only be edited, never removed', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
+      put: { tags: ['Health (Veterinarian)'], summary: 'Move an injury to another recovery stage: only { recoveryStatus } (400 for anything else — a recorded injury is not rewritten). A new treatment moves new injuries to in_treatment; the last one ending moves them to recovering.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { recoveryStatus: { type: 'string', enum: ['new', 'in_treatment', 'recovering', 'recovered'] } } } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/InjuryMarker' }), 400: responses[400], 404: responses[404] } },
+      delete: { tags: ['Health (Veterinarian)'], summary: 'Refused (409): a recorded injury is part of the horse’s medical record', parameters: [idParam('id')], responses: { 403: responses[403], 404: responses[404], 409: responses[409] } },
     },
     '/health/prescription-templates': {
       get: { tags: ['Health (Veterinarian)'], summary: 'Prescription templates per condition (every vet’s), picked in the prescription form', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/PrescriptionTemplate' } }), 403: responses[403] } },
@@ -1579,7 +1641,7 @@ module.exports = {
     },
     '/stable/assignments': {
       get: { tags: ['Stable (Groom)'], summary: 'List stable/stall assignments', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/StableAssignment' } }) } },
-      post: { tags: ['Stable (Groom)'], summary: 'Create/update stall assignment for a horse (Manager)', description: 'Body: { horse, stall | stableBlock, assignedCaretaker? }. 409 when the stall is taken, under maintenance or out of use.', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/StableAssignment' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/StableAssignment' }), 403: responses[403] } },
+      post: { tags: ['Stable (Groom)'], summary: 'Create/update stall assignment for a horse (Manager)', description: 'Body: { horse, stall | stableBlock, assignedCaretaker? }. On a stall of the map, the horse gets the stall\'s groom when assignedCaretaker is left out, and a named assignedCaretaker becomes the stall\'s groom. 404 when the horse or the stall does not exist; 409 when the horse is archived or the stall is taken, under maintenance or out of use. Placements, maintenance, retiring a stall and archiving a horse at the same moment are serialized: one goes through, the other gets the 409.', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/StableAssignment' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/StableAssignment' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] } },
     },
     '/stable/stalls': {
       get: { tags: ['Stable (Groom)'], summary: 'Stable map: stalls in zone order with who stands in each (any role)', description: 'Everyone sees the layout and which stalls are taken; the horse is named only when the user may see it (owner: own horses; trainer/vet: assigned). unplaced: visible horses whose stall is still free text, for the Manager to place. ?all=true (Manager) adds stalls taken out of use.', parameters: [{ name: 'all', in: 'query', schema: { type: 'boolean' } }], responses: { 200: responses[200]({ type: 'object', properties: { stalls: { type: 'array', items: { $ref: '#/components/schemas/Stall' } }, unplaced: { type: 'array', items: { type: 'object' } } } }) } },
@@ -1595,12 +1657,62 @@ module.exports = {
       patch: { tags: ['Stable (Groom)'], summary: 'Edit a stall: zone name/purpose, type, order, maintenance (Manager)', description: 'status maintenance is refused (409) while a horse is in the stall; a stall under maintenance cannot be assigned. The code never changes.', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/Stall' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] } },
       delete: { tags: ['Stable (Groom)'], summary: 'Take an empty stall out of use (Manager)', description: 'Kept with isActive false so its code stays reserved; 409 while a horse is in it.', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/Stall' }), 403: responses[403], 404: responses[404], 409: responses[409] } },
     },
+    '/stable/stalls/{id}/caretaker': {
+      put: {
+        tags: ['Stable (Groom)'],
+        summary: "Give a stall its groom, or none (Manager)",
+        description:
+          'Body { caretaker: <groom id> | null }. The horse in the stall gets that groom too: its unfinished feeds, post-session care and care orders move over (tasks a trainer gave someone by hand stay), ' +
+          'the new groom gets today\'s feeds and is notified, the previous one is told. 400 when caretaker is missing or not an active groom.',
+        parameters: [idParam('id')],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['caretaker'], properties: { caretaker: { type: 'string', nullable: true } } } } } },
+        responses: { 200: responses[200]({ $ref: '#/components/schemas/Stall' }), 400: responses[400], 403: responses[403], 404: responses[404] },
+      },
+    },
+    '/stable/zones/{zone}': {
+      put: {
+        tags: ['Stable (Groom)'],
+        summary: 'Edit a zone in one save: name, stalls taken out, stalls added (Manager)',
+        description:
+          'Body { zoneName?, zonePurpose?, remove?: [stall ids], add?: n, type? }, in one transaction. The listed stalls of the zone are taken out of use, only while they are empty (409 names the horses, and nothing of the save happens). ' +
+          'n stalls are added after the highest number of the zone (the ones taken out included), of type, without a groom yet (the Manager gives each stall its groom); a code taken out of use before comes back as new. ' +
+          'The key never changes: it is part of the stall codes on the nameplates. 400 for an empty name, nothing to change, a stall of another zone, or taking out every stall (DELETE the zone instead); 404 when the zone has no stall.',
+        parameters: [{ name: 'zone', in: 'path', required: true, schema: { type: 'string', example: 'A' } }],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { zoneName: { type: 'string' }, zonePurpose: { type: 'string' }, remove: { type: 'array', items: { type: 'string' } }, add: { type: 'integer', minimum: 0, maximum: 40 }, type: { type: 'string', enum: ['standard', 'isolation', 'recovery'] } } } } } },
+        responses: { 200: responses[200]({ type: 'object', properties: { zone: { type: 'string' }, removed: { type: 'array', items: { type: 'string' } }, added: { type: 'array', items: { type: 'string' } }, stalls: { type: 'array', items: { $ref: '#/components/schemas/Stall' } } } }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+      delete: {
+        tags: ['Stable (Groom)'],
+        summary: 'Take a whole zone out of use (Manager)',
+        description: 'Only while none of its stalls has a horse (409 names them). The codes stay reserved: POST /stable/stalls/generate for the zone again brings the stalls back, as new. Returns { zone, retired: [codes] }.',
+        parameters: [{ name: 'zone', in: 'path', required: true, schema: { type: 'string', example: 'A' } }],
+        responses: { 200: responses[200]({ type: 'object', properties: { zone: { type: 'string' }, retired: { type: 'array', items: { type: 'string' } } } }), 403: responses[403], 404: responses[404], 409: responses[409] },
+      },
+    },
     '/stable/assignments/{id}': {
       delete: { tags: ['Stable (Groom)'], summary: 'Remove stall assignment (Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 403: responses[403], 404: responses[404] } },
     },
     '/feeding': {
       get: { tags: ['Feeding'], summary: 'List feeding schedules', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FeedingSchedule' } }) } },
       post: { tags: ['Feeding'], summary: 'Create feeding schedule (Head Trainer, Manager)', description: 'items: at least one line, each { inventoryItem (a feed item in stock), amount > 0 } — a line typed as text is refused (400), since it cannot leave stock. timeOfDay (HH:mm) must fit the meal: morning before 11:00, noon 11:00–15:59, evening from 16:00; and be at least mealMinGapHours (club policy, default 3) from the horse\'s other rations (400). One ration per horse per meal (409). approvedBy is stamped with the caller; a meal can only be recorded by the groom when its ration has an approver and lines (409 NO_APPROVED_RATION otherwise).', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FeedingSchedule' }), 403: responses[403] } },
+    },
+    '/feeding/suggest': {
+      get: { tags: ['Feeding'], summary: 'Suggest one meal from the plan, the stock and the weight (Head Trainer, Manager)', description: 'For a training day of the current phase of the horse\'s active plan (no plan or no training day: rest). Breakfast mostly forage, lunch light, the evening the main meal with supplements (minerals daily, oil in strength/speed, electrolytes on hard days). Concentrate never above 0.5% of body weight per meal. Items: the one the horse already eats, else enough for a week, expiring first. Returns { phase, work, weightKg, warning, sessionTime, daily { forage, concentrate }, items [{ inventoryItem, name, amount, unit }] }.', parameters: [{ name: 'horse', in: 'query', required: true, schema: { type: 'string' } }, { name: 'slot', in: 'query', required: true, schema: { type: 'string', enum: ['morning', 'noon', 'evening'] } }], responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 403: responses[403] } },
+    },
+    '/feeding/timetable': {
+      get: { tags: ['Feeding'], summary: 'One horse\'s feeding week, meal by meal (Head Trainer, Manager)', description: 'Monday first (week = any day of it, default this week). Today and before: the meal on the groom\'s list and what happened: status fed | skipped | missed | upcoming | open | late, doneAt, doneBy, reason, makeUp { status, time, doneAt, doneBy }. Days ahead: status planned, from the confirmed day of the active plan\'s feeding calendar (source calendar) or the approved standing ration (source ration). A slot with nothing: status null. Returns { horse, caretaker, weekStart, days: [{ date, meals: [{ slot, time, items [{ name, amount, unit }], source, status, ... }] }] }.', parameters: [{ name: 'horse', in: 'query', required: true, schema: { type: 'string' } }, { name: 'week', in: 'query', schema: { type: 'string', example: '2026-10-19' } }], responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 403: responses[403] } },
+    },
+    '/feeding/plan': {
+      post: { tags: ['Feeding'], summary: 'Set a horse\'s three meals in one click (Head Trainer, Manager)', description: 'meals: [{ mealTime, timeOfDay, items }] with the same rules as one ration. from (optional, a later day): kept as upcoming and taking over that day (the next phase). basis: what the amounts were worked out from.', responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 403: responses[403] } },
+    },
+    '/feeding/calendar/{planId}': {
+      get: { tags: ['Feeding'], summary: 'The dated feeding calendar of a whole training plan (Head Trainer, Manager)', description: 'Every day of the plan with its phase, work (the week template trains that day or not) and three meals from the ration rules; confirmed days show what was confirmed. Returns { plan, horse, caretaker, problems, warnings (stock to restock), weightNote, days }.', parameters: [idParam('planId')], responses: { 200: responses[200]({ type: 'object' }), 403: responses[403], 404: responses[404] } },
+    },
+    '/feeding/calendar/{planId}/confirm': {
+      post: { tags: ['Feeding'], summary: 'Confirm the calendar for the rest of the plan (Head Trainer, Manager)', description: 'expectedUpdatedAt must match the plan (409 if it changed); times { morning, noon, evening } optional. Days ahead are saved, a meal edited by hand kept; today\'s meals already given or missed stay. The groom is told.', parameters: [idParam('planId')], responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 409: responses[409] } },
+    },
+    '/feeding/calendar/{planId}/day/{date}/{slot}': {
+      patch: { tags: ['Feeding'], summary: 'Change one meal of one day (Head Trainer, Manager)', description: 'time and items of that meal; marked edited so a later confirm keeps it.', parameters: [idParam('planId'), { name: 'date', in: 'path', required: true, schema: { type: 'string', example: '2026-11-02' } }, { name: 'slot', in: 'path', required: true, schema: { type: 'string', enum: ['morning', 'noon', 'evening'] } }], responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 409: responses[409] } },
     },
     '/feeding/{id}': {
       get: { tags: ['Feeding'], summary: 'Get feeding schedule', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/FeedingSchedule' }), 404: responses[404] } },
@@ -1765,8 +1877,8 @@ module.exports = {
       },
     },
     '/races/{id}': {
-      get: { tags: ['Races'], summary: 'Get race entry', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
-      put: { tags: ['Races'], summary: 'Update race entry (Head Trainer)', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
+      get: { tags: ['Races'], summary: 'Get race entry', parameters: [idParam('id')], responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 400: responses[400], 404: responses[404], 409: responses[409] } },
+      put: { tags: ['Races'], summary: 'Update race entry (Head Trainer)', description: 'Fields: horse, raceName, raceDate, distance, venue, surface. Status changes go through /decision and /results. Once the entry has a result (completed), horse, raceName, raceDate and distance no longer change (409): the prize and the achievement are booked from them.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
       delete: { tags: ['Races'], summary: 'Delete race entry (Head Trainer, Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
     '/finance/mine/summary': {

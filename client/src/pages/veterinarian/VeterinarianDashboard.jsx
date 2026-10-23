@@ -24,7 +24,11 @@ import {
   incidentCategory,
   incidentImages,
   incidentSeverity,
+  requestDeadline,
 } from '../../components/veterinarian/vetFormat';
+import { ruleOf, symptomsText } from '../../constants/examRequest';
+import vetApi from '../../api/veterinarianApi';
+import { message } from '../../lib/antdStatic';
 import { incidentStatusOf } from '../../constants/care';
 import useSocket from '../../hooks/useSocket';
 import { useCareOrders, useClearances, useExamRequests, useIncidents, useVetHorses, useVetRefresh } from '../../hooks/useVetData';
@@ -51,8 +55,11 @@ function buildQueue({ horses, requests, incidents, clearances }) {
     const severity = task.incidentReport?.severity || 'medium';
     items.push({ key: `incident-${task._id}`, kind: 'incident', horseId: idOf(task.horse), rank: severity === 'high' ? 0 : severity === 'medium' ? 2 : 4, at: task.incidentReport?.reportedAt || task.updatedAt, task });
   }
+  // Requests by their deadline: a late one comes before anything else, then by priority, soonest
+  // deadline first.
   for (const request of requests) {
-    items.push({ key: `request-${request._id}`, kind: 'request', horseId: idOf(request.horse), rank: PRIORITY_META[request.priority]?.rank ?? 2, at: request.createdAt, request });
+    const deadline = requestDeadline(request);
+    items.push({ key: `request-${request._id}`, kind: 'request', horseId: idOf(request.horse), rank: deadline.overdue ? -1 : PRIORITY_META[request.priority]?.rank ?? 2, at: deadline.due, request });
   }
   // A horse already asked about is answered by the same exam: one row is enough.
   const examWanted = new Set(requests.map((r) => idOf(r.horse)));
@@ -127,6 +134,16 @@ export default function VeterinarianDashboard() {
   const close = () => setDialog(null);
   const openHorse = (id) => navigate(`/veterinarian/horses/${id}`);
   const examine = (id) => navigate(`/veterinarian/examinations/new/${id}`);
+  // An urgent request taken on at once: the requester is told the vet is coming.
+  const onTheWay = async (request) => {
+    try {
+      await vetApi.updateExamRequest(request._id, { action: 'accept' });
+      message.success(`Đã báo ${request.requestedBy?.name || 'HLV'}: bạn đang tới khám ${request.horse?.name || 'ngựa'}.`);
+      refresh();
+    } catch (err) {
+      message.error(err?.message || 'Không cập nhật được yêu cầu khám.');
+    }
+  };
   const horseOf = (item, fallback) => horseById.get(item.horseId) || fallback;
 
   const summary = [
@@ -175,41 +192,60 @@ export default function VeterinarianDashboard() {
       const { request } = item;
       const priority = PRIORITY_META[request.priority] || PRIORITY_META.normal;
       const accepted = Boolean(request.acceptedAt);
+      // An urgent request is seen now: "on my way", never a booking. A high or normal one is booked
+      // before its deadline (or examined straight away).
+      const canSchedule = ruleOf(request.priority).canSchedule;
+      const deadline = requestDeadline(request);
+      const signs = symptomsText(request.symptoms);
       return (
         <QueueRow
           key={item.key}
-          icon="bi-clipboard2-pulse"
-          tone={request.priority === 'normal' ? 'info' : priority.tone}
+          icon={request.priority === 'urgent' ? 'bi-lightning-charge' : 'bi-clipboard2-pulse'}
+          tone={deadline.overdue ? 'bad' : request.priority === 'normal' ? 'info' : priority.tone}
           horse={horseOf(item, request.horse)}
           onOpenHorse={() => openHorse(item.horseId)}
           pills={
             <>
               <Pill tone={request.priority === 'normal' ? 'info' : priority.tone}>Yêu cầu khám{request.priority !== 'normal' ? ` · ${priority.label}` : ''}</Pill>
+              <Pill tone={deadline.tone} icon="bi-alarm" title={deadline.text}>
+                {deadline.overdue ? deadline.label : `Trước ${fmtDateTime(deadline.due)}`}
+              </Pill>
               {accepted ? (
-                <Pill tone="good" icon="bi-calendar-check">
-                  {request.scheduledFor ? `Hẹn ${fmtDateTime(request.scheduledFor)}` : 'Đã nhận'}
+                <Pill tone="good" icon={canSchedule ? 'bi-calendar-check' : 'bi-lightning-charge'}>
+                  {!canSchedule ? 'Đang tới' : request.scheduledFor ? `Hẹn ${fmtDateTime(request.scheduledFor)}` : 'Đã nhận'}
                 </Pill>
               ) : (
                 <Pill>Chưa nhận</Pill>
               )}
+              {request.holdTraining && (
+                <Pill tone="bad" icon="bi-pause-circle">
+                  Dừng tập
+                </Pill>
+              )}
             </>
           }
-          text={request.reason}
-          meta={`${request.requestedBy?.name || 'HLV'} gửi ${ago(request.createdAt)}`}
+          text={[signs, request.reason].filter(Boolean).join(' — ')}
+          meta={`${request.requestedBy?.name || 'HLV'} gửi ${ago(request.createdAt)}${request.firstAid ? ` · đã xử lý: ${request.firstAid}` : ''}`}
           secondary={
-            !accepted && (
+            !accepted &&
+            (canSchedule ? (
               <Button size="sm" variant="vet-outline" onClick={() => setDialog({ type: 'request', request, mode: 'accept' })}>
-                Nhận & hẹn
+                {deadline.overdue ? 'Nhận' : 'Nhận & hẹn'}
               </Button>
-            )
+            ) : (
+              <Button size="sm" variant="vet-outline" onClick={() => onTheWay(request)} title="Báo HLV bạn đang tới, không hẹn giờ">
+                Đang tới
+              </Button>
+            ))
           }
           primary={
-            <Button size="sm" variant="vet" onClick={() => examine(item.horseId)}>
+            <Button size="sm" variant={deadline.overdue || request.priority === 'urgent' ? 'vet-danger' : 'vet'} onClick={() => examine(item.horseId)}>
               Khám ngay
             </Button>
           }
           menu={[
-            accepted && { label: 'Đổi lịch hẹn', icon: 'bi-calendar-event', onClick: () => setDialog({ type: 'request', request, mode: 'accept' }) },
+            { label: 'Xem yêu cầu', icon: 'bi-card-text', onClick: () => setDialog({ type: 'request', request, mode: 'view' }) },
+            accepted && canSchedule && !deadline.overdue && { label: 'Đổi lịch hẹn', icon: 'bi-calendar-event', onClick: () => setDialog({ type: 'request', request, mode: 'accept' }) },
             { label: 'Từ chối yêu cầu', icon: 'bi-x-circle', onClick: () => setDialog({ type: 'request', request, mode: 'decline' }), danger: true },
             { divider: true },
             { label: 'Hồ sơ ngựa', icon: 'bi-journal-medical', onClick: () => openHorse(item.horseId) },
@@ -435,7 +471,18 @@ export default function VeterinarianDashboard() {
         </div>
       </div>
 
-      {dialog?.type === 'request' && <ExamRequestModal request={dialog.request} mode={dialog.mode} onHide={close} onDone={refresh} />}
+      {dialog?.type === 'request' && (
+        <ExamRequestModal
+          request={dialog.request}
+          mode={dialog.mode}
+          onHide={close}
+          onDone={refresh}
+          onExamine={() => {
+            close();
+            examine(idOf(dialog.request.horse));
+          }}
+        />
+      )}
       {dialog?.type === 'incident' && <IncidentModal task={dialog.task} onHide={close} onDone={refresh} />}
       {dialog?.type === 'care' && dialog.horse && <CareModal horse={dialog.horse} kind={dialog.kind} initialMode={dialog.mode} onHide={close} onDone={refresh} />}
       {dialog?.type === 'pick' && (

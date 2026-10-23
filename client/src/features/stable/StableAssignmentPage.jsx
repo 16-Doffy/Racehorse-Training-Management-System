@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { Table, Button, Modal, Form, Select, Input, InputNumber, Tag, Alert, Popconfirm, Space, Empty, Tabs, Card } from 'antd';
+import { useEffect, useState } from 'react';
+import { Table, Button, Modal, Form, Select, Input, Tag, Alert, Popconfirm, Space, Empty, Tabs, Card } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { EditOutlined, DeleteOutlined, HomeOutlined, PlusOutlined, AppstoreAddOutlined } from '@ant-design/icons';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { stableAssignmentApi, stallApi } from './stableApi';
 import { horsesApi } from '../horses/horsesApi';
@@ -11,7 +11,10 @@ import { ROLES } from '../../constants/roles';
 import { HEALTH_LABELS, HEALTH_COLORS } from '../../constants/health';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import StableMapBoard from './StableMapBoard';
-import { STALL_TYPE_LABELS } from './stall3d/stallStatus';
+import ZoneModal, { ZoneEditModal } from './ZoneModal';
+import { CaretakerSelect, StallPicker } from './StallPicker';
+import { stallGroom } from './stallPicking';
+import { newestFirst } from '../../utils/newestFirst';
 
 /**
  * Manager assigns each horse a stall and the groom responsible for it.
@@ -28,10 +31,11 @@ export default function StableAssignmentPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [zoneOpen, setZoneOpen] = useState(false);
+  const [zoneEditing, setZoneEditing] = useState(null);
   const [tab, setTab] = useState('map');
   const [form] = Form.useForm();
-  const [zoneForm] = Form.useForm();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const { data: assignmentsData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['stable-assignments'],
@@ -55,6 +59,18 @@ export default function StableAssignmentPage() {
 
   const assignedHorseIds = new Set(assignments.map((a) => a.horse?._id || a.horse));
   const unstabled = horses.filter((h) => !assignedHorseIds.has(h._id));
+  // Where each horse is now: shown in the picker, and its caretaker goes along when it moves. Saving
+  // updates the horse's one assignment (the server upserts by horse), so picking a horse that already
+  // has a stall moves it — every horse that came in before the map has a hand-written stall.
+  const assignmentByHorse = new Map(assignments.map((a) => [String(a.horse?._id || a.horse), a]));
+  const whereNow = (a) => (!a ? 'chưa có chuồng' : a.stall?.code ? `đang ở ${a.stall.code}` : `chuồng ghi tay ${a.stableBlock}`);
+  const placeOrder = (h) => { const a = assignmentByHorse.get(String(h._id)); return !a ? 0 : a.stall ? 2 : 1; };
+  const pickedNow = assignmentByHorse.get(String(Form.useWatch('horse', form)));
+  const moveNote = pickedNow
+    ? pickedNow.stall?.code
+      ? `Ngựa sẽ chuyển khỏi chuồng ${pickedNow.stall.code}.`
+      : `Chuồng ghi tay “${pickedNow.stableBlock}” sẽ được thay bằng chuồng chọn dưới đây.`
+    : null;
   const uncared = assignments.filter((a) => !a.assignedCaretaker);
   const hasMap = stalls.length > 0;
 
@@ -94,18 +110,47 @@ export default function StableAssignmentPage() {
     onError: (err) => message.error(err.message || 'Không đổi được trạng thái chuồng.'),
   });
 
-  const zoneMutation = useMutation({
-    mutationFn: (values) => stallApi.generateZone(values),
-    onSuccess: (res) => {
-      const made = res?.data?.created?.length || 0;
-      const skipped = res?.data?.skipped?.length || 0;
-      message.success(`Đã tạo ${made} chuồng${skipped ? `, bỏ qua ${skipped} mã đã có` : ''}.`);
+  // A stall's groom, or a whole zone's: the horses in them and their open work go along (server side).
+  const groomMutation = useMutation({
+    mutationFn: ({ stall, caretaker }) => stallApi.setCaretaker(stall._id, caretaker),
+    onSuccess: (_, { stall, caretaker }) => {
+      const name = grooms.find((g) => g._id === caretaker)?.name;
+      message.success(name ? `Đã giao chuồng ${stall.code} cho ${name}.` : `Đã bỏ người chăm sóc của chuồng ${stall.code}.`);
       invalidate();
-      setZoneOpen(false);
-      zoneForm.resetFields();
-      setTab('map');
     },
-    onError: (err) => message.error(err.message || 'Không tạo được khu chuồng.'),
+    onError: (err) => message.error(err.message || 'Không đổi được người chăm sóc.'),
+  });
+
+  // The zone dialog saves everything at once: name, stalls taken out, stalls added.
+  const zoneEditMutation = useMutation({
+    mutationFn: ({ zone, values }) => stallApi.editZone(zone.key, values),
+    onSuccess: (res, { values }) => {
+      const { removed = [], added = [] } = res?.data || {};
+      const parts = [
+        removed.length ? `bỏ ${removed.join(', ')}` : null,
+        added.length ? `thêm ${added.join(', ')}` : null,
+      ].filter(Boolean);
+      message.success(`Đã lưu "${values.zoneName}"${parts.length ? `: ${parts.join(' · ')}` : ''}.`);
+      invalidate();
+      setZoneEditing(null);
+    },
+    onError: (err) => message.error(err.message || 'Không sửa được khu.'),
+  });
+  const zoneRetireMutation = useMutation({
+    mutationFn: (zone) => stallApi.retireZone(zone.key),
+    onSuccess: (res, zone) => {
+      message.success(`Đã xoá ${zone.name} (${res?.data?.retired?.length || zone.stalls.length} chuồng).`);
+      invalidate();
+    },
+    onError: (err) => message.error(err.message || 'Không xoá được khu.'),
+  });
+  const stallRetireMutation = useMutation({
+    mutationFn: (stall) => stallApi.retire(stall._id),
+    onSuccess: (_, stall) => {
+      message.success(`Đã bỏ chuồng ${stall.code}.`);
+      invalidate();
+    },
+    onError: (err) => message.error(err.message || 'Không bỏ được chuồng.'),
   });
 
   /** record: an assignment (table row) or { assignment, horse, caretaker, stall } from the map. */
@@ -118,24 +163,34 @@ export default function StableAssignmentPage() {
       horse: normalized ? normalized.horse?._id || normalized.horse : presetHorseId,
       stall: presetStall?._id || normalized?.stall?._id || undefined,
       stableBlock: normalized?.stableBlock,
-      assignedCaretaker: normalized?.assignedCaretaker?._id || normalized?.assignedCaretaker,
+      assignedCaretaker: normalized?.assignedCaretaker?._id || normalized?.assignedCaretaker || stallGroom(presetStall) || undefined,
     });
     setOpen(true);
   };
 
-  // Stalls a horse can go into: in use, not under maintenance, empty (or the one it is in now).
-  const editingHorseId = editing?.horse?._id || editing?.horse;
-  const stallOptions = Object.values(
-    stalls
-      .filter((s) => s.status !== 'maintenance' && (!s.occupied || (editingHorseId && s.occupant?.horse?._id === editingHorseId)))
-      .reduce((groups, s) => {
-        (groups[s.zone] ||= { label: s.zoneName, options: [] }).options.push({
-          value: s._id,
-          label: `${s.code}${s.type !== 'standard' ? ` · ${STALL_TYPE_LABELS[s.type]}` : ''}`,
-        });
-        return groups;
-      }, {}),
-  );
+  // ?horse=<id> (from the horse list or a horse's stall card) lands with that horse's form open: its
+  // assignment to change, or a new one with the horse picked. Opened once per link, then dropped from
+  // the URL so a reload or Back does not open it again.
+  const linkedHorse = searchParams.get('horse');
+  const [linkOpened, setLinkOpened] = useState(null);
+  if (!linkedHorse && linkOpened) setLinkOpened(null);
+  if (linkedHorse && linkOpened !== linkedHorse && assignmentsData && horsesData) {
+    setLinkOpened(linkedHorse);
+    const current = assignmentByHorse.get(linkedHorse);
+    openModal(current || null, current ? undefined : linkedHorse);
+  }
+  useEffect(() => {
+    if (!linkOpened || !searchParams.has('horse')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('horse');
+    setSearchParams(next, { replace: true });
+  }, [linkOpened, searchParams, setSearchParams]);
+
+  // The horse in the form: its own stall stays pickable in the stall picker, and it does not count
+  // towards its groom's load. The picked stall's zone suggests the groom who already works there.
+  const formHorseId = Form.useWatch('horse', form);
+  const formStallId = Form.useWatch('stall', form);
+  const formStall = stalls.find((s) => s._id === formStallId);
 
   const columns = [
     {
@@ -204,7 +259,14 @@ export default function StableAssignmentPage() {
     },
   ];
 
-  const busyId = (maintenanceMutation.isPending && maintenanceMutation.variables?.stall?._id) || (removeMutation.isPending && removeMutation.variables) || null;
+  const groomBusy = groomMutation.isPending ? `stall:${groomMutation.variables?.stall?._id}` : null;
+  const busyId =
+    (maintenanceMutation.isPending && maintenanceMutation.variables?.stall?._id) ||
+    (removeMutation.isPending && removeMutation.variables) ||
+    groomBusy ||
+    (zoneRetireMutation.isPending && `retire:${zoneRetireMutation.variables?.key}`) ||
+    (stallRetireMutation.isPending && `retire-stall:${stallRetireMutation.variables?._id}`) ||
+    null;
   const mapTab = stallsError ? (
     <Alert
       type="error"
@@ -222,6 +284,11 @@ export default function StableAssignmentPage() {
       onEdit={(record) => openModal(record)}
       onRemove={(id) => removeMutation.mutate(id)}
       onMaintenance={(stall, on) => maintenanceMutation.mutate({ stall, on })}
+      grooms={grooms}
+      onSetCaretaker={(stall, caretaker) => groomMutation.mutateAsync({ stall, caretaker }).catch(() => {})}
+      onEditZone={(zone) => setZoneEditing(zone)}
+      onRetireZone={(zone) => zoneRetireMutation.mutateAsync(zone).catch(() => {})}
+      onRetireStall={(stall) => stallRetireMutation.mutateAsync(stall).catch(() => {})}
     />
   ) : (
     <Card loading={stallsLoading && !stallsData} className="!rounded-xl !border-[#E2D9C8]">
@@ -244,8 +311,15 @@ export default function StableAssignmentPage() {
       <PageHeroBanner
         eyebrow="Vận hành chuồng trại"
         roleLabel="Quản lý CLB"
-        title="Phân công chuồng trại & nhân viên chăm sóc"
+        title="Chuồng trại & người chăm sóc"
         subtitle="Mỗi ngựa cần một ô chuồng và một nhân viên chăm sóc phụ trách để hệ thống tự tạo việc cho ăn hằng ngày và kiểm tra điều kiện trước buổi tập."
+        stats={[
+          { label: 'Tổng đàn', value: `${horses.length} ngựa` },
+          { label: 'Đã xếp chuồng', value: `${assignments.length} ngựa` },
+          { label: 'Chưa xếp chuồng', value: `${unstabled.length} ngựa` },
+          { label: 'Chưa có người chăm sóc', value: `${uncared.length} ngựa` },
+          { label: 'Chuồng trống', value: `${stalls.filter((st) => !st.occupied && st.status !== 'maintenance').length}/${stalls.length}` },
+        ]}
         actionButton={
           <Space wrap>
             <Button icon={<AppstoreAddOutlined />} onClick={() => setZoneOpen(true)} className="!h-9 !rounded-lg font-semibold cursor-pointer">
@@ -255,7 +329,7 @@ export default function StableAssignmentPage() {
               type="primary"
               icon={<PlusOutlined />}
               onClick={() => openModal(null)}
-              disabled={unstabled.length === 0}
+              disabled={horses.length === 0}
               className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
             >
               Xếp chuồng mới
@@ -264,57 +338,51 @@ export default function StableAssignmentPage() {
         }
       />
 
-      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
-        <div className="p-3.5 sm:p-4">
-          <div className="text-xs font-medium text-slate-600">Tổng đàn ngựa</div>
-          <div className="text-xl sm:text-2xl font-bold text-[#0F5A43] tabular-nums mt-1">{horses.length} <span className="text-xs font-normal text-slate-500">ngựa</span></div>
-        </div>
-        <div className="p-3.5 sm:p-4">
-          <div className="text-xs font-medium text-slate-600">Đã xếp chuồng</div>
-          <div className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums mt-1">{assignments.length} <span className="text-xs font-normal text-slate-500">ô chuồng</span></div>
-        </div>
-        <div className="p-3.5 sm:p-4">
-          <div className="text-xs font-medium text-slate-600">Chưa xếp chuồng</div>
-          <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${unstabled.length > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
-            {unstabled.length} <span className="text-xs font-normal text-slate-500">ngựa</span>
+      {(unstabled.length > 0 || unplaced.length > 0 || uncared.length > 0) && (
+        // What still needs the Manager, in one place: horses without a stall, horses on a hand-written
+        // stall, stalls whose horse has nobody to feed it. Each name opens its stall form.
+        <div className="light-surface-box mb-4 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm">
+          <div className="mb-1.5 font-semibold text-amber-900">Cần xử lý</div>
+          <div className="space-y-1.5">
+            {unstabled.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+                <span className="mr-1 text-gray-700">{unstabled.length} ngựa chưa có chuồng:</span>
+                {unstabled.map((h) => (
+                  <Button key={h._id} size="small" type="link" className="!h-auto !px-1 !py-0" onClick={() => openModal(null, h._id)}>
+                    {h.name}
+                  </Button>
+                ))}
+              </div>
+            )}
+            {unplaced.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+                <span className="mr-1 text-gray-700">{unplaced.length} ngựa ở chuồng ghi tay, chưa có trên sơ đồ:</span>
+                {unplaced.map((u) => (
+                  <Button
+                    key={u.assignment}
+                    size="small"
+                    type="link"
+                    className="!h-auto !px-1 !py-0"
+                    onClick={() => openModal({ assignment: u.assignment, horse: u.horse, caretaker: u.caretaker })}
+                  >
+                    {u.horse.name} ({u.stableBlock})
+                  </Button>
+                ))}
+              </div>
+            )}
+            {uncared.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+                <span className="mr-1 text-gray-700">{uncared.length} ngựa chưa có người chăm sóc (không được tự tạo việc cho ăn):</span>
+                {uncared.map((a) => (
+                  <Button key={a._id} size="small" type="link" className="!h-auto !px-1 !py-0" onClick={() => openModal(a)}>
+                    {a.horse?.name} ({a.stableBlock})
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-        <div className="p-3.5 sm:p-4">
-          <div className="text-xs font-medium text-slate-600">Chưa gán người chăm sóc</div>
-          <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${uncared.length > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
-            {uncared.length} <span className="text-xs font-normal text-slate-500">chuồng</span>
-          </div>
-        </div>
-      </div>
-
-      {unstabled.length > 0 && (
-        <Alert
-          className="!mb-3"
-          type="warning"
-          showIcon
-          title={`${unstabled.length} ngựa chưa được xếp chuồng`}
-          description={
-            <div className="text-sm">
-              {unstabled.map((h) => (
-                <Button key={h._id} size="small" type="link" className="!px-1" onClick={() => openModal(null, h._id)}>
-                  {h.name}
-                </Button>
-              ))}
-            </div>
-          }
-        />
       )}
-
-      {uncared.length > 0 && (
-        <Alert
-          className="!mb-3"
-          type="warning"
-          showIcon
-          title={`${uncared.length} chuồng chưa có người chăm sóc`}
-          description="Ngựa trong các chuồng này sẽ không được tự tạo việc cho ăn, và buổi tập của chúng sẽ hiện cảnh báo."
-        />
-      )}
-
       {isError && (
         <Alert
           type="error"
@@ -342,7 +410,7 @@ export default function StableAssignmentPage() {
               <Table
                 rowKey="_id"
                 columns={columns}
-                dataSource={assignments}
+                dataSource={newestFirst(assignments)}
                 loading={isLoading && !assignmentsData}
                 scroll={{ x: 'max-content' }}
                 locale={{
@@ -370,36 +438,43 @@ export default function StableAssignmentPage() {
           setEditing(null);
         }}
         onOk={() => form.submit()}
+        okText={formStall ? `Xếp vào ${formStall.code}` : 'Lưu'}
         confirmLoading={saveMutation.isPending}
         destroyOnHidden
+        width={640}
       >
         <Form
           form={form}
           layout="vertical"
+          requiredMark={false}
+          onValuesChange={(changed) => {
+            // A stall comes with its groom: the horse placed there is theirs to look after.
+            if (!('stall' in changed)) return;
+            const groom = stallGroom(stalls.find((s) => s._id === changed.stall));
+            if (groom) form.setFieldValue('assignedCaretaker', groom);
+          }}
           onFinish={(values) => saveMutation.mutate(hasMap ? { horse: values.horse, stall: values.stall, assignedCaretaker: values.assignedCaretaker } : values)}
         >
-          <Form.Item name="horse" label="Ngựa" rules={[{ required: true }]}>
+          <Form.Item name="horse" label="Ngựa" rules={[{ required: true, message: 'Chọn ngựa' }]} extra={!editing && moveNote} className="!mb-4">
             <Select
               disabled={Boolean(editing)}
               showSearch
               optionFilterProp="label"
-              options={horses.map((h) => ({
-                value: h._id,
-                label: h.name,
-                // One stall per horse is enforced by a unique index, so re-picking an already
-                // stabled horse would just fail — hide the option instead.
-                disabled: !editing && assignedHorseIds.has(h._id),
-              }))}
+              placeholder="Chọn ngựa"
+              onChange={(id) => {
+                // The picked stall's own groom comes first; otherwise the horse keeps the one it has.
+                if (stallGroom(formStall)) return;
+                const caretaker = assignmentByHorse.get(String(id))?.assignedCaretaker;
+                if (caretaker) form.setFieldValue('assignedCaretaker', caretaker._id || caretaker);
+              }}
+              options={[...horses]
+                .sort((a, b) => placeOrder(a) - placeOrder(b))
+                .map((h) => ({ value: h._id, label: editing ? h.name : `${h.name} (${whereNow(assignmentByHorse.get(String(h._id)))})` }))}
             />
           </Form.Item>
           {hasMap ? (
-            <Form.Item
-              name="stall"
-              label="Chuồng"
-              rules={[{ required: true, message: 'Chọn một chuồng trống' }]}
-              extra="Chỉ hiện chuồng trống, không bảo trì. Thêm chuồng ở nút “Thêm khu chuồng”."
-            >
-              <Select showSearch optionFilterProp="label" placeholder="Chọn chuồng" options={stallOptions} notFoundContent="Hết chuồng trống" />
+            <Form.Item name="stall" label="Chuồng" rules={[{ required: true, message: 'Chọn một chuồng trống' }]} className="!mb-4">
+              <StallPicker stalls={stalls} horseId={formHorseId} />
             </Form.Item>
           ) : (
             <Form.Item
@@ -414,51 +489,34 @@ export default function StableAssignmentPage() {
           <Form.Item
             name="assignedCaretaker"
             label="Nhân viên chăm sóc"
-            extra="Người này sẽ tự động nhận việc cho ăn hàng ngày và việc chăm sóc sau buổi tập nặng."
+            extra="Người này tự nhận việc cho ăn hằng ngày và việc chăm sóc sau buổi tập nặng của ngựa."
+            className="!mb-1"
           >
-            <Select
-              allowClear
-              placeholder="Chưa gán"
-              options={grooms.map((u) => ({ value: u._id, label: u.name }))}
-            />
+            <CaretakerSelect grooms={grooms} stalls={stalls} unplaced={unplaced} stall={formStall} horseId={formHorseId} />
           </Form.Item>
         </Form>
       </Modal>
 
-      <Modal
-        title="Thêm khu chuồng"
+      <ZoneModal
         open={zoneOpen}
-        onCancel={() => setZoneOpen(false)}
-        onOk={() => zoneForm.submit()}
-        confirmLoading={zoneMutation.isPending}
-        okText="Tạo chuồng"
-        destroyOnHidden
-      >
-        <Form
-          form={zoneForm}
-          layout="vertical"
-          initialValues={{ count: 8, type: 'standard' }}
-          onFinish={(values) => zoneMutation.mutate({ ...values, zone: values.zone.trim().toUpperCase() })}
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-            <Form.Item name="zone" label="Mã khu" rules={[{ required: true, pattern: /^[A-Za-z0-9]{1,4}$/, message: '1–4 chữ hoặc số, ví dụ A, B, CL' }]} extra="Mã chuồng sẽ là <mã khu>-01, -02…">
-              <Input placeholder="A" maxLength={4} />
-            </Form.Item>
-            <Form.Item name="count" label="Số chuồng" rules={[{ required: true }]}>
-              <InputNumber min={1} max={40} className="!w-full" />
-            </Form.Item>
-          </div>
-          <Form.Item name="zoneName" label="Tên khu" rules={[{ required: true, message: 'Ví dụ: Khu A' }]}>
-            <Input placeholder="Khu A" maxLength={60} />
-          </Form.Item>
-          <Form.Item name="zonePurpose" label="Dùng cho">
-            <Input placeholder="Ngựa đua chủ lực" maxLength={120} />
-          </Form.Item>
-          <Form.Item name="type" label="Loại chuồng">
-            <Select options={Object.entries(STALL_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
-          </Form.Item>
-        </Form>
-      </Modal>
+        stalls={stalls}
+        onClose={() => setZoneOpen(false)}
+        onCreated={() => {
+          invalidate();
+          setZoneOpen(false);
+          setTab('map');
+        }}
+      />
+
+      {zoneEditing && (
+        <ZoneEditModal
+          key={`zone-edit:${zoneEditing.key}`}
+          zone={zoneEditing}
+          saving={zoneEditMutation.isPending}
+          onClose={() => setZoneEditing(null)}
+          onSave={(values) => zoneEditMutation.mutate({ zone: zoneEditing, values })}
+        />
+      )}
     </div>
   );
 }

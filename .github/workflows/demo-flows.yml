@@ -10,10 +10,8 @@ name: Demo flows (live)
 # Remove the schedule after the demo.
 on:
   schedule:
-    - cron: '0 22 20 10 *' # 05:00 Vietnam time on 21/10: the rounds
-    - cron: '30 23 20 10 *' # 06:30 on 21/10: backup, skipped once round 1 exists
-    - cron: '0 23 21 10 *' # 06:00 on 22/10: race results
-    - cron: '0 2 22 10 *' # 09:00 on 22/10: backup, skipped once results exist
+    - cron: '0 22 22 10 *' # 05:00 Vietnam time on 23/10 (demo morning): the rounds
+    - cron: '30 23 22 10 *' # 06:30 on 23/10: backup, skipped once round 1 exists
   workflow_dispatch:
     inputs:
       mode:
@@ -48,6 +46,7 @@ jobs:
           DEMO_ROUND_EVERY_MIN: 45
           DEMO_LAST_START: '07:30'
           # The crons fire every year on these dates; only 2026 writes. The button runs what it is told.
-          DEMO_ONLY_DATE: ${{ github.event_name == 'schedule' && '2026-10-21' || '' }}
-          DEMO_RESULT_DATE: ${{ github.event_name == 'schedule' && '2026-10-22' || '' }}
+          DEMO_ONLY_DATE: ${{ github.event_name == 'schedule' && '2026-10-23' || '' }}
+          # No race-day run is scheduled this time: the rounds' race (24/10) is recorded by hand if needed.
+          DEMO_RESULT_DATE: ''
           DEMO_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || '' }}

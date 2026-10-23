@@ -13,6 +13,8 @@ import {
   getStockLevel,
   hasApprovedRation,
   isOpenRequest,
+  needsAction,
+  primaryAction,
   rationLine,
   restockState,
   summarizeTasks,
@@ -265,4 +267,74 @@ test('the 3D page paints the coat on the model it is given', async () => {
   assert.ok(page.includes('var COAT = {"body":[0.035,0.033,0.033]'), 'the coat goes into the page');
   assert.ok(page.includes('"body":"M_Body"'));
   assert.ok(horse360Html().includes('var COAT = null'), 'no coat: the model as it is');
+});
+
+test('a stall code is the stall, its zone the block; free text from before the map still splits', async () => {
+  const { parseStableBlock, areaKey } = await import('./groom.js');
+  assert.deepEqual(parseStableBlock('A-03'), { block: 'Khu A', stall: 'A-03', zone: 'A' });
+  assert.deepEqual(parseStableBlock('CL-01'), { block: 'Khu CL', stall: 'CL-01', zone: 'CL' });
+  assert.deepEqual(parseStableBlock('Block A - Stall 12'), { block: 'Block A', stall: 'Stall 12' });
+  assert.deepEqual(parseStableBlock(''), { block: 'Khác', stall: '—' });
+  assert.deepEqual(parseStableBlock(undefined), { block: 'Khác', stall: '—' });
+  // A shelf of feed in "Block A" is in the area of the groom whose horse stands in A-03.
+  assert.equal(areaKey('Block A'), areaKey(parseStableBlock('A-03').block));
+  assert.equal(areaKey('Khu A'), 'a');
+  assert.notEqual(areaKey('Block AB'), areaKey('Khu A'));
+});
+
+test('the stable map: the colour of a stall, its zones in order, and the groom\'s own stalls', async () => {
+  const { stallState, groupZones, myStallsOf } = await import('./groom.js');
+  const horse = (name, healthStatus = 'eligible') => ({ _id: `h-${name}`, name, healthStatus });
+  const stall = (code, occupant = null, extra = {}) => ({
+    _id: `s-${code}`, code, zone: code.split('-')[0], zoneName: `Khu ${code.split('-')[0]}`, status: 'active', occupied: !!occupant, occupant, ...extra,
+  });
+  const mine = { _id: GROOM, name: 'Tôi' };
+  const other = { _id: 'groom-2', name: 'Khác' };
+  const stalls = [
+    stall('A-01', { horse: horse('Hoàng Kim'), caretaker: mine }),
+    stall('A-02', { horse: horse('Bão Lửa', 'injured'), caretaker: other }),
+    stall('A-03'),
+    stall('A-04', null, { status: 'maintenance', maintenanceNote: 'Thay sàn' }),
+    stall('CL-01', { horse: horse('Sương Mai', 'quarantined'), caretaker: mine }, { zoneName: 'Khu cách ly', type: 'isolation' }),
+    stall('CL-02', { hidden: true }),
+    // An empty stall the Manager gave this groom: theirs before any horse is in it.
+    stall('A-06', null, { caretaker: mine }),
+  ];
+
+  assert.equal(stallState(stalls[0]).key, 'eligible');
+  assert.equal(stallState(stalls[1]).key, 'injured');
+  assert.equal(stallState(stalls[2]).key, 'empty');
+  assert.equal(stallState(stalls[3]).key, 'maintenance');
+  assert.equal(stallState(stalls[5]).key, 'taken', 'a horse the server hides is only "taken"');
+
+  const zones = groupZones(stalls);
+  assert.deepEqual(zones.map((z) => [z.key, z.name, z.stalls.length]), [['A', 'Khu A', 5], ['CL', 'Khu cách ly', 2]]);
+
+  const unplaced = [
+    { assignment: 'a-1', horse: horse('Gió Bấc'), stableBlock: 'Block B - Stall 2', caretaker: mine },
+    { assignment: 'a-2', horse: horse('Phi Vân'), stableBlock: 'Block B - Stall 3', caretaker: other },
+  ];
+  const my = myStallsOf({ stalls, unplaced }, GROOM);
+  assert.deepEqual(my.stalls.map((s) => s.code), ['A-01', 'CL-01', 'A-06']);
+  assert.deepEqual(my.unplaced.map((u) => u.horse.name), ['Gió Bấc']);
+  assert.deepEqual(myStallsOf({ stalls, unplaced }, undefined), { stalls: [], unplaced: [] }, 'nobody signed in owns nothing');
+});
+
+test('each row offers the one button its state calls for', () => {
+  assert.deepEqual(primaryAction(task()), { key: 'complete' });
+  assert.equal(primaryAction(task({ timing: { state: 'upcoming', canComplete: false } })), null, 'not time yet: no button');
+  assert.equal(primaryAction(task({ status: 'completed' })), null);
+  const short = task({ supplyStatus: { ok: false, missing: [{ name: 'Cỏ khô', needed: 5, available: 1, unit: 'kg' }] } });
+  assert.deepEqual(primaryAction(short), { key: 'restock' });
+  const noRation = task({ taskType: 'feeding', mealSlot: null });
+  assert.deepEqual(primaryAction(noRation, { rations: [ration] }), { key: 'notDone', reason: 'Chưa có khẩu phần được duyệt' });
+  const missed = task({ timing: { state: 'missed', canComplete: false } });
+  assert.deepEqual(primaryAction(missed), { key: 'notDone' }, 'missed with no window to record late: report it');
+});
+
+test('a missed meal still needs the groom until it is reported; a recorded one does not', () => {
+  assert.equal(needsAction(task({ timing: { state: 'missed', canComplete: false } })), true);
+  assert.equal(needsAction(task({ status: 'completed' })), false);
+  assert.equal(needsAction(task({ status: 'skipped', skippedBy: GROOM, skipReason: 'x' })), false);
+  assert.equal(needsAction(task({ timing: { state: 'upcoming', canComplete: false } })), true);
 });

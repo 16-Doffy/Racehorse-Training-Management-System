@@ -24,11 +24,25 @@ const stallSchema = new mongoose.Schema(
     maintenanceUntil: { type: Date, default: null },
     // A stall taken out of use leaves the map; its code stays reserved.
     isActive: { type: Boolean, default: true },
+    // The groom who looks after this stall, empty or not: their app lists it, and a horse placed here
+    // gets them as its caretaker (StableAssignment.assignedCaretaker follows this field).
+    caretaker: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
 );
 
 stallSchema.index({ zone: 1, order: 1, code: 1 });
+
+/**
+ * Writes the stall first, inside the caller's transaction: placing a horse, maintenance and retiring
+ * each check the stall and who stands in it, then write. Two such writes on one stall conflict, and
+ * MongoDB re-runs the later transaction against what the first committed — so its checks see the new
+ * state instead of both passing (a horse placed in a stall that went under maintenance meanwhile).
+ * Returns the stall as it now is, or null.
+ */
+stallSchema.statics.claim = function claim(filter, session) {
+  return this.findOneAndUpdate(filter, { $set: { updatedAt: new Date() } }, { new: true, session, timestamps: false });
+};
 
 module.exports = mongoose.model('Stall', stallSchema);
 module.exports.STALL_TYPES = STALL_TYPES;

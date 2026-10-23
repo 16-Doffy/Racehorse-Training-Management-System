@@ -3,23 +3,25 @@ import { Button, Col, Form, Row } from 'react-bootstrap';
 import vetApi from '../../api/veterinarianApi';
 import { message } from '../../lib/antdStatic';
 import HorseInjuryViewer from './HorseInjuryViewer';
-import { BusyButton, Callout, Choices, Field, VetModal } from './ui';
-import { RECOVERY_STEPS, SEVERITY_META, errorText, idOf, isActiveInjury } from './vetFormat';
+import { BusyButton, Callout, Choices, Field, Pill, VetModal } from './ui';
+import { SEVERITY_META, errorText, idOf, isActiveInjury, recoveryMeta } from './vetFormat';
 
 /**
- * Marks an injury on the horse (or edits one): where — clicked on the 3D horse, which also names the
- * part of the body — how bad, and how far along. The server works out the horse's health status from
- * its injuries, so nothing else is written here. Mounted when opened. Give `horse` (from its page), or
- * `horses` to choose from; `injuries` (any horses) are shown on the model for context.
+ * Marks an injury on the horse: where — clicked on the 3D horse, which also names the part of the
+ * body — and how bad. A new injury always starts as just found (new): it moves on from there, by its
+ * treatment or by the vet, never from this form. The server works out the horse's health status from
+ * its injuries, so nothing else is written here. A recorded injury is not edited. Mounted when opened. Give `horse` (from its page), or `horses` to choose from;
+ * `injuries` (any horses) are shown on the model for context.
+ * With `onDraft`, nothing is saved: the injury goes back to the caller (the exam form saves it with
+ * the exam that found it), and `injury` may be such a draft to change before the exam is saved.
  */
-export default function InjuryModal({ horse, horses = [], injury, injuries = [], defaultHorseId = '', onHide, onDone }) {
+export default function InjuryModal({ horse, horses = [], injury, injuries = [], defaultHorseId = '', onHide, onDone, onDraft }) {
   const [horseId, setHorseId] = useState(() => idOf(injury?.horse) || idOf(horse) || defaultHorseId || '');
   const [bodyPart, setBodyPart] = useState(injury?.bodyPart || '');
   const [named, setNamed] = useState(''); // the last name the model filled in, replaced by the next click
   const [point, setPoint] = useState(() => (injury?.location3d?.position ? { location3d: injury.location3d, coordinates: injury.coordinates } : null));
   const [moved, setMoved] = useState(false);
   const [severity, setSeverity] = useState(injury?.severity || 'moderate');
-  const [stage, setStage] = useState(injury?.recoveryStatus || 'new');
   const [notes, setNotes] = useState(injury?.notes || '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -48,14 +50,17 @@ export default function InjuryModal({ horse, horses = [], injury, injuries = [],
       bodyPart: bodyPart.trim(),
       coordinates: point?.coordinates || injury?.coordinates || { x: 0.5, y: 0.5 },
       severity,
-      recoveryStatus: stage,
       notes: notes.trim(),
     };
     if (moved && point?.location3d) payload.location3d = point.location3d;
+    if (onDraft) {
+      onDraft({ ...payload, _id: injury?._id, location3d: point?.location3d || injury?.location3d });
+      onHide();
+      return undefined;
+    }
     try {
-      if (injury) await vetApi.updateInjuryMarker(injury._id, payload);
-      else await vetApi.createInjuryMarker(payload);
-      message.success(injury ? 'Đã cập nhật chấn thương.' : `Đã ghi chấn thương cho ${horseName}.`);
+      await vetApi.createInjuryMarker(payload);
+      message.success(`Đã ghi chấn thương cho ${horseName}.`);
       onDone?.();
       onHide();
     } catch (err) {
@@ -81,7 +86,7 @@ export default function InjuryModal({ horse, horses = [], injury, injuries = [],
             Hủy
           </Button>
           <BusyButton type="submit" busy={busy}>
-            {injury ? 'Lưu thay đổi' : 'Ghi chấn thương'}
+            {onDraft ? (injury ? 'Cập nhật' : 'Thêm vào phiếu khám') : injury ? 'Lưu thay đổi' : 'Ghi chấn thương'}
           </BusyButton>
         </>
       }
@@ -125,9 +130,11 @@ export default function InjuryModal({ horse, horses = [], injury, injuries = [],
               options={Object.entries(SEVERITY_META).map(([value, m]) => ({ value, label: m.label, tone: m.tone }))}
             />
           </Field>
-          <Field label="Giai đoạn">
-            <Choices value={stage} onChange={setStage} disabled={busy} label="Giai đoạn" options={RECOVERY_STEPS.map((s) => ({ value: s.key, label: s.label, tone: s.tone }))} />
-          </Field>
+          <div className="vet-small vet-muted d-flex flex-wrap align-items-center gap-2">
+            <span>Giai đoạn:</span>
+            <Pill tone={recoveryMeta('new').tone}>{recoveryMeta('new').label}</Pill>
+            <span className="vet-faint">— kê đơn tự chuyển sang Đang điều trị; “Đã khỏi” xác nhận sau khi theo dõi.</span>
+          </div>
           <Field label="Ghi chú">
             <Form.Control as="textarea" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Mức sưng, phản ứng khi đi lại, chườm lạnh / băng bó…" />
           </Field>

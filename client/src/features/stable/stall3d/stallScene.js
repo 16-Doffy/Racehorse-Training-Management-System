@@ -103,7 +103,14 @@ function layout(stalls) {
   return { places, perRow, rows, length: perRow * S };
 }
 
-export function createStallScene(canvas, { onSelect } = {}) {
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/**
+ * onSelect(code): a stall was clicked (or reached on the tour). onHover(code | null, x, y): the pointer
+ * is over a stall (canvas coordinates). onInteract(): the user took the camera (drag, wheel, keys),
+ * which stops the tour and any flight.
+ */
+export function createStallScene(canvas, { onSelect, onHover, onInteract } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
@@ -113,13 +120,24 @@ export function createStallScene(canvas, { onSelect } = {}) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(40, 16 / 10, 0.1, 160);
   camera.position.set(12, 11, 20);
+  // Free to look around the whole zone: drag turns, right-drag (or Shift+drag, two fingers) slides over
+  // the ground like walking, the wheel zooms towards the pointer, so any spot can be looked at closely.
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
-  controls.enablePan = false;
-  controls.minDistance = 3.2;
-  controls.maxDistance = 38;
-  controls.maxPolarAngle = 1.45;
+  controls.dampingFactor = 0.09;
+  controls.enablePan = true;
+  controls.screenSpacePanning = false;
+  controls.panSpeed = 1.1;
+  controls.zoomToCursor = true;
+  controls.zoomSpeed = 1.15;
+  controls.rotateSpeed = 0.8;
+  controls.minDistance = 2.2;
+  controls.maxDistance = 48;
+  controls.minPolarAngle = 0;
+  controls.maxPolarAngle = 1.5;
   controls.autoRotateSpeed = 0.5;
+  controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+  controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Late-afternoon light: warm sun, a pale sky above, warm bounce from the ground.
@@ -560,25 +578,180 @@ export function createStallScene(canvas, { onSelect } = {}) {
     const d = extent.rows === 2 ? Math.max(18, extent.length * 1.2) : 11;
     flyTo(new THREE.Vector3(d * 0.62, d * 0.55, d * 0.95), new THREE.Vector3(0, 1.2, 0));
   }
+  /** Straight down on the zone, like the map: both rows and the aisle at once. */
+  function topView() {
+    const h = Math.max(16, extent.length * 1.05 + 8);
+    flyTo(new THREE.Vector3(0, h, 0.01), new THREE.Vector3(0, 0, 0));
+  }
+  /** Standing at the end of the aisle at eye height, looking down it between the two rows of doors. */
+  function aisleView() {
+    const end = extent.length / 2 + 2.2;
+    flyTo(new THREE.Vector3(-end, 1.7, 0), new THREE.Vector3(end * 0.4, 1.4, 0));
+  }
 
-  // A click on a stall selects it; a drag only turns the camera.
+  // The tour: from stall to stall along the zone, each shown for a moment and selected on the page.
+  let tour = null;
+  function stopTour() {
+    if (tour) clearTimeout(tour.timer);
+    tour = null;
+  }
+  function startTour(codes) {
+    stopTour();
+    const list = (codes || []).filter((code) => centers.has(code));
+    if (!list.length) return;
+    tour = { list, i: 0, timer: null };
+    const step = () => {
+      if (!tour) return;
+      const code = tour.list[tour.i % tour.list.length];
+      focus(code);
+      onSelect?.(code);
+      tour.i += 1;
+      tour.timer = setTimeout(step, reduceMotion ? 2000 : 3400);
+    };
+    step();
+  }
+
+  // The user takes the camera: any flight or tour stops where it is.
+  const takeOver = () => {
+    fly = null;
+    if (tour) stopTour();
+    onInteract?.();
+  };
+  controls.addEventListener('start', takeOver);
+
+  // The camera stays around the barn: the point it turns about cannot leave the yard, and it stays
+  // above the ground. Moving the point carries the camera along, so a slide never turns into a spin.
+  function keepInYard() {
+    const halfX = extent.length / 2 + 7;
+    const halfZ = (extent.rows === 2 ? S + AISLE / 2 : S / 2 + AISLE / 2) + 8;
+    const t = controls.target;
+    const dx = clamp(t.x, -halfX, halfX) - t.x;
+    const dy = clamp(t.y, 0, 4) - t.y;
+    const dz = clamp(t.z, -halfZ, halfZ) - t.z;
+    if (dx || dy || dz) {
+      t.x += dx; t.y += dy; t.z += dz;
+      camera.position.x += dx; camera.position.y += dy; camera.position.z += dz;
+    }
+    if (camera.position.y < 0.45) camera.position.y = 0.45;
+  }
+
+  // Keys while the 3D view has focus: W/S or ↑/↓ walk forward and back, A/D or ←/→ step aside, Q/E turn,
+  // +/− zoom, Shift goes faster.
+  const keys = new Set();
+  const MOVE_KEYS = new Set(['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '+', '=', '-', '_']);
+  const onKeyDown = (e) => {
+    const k = e.key.toLowerCase();
+    if (!MOVE_KEYS.has(k)) return;
+    e.preventDefault();
+    if (!keys.size) takeOver();
+    keys.add(k);
+    keys.shift = e.shiftKey;
+  };
+  const onKeyUp = (e) => { keys.delete(e.key.toLowerCase()); keys.shift = e.shiftKey; };
+  const onBlur = () => keys.clear();
+  canvas.addEventListener('keydown', onKeyDown);
+  canvas.addEventListener('keyup', onKeyUp);
+  canvas.addEventListener('blur', onBlur);
+  const forward = new THREE.Vector3();
+  const side = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  function moveByKeys(dt) {
+    if (!keys.size) return;
+    const speed = (keys.shift ? 11 : 5) * dt;
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    if (forward.lengthSq() < 1e-6) forward.set(0, 0, -1);
+    forward.normalize();
+    side.crossVectors(forward, up).normalize();
+    const step = new THREE.Vector3();
+    if (keys.has('w') || keys.has('arrowup')) step.add(forward);
+    if (keys.has('s') || keys.has('arrowdown')) step.sub(forward);
+    if (keys.has('d') || keys.has('arrowright')) step.add(side);
+    if (keys.has('a') || keys.has('arrowleft')) step.sub(side);
+    if (step.lengthSq()) {
+      step.normalize().multiplyScalar(speed);
+      camera.position.add(step);
+      controls.target.add(step);
+    }
+    const turn = (keys.has('q') ? 1 : 0) - (keys.has('e') ? 1 : 0);
+    if (turn) {
+      const offset = camera.position.clone().sub(controls.target).applyAxisAngle(up, turn * 1.4 * dt);
+      camera.position.copy(controls.target).add(offset);
+    }
+    const zoom = (keys.has('+') || keys.has('=') ? 1 : 0) - (keys.has('-') || keys.has('_') ? 1 : 0);
+    if (zoom) {
+      const offset = camera.position.clone().sub(controls.target);
+      const len = clamp(offset.length() * (1 - zoom * 1.6 * dt), controls.minDistance, controls.maxDistance);
+      camera.position.copy(controls.target).add(offset.setLength(len));
+    }
+  }
+
+  // A click on a stall selects it; a drag only moves the camera. A double click on a stall goes to its
+  // door; anywhere else the camera goes there and turns about that spot.
   const ray = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
-  let down = null;
-  const onDown = (e) => { down = [e.clientX, e.clientY]; };
-  const onUp = (e) => {
-    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5 || !zone) return;
+  const hitAt = (clientX, clientY) => {
+    if (!zone) return null;
     const r = canvas.getBoundingClientRect();
-    pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    pointer.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(pointer, camera);
-    for (const hit of ray.intersectObjects(zone.children, true)) {
+    const hits = ray.intersectObjects(zone.children, true);
+    for (const hit of hits) {
       let o = hit.object;
       while (o && !o.userData.code) o = o.parent;
-      if (o) { onSelect?.(o.userData.code); return; }
+      if (o) return { code: o.userData.code, point: hit.point };
     }
+    return hits[0] ? { code: null, point: hits[0].point } : null;
   };
+  let down = null;
+  const onDown = (e) => {
+    down = [e.clientX, e.clientY];
+    canvas.focus({ preventScroll: true });
+  };
+  const onUp = (e) => {
+    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
+    const hit = hitAt(e.clientX, e.clientY);
+    if (hit?.code) onSelect?.(hit.code);
+  };
+  const onDouble = (e) => {
+    const hit = hitAt(e.clientX, e.clientY);
+    if (!hit) return;
+    takeOver();
+    if (hit.code) { focus(hit.code); return; }
+    // Go there: the same view, closer, turning about the spot that was clicked.
+    const offset = camera.position.clone().sub(controls.target);
+    offset.setLength(clamp(offset.length() * 0.6, 4, 14));
+    const target = new THREE.Vector3(hit.point.x, Math.max(0.6, hit.point.y), hit.point.z);
+    flyTo(target.clone().add(offset), target);
+  };
+  // What is under the pointer, once per frame at most: a stall gets the hand cursor and its label.
+  let hoverAt = null;
+  let hovered = null;
+  const onMove = (e) => {
+    if (e.buttons) return;
+    const r = canvas.getBoundingClientRect();
+    hoverAt = [e.clientX, e.clientY, e.clientX - r.left, e.clientY - r.top];
+  };
+  const onLeave = () => {
+    hoverAt = null;
+    if (hovered) { hovered = null; canvas.style.cursor = ''; onHover?.(null); }
+  };
+  function updateHover() {
+    if (!hoverAt) return;
+    const [cx, cy, x, y] = hoverAt;
+    hoverAt = null;
+    const code = hitAt(cx, cy)?.code || null;
+    canvas.style.cursor = code ? 'pointer' : '';
+    if (code !== hovered || code) onHover?.(code, x, y);
+    hovered = code;
+  }
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointerup', onUp);
+  canvas.addEventListener('dblclick', onDouble);
+  canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerleave', onLeave);
+  const noMenu = (e) => e.preventDefault();
+  canvas.addEventListener('contextmenu', noMenu);
 
   let focused = null;
   const horseReady = loadHorse().then((m) => {
@@ -591,6 +764,7 @@ export function createStallScene(canvas, { onSelect } = {}) {
     const dt = Math.min(clock.getDelta(), 0.1);
     for (const m of mixers) m.update(dt);
     for (const w of walkers) walk(w, dt);
+    moveByKeys(dt);
     if (fly) {
       fly.t = Math.min(1, fly.t + dt * (reduceMotion ? 10 : 1.4));
       const k = 1 - (1 - fly.t) ** 3;
@@ -599,6 +773,8 @@ export function createStallScene(canvas, { onSelect } = {}) {
       if (fly.t >= 1) fly = null;
     }
     controls.update();
+    if (!fly) keepInYard();
+    updateHover();
     renderer.render(scene, camera);
   });
 
@@ -613,14 +789,34 @@ export function createStallScene(canvas, { onSelect } = {}) {
     },
     focus(code) { focused = code; focus(code); },
     overview,
+    /** Ready-made views: 'overview' (the whole zone from above at an angle), 'top' (straight down), 'aisle' (standing in the aisle). */
+    view(name) {
+      stopTour();
+      if (name === 'top') topView();
+      else if (name === 'aisle') aisleView();
+      else overview();
+    },
+    /** From stall to stall along the zone until the user takes the camera or stopTour(). */
+    startTour,
+    stopTour,
+    get touring() { return Boolean(tour); },
     setAutoRotate(on) { controls.autoRotate = Boolean(on); },
     /** The sky colour (follows the light/dark canvas). */
     setBackground(color) { renderer.setClearColor(color); scene.fog = new THREE.Fog(color, 30, 70); },
     resize(width, height) { renderer.setSize(width, height, false); camera.aspect = width / height; camera.updateProjectionMatrix(); },
     dispose() {
       renderer.setAnimationLoop(null);
+      stopTour();
+      controls.removeEventListener('start', takeOver);
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointerup', onUp);
+      canvas.removeEventListener('dblclick', onDouble);
+      canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerleave', onLeave);
+      canvas.removeEventListener('contextmenu', noMenu);
+      canvas.removeEventListener('keydown', onKeyDown);
+      canvas.removeEventListener('keyup', onKeyUp);
+      canvas.removeEventListener('blur', onBlur);
       disposeZone();
       controls.dispose();
       for (const t of textures) t.dispose();

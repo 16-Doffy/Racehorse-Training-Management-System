@@ -41,7 +41,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { trainingSessionApi, trainingPlanApi } from './trainingApi';
 import { horsesApi } from '../horses/horsesApi';
 import { raceApi } from '../race/raceApi';
-import { healthRecordApi, EXAM_PRIORITY_OPTIONS } from '../health/healthApi';
+import RequestExamModal from '../health/RequestExamModal';
 import { useLockedHorseIds, useHorseClearances } from './useLockedHorses';
 import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } from '../../constants/health';
 import ReadinessPanel from './ReadinessPanel';
@@ -70,7 +70,9 @@ import {
   mondayOf,
   actualTimeLabel,
   TRAINER_ABORT_OPTIONS,
+  TRIAL_MIN_RACE_SHARE,
 } from './trainingVocab';
+import { newestFirst } from '../../utils/newestFirst';
 
 const { Text } = Typography;
 const { useBreakpoint } = Grid;
@@ -105,7 +107,9 @@ export default function TrainingSessionPage() {
   const [activeSession, setActiveSession] = useState(null);
   const [typeFilter, setTypeFilter] = useState('all');
   // The week view is how a trainer reads training: what each horse does each day.
-  const [view, setView] = useState('week');
+  // A notification about one session (?session=<id>) opens the list on that row, highlighted.
+  const focusSession = searchParams.get('session');
+  const [view, setView] = useState(() => (searchParams.get('session') ? 'list' : 'week'));
   const [weekStart, setWeekStart] = useState(() => mondayOf(dayjs()));
   const [createForm] = Form.useForm();
   const [evalForm] = Form.useForm();
@@ -114,8 +118,8 @@ export default function TrainingSessionPage() {
   const [abortSession, setAbortSession] = useState(null);
   const [abortForm] = Form.useForm();
   const draftKind = Form.useWatch('kind', createForm);
-  const [examForm] = Form.useForm();
-  const [examOpen, setExamOpen] = useState(false);
+  // The exam request being written: { horseId, session?, defaults? }.
+  const [examFor, setExamFor] = useState(null);
   const [preCheckSession, setPreCheckSession] = useState(null);
   const [scheduleSession, setScheduleSession] = useState(null);
   const [scheduleForm] = Form.useForm();
@@ -156,6 +160,13 @@ export default function TrainingSessionPage() {
     },
   });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
+  const listRows = newestFirst(sessionsData?.data);
+  const focusIndex = focusSession ? listRows.findIndex((r) => r._id === focusSession) : -1;
+  useEffect(() => {
+    if (focusIndex < 0) return undefined;
+    const timer = setTimeout(() => document.querySelector('[data-focus="session"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+    return () => clearTimeout(timer);
+  }, [focusIndex]);
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const { data: racesData } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
   const draftSessionType = Form.useWatch('sessionType', createForm);
@@ -164,6 +175,12 @@ export default function TrainingSessionPage() {
   const trialRaceOptions = (racesData?.data || [])
     .filter((r) => String(r.horse?._id || r.horse) === String(draft.horse) && ['registered', 'confirmed'].includes(r.status) && dayjs(r.raceDate).isAfter(dayjs()))
     .map((r) => ({ value: r._id, label: `${r.raceName} — ${dayjs(r.raceDate).format('DD/MM/YYYY')}${r.distance ? ` · ${r.distance}m` : ''}` }));
+  // The trial's distance against its race's: shown beside the field, with a warning when much shorter.
+  const draftRaceId = Form.useWatch('raceEntry', createForm);
+  const draftDistance = Form.useWatch(['prescription', 'distanceM'], createForm);
+  const draftRace = draftIsTrial ? (racesData?.data || []).find((r) => String(r._id) === String(draftRaceId)) : null;
+  const trialShare = draftRace?.distance && draftDistance ? draftDistance / draftRace.distance : null;
+  const trialTooShort = trialShare !== null && trialShare < TRIAL_MIN_RACE_SHARE;
   const firstWeek = searchParams.get('first') === '1';
   const policy = useClubPolicy();
   const draftAt = Form.useWatch('scheduledAt', createForm);
@@ -338,11 +355,12 @@ export default function TrainingSessionPage() {
   );
 
   // A session held back by a medical gate: ask the vet straight from it.
-  const requestExamFor = (session) => {
-    setDraft((current) => ({ ...current, horse: session.horse?._id || session.horse }));
-    examForm.setFieldsValue({ priority: 'high', reason: `Buổi tập ${sessionTimeLabel(session.scheduledAt)} bị chặn: ${session.blockedReason || 'chưa đủ điều kiện'}` });
-    setExamOpen(true);
-  };
+  const requestExamFor = (session) =>
+    setExamFor({
+      horseId: session.horse?._id || session.horse,
+      session,
+      defaults: { priority: 'high', reason: `Buổi tập ${sessionTimeLabel(session.scheduledAt)} bị chặn: ${session.blockedReason || 'chưa đủ điều kiện'}` },
+    });
 
   const cancelMutation = useMutation({
     mutationFn: ({ id, cancelReason }) => trainingSessionApi.update(id, { status: 'cancelled', cancelReason }),
@@ -406,16 +424,6 @@ export default function TrainingSessionPage() {
     onError: (err) => message.error(err.message || 'Không sinh được lịch tuần.'),
   });
 
-  const examMutation = useMutation({
-    mutationFn: (payload) => healthRecordApi.requestExam(payload),
-    onSuccess: () => {
-      message.success('Đã gửi yêu cầu khám tới bác sĩ thú y.');
-      setExamOpen(false);
-      examForm.resetFields();
-    },
-    onError: (err) => message.error(err.message || 'Gửi yêu cầu thất bại.'),
-  });
-
   const columns = [
     {
       title: 'Ngựa',
@@ -423,7 +431,7 @@ export default function TrainingSessionPage() {
       key: 'horse',
       render: (name, record) => (
         <div className="whitespace-nowrap">
-          <Link to={`/horses/${record.horse?._id}`} className="font-semibold text-emerald-950 hover:text-emerald-700">
+          <Link to={`?horse=${record.horse?._id}`} title="Xem lịch của riêng ngựa này" className="font-semibold text-emerald-950 hover:text-emerald-700">
             {name}
           </Link>
           {lockedHorseIds.has(record.horse?._id) ? (
@@ -678,10 +686,7 @@ export default function TrainingSessionPage() {
       open={Boolean(preCheckSession)}
       onClose={() => setPreCheckSession(null)}
       onDone={invalidate}
-      onRequestExam={() => {
-        setDraft((current) => ({ ...current, horse: preCheckSession?.horse?._id }));
-        setExamOpen(true);
-      }}
+      onRequestExam={() => setExamFor({ horseId: preCheckSession?.horse?._id, session: preCheckSession, defaults: { priority: 'high' } })}
     />
   );
 
@@ -710,13 +715,25 @@ export default function TrainingSessionPage() {
         }
       />
 
-      <Alert
-        className="light-surface-box !mb-4 border-emerald-200 bg-emerald-50/40 rounded-lg text-xs"
-        type="info"
-        showIcon
-        title="Quy trình: Xếp lịch, kiểm tra sẵn sàng, bắt đầu, kết thúc và đánh giá"
-        description={`${precheckRuleText(policy)} Buổi lỡ giờ có thể xếp lại lịch. Khi buổi đang chạy, kết thúc hoặc dừng giữa chừng để bảo toàn số liệu.${policy.afternoonLightOnly ? ' Buổi chiều chỉ tập nhẹ.' : ''}`}
-      />
+      <div className="rounded-xl border border-[#D4AF37]/35 bg-gradient-to-r from-[#0F3A2C]/5 via-[#0F3A2C]/2 to-transparent p-3.5 mb-4 shadow-2xs flex items-start gap-3">
+        <div className="w-8 h-8 rounded-lg bg-[#0F5A43]/10 border border-[#0F5A43]/20 flex items-center justify-center shrink-0 text-[#0F5A43]">
+          <SafetyCertificateOutlined className="text-base" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-xs text-gray-900 tracking-tight">
+              Quy trình chuẩn: Xếp lịch → Kiểm tra sẵn sàng → Bắt đầu → Kết thúc &amp; Đánh giá
+            </span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#0F5A43]/10 text-[#0F5A43]">
+              Quy định CLB
+            </span>
+          </div>
+          <p className="text-xs text-gray-600 m-0 mt-1 leading-relaxed">
+            {precheckRuleText(policy)} Buổi lỡ giờ có thể xếp lại lịch trực tiếp. Khi buổi đang chạy, kết thúc hoặc dừng giữa chừng để bảo toàn số liệu.
+            {policy.afternoonLightOnly ? ' Buổi chiều chỉ tập nhẹ.' : ''}
+          </p>
+        </div>
+      </div>
 
       {isError && (
         <Alert
@@ -752,8 +769,13 @@ export default function TrainingSessionPage() {
           color="blue"
           className="mb-4"
         >
-          Đang lọc theo ngựa: {filteredHorse.name}
+          Đang xem lịch của ngựa: {filteredHorse.name}
         </Tag>
+      )}
+      {filteredHorse && (
+        <Link to={`/horses/${filteredHorse._id}`} className="mb-4 ml-1 inline-block text-sm">
+          Mở hồ sơ ngựa
+        </Link>
       )}
 
       {firstWeek && filteredPlan && !(sessionsData?.data || []).length && (
@@ -762,7 +784,7 @@ export default function TrainingSessionPage() {
           type="info"
           showIcon
           title={`Kế hoạch của ${filteredPlan.horse?.name || 'ngựa'} chưa có buổi tập nào`}
-          description="Lập kế hoạch chỉ đặt ra giai đoạn và lịch tuần mẫu. Sinh lịch cho tuần đầu tiên để có các buổi tập cụ thể; người chăm sóc được báo lịch ngay."
+          description="Lịch tuần này và tuần sau được xếp tự động khi áp dụng kế hoạch. Chưa có buổi nào nghĩa là kế hoạch bắt đầu muộn hơn; bấm để xếp tuần đầu tiên ngay."
           action={
             <Button
               type="primary"
@@ -774,7 +796,7 @@ export default function TrainingSessionPage() {
                 generateMutation.mutate({ plan: filteredPlan, start: week.toDate() });
               }}
             >
-              Sinh lịch tuần đầu tiên
+              Xếp tuần đầu tiên
             </Button>
           }
         />
@@ -824,10 +846,15 @@ export default function TrainingSessionPage() {
 
       <Table
         className={view === 'week' ? 'hidden' : ''}
+        rowClassName={(r) => (focusSession && r._id === focusSession ? 'row-focus' : '')}
+        onRow={(r) => (focusSession && r._id === focusSession ? { 'data-focus': 'session' } : {})}
         rowKey="_id"
         columns={columns}
-        dataSource={sessionsData?.data}
+        dataSource={listRows}
         loading={isLoading && !sessionsData}
+        // Opened on the page holding the session a notification points at (remounted once it is found).
+        key={focusIndex >= 0 ? `focus-${focusSession}` : 'list'}
+        pagination={focusIndex >= 0 ? { defaultCurrent: Math.floor(focusIndex / 10) + 1 } : undefined}
         scroll={{ x: 'max-content' }}
         expandable={{
           expandedRowRender: (r) => (
@@ -1047,7 +1074,13 @@ export default function TrainingSessionPage() {
               </Text>
               <Row gutter={16}>
                 <Col xs={12} md={8}>
-                  <Form.Item name={['prescription', 'distanceM']} label="Cự ly (m)">
+                  <Form.Item
+                    name={['prescription', 'distanceM']}
+                    label="Cự ly (m)"
+                    validateStatus={trialTooShort ? 'warning' : undefined}
+                    help={trialTooShort ? `Chỉ bằng ${Math.round(trialShare * 100)}% cự ly giải (${draftRace.distance} m): khó nói lên sức bền cho giải. Vẫn lưu được.` : undefined}
+                    extra={draftRace?.distance && !trialTooShort ? `Cự ly giải: ${draftRace.distance} m` : undefined}
+                  >
                     <InputNumber min={PRESCRIPTION_LIMITS.distanceM[0]} max={PRESCRIPTION_LIMITS.distanceM[1]} step={100} className="w-full" placeholder="1200" />
                   </Form.Item>
                 </Col>
@@ -1098,7 +1131,7 @@ export default function TrainingSessionPage() {
                   intensity={draft.intensity}
                   sessionType={draft.sessionType}
                   objective={draft.objective}
-                  onRequestExam={() => setExamOpen(true)}
+                  onRequestExam={() => setExamFor({ horseId: draft.horse })}
                 />
                 <Text type="secondary" className="!text-xs block mt-2">
                   Mỗi dòng do một người khác nắm giữ. Khóa y tế của bác sĩ, sốt, hoặc ngựa vừa ăn bữa có thức ăn tinh chưa
@@ -1309,32 +1342,14 @@ export default function TrainingSessionPage() {
         </Form>
       </Modal>
 
-      <Modal
-        title="Yêu cầu bác sĩ kiểm tra"
-        open={examOpen}
-        onCancel={() => setExamOpen(false)}
-        onOk={() => examForm.submit()}
-        confirmLoading={examMutation.isPending}
-        destroyOnHidden
-      >
-        <Form
-          form={examForm}
-          layout="vertical"
-          onFinish={(values) => examMutation.mutate({ horse: draft.horse, reason: values.reason, priority: values.priority })}
-        >
-          <Form.Item name="priority" label="Mức độ" initialValue="normal">
-            <Select options={EXAM_PRIORITY_OPTIONS} />
-          </Form.Item>
-          <Form.Item
-            name="reason"
-            label="Lý do"
-            rules={[{ required: true, message: 'Vui lòng nhập lý do' }]}
-            extra="Yêu cầu sẽ gửi thẳng tới bác sĩ được gán cho ngựa này."
-          >
-            <Input.TextArea rows={3} placeholder="VD: Cần giấy khám còn hiệu lực trước buổi chạy thử cuối tuần." />
-          </Form.Item>
-        </Form>
-      </Modal>
+      {examFor?.horseId && (
+        <RequestExamModal
+          horse={(horsesData?.data || []).find((h) => String(h._id) === String(examFor.horseId)) || examFor.session?.horse || { _id: examFor.horseId }}
+          session={examFor.session}
+          defaults={examFor.defaults}
+          onClose={() => setExamFor(null)}
+        />
+      )}
     </div>
   );
 }

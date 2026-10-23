@@ -1,4 +1,4 @@
-import { Card, Typography, Spin, Button, Empty } from 'antd';
+import { Alert, Card, Typography, Spin, Button, Empty } from 'antd';
 import {
   CheckCircleFilled,
   WarningFilled,
@@ -7,6 +7,7 @@ import {
   CoffeeOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import dayjs from 'dayjs';
 import { trainingSessionApi } from './trainingApi';
 import { dailyTaskApi } from '../stable/stableApi';
 import { message } from '../../lib/antdStatic';
@@ -92,7 +93,7 @@ function GateRow({ gate, onRequestExam }) {
 export default function ReadinessPanel({ horse, scheduledAt, intensity, sessionType, objective, onRequestExam }) {
   const enabled = Boolean(horse);
 
-  const { data, isFetching } = useQuery({
+  const { data, isFetching, isError, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['session-readiness', horse, scheduledAt, intensity, sessionType, objective],
     queryFn: () =>
       trainingSessionApi.readiness({
@@ -106,6 +107,10 @@ export default function ReadinessPanel({ horse, scheduledAt, intensity, sessionT
   });
 
   const readiness = data?.data;
+  // The last check failed: with nothing to show the answer is unknown (never "ready"); with an
+  // earlier answer, it is shown as of the time it was loaded. The server checks again at start.
+  const failed = enabled && isError && !readiness;
+  const stale = enabled && isError && Boolean(readiness);
   const overall = readiness ? OVERALL_TEXT[readiness.overall] : null;
 
   return (
@@ -114,8 +119,32 @@ export default function ReadinessPanel({ horse, scheduledAt, intensity, sessionT
       className="!mb-2"
       title={<span className="text-sm">Kiểm tra sẵn sàng</span>}
     >
-      {/* In the body rather than the card title, which AntD truncates on narrow screens. */}
-      {overall && (
+      {(failed || stale) && (
+        <Alert
+          type="warning"
+          showIcon
+          className="!mb-2"
+          title={failed ? 'Chưa kiểm tra được tình trạng sẵn sàng' : `Chưa cập nhật được, đang hiện kết quả lúc ${dayjs(dataUpdatedAt).format('HH:mm')}`}
+          description={
+            <span className="text-xs">
+              {failed ? 'Chưa biết ngựa có được tập hay không.' : 'Tình trạng có thể đã đổi.'} Khi bấm Bắt đầu, hệ thống vẫn kiểm tra lại.
+            </span>
+          }
+          action={
+            <Button size="small" loading={isFetching} onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
+      )}
+      {/* In the body rather than the card title, which AntD truncates on narrow screens. An old
+          answer keeps its words but loses its colour: green must not stand for a check that failed. */}
+      {overall && stale && (
+        <Text type="secondary" className="!text-xs font-semibold block mb-2">
+          {overall.label}
+        </Text>
+      )}
+      {overall && !stale && (
         <div className="text-xs font-semibold mb-2" style={{ color: overall.color }}>
           {overall.label}
         </div>
@@ -128,7 +157,7 @@ export default function ReadinessPanel({ horse, scheduledAt, intensity, sessionT
         />
       )}
 
-      {enabled && isFetching && !readiness && (
+      {enabled && isFetching && !readiness && !failed && (
         <div className="py-4 text-center">
           <Spin size="small" />
         </div>

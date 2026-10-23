@@ -18,6 +18,7 @@ export const TYPE_LABELS = {
   restock_decision: 'Kết quả duyệt vật tư',
   restock_request: 'Đề xuất vật tư',
   low_stock: 'Vật tư sắp hết',
+  stock_update: 'Kho vật tư',
   training_restricted: 'Hạn chế tập luyện (hồi phục)',
   horse_assigned: 'Phân công ngựa',
   session_completed: 'Buổi tập hoàn thành',
@@ -30,6 +31,8 @@ export const TYPE_LABELS = {
   race_decision: 'Quyết định dự giải',
   race_review: 'Cần xem lại quyết định dự giải',
   incident_update: 'Cập nhật sự cố',
+  meal_missed: 'Bữa ăn bị lỡ',
+  ration_review: 'Cần xác nhận lại lịch ăn',
   system: 'Thông báo hệ thống',
 };
 
@@ -71,10 +74,19 @@ export function useRealtimeAlerts() {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     };
 
+    // Stock changed somewhere (a delivery, a new item, a meal or dose taking it out): the storeroom
+    // and anything showing stock reload now rather than on their next visit.
+    const handleInventory = () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-forecast'] });
+    };
+
     socket.on('notification:new', handleNotification);
+    socket.on('inventory:changed', handleInventory);
 
     return () => {
       socket.off('notification:new', handleNotification);
+      socket.off('inventory:changed', handleInventory);
     };
   }, [queryClient]);
 

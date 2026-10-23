@@ -39,6 +39,11 @@ router.post('/stalls', authorize(ROLES.MANAGER), stallCtrl.createStall);
 router.post('/stalls/generate', authorize(ROLES.MANAGER), stallCtrl.generateZone);
 router.patch('/stalls/:id', authorize(ROLES.MANAGER), stallCtrl.updateStall);
 router.delete('/stalls/:id', authorize(ROLES.MANAGER), stallCtrl.retireStall);
+// Each stall has its own groom (empty or not): their app lists it, and the horse in it is theirs to look after.
+router.put('/stalls/:id/caretaker', authorize(ROLES.MANAGER), stallCtrl.setCaretakerOfStall);
+// A zone as a whole: its name, stalls taken out and added in one save; or out of use once no horse is in it.
+router.put('/zones/:zone', authorize(ROLES.MANAGER), stallCtrl.editZone);
+router.delete('/zones/:zone', authorize(ROLES.MANAGER), stallCtrl.retireZone);
 
 // Stable/stall assignment map.
 router.get('/assignments', assignmentCtrl.listAssignments);

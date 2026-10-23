@@ -3,7 +3,7 @@
  * pieces — a card, a pill, a row with one main action — so the pages read alike and stay quiet.
  */
 import { Fragment, useState } from 'react';
-import { Button, Dropdown, Form, Modal, Spinner } from 'react-bootstrap';
+import { Button, Dropdown, Form, Modal, Offcanvas, Spinner } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { fileHref } from '../../lib/files';
 import { coatFor } from '../../features/horses/horse3d/horseBreeds';
@@ -376,6 +376,31 @@ export function LoadingBlock({ rows = 3, height = 56 }) {
         <div key={i} className="vet-skeleton" style={{ height }} />
       ))}
     </div>
+  );
+}
+
+/**
+ * A panel sliding in from the right, in the vet's look: details opened from a list without leaving the
+ * page. `onBack` adds a way back to the panel shown before it (a treatment opened from an exam).
+ */
+export function VetDrawer({ show, onHide, onBack, title, icon, extra, children, footer, width = 760 }) {
+  return (
+    <Offcanvas show={show} onHide={onHide} placement="end" className="vet-ui vet-drawer" style={{ width: `min(${width}px, 100vw)` }}>
+      <Offcanvas.Header closeButton>
+        {onBack && (
+          <button type="button" className="vet-drawer-back" onClick={onBack} aria-label="Quay lại" title="Quay lại">
+            <i className="bi bi-arrow-left" aria-hidden="true" />
+          </button>
+        )}
+        <Offcanvas.Title>
+          {icon && <i className={`bi ${icon} me-2`} aria-hidden="true" />}
+          {title}
+        </Offcanvas.Title>
+        {extra && <div className="ms-auto me-2 d-flex align-items-center gap-2">{extra}</div>}
+      </Offcanvas.Header>
+      <Offcanvas.Body>{children}</Offcanvas.Body>
+      {footer && <div className="vet-drawer-footer">{footer}</div>}
+    </Offcanvas>
   );
 }
 
