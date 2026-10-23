@@ -296,6 +296,21 @@ test('owner horse page shows the papers and the valuation', async ({ page }) => 
   // The horse form has no sire or dam, so there is no pedigree to show.
   await expect(page.getByText(/Gia phả|Pedigree/)).toHaveCount(0);
 });
+test('owner health tab shows routine care on the same 3D horse as the injuries, one layer at a time', async ({ page }) => {
+  await login(page, 'owner');
+  await page.goto(`/horses/${fixture.horseId}?tab=health`);
+  const body = page.locator('.vet-ui', { has: page.locator('.ant-segmented') });
+  // No injury is open, so the care layer opens first: the cracked hoof in red, the shot on the left of the neck.
+  await expect(body.getByText('Chăm sóc định kỳ', { exact: true })).toBeVisible();
+  const hoof = body.getByRole('button', { name: /^Móng trước phải: .*Đóng móng mới/ });
+  await expect(hoof).toHaveCount(1);
+  await expect(hoof).toHaveAttribute('style', /#ef4444/);
+  await expect(body.getByRole('button', { name: /^Tiêm phòng · Cổ trái: .*Cúm ngựa/ })).toHaveCount(1);
+  // One horse on the tab: the injury layer takes the care pins away.
+  await body.getByText('Chấn thương', { exact: true }).click();
+  await expect(body.getByRole('button', { name: /^Móng trước phải/ })).toHaveCount(0);
+  await expect(body.getByRole('radio', { name: /Ngoài da/ })).toBeVisible();
+});
 test('owner horse page shows the horse in its stall, with no way to move it', async ({ page }) => {
   await login(page, 'owner');
   await page.goto(`/horses/${fixture.horseId}?tab=stall`);

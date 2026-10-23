@@ -14,6 +14,9 @@ async function main() {
     // A zone on the stable map with the horse in its first stall (stable map, horse stall card).
     const zone = await ctx.api('manager', 'POST', '/stable/stalls/generate', { zone: 'A', count: 4, zoneName: 'Khu A', zonePurpose: 'TEST ngựa đua' }, 201);
     await ctx.api('manager', 'POST', '/stable/assignments', { horse: horse._id, stall: zone.created[0]._id, assignedCaretaker: ctx.users.groom.id }, 201);
+    // Routine care the vet did, for the owner's care map on the 3D horse: a cracked hoof, a shot in the neck.
+    await ctx.api('vet', 'POST', `/horses/${horse._id}/care-events`, { kind: 'farrier', date: day().toISOString(), work: ['new_shoes'], limbs: ['fore_right'], hoofCondition: ['cracked'] }, 201);
+    await ctx.api('vet', 'POST', `/horses/${horse._id}/care-events`, { kind: 'vaccination', date: day().toISOString(), product: 'TEST Equiflu', targets: ['influenza'], route: 'im', site: 'Cổ trái' }, 201);
     const plan = await planFor(ctx, horse);
     await book(ctx, horse, plan);
     // A run that already happened, with its numbers, for the dashboard's fitness panel: a walk started now
