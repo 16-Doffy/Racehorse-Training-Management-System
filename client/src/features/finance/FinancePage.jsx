@@ -9,6 +9,7 @@ import { horsesApi } from '../horses/horsesApi';
 import dayjs from 'dayjs';
 import { FINANCE_CATEGORIES, categoryLabel } from './financeLabels';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
+import { newestFirst } from '../../utils/newestFirst';
 
 const columns = [
   { title: 'Ngựa', dataIndex: ['horse', 'name'], key: 'horse' },
@@ -133,7 +134,7 @@ export default function FinancePage() {
         <Table
           rowKey="_id"
           columns={columns}
-          dataSource={data?.data}
+          dataSource={newestFirst(data?.data)}
           loading={isLoading && !data}
           scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 10, hideOnSinglePage: true }}

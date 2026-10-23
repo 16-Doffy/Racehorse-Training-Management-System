@@ -94,8 +94,8 @@ const ctrl = crudFactory(InventoryItem, {
 });
 
 /** Tells the Manager(s) there is a request to review — it used to wait until someone opened the page. */
-async function tellManagers(message) {
-  await pushNotification({ recipientRole: ROLES.MANAGER, type: 'restock_request', severity: 'info', message });
+async function tellManagers(message, inventoryItem) {
+  await pushNotification({ recipientRole: ROLES.MANAGER, type: 'restock_request', inventoryItem, severity: 'info', message });
 }
 
 /** priority (normal | urgent) and destinationBlock from a request body. Returns { priority, destinationBlock } or { error }. */
@@ -133,6 +133,7 @@ const requestRestock = asyncHandler(async (req, res) => {
   await pushNotification({
     recipientRole: ROLES.MANAGER,
     type: 'restock_request',
+    inventoryItem: item._id,
     severity: task || meta.priority === 'urgent' ? 'warning' : 'info',
     message: `${urgentMark(meta.priority)}📦 ${req.user.name} đề xuất bổ sung ${quantity} ${item.unit}${packNote(item, quantity)} "${item.name}"${meta.destinationBlock ? ` cho ${meta.destinationBlock}` : ''}${blocking}${note ? `: ${note}` : '.'}`,
   });
@@ -171,7 +172,7 @@ const proposeItem = asyncHandler(async (req, res) => {
     proposedBy: req.user._id,
     restockRequests: [{ requestedBy: req.user._id, quantity, note, priority: meta.priority, destinationBlock: meta.destinationBlock || stableBlock || null }],
   });
-  await tellManagers(`${urgentMark(meta.priority)}🆕 ${req.user.name} đề xuất vật tư mới: ${quantity} ${item.unit} "${item.name}"${note ? ` — ${note}` : '.'}`);
+  await tellManagers(`${urgentMark(meta.priority)}🆕 ${req.user.name} đề xuất vật tư mới: ${quantity} ${item.unit} "${item.name}"${note ? ` — ${note}` : '.'}`, item._id);
   return ok(res, item, 'New item proposed.');
 });
 

@@ -14,6 +14,7 @@ import StableMapBoard from './StableMapBoard';
 import ZoneModal, { ZoneEditModal } from './ZoneModal';
 import { CaretakerSelect, StallPicker } from './StallPicker';
 import { stallGroom } from './stallPicking';
+import { newestFirst } from '../../utils/newestFirst';
 
 /**
  * Manager assigns each horse a stall and the groom responsible for it.
@@ -409,7 +410,7 @@ export default function StableAssignmentPage() {
               <Table
                 rowKey="_id"
                 columns={columns}
-                dataSource={assignments}
+                dataSource={newestFirst(assignments)}
                 loading={isLoading && !assignmentsData}
                 scroll={{ x: 'max-content' }}
                 locale={{

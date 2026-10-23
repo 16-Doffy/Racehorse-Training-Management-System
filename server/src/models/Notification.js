@@ -9,6 +9,8 @@ const notificationSchema = new mongoose.Schema(
     // Set when the notification is about one specific session, so a fitness alert can be traced
     // back to the workout that produced it instead of only to the horse.
     trainingSession: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingSession', default: null },
+    // The stock item a supply notification is about, so the bell can open that row of the stock list.
+    inventoryItem: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem', default: null },
     type: {
       type: String,
       enum: [
@@ -41,6 +43,8 @@ const notificationSchema = new mongoose.Schema(
         'meal_missed',
         // A vet picked up or closed an incident — to the groom who reported it and the trainer.
         'incident_update',
+        // To the trainer: a horse's plan moves to its next phase soon; its suggested ration waits for a click.
+        'ration_review',
         'system',
       ],
       required: true,

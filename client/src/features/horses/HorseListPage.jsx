@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import dayjs from 'dayjs';
+import { newestFirst } from '../../utils/newestFirst';
 import { horsesApi } from './horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { stableAssignmentApi, stallApi } from '../stable/stableApi';
@@ -384,7 +385,8 @@ export default function HorseListPage() {
     !q || fold([h.name, h.breed, h.color, h.owner?.name, h.assignedTrainer?.name, h.assignedVet?.name, stallByHorse.get(String(h._id))].join(' ')).includes(q);
   const FOCUS = { all: () => true, ready: isReady, watch: needsWatch, gap: isGap, unexamined: (h) => examined(h) === false };
   const source = archived ? archivedHorses : horses;
-  const rows = source.filter(matches).filter((h) => archived || (FOCUS[focus] || FOCUS.all)(h));
+  // Newest first: a horse just added or changed is the first row.
+  const rows = newestFirst(source.filter(matches).filter((h) => archived || (FOCUS[focus] || FOCUS.all)(h)));
 
   const tiles = [
     { key: 'all', label: 'Tổng đàn ngựa', value: horses.length, tone: 'text-[#0F5A43]' },

@@ -33,6 +33,17 @@ export const TASK_TIMING_META = {
   late: { label: 'Trễ hạn', color: 'orange' },
   missed: { label: 'Đã lỡ', color: 'red' },
 };
+// What happened to a meal (server feeding/feedingTimetable.service.js; today's from the task's timing).
+export const MEAL_STATUS_META = {
+  fed: { label: 'Đã cho ăn', color: 'green' },
+  open: { label: 'Đang trong giờ', color: 'blue' },
+  upcoming: { label: 'Chưa tới giờ', color: 'default' },
+  late: { label: 'Trễ hạn', color: 'orange' },
+  missed: { label: 'Đã lỡ', color: 'red' },
+  skipped: { label: 'Bỏ bữa', color: 'orange' },
+  closed: { label: 'Đã đóng', color: 'default' },
+  planned: { label: 'Dự kiến', color: 'default' },
+};
 export const ASSIGNABLE_TASK_TYPES = ['cleaning', 'bathing', 'icing', 'hoof_care', 'other']; // meals come from rations
 
 // Where a task came from (DailyTask.source).

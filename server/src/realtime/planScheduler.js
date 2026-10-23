@@ -1,4 +1,5 @@
 const { scheduleActivePlans } = require('../modules/training/trainingPlan.service');
+const { remindRationReviews } = require('../modules/feeding/planRations.service');
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -12,6 +13,9 @@ function startPlanScheduler() {
     try {
       const created = await scheduleActivePlans();
       if (created) console.log(`[plan-scheduler] ${created} session(s) booked ahead`);
+      // A phase change coming: the trainer confirms the new phase's suggested rations.
+      const told = await remindRationReviews();
+      if (told) console.log(`[plan-scheduler] ${told} ration review reminder(s)`);
     } catch (err) {
       console.error('[plan-scheduler] check failed:', err.message);
     }

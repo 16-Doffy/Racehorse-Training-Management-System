@@ -68,7 +68,7 @@ async function cancelPendingSessionsForLock(horseId, actor, level = 'none', lock
   if (level !== 'none') scope.intensity = { $in: above };
   const result = await TrainingSession.updateMany(
     { ...scope, status: { $in: SESSION_LOCK_CANCELS } },
-    { status: 'cancelled', cancelReason: `Bác sĩ ${level === 'none' ? 'khóa tập' : 'hạn chế mức tập'}${lockReason ? `: ${lockReason}` : ''}` }
+    { status: 'cancelled', cancelSource: 'medical', cancelReason: `Bác sĩ ${level === 'none' ? 'khóa tập' : 'hạn chế mức tập'}${lockReason ? `: ${lockReason}` : ''}` }
   );
   if (result.modifiedCount > 0) {
     await logAction({
@@ -345,14 +345,18 @@ async function onTrainingLevelChanged(treatment, { previousLevel, actor }) {
   }
 
   const full = clearance.level === 'high';
+  // Its plan's weeks ahead come back at once, as the plan has them (lighter work where still limited).
+  const { rebookAfterClearance } = require('../training/trainingPlan.service');
+  const rebooked = await rebookAfterClearance(treatment.horse);
+  const rebookNote = rebooked ? ` Đã xếp lại ${rebooked} buổi tập tuần này và tuần sau theo kế hoạch.` : '';
   await notifyHorseStaff({
     staff: 'trainer',
     horse: treatment.horse,
     type: 'training_unlocked',
     severity: 'info',
     message: full
-      ? `🔓 ${horseName} đã được bác sĩ gỡ khóa huấn luyện — có thể xếp lịch tập lại.`
-      : `🔓 ${horseName} được bác sĩ cho tập lại ở mức hồi phục: ${clearance.label}. Buổi tập vượt mức vẫn bị chặn.`,
+      ? `🔓 ${horseName} đã được bác sĩ gỡ khóa huấn luyện.${rebookNote}`
+      : `🔓 ${horseName} được bác sĩ cho tập lại ở mức hồi phục: ${clearance.label}. Buổi tập vượt mức vẫn bị chặn.${rebookNote}`,
     extraRooms: room,
   });
   await notifyCaretaker({

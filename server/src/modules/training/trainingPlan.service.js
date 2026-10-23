@@ -27,6 +27,10 @@ const ddmm = (d) => {
 const slotOf = (date) => (new Date(date).getHours() < 12 ? 'morning' : 'afternoon');
 const SLOT_LABEL = { morning: 'sáng', afternoon: 'chiều' };
 
+/** A session the trainer called off (sessions from before cancelSource: any reason but the vet's or the archive's). */
+const trainerCancelled = (s) =>
+  s.status === 'cancelled' && (s.cancelSource === 'trainer' || (!s.cancelSource && !/^(Bác sĩ|Ngựa ngừng quản lý)/.test(s.cancelReason || '')));
+
 /** Monday 00:00 of the week containing the given date. */
 function mondayOf(d) {
   const x = startOfDay(d);
@@ -70,13 +74,14 @@ async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify 
   const trialDay = race ? raceDay - TRIAL_DAYS_BEFORE_RACE * DAY_MS : null;
   const clockOf = { morning: plan.sessionTime || '07:30', afternoon: plan.afternoonTime || '16:00' };
 
-  const booked = await TrainingSession.find({
-    // A manual session or another plan's booking occupies the horse's slot too. The timetable also
-    // counts a called-off session, or it would book again what the trainer just cancelled.
+  const inWeek = await TrainingSession.find({
     horse: horseId,
-    ...(automatic ? {} : { status: { $ne: 'cancelled' } }),
     scheduledAt: { $gte: weekStart, $lt: new Date(weekStart.getTime() + 7 * DAY_MS) },
-  }).select('scheduledAt');
+  }).select('scheduledAt status cancelSource cancelReason');
+  // A manual session or another plan's booking occupies the horse's slot too. The timetable also keeps
+  // a slot the trainer called off empty, or it would book again what they just cancelled; a slot the
+  // vet's lock (or the plan, or the horse leaving) called off is booked again once that no longer holds.
+  const booked = inWeek.filter((s) => s.status !== 'cancelled' || (automatic && trainerCancelled(s)));
   const bookedSlots = new Set(booked.map((s) => `${startOfDay(s.scheduledAt).getTime()}|${slotOf(s.scheduledAt)}`));
 
   const createdSessions = [];
@@ -179,6 +184,18 @@ async function scheduleAhead(plan) {
   return { created };
 }
 
+/**
+ * The vet lifted a lock or cleared the horse to return: its active plan's weeks ahead are booked again
+ * at once (lighter work where the clearance still limits it). Returns how many sessions were booked.
+ */
+async function rebookAfterClearance(horseId) {
+  const plan = await TrainingPlan.findOne({ horse: horseId, status: 'active' })
+    .populate('targetRace', 'raceName raceDate distance status')
+    .populate('horse', 'name isArchived');
+  if (!plan || !plan.horse || plan.horse.isArchived) return 0;
+  return (await scheduleAhead(plan)).created || 0;
+}
+
 /** Every active plan of a horse still with the club, booked ahead (realtime/planScheduler.js). Returns how many sessions were booked. */
 async function scheduleActivePlans() {
   const plans = await TrainingPlan.find({ status: 'active' })
@@ -193,4 +210,4 @@ async function scheduleActivePlans() {
   return created;
 }
 
-module.exports = { generatePlanWeek, scheduleAhead, scheduleActivePlans, mondayOf, startOfDay, ddmm, DAY_MS, TRIAL_DAYS_BEFORE_RACE };
+module.exports = { generatePlanWeek, scheduleAhead, scheduleActivePlans, rebookAfterClearance, trainerCancelled, mondayOf, startOfDay, ddmm, DAY_MS, TRIAL_DAYS_BEFORE_RACE };

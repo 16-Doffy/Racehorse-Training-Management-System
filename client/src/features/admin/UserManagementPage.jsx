@@ -7,6 +7,7 @@ import { useSelector } from 'react-redux';
 import { usersApi } from './usersApi';
 import { ROLE_LABELS } from '../../constants/roles';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
+import { newestFirst } from '../../utils/newestFirst';
 
 
 export default function UserManagementPage() {
@@ -284,7 +285,7 @@ export default function UserManagementPage() {
           <Table
             rowKey="_id"
             columns={pendingColumns}
-            dataSource={pendingUsers}
+            dataSource={newestFirst(pendingUsers)}
             loading={isLoading && !data}
             pagination={false}
             scroll={{ x: 'max-content' }}
@@ -297,7 +298,7 @@ export default function UserManagementPage() {
         rowKey="_id"
         title={() => <span className="font-semibold">Nhân sự câu lạc bộ ({decidedUsers.length})</span>}
         columns={columns}
-        dataSource={decidedUsers}
+        dataSource={newestFirst(decidedUsers)}
         loading={isLoading && !data}
         scroll={{ x: 'max-content' }}
         locale={{ emptyText: 'Chưa có tài khoản nào.' }}

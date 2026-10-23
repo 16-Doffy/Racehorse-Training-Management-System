@@ -46,6 +46,10 @@ const clubPolicy = Object.freeze({
   missedMealBlocksHardWork: flag('MISSED_MEAL_BLOCKS_HARD_WORK', true),
   // Two meals of one horse at least this many hours apart (rations).
   mealMinGapHours: num('POLICY_MEAL_MIN_GAP_HOURS', 3),
+  // On form for its race (training/raceForm.js): at least this share of the plan's sessions that came
+  // due were run, and the targets were met in at least this share of those run.
+  raceFormMinDone: num('POLICY_RACE_FORM_MIN_DONE', 0.8),
+  raceFormMinMet: num('POLICY_RACE_FORM_MIN_MET', 0.7),
 });
 
 module.exports = clubPolicy;

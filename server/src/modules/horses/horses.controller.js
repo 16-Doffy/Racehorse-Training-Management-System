@@ -315,7 +315,7 @@ const archiveHorse = asyncHandler(async (req, res) => {
   const [sessions, races, plans] = await Promise.all([
     TrainingSession.updateMany(
       { horse: horse._id, status: { $in: SESSION_OPEN_STATUSES.filter((st) => st !== SESSION_STATUS.IN_PROGRESS) } },
-      { status: 'cancelled', cancelReason: `Ngựa ngừng quản lý: ${reason}` }
+      { status: 'cancelled', cancelSource: 'archive', cancelReason: `Ngựa ngừng quản lý: ${reason}` }
     ),
     RaceEntry.updateMany({ horse: horse._id, status: { $in: ['registered', 'confirmed'] }, raceDate: { $gte: new Date() } }, { status: 'withdrawn' }),
     TrainingPlan.updateMany({ horse: horse._id, status: { $in: ['draft', 'active'] } }, { status: 'cancelled' }),

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Table, Typography, Tag, Button, Popconfirm, Modal, Form, Input, InputNumber, Select, Tooltip, AutoComplete, DatePicker, Switch, Segmented, Alert, Empty } from 'antd';
 import { message } from '../../lib/antdStatic';
 import {
@@ -18,6 +19,7 @@ import dayjs from 'dayjs';
 import { inventoryApi } from './inventoryApi';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import './inventory.css';
+import { newestFirst } from '../../utils/newestFirst';
 
 const { Text } = Typography;
 
@@ -399,6 +401,7 @@ export default function InventoryPage() {
   const forecastById = new Map((forecastData?.data || []).map((f) => [String(f._id), f]));
 
   const [tab, setTab] = useState('all');
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState('all');
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState(null); // null = closed, {} = new item, item = edit
@@ -457,15 +460,11 @@ export default function InventoryPage() {
           blocking: Boolean(r.task),
           requestedBy: r.requestedBy?.name || r.requestedBy,
           requestedAt: r.requestedAt,
+          lastChange: r.receivedAt || r.reviewedAt || r.requestedAt,
         }))
     )
-    // What waits on a decision first, the urgent and the blocking at the top.
-    .sort(
-      (a, b) =>
-        (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) ||
-        Number(b.blocking || b.priority === 'urgent') - Number(a.blocking || a.priority === 'urgent') ||
-        new Date(a.requestedAt) - new Date(b.requestedAt)
-    );
+    // What waits on a decision first; within each, the newest change on top.
+    .sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || new Date(b.lastChange) - new Date(a.lastChange));
 
   const stock = items.filter((i) => !i.isProposed);
   const countOf = (key) => stock.filter((i) => key === 'all' || i.category === key).length;
@@ -482,12 +481,23 @@ export default function InventoryPage() {
     inactive: (i) => i.isActive === false,
   };
   const q = fold(search.trim());
-  const rows = stock
-    .filter((i) => tab === 'all' || i.category === tab)
-    .filter(STATUS[status] || STATUS.all)
-    .filter((i) => !q || fold([i.code, i.name, i.description, i.stableBlock].join(' ')).includes(q))
-    // What needs the Manager first, then by code.
-    .sort((a, b) => Number(isLow(b)) - Number(isLow(a)) || Number(isExpiring(b)) - Number(isExpiring(a)) || (a.code || '').localeCompare(b.code || ''));
+  // Newest first: an item just added or changed is the first row. What needs the Manager is the
+  // "Cần nhập" / "Sắp hết hạn" filter.
+  const rows = newestFirst(
+    stock
+      .filter((i) => tab === 'all' || i.category === tab)
+      .filter(STATUS[status] || STATUS.all)
+      .filter((i) => !q || fold([i.code, i.name, i.description, i.stableBlock].join(' ')).includes(q))
+  );
+  // A notification about one item (?item=<id>, tab=requests for a supply request) opens it
+  // highlighted: its row in the list, or its requests in the queue above.
+  const focusItem = searchParams.get('item');
+  const focusRequests = searchParams.get('tab') === 'requests';
+  useEffect(() => {
+    if (!focusItem || !data) return undefined;
+    const timer = setTimeout(() => document.querySelector('[data-focus="item"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 400);
+    return () => clearTimeout(timer);
+  }, [focusItem, data]);
 
   const columns = [
     {
@@ -706,7 +716,7 @@ export default function InventoryPage() {
             </Text>
           </div>
           {pendingRequests.map((r) => (
-            <div key={r.key} className="inv-request">
+            <div key={r.key} className={`inv-request${focusItem && r.itemId === focusItem ? ' is-focus' : ''}`} data-focus={focusItem && r.itemId === focusItem ? 'item' : undefined}>
               <span className={`inv-cat-icon is-${r.item.category}`}>{CATEGORY_BY_KEY[r.item.category]?.icon}</span>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -830,7 +840,8 @@ export default function InventoryPage() {
         tableLayout="fixed"
         scroll={{ x: 1000 }}
         pagination={rows.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
-        rowClassName={(r) => (r.isActive === false ? 'opacity-60' : '')}
+        rowClassName={(r) => [r.isActive === false ? 'opacity-60' : '', focusItem && !focusRequests && r._id === focusItem ? 'row-focus' : ''].join(' ').trim()}
+        onRow={(r) => (focusItem && !focusRequests && r._id === focusItem ? { 'data-focus': 'item' } : {})}
         locale={{
           emptyText:
             stock.length && (q || status !== 'all') ? (

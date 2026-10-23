@@ -107,3 +107,17 @@ body {
   margin-inline-start: 8px;
   font-size: 13.5px;
 }
+
+/* The row a notification points at (features/alerts/notificationTarget.js): a brass wash and a mark
+   on its left edge, readable on the light and the dark canvas. */
+.ant-table-wrapper .ant-table-tbody > tr.row-focus > td {
+  background: rgba(212, 175, 55, 0.18) !important;
+}
+.ant-table-wrapper .ant-table-tbody > tr.row-focus > td:first-child {
+  box-shadow: inset 3px 0 0 #d4af37;
+}
+/* A supply request a notification points at, in the storeroom queue. */
+.inv-request.is-focus {
+  box-shadow: inset 3px 0 0 #d4af37;
+  background: rgba(212, 175, 55, 0.18);
+}
