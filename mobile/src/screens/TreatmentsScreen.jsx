@@ -1,21 +1,19 @@
 import { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
 import CompleteTaskModal from '../components/CompleteTaskModal';
 import NotDoneModal from '../components/NotDoneModal';
 import DoseDetailSheet from '../components/DoseDetailSheet';
-import StockCard from '../components/StockCard';
 import RestockSheet from '../components/RestockSheet';
 import HistorySheet from '../components/HistorySheet';
 import YesterdayRecap from '../components/YesterdayRecap';
-import { Badge, Banner, Button, ChipRow, EmptyState, HorseAvatar, IconButton, LoadError, Loading, Row, Segments } from '../components/ui';
+import { Badge, Banner, Button, ChipRow, CountTabs, EmptyState, HorseAvatar, IconButton, LoadError, Loading, Row, Sheet } from '../components/ui';
 import { useInventory, useRefreshAll, useStableOverview, useTasks, useTreatments } from '../hooks/useGroomData';
 import {
   CARE_TYPES,
   MEDICATION_ROUTE,
-  TASK_STATE,
   doseSlots,
   formatDate,
   formatTime,
@@ -36,19 +34,23 @@ const FILTERS = [
   { value: 'locked', label: 'Đang khóa tập' },
 ];
 
-const timeOf = (task) => task?.dueTime || (task?.scheduledDate ? formatTime(task.scheduledDate) : '—');
+// A dose has its hour; a watch order ("chườm lạnh sáng và chiều") is for the whole day, and the time
+// on its task is only when the order came in — so it shows no clock and sorts after the doses.
+const timeOf = (task) => task?.dueTime || (task?.taskType === 'monitoring' ? null : task?.scheduledDate ? formatTime(task.scheduledDate) : null);
+const clockKey = (entry) => entry.time || '99:99';
 
 /**
- * The vet's orders for the day, as the groom carries them out: "Hôm nay" is every dose and watch
- * order of today in the order of the clock — the hour, the horse, the medicine, the dose and how it
- * is given — each with the one button it needs ("Cho dùng", "Quên ghi", "Xin kho"). "Toa thuốc" is
- * the prescriptions behind them, read-only, with how each of today's doses stands. A dose is given
- * through a confirmation of horse, medicine, dose, route and time; the prescription is the vet's.
+ * The vet's orders for the day, as the groom carries them out, a part at a time so the list stays
+ * short: "Làm ngay" (now, late, missed or blocked), "Sắp tới" (not time yet) and "Đã xong". Each part
+ * is grouped by horse — the groom gives one horse its medicines, then the next — and each line is
+ * the hour, the medicine as the vet wrote it and the one button it needs ("Cho dùng", "Quên ghi",
+ * "Xin kho"). The prescriptions behind them open from the header, read-only. A dose is given through
+ * a confirmation of horse, medicine, dose, route and time.
  */
 export default function TreatmentsScreen({ navigation, segments }) {
-  const [view, setView] = useState('today');
+  const [part, setPart] = useState(null);
   const [filter, setFilter] = useState('mine');
-  const [showDone, setShowDone] = useState(false);
+  const [ordersOpen, setOrdersOpen] = useState(false);
   const [openDose, setOpenDose] = useState(null);
   const [completing, setCompleting] = useState(null);
   const [notDone, setNotDone] = useState(null);
@@ -87,20 +89,30 @@ export default function TreatmentsScreen({ navigation, segments }) {
 
   const entries = careTasks.map((task) => {
     const line = lineOf.get(task._id) || { treatment: ongoing.find((t) => t._id === refId(task.treatment)), isCare: task.taskType !== 'medication' };
-    return { task, time: timeOf(task), ...line };
+    return { task, time: timeOf(task), state: taskState(task, ctx), ...line };
   });
-  const byClock = (a, b) => a.time.localeCompare(b.time) || stateRank(taskState(a.task, ctx)) - stateRank(taskState(b.task, ctx));
-  const todo = entries.filter((e) => needsAction(e.task, ctx)).sort(byClock);
-  const done = entries.filter((e) => !needsAction(e.task, ctx)).sort(byClock);
-  const next = todo.find((e) => taskState(e.task, ctx)?.open);
+  const partOf = (e) => (!needsAction(e.task, ctx) ? 'done' : e.state?.key === 'upcoming' ? 'later' : 'now');
+  const counts = { now: 0, later: 0, done: 0 };
+  entries.forEach((e) => {
+    counts[partOf(e)] += 1;
+  });
+  // The part to open with: what can be done now, else what comes next.
+  const shown = part || (counts.now ? 'now' : counts.later ? 'later' : 'done');
+  const urgent = entries.some((e) => ['missed', 'late', 'blocked'].includes(e.state?.key));
+  // The next dose whose time has not come yet.
+  const next = entries.filter((e) => e.time && partOf(e) === 'later').sort((a, b) => clockKey(a).localeCompare(clockKey(b)))[0];
 
-  // One group per hour, so "what do I give at 08:00" is one glance.
-  const hours = [];
-  for (const e of todo) {
-    let h = hours.find((x) => x.time === e.time);
-    if (!h) hours.push((h = { time: e.time, items: [] }));
-    h.items.push(e);
-  }
+  // The chosen part, one group per horse, the horse with the earliest dose first.
+  const groups = [];
+  entries
+    .filter((e) => partOf(e) === shown)
+    .sort((a, b) => clockKey(a).localeCompare(clockKey(b)) || stateRank(a.state) - stateRank(b.state))
+    .forEach((e) => {
+      const key = refId(e.task.horse);
+      let g = groups.find((x) => x.key === key);
+      if (!g) groups.push((g = { key, horse: e.task.horse, items: [] }));
+      g.items.push(e);
+    });
 
   const visibleOrders = ongoing
     .filter((t) => (filter === 'mine' ? myHorseIds.has(refId(t.horse)) : true))
@@ -116,11 +128,11 @@ export default function TreatmentsScreen({ navigation, segments }) {
       : setOpenDose({ isCare: e.isCare, title: e.task.note, task: e.task, treatment: e.treatment, inventory, ctx });
   const act = (e) => {
     const action = primaryAction(e.task, ctx);
-    if (!action) return;
-    if (action.key === 'complete') setCompleting({ task: e.task, medication: e.medication });
-    else if (action.key === 'late') setCompleting({ task: e.task, medication: e.medication, late: true });
-    else if (action.key === 'restock') setRestock(restockRequestFor({ missing: missingSupplies(e.task), task: e.task, inventory }));
-    else reportNotDone(e.task, action.reason);
+    if (!action) return openEntry(e);
+    if (action.key === 'complete') return setCompleting({ task: e.task, medication: e.medication });
+    if (action.key === 'late') return setCompleting({ task: e.task, medication: e.medication, late: true });
+    if (action.key === 'restock') return setRestock(restockRequestFor({ missing: missingSupplies(e.task), task: e.task, inventory }));
+    return reportNotDone(e.task, action.reason);
   };
 
   const onRefresh = async () => {
@@ -134,27 +146,33 @@ export default function TreatmentsScreen({ navigation, segments }) {
     refetch();
     refetchTasks();
   };
+  const left = counts.now + counts.later;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <AppHeader
         title="Thuốc & y lệnh"
-        subtitle={todo.length ? `Còn ${todo.length} liều/việc hôm nay${next ? ` · tiếp theo ${next.time}` : ''}` : 'Đã làm hết y lệnh hôm nay'}
-        right={<IconButton icon="history" label="Lịch sử cho thuốc" onPress={() => setHistoryOpen(true)} />}
+        subtitle={left ? `Còn ${left} liều/việc hôm nay${next ? ` · tiếp theo ${next.time}` : ''}` : 'Đã làm hết y lệnh hôm nay'}
+        right={
+          <>
+            <IconButton icon="treatment" label={`Toa thuốc đang áp dụng (${ongoing.length})`} onPress={() => setOrdersOpen(true)} />
+            <IconButton icon="history" label="Lịch sử cho thuốc" onPress={() => setHistoryOpen(true)} />
+          </>
+        }
       />
 
       {segments}
 
       <View style={styles.toolbar}>
-        <Segments
+        <CountTabs
+          value={shown}
+          onChange={setPart}
           options={[
-            { value: 'today', label: 'Liều hôm nay', icon: 'clock', count: todo.length },
-            { value: 'orders', label: `Toa thuốc (${ongoing.length})`, icon: 'treatment' },
+            { value: 'now', label: 'Làm ngay', sub: `${counts.now} liều/việc`, alert: urgent },
+            { value: 'later', label: 'Sắp tới', sub: next ? `${counts.later} · từ ${next.time}` : `${counts.later} liều/việc` },
+            { value: 'done', label: 'Đã xong', sub: `${counts.done} liều/việc` },
           ]}
-          value={view}
-          onChange={setView}
         />
-        {view === 'orders' ? <ChipRow options={FILTERS} value={filter} onChange={setFilter} size="sm" /> : null}
       </View>
 
       <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}>
@@ -162,79 +180,78 @@ export default function TreatmentsScreen({ navigation, segments }) {
           <Loading />
         ) : failed ? (
           <LoadError text={isError ? 'Không tải được toa thuốc' : 'Không tải được danh sách liều thuốc'} onRetry={retry} />
-        ) : view === 'today' ? (
-          <>
-            {entries.length === 0 ? (
-              <View style={styles.list}>
-                <EmptyState icon="treatment" text="Hôm nay không có liều thuốc nào" hint="Bác sĩ kê toa; mỗi giờ dùng thuốc thành một liều cần cho dùng trong ngày." />
-              </View>
-            ) : todo.length === 0 ? (
-              <Banner tone="success" style={{ paddingVertical: spacing.sm }}>
-                <Row style={{ gap: spacing.sm }}>
-                  <Icon name="checkCircle" size={18} color={colors.green} />
-                  <Text style={[font.body, { flex: 1, fontWeight: '700' }]}>Đã cho dùng hết thuốc hôm nay</Text>
-                </Row>
-              </Banner>
-            ) : (
-              hours.map((h) => {
-                const states = h.items.map((e) => taskState(e.task, ctx)?.key);
-                const label = states.includes('missed') ? 'Quá giờ' : states.includes('late') ? 'Trễ' : states.includes('ready') ? 'Bây giờ' : states.includes('blocked') ? 'Bị chặn' : 'Sắp tới';
-                const tone = label === 'Bây giờ' ? TASK_STATE.ready : label === 'Sắp tới' ? TASK_STATE.upcoming : label === 'Trễ' ? TASK_STATE.late : TASK_STATE.missed;
-                return (
-                  <View key={h.time} style={styles.list}>
-                    <Row style={styles.hourHead}>
-                      <Text style={styles.hour}>{h.time}</Text>
-                      <Badge label={label} color={tone.color} bg={tone.bg} />
-                      <Text style={[font.small, { marginLeft: 'auto' }]}>{h.items.length} liều/việc</Text>
-                    </Row>
-                    {h.items.map((e) => (
-                      <DoseRow key={e.task._id} entry={e} ctx={ctx} onOpen={() => openEntry(e)} onAct={() => act(e)} />
-                    ))}
-                  </View>
-                );
-              })
-            )}
-
-            {done.length > 0 ? (
-              <View style={styles.list}>
-                <Pressable accessibilityRole="button" onPress={() => setShowDone((v) => !v)} style={styles.foldHead} hitSlop={4}>
-                  <Text style={styles.groupTitle}>Đã xong · {done.length}</Text>
-                  <Icon name={showDone ? 'chevronUp' : 'chevronDown'} size={16} color={colors.textMuted} />
-                </Pressable>
-                {showDone ? done.map((e) => <DoseRow key={e.task._id} entry={e} ctx={ctx} onOpen={() => openEntry(e)} onAct={() => act(e)} />) : null}
-              </View>
-            ) : null}
-
-            <YesterdayRecap tasks={doseHistory} noun="liều/việc" onPress={() => setHistoryOpen(true)} />
-          </>
+        ) : entries.length === 0 ? (
+          <View style={styles.list}>
+            <EmptyState icon="treatment" text="Hôm nay không có liều thuốc nào" hint="Bác sĩ kê toa; mỗi giờ dùng thuốc thành một liều cần cho dùng trong ngày." />
+          </View>
+        ) : groups.length === 0 ? (
+          shown === 'now' && !left ? (
+            <Banner tone="success" style={{ paddingVertical: spacing.sm }}>
+              <Row style={{ gap: spacing.sm }}>
+                <Icon name="checkCircle" size={18} color={colors.green} />
+                <Text style={[font.body, { flex: 1, fontWeight: '700' }]}>Đã cho dùng hết thuốc hôm nay</Text>
+              </Row>
+            </Banner>
+          ) : (
+            <View style={styles.list}>
+              <EmptyState icon={shown === 'done' ? 'empty' : 'checkCircle'} text={shown === 'now' ? 'Chưa có liều nào cần làm ngay' : shown === 'later' ? 'Không còn liều nào sắp tới' : 'Chưa ghi nhận liều nào hôm nay'} />
+            </View>
+          )
         ) : (
-          <>
-            {visibleOrders.length === 0 ? (
-              <View style={styles.list}>
-                <EmptyState icon="treatment" text="Không có toa thuốc nào đang áp dụng" hint={filter === 'mine' ? "Chọn 'Tất cả' để xem toa của ngựa khác." : undefined} />
-              </View>
-            ) : (
-              visibleOrders.map((treatment) => (
-                <OrderCard
-                  key={treatment._id}
-                  treatment={treatment}
-                  tasks={careTasks}
-                  mine={myHorseIds.has(refId(treatment.horse))}
-                  ctx={ctx}
-                  onOpenMedication={(medication, slots) => setOpenDose({ medication, treatment, slots, focus: null, inventory, ctx })}
-                />
-              ))
-            )}
-            <StockCard
-              title="Thuốc trong kho"
-              category="medicine"
-              items={inventory}
-              onOpenSupplies={() => navigation.navigate('Kho')}
-              emptyText="Kho chưa có mặt hàng thuốc nào. Quản lý CLB là người tạo danh mục."
-            />
-          </>
+          groups.map((g) => (
+            <View key={g.key} style={styles.list}>
+              <Row style={styles.horseHead}>
+                <HorseAvatar name={g.horse?.name} size={26} />
+                <Text style={styles.horseName} numberOfLines={1}>
+                  {g.horse?.name || 'Ngựa'}
+                </Text>
+                <Text style={font.small}>{g.items.length} liều/việc</Text>
+              </Row>
+              {g.items.map((e) => (
+                <DoseRow key={e.task._id} entry={e} ctx={ctx} onOpen={() => openEntry(e)} onAct={() => act(e)} />
+              ))}
+            </View>
+          ))
         )}
+
+        {!isLoading && !failed ? <YesterdayRecap tasks={doseHistory} noun="liều/việc" onPress={() => setHistoryOpen(true)} /> : null}
       </ScrollView>
+
+      {/* The prescriptions behind the doses: read here, written by the vet. */}
+      <Sheet visible={ordersOpen} onClose={() => setOrdersOpen(false)} title={`Toa thuốc đang áp dụng (${ongoing.length})`}>
+        <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
+          <ChipRow options={FILTERS} value={filter} onChange={setFilter} size="sm" />
+        </View>
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.xs, gap: spacing.md }}>
+          {visibleOrders.length === 0 ? (
+            <EmptyState icon="treatment" text="Không có toa thuốc nào" hint={filter === 'mine' ? "Chọn 'Tất cả' để xem toa của ngựa khác." : undefined} />
+          ) : (
+            visibleOrders.map((treatment) => (
+              <OrderCard
+                key={treatment._id}
+                treatment={treatment}
+                tasks={careTasks}
+                mine={myHorseIds.has(refId(treatment.horse))}
+                ctx={ctx}
+                onOpenMedication={(medication, slots) => {
+                  setOrdersOpen(false);
+                  setOpenDose({ medication, treatment, slots, focus: null, inventory, ctx });
+                }}
+              />
+            ))
+          )}
+          <Button
+            title="Xem thuốc trong kho"
+            icon="supplies"
+            variant="ghost"
+            size="sm"
+            onPress={() => {
+              setOrdersOpen(false);
+              navigation.navigate('Kho');
+            }}
+          />
+        </ScrollView>
+      </Sheet>
 
       <DoseDetailSheet
         dose={openDose}
@@ -283,46 +300,56 @@ const ACTIONS = {
   notDone: { title: 'Báo lỡ', icon: 'block', variant: 'ghost' },
 };
 
-/** One dose (or watch order) at its hour: the horse, the medicine as the vet wrote it, and its one button. */
+/**
+ * One dose (or watch order) of a horse: its hour on the left, the medicine with its dose and route,
+ * and its one button. The vet's instructions and everything else are in the detail, one tap away.
+ */
 function DoseRow({ entry, ctx, onOpen, onAct }) {
-  const { task, medication, isCare } = entry;
-  const state = taskState(task, ctx);
+  const { task, medication, isCare, state, time } = entry;
   const action = primaryAction(task, ctx);
   const button = action
     ? { ...ACTIONS[action.key], ...(action.key === 'complete' && isCare ? { title: 'Đã làm' } : {}), ...(action.reason ? { title: 'Báo' } : {}) }
     : null;
   const finished = task.status === 'completed';
   const route = MEDICATION_ROUTE[medication?.route];
-  const facts = medication ? [medication.dosage && `Liều ${medication.dosage}`, route].filter(Boolean).join(' · ') : task.note;
+  const title = medication ? medication.name : isCare ? 'Theo dõi' : task.note || 'Y lệnh';
+  const facts = medication ? [medication.dosage, route].filter(Boolean).join(' · ') : task.note;
 
+  // One short line of where it stands, only when it is not simply "do it now".
   let status = null;
-  let tone = state?.color;
+  let tone = state?.color || colors.textMuted;
   if (finished) {
     status = `${isCare ? 'Đã làm' : 'Đã cho dùng'} ${formatTime(task.completedAt)}${task.recordedLate ? ' (ghi muộn)' : ''}`;
     tone = colors.green;
   } else if (task.status === 'skipped') status = state?.key === 'cancelled' ? 'Đã hủy y lệnh' : `Không làm được: ${task.skipReason || '—'}`;
-  else if (state?.key === 'ready') status = medication?.instructions ? `Dặn: ${medication.instructions}` : null;
-  else status = state?.reason || state?.label;
-  if (state?.key === 'ready') tone = colors.forestLight;
+  else if (state?.key !== 'ready') status = state?.key === 'upcoming' ? state.label : state?.reason || state?.label;
 
   return (
     <View style={[styles.row, finished && styles.rowDone]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${task.horse?.name || ''} ${medication?.name || 'y lệnh'}`} onPress={onOpen} style={({ pressed }) => [styles.rowMain, pressed && { opacity: 0.7 }]}>
-        <View style={[styles.rowIcon, { backgroundColor: finished ? colors.greenSoft : isCare ? colors.purpleSoft : colors.redSoft }]}>
-          <Icon name={finished ? 'check' : isCare ? 'monitoring' : 'medication'} size={18} color={finished ? colors.green : isCare ? colors.purple : colors.red} />
+      <Pressable accessibilityRole="button" accessibilityLabel={`${task.horse?.name || ''} ${title}`} onPress={onOpen} style={({ pressed }) => [styles.rowMain, pressed && { opacity: 0.7 }]}>
+        <View style={[styles.clock, isCare && styles.clockCare, finished && styles.clockDone]}>
+          {time ? (
+            <Text style={[styles.clockText, finished && { color: colors.green }]}>{time}</Text>
+          ) : (
+            <Icon name={finished ? 'check' : 'monitoring'} size={17} color={finished ? colors.green : colors.purple} />
+          )}
         </View>
-        <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
-          <Text style={styles.title} numberOfLines={1}>
-            <Text style={{ color: colors.forest }}>{task.horse?.name || 'Ngựa'}</Text>
-            {medication ? ` · ${medication.name}` : isCare ? ' · Theo dõi' : ''}
-          </Text>
+        <View style={{ flex: 1, gap: 1, minWidth: 0 }}>
+          <Row style={{ gap: 5 }}>
+            {medication ? <Icon name="medication" size={13} color={finished ? colors.textFaint : colors.red} /> : null}
+            {/* The vet left instructions: they are in the detail. Before the name, never pushed off by it. */}
+            {medication?.instructions && !finished ? <Icon name="info" size={13} color={colors.forestLight} /> : null}
+            <Text style={[styles.title, finished && styles.doneText]} numberOfLines={2}>
+              {title}
+            </Text>
+          </Row>
           {facts ? (
-            <Text style={styles.facts} numberOfLines={isCare ? 2 : 1}>
+            <Text style={styles.facts} numberOfLines={medication ? 1 : 2}>
               {facts}
             </Text>
           ) : null}
           {status ? (
-            <Text style={[styles.status, { color: tone || colors.textMuted }]} numberOfLines={2}>
+            <Text style={[styles.status, { color: tone }]} numberOfLines={1}>
               {status}
             </Text>
           ) : null}
@@ -331,11 +358,7 @@ function DoseRow({ entry, ctx, onOpen, onAct }) {
       {button ? (
         <Button title={button.title} icon={button.icon} variant={button.variant} size="sm" style={styles.action} onPress={onAct} />
       ) : finished ? (
-        <Icon name="checkCircle" size={26} color={colors.green} />
-      ) : state?.key === 'upcoming' ? (
-        <View style={styles.timeChip}>
-          <Text style={styles.timeChipText}>{entry.time}</Text>
-        </View>
+        <Icon name="checkCircle" size={24} color={colors.green} />
       ) : (
         <Icon name="chevronRight" size={16} color={colors.textFaint} />
       )}
@@ -412,23 +435,24 @@ function OrderCard({ treatment, tasks, mine, ctx, onOpenMedication }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.cream },
-  toolbar: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, gap: spacing.sm, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+  toolbar: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
   list: { backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSoft, overflow: 'hidden' },
-  hourHead: { gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: colors.cream },
-  hour: { fontSize: 18, fontWeight: '800', color: colors.forest, fontVariant: ['tabular-nums'] },
-  groupTitle: { ...font.tiny },
-  foldHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing.md },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.borderSoft },
+  horseHead: { gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 7, backgroundColor: colors.cream },
+  horseName: { flex: 1, fontSize: 14.5, fontWeight: '800', color: colors.forest },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.borderSoft },
   rowDone: { backgroundColor: '#f7fdf9' },
-  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, minWidth: 0 },
-  rowIcon: { width: 38, height: 38, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 15, fontWeight: '800', color: colors.text },
+  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minWidth: 0, overflow: 'hidden' },
+  clock: { width: 46, height: 36, borderRadius: radius.sm, backgroundColor: colors.forestSoft, alignItems: 'center', justifyContent: 'center' },
+  clockCare: { backgroundColor: colors.purpleSoft },
+  clockDone: { backgroundColor: colors.greenSoft },
+  clockText: { fontSize: 13, fontWeight: '800', color: colors.forest, fontVariant: ['tabular-nums'] },
+  // A one-word medicine name longer than the line breaks inside the word rather than running under the button.
+  title: { flexShrink: 1, minWidth: 0, fontSize: 14.5, fontWeight: '800', color: colors.text, ...(Platform.OS === 'web' ? { wordBreak: 'break-word' } : null) },
+  doneText: { color: colors.textMuted },
   facts: { fontSize: 12.5, color: colors.text, fontWeight: '600' },
-  status: { fontSize: 12, fontWeight: '600' },
-  action: { minWidth: 96 },
-  timeChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.graySoft },
-  timeChipText: { fontSize: 12.5, fontWeight: '800', color: colors.textMuted },
+  status: { fontSize: 11.5, fontWeight: '600' },
+  action: { minWidth: 0, paddingHorizontal: 10 },
   orderHead: { gap: spacing.md, padding: spacing.md },
   orderLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.borderSoft },
 });

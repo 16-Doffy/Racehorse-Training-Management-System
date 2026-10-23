@@ -12,6 +12,7 @@ const { computeForecast, itemInUse } = require('./stock.service');
 const { logAction } = require('../audit/audit.service');
 const { canAccessHorse } = require('../../utils/horseScope');
 const { FEED_TYPES } = require('./feedType');
+const { broadcastWrites, announceNewItem, announceDelivery } = require('./stockEvents');
 
 // Restock requests are reviewed by name on the Manager's screen, so the requester is populated
 // here — otherwise the list hands back a raw ObjectId and the UI has nothing to show.
@@ -86,6 +87,10 @@ const ctrl = crudFactory(InventoryItem, {
   // The request history and proposal flags are managed by the endpoints below, not the item form.
   fields: ['name', 'category', 'feedType', 'description', 'quantity', 'unit', 'packUnit', 'packSize', 'reorderLevel', 'price', 'expiryDate', 'stableBlock', 'isActive'],
   validate: checkItem,
+  // A new item is news to the grooms who use it; an edit only reloads the open screens (broadcastWrites).
+  afterWrite: async (item, _req, existing) => {
+    if (!existing) await announceNewItem(item);
+  },
 });
 
 /** Tells the Manager(s) there is a request to review — it used to wait until someone opened the page. */
@@ -285,10 +290,13 @@ const receiveStock = asyncHandler(async (req, res) => {
       message: `📦 Đã nhận ${quantity} ${item.unit} "${item.name}" theo đề xuất của bạn. Tồn kho hiện tại: ${updated.quantity} ${item.unit}.${request.task ? ' Bạn có thể hoàn thành công việc đang chờ.' : ''}`,
     });
   }
+  await announceDelivery(item, quantity, updated.quantity);
   return ok(res, updated, `Đã nhập thêm ${quantity} ${item.unit}${packNote(item, quantity)}${request ? ' theo đề xuất' : ''}.`);
 });
 
 router.use(protect);
+// Every write that succeeds reloads the open stock screens (groom app, storeroom page) over the socket.
+router.use(broadcastWrites);
 router.get('/', ctrl.list);
 // Daily use from rations and ongoing treatments, and how many days the stock lasts.
 router.get('/forecast', asyncHandler(async (req, res) => ok(res, await computeForecast(), 'Inventory forecast computed.')));

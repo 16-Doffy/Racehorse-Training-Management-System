@@ -23,7 +23,9 @@ export default function StableMapScreen({ navigation }) {
   const [search, setSearch] = useState('');
   const [zoneFilter, setZoneFilter] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
-  const [width, setWidth] = useState(0);
+  // Only how many stalls a row of the zone map holds depends on the width; the grids themselves are
+  // laid out in shares of their row, so a web scrollbar or a rounding never pushes a tile down a row.
+  const [mapWidth, setMapWidth] = useState(0);
 
   const { stalls, zones, myStalls, myUnplaced, isLoading, isError, refetch } = useStalls();
   const { horseById, lockedHorseIds } = useStableOverview();
@@ -114,10 +116,9 @@ export default function StableMapScreen({ navigation }) {
     setRefreshing(false);
   };
 
-  const tileWidth = width ? Math.floor((width - GAP) / 2) : '48%';
-  // The zone map sits in a padded panel: its tiles share what is left inside it.
-  const columns = width >= 560 ? 5 : width >= 400 ? 4 : 3;
-  const mapTile = width ? Math.floor((width - spacing.md * 2 - 2 - 8 * (columns - 1)) / columns) : '31%';
+  // The zone map fits more stalls a row on a wider screen; each takes its share of the row.
+  const columns = mapWidth >= 520 ? 5 : mapWidth >= 380 ? 4 : 3;
+  const mapCell = `${100 / columns}%`;
   const emptyCount = entries.length - horses.length;
 
   return (
@@ -166,11 +167,7 @@ export default function StableMapScreen({ navigation }) {
         ) : null}
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        onLayout={(e) => setWidth(Math.floor(e.nativeEvent.layout.width - spacing.lg * 2))}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
-      >
+      <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}>
         {isLoading ? (
           <Loading />
         ) : isError ? (
@@ -193,13 +190,11 @@ export default function StableMapScreen({ navigation }) {
                 </Row>
                 {g.key === '~' ? <Text style={[font.small, { paddingHorizontal: 2 }]}>Chuồng ghi tay từ trước khi có sơ đồ — Quản lý CLB sẽ xếp lại vào chuồng có mã.</Text> : null}
                 <View style={styles.grid}>
-                  {g.items.map((e) =>
-                    e.horse ? (
-                      <HorseTile key={e.key} entry={e} facts={facts(e.horse)} width={tileWidth} onPress={() => openHorse(e.horse)} />
-                    ) : (
-                      <EmptyTile key={e.key} stall={e.stall} width={tileWidth} />
-                    )
-                  )}
+                  {g.items.map((e) => (
+                    <View key={e.key} style={styles.cell}>
+                      {e.horse ? <HorseTile entry={e} facts={facts(e.horse)} onPress={() => openHorse(e.horse)} /> : <EmptyTile stall={e.stall} />}
+                    </View>
+                  ))}
                 </View>
               </View>
             ))
@@ -237,16 +232,16 @@ export default function StableMapScreen({ navigation }) {
                     {zone.stalls.filter((s) => myStallIds.has(s._id)).length}/{zone.stalls.length} của tôi
                   </Text>
                 </Row>
-                <View style={[styles.grid, { gap: 8 }]}>
+                <View style={styles.mapGrid} onLayout={(e) => setMapWidth(Math.floor(e.nativeEvent.layout.width))}>
                   {zone.stalls.map((stall) => (
-                    <MapTile
-                      key={stall._id}
-                      stall={stall}
-                      width={mapTile}
-                      mine={myStallIds.has(stall._id) || (!!stall.occupant?.horse && myHorseIds.has(refId(stall.occupant.horse)))}
-                      locked={lockedHorseIds.has(refId(stall.occupant?.horse))}
-                      onPress={() => openHorse(stall.occupant?.horse)}
-                    />
+                    <View key={stall._id} style={[styles.mapCell, { width: mapCell }]}>
+                      <MapTile
+                        stall={stall}
+                        mine={myStallIds.has(stall._id) || (!!stall.occupant?.horse && myHorseIds.has(refId(stall.occupant.horse)))}
+                        locked={lockedHorseIds.has(refId(stall.occupant?.horse))}
+                        onPress={() => openHorse(stall.occupant?.horse)}
+                      />
+                    </View>
                   ))}
                 </View>
               </View>
@@ -284,7 +279,7 @@ function Stat({ label, value, icon, tone = colors.forest, active, onPress }) {
 }
 
 /** One of my horses in its stall: health at the top edge, what to watch, and today's work on it. */
-function HorseTile({ entry, facts, width, onPress }) {
+function HorseTile({ entry, facts, onPress }) {
   const { horse, code, written } = entry;
   const status = HEALTH_STATUS[horse.healthStatus] || HEALTH_STATUS.eligible;
   const { info, treatment, restricted, locked, care, work } = facts;
@@ -301,7 +296,7 @@ function HorseTile({ entry, facts, width, onPress }) {
       accessibilityRole="button"
       accessibilityLabel={`${horse.name}, chuồng ${code || written || 'chưa có'}, ${status.label}`}
       onPress={onPress}
-      style={({ pressed }) => [styles.tile, { width }, pressed && { opacity: 0.8 }]}
+      style={({ pressed }) => [styles.tile, pressed && { opacity: 0.8 }]}
     >
       <View style={[styles.tileTop, { backgroundColor: status.color }]} />
       <Row style={{ justifyContent: 'space-between', gap: 6 }}>
@@ -310,15 +305,18 @@ function HorseTile({ entry, facts, width, onPress }) {
             {code || 'Ghi tay'}
           </Text>
         </View>
-        <View style={[styles.health, { backgroundColor: status.bg }]}>
-          <Text style={[styles.healthText, { color: status.color }]} numberOfLines={1}>
-            {status.label}
-          </Text>
-        </View>
+        {restricted || locked ? <Icon name="lock" size={15} color={restricted?.color || colors.red} /> : null}
       </Row>
       <Text style={styles.tileName} numberOfLines={1}>
         {horse.name}
       </Text>
+      {/* Its own line, so the health reads in full however narrow the tile. */}
+      <Row style={{ gap: 5 }}>
+        <View style={[styles.healthDot, { backgroundColor: status.color }]} />
+        <Text style={[styles.healthText, { color: status.color }]} numberOfLines={1}>
+          {status.label}
+        </Text>
+      </Row>
       <Text style={styles.tileMeta} numberOfLines={1}>
         {[type?.color ? type.label : null, info?.breed, info?.weightKg ? `${info.weightKg} kg` : null].filter(Boolean).join(' · ') || (written ? `Chuồng: ${written}` : ' ')}
       </Text>
@@ -345,10 +343,10 @@ function HorseTile({ entry, facts, width, onPress }) {
 }
 
 /** A stall given to me with no horse in it yet, or under maintenance: kept ready, nothing to do. */
-function EmptyTile({ stall, width }) {
+function EmptyTile({ stall }) {
   const maintenance = stall?.status === 'maintenance';
   return (
-    <View style={[styles.tile, styles.tileEmpty, { width }]}>
+    <View style={[styles.tile, styles.tileEmpty]}>
       <View style={[styles.plate, styles.plateLoose]}>
         <Text style={[styles.plateText, { color: colors.forest }]} numberOfLines={1}>
           {stall?.code || '—'}
@@ -363,7 +361,7 @@ function EmptyTile({ stall, width }) {
 }
 
 /** A stall on the zone map: its code, who is in it, the health colour down its side; mine in gold. */
-function MapTile({ stall, width, mine, locked, onPress }) {
+function MapTile({ stall, mine, locked, onPress }) {
   const state = stallState(stall);
   const horse = stall.occupant?.horse;
   const maintenance = state.key === 'maintenance';
@@ -376,7 +374,6 @@ function MapTile({ stall, width, mine, locked, onPress }) {
       onPress={onPress}
       style={({ pressed }) => [
         styles.mapTile,
-        { width },
         maintenance && styles.mapTileMaintenance,
         !stall.occupied && !maintenance && styles.mapTileEmpty,
         mine && styles.mapTileMine,
@@ -408,8 +405,13 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11.5, fontWeight: '600', color: colors.textMuted },
   zoneHead: { justifyContent: 'space-between', paddingHorizontal: 2 },
   zoneName: { fontSize: 15, fontWeight: '800', color: colors.forest, flexShrink: 1 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
+  // Two tiles a row: each cell is half the row, the gap is the cells' own padding.
+  grid: { flexDirection: 'row', flexWrap: 'wrap', margin: -GAP / 2 },
+  cell: { width: '50%', padding: GAP / 2 },
+  mapGrid: { flexDirection: 'row', flexWrap: 'wrap', margin: -4 },
+  mapCell: { padding: 4 },
   tile: {
+    flexGrow: 1,
     minHeight: 168,
     padding: spacing.md,
     paddingTop: spacing.md + 2,
@@ -425,8 +427,8 @@ const styles = StyleSheet.create({
   plate: { minWidth: 48, height: 28, paddingHorizontal: 8, borderRadius: 7, backgroundColor: colors.forest, alignItems: 'center', justifyContent: 'center' },
   plateLoose: { backgroundColor: colors.goldSoft },
   plateText: { color: colors.gold, fontWeight: '800', fontSize: 13, letterSpacing: 0.3 },
-  health: { flexShrink: 1, paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
-  healthText: { fontSize: 10.5, fontWeight: '800' },
+  healthDot: { width: 8, height: 8, borderRadius: 4 },
+  healthText: { flexShrink: 1, fontSize: 12, fontWeight: '800' },
   tileName: { fontSize: 16, fontWeight: '800', color: colors.text, marginTop: 4 },
   tileMeta: { fontSize: 11.5, color: colors.textMuted },
   tags: { gap: 3, marginTop: 2 },
@@ -437,7 +439,7 @@ const styles = StyleSheet.create({
   legendText: { fontSize: 11.5, color: colors.textMuted },
   dot: { width: 9, height: 9, borderRadius: 5 },
   mineSwatch: { width: 14, height: 10, borderRadius: 3, borderWidth: 2, borderColor: colors.gold },
-  mapTile: { minHeight: 52, paddingVertical: 7, paddingLeft: 11, paddingRight: 6, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white, overflow: 'hidden', gap: 2 },
+  mapTile: { flexGrow: 1, minHeight: 52, paddingVertical: 7, paddingLeft: 11, paddingRight: 6, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white, overflow: 'hidden', gap: 2 },
   mapTileEmpty: { backgroundColor: colors.graySoft, borderColor: colors.borderSoft },
   mapTileMaintenance: { backgroundColor: '#fef3c7', borderColor: '#f59e0b', borderStyle: 'dashed' },
   mapTileMine: { borderColor: colors.gold, borderWidth: 2 },
