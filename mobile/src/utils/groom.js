@@ -405,6 +405,22 @@ export const APPETITE_OPTIONS = ['Bình thường', 'Tốt', 'Kém', 'Bỏ ăn']
 export const MANURE_OPTIONS = ['Bình thường', 'Khô / Táo bón', 'Lỏng / Tiêu chảy', 'Không thấy phân'];
 export const WATER_OPTIONS = ['Bình thường', 'Uống nhiều', 'Uống ít'];
 
+/** A feed's kind (InventoryItem.feedType), as the Manager's storeroom names it. */
+export const FEED_TYPE = {
+  concentrate: { label: 'Thức ăn tinh', color: '#ea580c', bg: '#ffedd5' },
+  forage: { label: 'Cỏ', color: '#16a34a', bg: '#dcfce7' },
+  supplement: { label: 'Bổ sung', color: '#2563eb', bg: '#dbeafe' },
+};
+
+/** "2 bao + 5 kg" — the stock in the packs it is bought in, or null when it isn't bought in packs. */
+export const packsText = (item, quantity = item?.quantity) => formatStock(item, quantity).split(' · ')[1] || null;
+
+/**
+ * The zones a groom works in that a delivery can go to: real zones of the stable map ("Khu A"), not
+ * the free text of a stall written by hand before the map existed.
+ */
+export const deliveryBlocks = (blocks = []) => [...new Set(blocks.filter((b) => /^Khu\s+\S+$/i.test(String(b || '').trim())))];
+
 export const INVENTORY_CATEGORY = {
   feed: { label: 'Thức ăn', icon: 'feed', color: '#16a34a', bg: '#dcfce7' },
   medicine: { label: 'Thuốc', icon: 'medicineBox', color: '#dc2626', bg: '#fee2e2' },

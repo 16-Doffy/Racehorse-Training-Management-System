@@ -21,7 +21,7 @@ const STAGE_HEIGHT = 320;
  * three/horseBreeds.js coatFor). Without a model, or without a connection (the viewer script comes
  * from a CDN), the stage says so and the injury list below still works.
  */
-export default function HorseStage({ name, subtitle, badges = [], markers = [], coat = null }) {
+export default function HorseStage({ name, subtitle, badges = [], markers = [], coat = null, height = STAGE_HEIGHT }) {
   const viewer = useRef(null);
   const fullViewer = useRef(null);
   const [status, setStatus] = useState(hasHorseModel() ? 'loading' : 'none');
@@ -73,42 +73,44 @@ export default function HorseStage({ name, subtitle, badges = [], markers = [], 
   };
 
   return (
-    <View style={{ gap: spacing.md }}>
-      <View style={styles.stage}>
+    <View style={{ gap: spacing.sm }}>
+      {/* Where it stands and how it is, above the stage: over it, the words hid most of the horse.
+          The screen's own header already names it. */}
+      {subtitle || badges.length ? (
+        <View style={styles.info}>
+          {subtitle ? (
+            <Text style={styles.subtitle} numberOfLines={2}>
+              {subtitle}
+            </Text>
+          ) : null}
+          {badges.length ? (
+            <Row style={styles.badges}>
+              {badges.map((b) => (
+                <View key={b.label} style={[styles.badge, { backgroundColor: b.bg || colors.graySoft }]}>
+                  {b.dot ? <View style={[styles.badgeDot, { backgroundColor: b.color }]} /> : null}
+                  <Text style={[styles.badgeText, { color: b.color }]}>{b.label}</Text>
+                </View>
+              ))}
+            </Row>
+          ) : null}
+        </View>
+      ) : null}
+
+      <View style={[styles.stage, { height }]}>
         {showViewer ? (
           <Horse360View key={attempt} ref={viewer} hotspots={hotspots} coat={coat} onEvent={onEvent} style={StyleSheet.absoluteFill} />
         ) : (
           <StageEmpty status={status} onRetry={retry} />
         )}
 
-        {/* Who it is and how it stands, over the model without hiding it. */}
-        <View style={styles.top} pointerEvents="box-none">
-          <View style={{ flex: 1 }} pointerEvents="none">
-            <Text style={styles.name} numberOfLines={1}>
-              {name}
-            </Text>
-            {subtitle ? (
-              <Text style={styles.subtitle} numberOfLines={1}>
-                {subtitle}
-              </Text>
-            ) : null}
-            <Row style={styles.badges}>
-              {badges.map((b) => (
-                <View key={b.label} style={[styles.glassBadge, { borderColor: b.color }]}>
-                  {b.dot ? <View style={[styles.badgeDot, { backgroundColor: b.color }]} /> : null}
-                  <Text style={[styles.glassBadgeText, { color: b.color }]}>{b.label}</Text>
-                </View>
-              ))}
-            </Row>
+        {/* Only the controls sit over the model, in its corner. */}
+        {showViewer ? (
+          <View style={styles.controls} pointerEvents="box-none">
+            <GlassButton icon={spinning ? 'pause' : 'rotate360'} label={spinning ? 'Dừng xoay' : 'Tự xoay 360°'} onPress={toggleSpin} active={spinning} />
+            <GlassButton icon="recenter" label="Về góc ban đầu" onPress={() => recenter()} />
+            <GlassButton icon="expand" label="Xem toàn màn hình" onPress={() => setFullscreen(true)} />
           </View>
-          {showViewer ? (
-            <View style={styles.controls}>
-              <GlassButton icon={spinning ? 'pause' : 'rotate360'} label={spinning ? 'Dừng xoay' : 'Tự xoay 360°'} onPress={toggleSpin} active={spinning} />
-              <GlassButton icon="recenter" label="Về góc ban đầu" onPress={() => recenter()} />
-              <GlassButton icon="expand" label="Xem toàn màn hình" onPress={() => setFullscreen(true)} />
-            </View>
-          ) : null}
-        </View>
+        ) : null}
 
         {showViewer ? (
           <View style={styles.bottom} pointerEvents="none">
@@ -243,15 +245,15 @@ function InjuryRow({ marker, selected, onPress }) {
 const glass = { backgroundColor: 'rgba(1,17,12,0.55)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' };
 
 const styles = StyleSheet.create({
-  stage: { height: STAGE_HEIGHT, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: '#01110c' },
-  top: { position: 'absolute', top: spacing.md, left: spacing.md, right: spacing.md, flexDirection: 'row', gap: spacing.sm },
+  stage: { borderRadius: radius.lg, overflow: 'hidden', backgroundColor: '#01110c' },
+  info: { gap: 6, paddingHorizontal: 2 },
   name: { color: colors.white, fontSize: 22, fontWeight: '800', letterSpacing: -0.3, textShadowColor: 'rgba(0,0,0,0.45)', textShadowRadius: 6 },
-  subtitle: { color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2 },
-  badges: { gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' },
-  glassBadge: { ...glass, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
-  glassBadgeText: { fontSize: 11, fontWeight: '700' },
-  badgeDot: { width: 6, height: 6, borderRadius: 3 },
-  controls: { gap: spacing.sm },
+  subtitle: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
+  badges: { gap: 6, flexWrap: 'wrap' },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
+  badgeText: { fontSize: 12, fontWeight: '800' },
+  badgeDot: { width: 7, height: 7, borderRadius: 4 },
+  controls: { position: 'absolute', top: spacing.sm, right: spacing.sm, gap: spacing.sm },
   glassButton: { ...glass, width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   glassButtonActive: { backgroundColor: colors.gold, borderColor: colors.gold },
   bottom: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
