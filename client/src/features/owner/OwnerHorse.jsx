@@ -15,7 +15,8 @@ import {
   TrophyOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import Horse3D from '../horses/horse3d/Horse3D';
+import MovingHorse3D from '../horses/horse3d/MovingHorse3D';
+import { liveMotion, restingMotion } from '../horses/horse3d/horseMotion';
 import { breedLabel, coatLabel } from '../horses/horse3d/horseBreeds';
 import HorseTimeline from '../horses/HorseTimeline';
 import { HORSE_SEX_LABELS } from '../../constants/horse';
@@ -53,6 +54,8 @@ export default function OwnerHorse() {
 
   const row = rows.find((r) => idOf(r.horse) === id);
   const stall = byHorse.get(id);
+  // A session running now: the horse moves as its last reading says; otherwise as the vet's word lets it.
+  const running = sessions.find((s) => idOf(s.horse) === id && s.status === 'in_progress');
   const agenda = useMemo(() => agendaItems({ sessions, races, horseIds: new Set([id]), limit: 5 }), [sessions, races, id]);
 
   if (isLoading) {
@@ -76,6 +79,10 @@ export default function OwnerHorse() {
   }
 
   const examined = row ? Boolean(row.health.lastExam) : true;
+  // A horse no vet has examined yet is not called fit: it grazes, but the caption says it has no exam.
+  const resting = restingMotion(horse);
+  const live = running && liveMotion(running, running.metrics?.lastSpeed);
+  const motion = live ? { ...live, label: `Đang tập · ${live.label}` } : examined || resting.tone ? resting : { ...resting, label: 'Chưa có hồ sơ khám · thư giãn gặm cỏ' };
   const clearance = clearanceOf(horse);
   const stats = row?.raceStats;
 
@@ -159,8 +166,18 @@ export default function OwnerHorse() {
     <OwnerPage>
       <section className="own-card own-hero">
         <div className="own-hero-visual">
-          {/* No photo on file: the horse in 3D, in the breed and coat the Manager set. */}
-          {horse.photoUrl ? <img src={horse.photoUrl} alt={horse.name} /> : <Horse3D breed={horse.breed} color={horse.color} height={300} compact />}
+          {/* No photo on file: the horse in 3D, in the breed and coat the Manager set, doing what its health allows (or its workout). */}
+          {horse.photoUrl ? (
+            <img src={horse.photoUrl} alt={horse.name} />
+          ) : (
+            <MovingHorse3D
+              breed={horse.breed}
+              color={horse.color}
+              motion={motion}
+              height={300}
+              compact
+            />
+          )}
         </div>
         <div className="own-hero-body">
           <Link className="own-back" to="/horses">

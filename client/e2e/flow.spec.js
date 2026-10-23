@@ -311,6 +311,13 @@ test('owner health tab shows routine care on the same 3D horse as the injuries, 
   await expect(body.getByRole('button', { name: /^Móng trước phải/ })).toHaveCount(0);
   await expect(body.getByRole('radio', { name: /Ngoài da/ })).toBeVisible();
 });
+test('owner horse page shows the horse moving as its health allows', async ({ page }) => {
+  await login(page, 'owner');
+  await page.goto(`/horses/${fixture.horseId}`);
+  // The fixture horse was examined and cleared for full work, and no session is running: it grazes.
+  await expect(page.locator('.own-hero canvas')).toHaveAttribute('aria-label', /Khỏe · thư giãn gặm cỏ/);
+  await expect(page.locator('.own-hero').getByText(/Mô hình 3D chuyển động/)).toBeVisible();
+});
 test('owner horse page shows the horse in its stall, with no way to move it', async ({ page }) => {
   await login(page, 'owner');
   await page.goto(`/horses/${fixture.horseId}?tab=stall`);
