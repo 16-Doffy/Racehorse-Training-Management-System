@@ -1,103 +1,105 @@
-# Tình hình dự án: 23/10/2026
+# Racehorse TMS: web đang có gì và chạy theo luồng nào (23/10/2026)
 
-Duy cập nhật (Claude soạn). Mục 0b: lịch ăn cả kỳ kế hoạch, 23/10, đã lên `main`. Mục 0a: kiểm tra bữa ăn trước buổi tập, tối 22/10. Mục 0: thay đổi API chiều 22/10. Mục 1: `main` đã xanh trở lại.
+Duy cập nhật (Claude soạn). Đọc mục 1–3 để hiểu hệ thống, mục 4 cho phần mới hôm nay, mục 5 trước khi
+code. Chi tiết API: Swagger tại `/api-docs` của server; chuồng: [STALL_API.md](STALL_API.md).
 
-## 0b. Lịch ăn, lịch tập và chăm sóc theo ngựa (23/10, đã lên `main`)
+## 1. Năm vai trò
 
-Đã triển khai lên `main` để Render cập nhật backend và client. Khung lịch ăn và thời khóa biểu theo ngựa hoạt động bình thường sau khi deploy hoàn tất.
+| Vai trò | Dùng ở đâu | Việc chính |
+|---|---|---|
+| Quản lý (`manager`) | Web | Nhân sự, danh mục ngựa (thêm ngựa 3 bước: hồ sơ, người phụ trách, chuồng), sơ đồ chuồng và người chăm sóc, kho vật tư và yêu cầu nhập kho, tài chính, báo cáo, nhật ký |
+| HLV trưởng (`head_trainer`) | Web | Kế hoạch huấn luyện, buổi tập và đánh giá, khẩu phần và lịch ăn, giao việc chăm sóc, đăng ký giải và quyết định dự giải |
+| Bác sĩ thú y (`veterinarian`) | Web | Khám, chẩn đoán chấn thương, phác đồ điều trị, khóa tập hoặc chỉ cho tập nhẹ, cho tập lại |
+| Nhân viên chăm sóc (`groom`) | App điện thoại (`mobile/`) | Cho ăn, tắm, chườm lạnh, dùng thuốc theo y lệnh, báo sự cố. Đăng nhập web thì được chỉ sang app |
+| Chủ ngựa (`owner`) | Web | Xem ngựa của mình, chuồng, lịch sử giải, tiền thưởng; không sửa được gì của CLB |
 
-- HLV xem lịch ăn cho toàn kỳ kế hoạch, gồm ngày nghỉ và khẩu phần theo vai trò từng bữa. Xác nhận lịch một lần qua `GET /feeding/calendar/:planId` và `POST /feeding/calendar/:planId/confirm`; lịch đã xác nhận có thể sửa từng bữa tương lai. `GET /feeding/suggest` gợi ý món hiện có trong kho; `GET /feeding/timetable` trả thời khóa biểu ăn theo tuần và trạng thái thực hiện.
-- Tab Công việc chăm sóc của HLV nhóm theo ngựa, vẫn xem được người làm, giờ và trạng thái từng việc.
-- Lịch tập hiện buổi dự kiến ở các tuần chưa xếp; khi bác sĩ cho tập lại, lịch tự xếp bù các buổi bị hủy do khóa sức khỏe. Buổi HLV tự hủy vẫn giữ quyết định đó.
-- Kế hoạch tập trả đánh giá phong độ cho giải đua dựa trên số buổi đến hạn, mức đạt chỉ tiêu, chạy thử và tình trạng sức khỏe. Trang Giải đua nêu lý do khi lượt đã xác nhận cần xem lại sau khi ngựa bị khóa tập.
-- Nhân viên chỉ ghi nhận bữa ăn từ giờ hẹn; quy tắc này có hiệu lực khi server mới được triển khai từ `main`.
+Mỗi HLV và bác sĩ chỉ thấy ngựa được giao cho mình; server lọc, không phải giao diện.
 
-## 0a. Bữa ăn trước buổi tập (tối 22/10, đã lên `main`)
+## 2. Luồng chính, từ lúc nhận ngựa tới khi có kết quả giải
 
-- **Loại thức ăn** (`feedType` của vật tư nhóm Thức ăn): `concentrate` (cám, ngũ cốc, viên), `forage` (cỏ, rơm), `supplement` (dầu, khoáng, vitamin). Manager chọn trong form kho; để trống thì server đoán theo tên. Gửi `feedType` cho vật tư không phải thức ăn, hoặc giá trị khác 3 loại trên: 400.
-- Kiểm tra Dinh dưỡng của buổi tập xét theo loại đó:
-  - Bữa có thức ăn tinh: bài vừa/nặng bị chặn 60 phút. Ăn thêm cỏ sau đó không rút ngắn thời gian chờ.
-  - Bữa chỉ có cỏ: chỉ cảnh báo.
-  - Bữa chỉ có thức ăn bổ sung: không tính là một bữa ăn.
-- Giờ ăn tính theo lúc nhân viên thực sự cho ăn. Ví dụ bữa hẹn 20:30 mà cho ăn sớm lúc 20:11 thì tính từ 20:11.
-- Trong ngày có bữa bị lỡ mà chưa ăn bù: cảnh báo vàng kèm nút "Báo nhân viên cho ăn bù", kể cả khi sau đó ngựa đã ăn bữa khác. Đã báo cho ăn bù thì bảng ghi "đang chờ nhân viên".
-- **Lịch tập tự xếp như thời khóa biểu:** kế hoạch đang áp dụng luôn có sẵn buổi tập tuần này và tuần sau (xếp ngay khi áp dụng, rồi kiểm lại mỗi giờ). Buổi HLV đã hủy không bị xếp lại. Nút "Sinh lịch tuần" đổi thành "Xếp lại tuần" (xếp các buổi còn trống, kể cả buổi đã hủy). Trên server, đặt `AUTO_SCHEDULE_PLANS=false` thì tắt (test harness đã tắt sẵn).
-- `GET /stable/tasks` trả thêm `completedBy` và `skippedBy` là `{ _id, name }`. Bảng Công việc chăm sóc của HLV hiện "Nguyễn Văn Sóc cho ăn lúc 20:11".
-- Trang Buổi tập: bấm tên ngựa thì lọc lịch của riêng ngựa đó (link "Mở hồ sơ ngựa" ở bên cạnh). Bảng Giải đua: kết quả nằm dưới cột "Quyết định · kết quả", cột nút không còn đè lên.
-- **Khẩu phần (HLV):** cột "Người cho ăn" (nhân viên của chuồng + tình trạng bữa hôm nay); form hiện nhân viên cho ăn và gợi ý bữa theo cân nặng + giai đoạn kế hoạch (`client/src/features/stable/rationSuggestion.js`).
-- **Lập kế hoạch:** khoảng km/tuần tham khảo theo nhóm cự ly giải, bảng tham khảo và nút điền (`client/src/features/training/planGuide.js`).
-- **Cảm biến mô phỏng:** `POST /training/sessions/:id/simulate { scenario: 'tired' | 'injury' }` (HLV, buổi đang chạy, chỉ khi `ENABLE_SENSOR_SIMULATOR=true`). `injury` thì hệ thống tự dừng buổi (`abortCategory: 'injury'`), gửi bác sĩ yêu cầu khám ưu tiên cao, giao nhân viên việc chườm lạnh, báo HLV và chủ ngựa; socket `session:completed` có `aborted: true`. Session có thêm `simScenario`.
-- **Theo dõi trực tiếp:** từ 3 ngựa chạy cùng lúc thì hiện bảng gọn, mỗi ngựa một dòng.
+1. **Nhận ngựa** (Quản lý): thêm ngựa với chủ, HLV, bác sĩ, chuồng. Chuồng nào thì người chăm sóc của chuồng đó.
+2. **Khám tiếp nhận** (bác sĩ): kết luận đủ điều kiện, mức được tập (`none` khóa, `light`/`moderate` hạn chế, `high` tự do). Giấy khám có hạn 14 ngày cho bài nặng.
+3. **Đăng ký giải** (HLV), rồi **lập kế hoạch** cho giải đó: các giai đoạn (nền tảng, sức mạnh, tốc độ, giảm tải, hồi phục), mỗi giai đoạn có mặt sân, cường độ, km/tuần và lịch tuần mẫu.
+4. **Lịch tập tự xếp:** kế hoạch đang áp dụng luôn có sẵn buổi tập tuần này và tuần sau (xếp khi áp dụng, kiểm lại mỗi giờ). Tám ngày trước giải tự có buổi chạy thử đủ cự ly. Ngày đua không xếp. Ngựa bị khóa thì không xếp gì.
+5. **Lịch ăn cả kỳ:** HLV xem lịch ăn cho mọi ngày của kế hoạch (ngày tập ăn nhiều thức ăn tinh hơn ngày nghỉ) và xác nhận một lần. Mỗi ngày hệ thống tự tạo việc cho ăn cho nhân viên theo lịch đó, hoặc theo khẩu phần cố định nếu chưa có lịch.
+6. **Hằng ngày** (nhân viên, trên app): cho ăn đúng giờ, ghi nhận; kho tự trừ. Lỡ bữa thì HLV được báo và có thể giao cho ăn bù.
+7. **Buổi tập** (HLV): **Kiểm tra sẵn sàng** (y tế, giấy khám, dinh dưỡng, sốt, người chăm sóc), rồi **Bắt đầu**. Cảm biến mô phỏng gửi nhịp tim, tốc độ, cự ly mỗi 5 giây; ngựa 3D chạy theo tốc độ đó. Đủ cự ly thì tự kết thúc, rồi HLV **đánh giá** (đạt hay chưa đạt so với chỉ tiêu). Sau buổi nặng tự sinh việc chườm lạnh và tắm cho nhân viên.
+8. **Nghi chấn thương:** cảm biến thấy tốc độ tụt và nhịp tim vọt lên hai lần liền thì hệ thống tự dừng buổi, gửi bác sĩ yêu cầu khám gấp, giao chườm lạnh, báo HLV và chủ ngựa.
+9. **Bác sĩ khóa tập:** buổi sắp tới bị hủy (ghi rõ do bác sĩ). Lượt giải đã xác nhận được đánh dấu "Cần xem lại quyết định" kèm lý do. **Bác sĩ cho tập lại:** lịch theo kế hoạch tự xếp lại; buổi HLV tự hủy thì vẫn để trống.
+10. **Phong độ dự giải:** mỗi kế hoạch có kết luận Đủ điều kiện, Đúng tiến độ, Chưa đạt hoặc Không đủ điều kiện, tính từ đầu kế hoạch tới hôm nay (mục 3). HLV vẫn là người **quyết định dự giải** trên trang Giải đua: cần buổi chạy thử, hoặc ghi lý do ngoại lệ.
+11. **Kết quả giải** (HLV hoặc Quản lý): tiền thưởng tự ghi vào doanh thu của chủ ngựa.
 
-## 0. Cập nhật chiều 22/10 (đã lên `main`, server đã deploy)
+Thông báo: mỗi việc liên quan tới vai trò nào thì menu của vai trò đó hiện số đỏ. Bấm thông báo là mở đúng trang và đúng dòng.
 
-Sửa 8 lỗi từ review 79 (commit `d705f1b` server, `cf6a83f` web). Ảnh hưởng tới màn của các bạn:
-- Body hoặc query có khóa bắt đầu bằng `$` (toán tử MongoDB) bị từ chối 400.
-- `PUT /horses/:id` chỉ ghi các trường của form hồ sơ; trạng thái sức khỏe, lịch chăm sóc (của bác sĩ) và ngừng quản lý (`PATCH /archive`) không đổi qua đây.
-- `PUT /races/:id`: lượt đã có kết quả không đổi ngựa, tên giải, ngày đua, cự ly nữa (409); sửa kết quả ở "Cập nhật kết quả".
-- `DELETE /horses/:id`: ngựa đã có thu chi, chăm sóc định kỳ, yêu cầu khám hoặc việc đã làm thì không xóa được (409, `canArchive`), dùng "Ngừng quản lý".
-- Gỡ người chăm sóc của chuồng rồi gán người mới: việc dở chuyển sang người mới.
-- Chủ ngựa, HLV, bác sĩ bị khóa tài khoản: checklist báo "cần người thay", hàng đợi Quản lý đếm con ngựa đó.
-- Trang chủ ngựa (Quân): API lỗi thì báo "Chưa tải được danh sách chiến mã" kèm Thử lại, không còn hiện "chưa có chiến mã".
-- Khóa (hoặc đổi vai trò) nhân viên chăm sóc còn giữ chuồng, ngựa hay việc: `PUT`/`DELETE /users/:id` trả 409 (`needsReplacement`) cho tới khi gửi `replacementCaretaker`; chuồng, ngựa và việc chưa làm chuyển sang người thay cùng lúc (commit `3ed268f`). Màn Nhân sự có hộp thoại "Chọn người thay".
-- Form chạy thử hiện cự ly giải và cảnh báo khi ngắn hơn 75% cự ly giải (vẫn lưu được).
+## 3. Quy định CLB mà hệ thống áp dụng
 
-## 1. Đã xử lý: 2 test chủ ngựa làm `main` đỏ
+Đặt trong `server/src/config/clubPolicy.js` (đổi được bằng biến môi trường); web đọc qua `GET /settings/policy`, nên chữ trên màn luôn khớp server.
 
-Kiểm tra **Test** trên `main` đỏ từ 17:43 ngày 21/10 vì 2 test của trang `/owner/stable` vẫn tìm thẻ cũ "Chuồng A-01", trong khi commit `a04b163` đã làm lại trang (chọn khu, rồi chọn chuồng, rồi xem ngựa trong chuồng). Trang mới chạy đúng; chỉ test bị cũ.
+- **Kiểm tra sẵn sàng:** mở từ 60 phút trước đến 30 phút sau giờ tập, kết quả có hiệu lực 2 giờ. Từ 38,6 °C là sốt, không tập. Buổi chiều chỉ tập nhẹ.
+- **Dinh dưỡng trước buổi tập:**
+  - Bữa có thức ăn tinh: bài vừa và nặng bị chặn 60 phút, cảnh báo tới 90 phút.
+  - Bữa chỉ có cỏ: chờ 60 phút, chỉ cảnh báo.
+  - Lỡ bữa ngay trước buổi tập (hoặc 24 giờ không ghi nhận bữa nào) mà 6 giờ qua chưa ăn gì: chặn bài nặng, bài nhẹ chỉ cảnh báo.
+- **Bữa ăn:**
+  - Giờ các bữa: sáng trước 11:00, trưa 11:00–15:59, chiều từ 16:00; hai bữa cách nhau ít nhất 3 giờ.
+  - Nhân viên chỉ ghi nhận bữa được từ giờ hẹn; giờ ăn tính theo lúc cho ăn thật.
+  - Loại thức ăn của vật tư: `concentrate` (cám, ngũ cốc), `forage` (cỏ), `supplement` (dầu, khoáng).
+- **Gợi ý khẩu phần** (`server/src/modules/feeding/rationRules.js`, theo NRC 2007):
+  - Cả ngày 2–2,5% cân nặng; thức ăn tinh không quá 0,5% cân nặng mỗi bữa.
+  - Vai trò từng bữa: bữa sáng trước giờ tập chủ yếu cỏ, bữa trưa nhẹ, bữa chiều là bữa chính kèm chất bổ sung (khoáng mỗi ngày, dầu ở giai đoạn sức mạnh và tốc độ, điện giải ngày tập nặng).
+  - Chọn món trong kho: món ngựa đang ăn; nếu không có thì món đủ dùng cả tuần, hết hạn sớm nhất.
+  - Cân nặng ngoài 350–700 kg thì cảnh báo.
+- **Phong độ dự giải** (`server/src/modules/training/raceForm.js`): tập từ 80% số buổi đến hạn, đạt chỉ tiêu từ 70% số buổi đã tập, chạy thử cho giải đạt, bác sĩ không khóa hay hạn chế.
 
-Claude đã sửa 2 test theo trang mới (commit `1d113f2`, Duy nhờ làm ngay vì sáng 23/10 demo), giữ nguyên ý cũ:
-- ô A-01 trên sơ đồ có "TEST Browser Horse", thông tin chuồng bên cạnh ghi A-01, không có chữ "A – 01";
-- trên nền tối, thẻ "Chuồng của ngựa bạn" có nền tối, tiêu đề và tên ngựa trong chuồng đọc sáng.
+## 4. Mới trong ngày 23/10 (đã lên `main`)
 
-Toàn bộ test giao diện: 40/40 qua. **Quân xem lại** 2 test này khi rảnh (đây là test của Quân). Ai làm lại một trang thì sửa test của trang đó trong cùng lượt, chạy `npm run test:ui` trước khi merge.
+**Ăn uống và chăm sóc (HLV)**
 
-## 2. Nhánh và cách làm tiếp
+- **Lịch ăn cả kỳ:** `GET /feeding/calendar/:planId` xem; `POST .../confirm` xác nhận một lần; `PATCH .../day/:date/:slot` sửa một bữa.
+- **Gợi ý một bữa:** `GET /feeding/suggest?horse=&slot=`; form "Thêm khẩu phần" hiện gợi ý này.
+- **Thời khóa biểu cho ăn theo tuần của một ngựa:** `GET /feeding/timetable?horse=&week=`, cho biết mỗi bữa đã cho ăn chưa, ai cho, lúc nào.
+- **Tab Công việc chăm sóc và tab Khẩu phần ăn** nhóm theo ngựa. Bấm một con thì ra thời khóa biểu cho ăn và các việc của nó.
 
-- `main` và `NDuy` giờ giống nhau: đã có đủ code của Duy, Quân (PR #9) và Tien (tới 21/10).
-- Code tiếp trên nhánh của mình: `git pull origin main` trước (commit hoặc stash việc đang dở trước khi pull).
-- Làm xong:
-  1. `git pull origin main` lần nữa, sửa xung đột ngay trên nhánh mình;
-  2. chạy test (`npm run test:mobile`; sửa web thì thêm `npm run test:ui`);
-  3. merge vào `main`. Merge trên GitHub thì chọn **Create a merge commit**, không chọn Squash hay Rebase.
-- Ai sửa file của người khác thì nhắn người đó biết. Chủ từng phần:
-  - backend và màn Quản lý/HLV: Duy;
+**Lịch tập và giải đua**
+
+- **Hủy buổi có nguồn:** buổi bị hủy ghi `cancelSource` (`trainer`, `medical`, `plan`, `archive`), dùng để lịch tự xếp lại sau khi bác sĩ cho tập.
+- **Lịch tuần:** buổi hủy rồi xếp lại chỉ hiện một ô. Các tuần chưa xếp hiện buổi "Dự kiến" theo lịch tuần mẫu, kèm ngày đua, ngựa đang khóa và "Còn N ngày tới giải".
+- **Kết luận phong độ** có ở thẻ kế hoạch, bảng kế hoạch, trang Giải đua và lịch tuần; API trả ở `progress.form` của kế hoạch.
+
+**Ngựa 3D chuyển động** (màn HLV và Quản lý)
+
+- **Mô hình:** "Horse" của henrysteve973 (Sketchfab, CC BY 4.0), file `client/public/models/horse-animated.glb`. Dựng lại từ file gốc bằng `tools/horse-model/prepare-animated.mjs`. Mỗi con tô màu lông theo giống và màu trên hồ sơ.
+- **Thẻ mô phỏng buổi tập:**
+  - Ngựa chạy theo tốc độ cảm biến: đi bộ dưới 9 km/h, kiệu dưới 20, phi chậm dưới 45, trên nữa là phi nước đại.
+  - Mặt sân lấy theo giai đoạn kế hoạch (cỏ, đất, cát, tổng hợp). Buổi dốc thì ngựa nghiêng.
+  - Kịch bản "mệt": đầu cúi, chậm dần. Kịch bản "nghi chấn thương": đi khập khiễng một lần đo, rồi đứng co chân đau, có vòng đỏ ở móng.
+- **Chỗ khác:** form tạo buổi (ngựa đã chọn tập thử bài đã chọn); trang chi tiết ngựa (khỏe thì gặm cỏ, hồi phục thì đi bộ, bị khóa thì đứng nghỉ); form thêm ngựa.
+- **Code:** `client/src/features/horses/horse3d/` gồm `horseMotion.js` (chọn chuyển động), `horseStage.js` (cảnh three.js), `MovingHorse3D.jsx`. Màn chủ ngựa và bác sĩ vẫn dùng `Horse3D` (mô hình đứng yên WildMesh).
+
+## 5. Cho dev: cách làm, test, deploy
+
+- **Nhánh:** code trên nhánh của mình. Trước khi làm và trước khi merge: `git pull origin main`, sửa xung đột trên nhánh mình. Merge trên GitHub chọn **Create a merge commit**.
+- **Test trước khi merge:**
+  - **Server (đơn vị + tích hợp):** `npm run test:server`. Cần MongoDB chạy replica set và biến `TEST_MONGO_URI`.
+  - **App điện thoại:** `npm run test:mobile`.
+  - **Giao diện:** `npm run test:ui`. Bộ chạy mở app một lần trước cho Vite biên dịch xong rồi mới chạy test.
+  - **Web:** `npm run lint -w client` và `npm run build`.
+
+  Làm lại trang nào thì sửa test của trang đó trong cùng lượt.
+- **Deploy:** push lên `main` thì Vercel build web, Render deploy server khi `server/` đổi. Gói Hobby của Vercel ít RAM: `client/src/index.css` có `@source not "../public"` để Tailwind không quét file mô hình 3D. Dòng này **đừng xóa**, nếu không build hết bộ nhớ.
+- **React 19 với thẻ `<model-viewer>`:** thuộc tính bật tắt phải truyền boolean (`autoplay`, không phải `autoplay=""`). Viết `""` thì sau khi chuyển trang ngựa đứng im ở tư thế gốc.
+- **Cờ server:**
+  - `AUTO_SCHEDULE_PLANS=false` tắt lịch tự xếp; test harness đã tắt sẵn.
+  - `ENABLE_SENSOR_SIMULATOR=true` bật cảm biến mô phỏng và nút "Mô phỏng sự cố".
+- **Chủ từng phần** (sửa file của ai thì nhắn người đó):
+  - backend và màn Quản lý, HLV: Duy;
   - màn bác sĩ: trunghieu;
   - màn chủ ngựa: Quân;
   - app nhân viên chăm sóc: Tien.
 
-## 3. Thay đổi mới (đã có trên `main`)
+## 6. Còn chờ Duy chốt
 
-### Chuồng (backend). Chi tiết: [STALL_API.md](STALL_API.md)
-- `GET /stable/stalls`: mọi vai trò gọi được, server tự ẩn ngựa bạn không được xem (`occupant: { hidden: true }`). `stableBlock` là mã chuồng (A-03…).
-- Chỉ Quản lý xếp hoặc đổi chuồng; vai trò khác gọi `POST /stable/assignments` nhận 403.
-- Ngựa không tồn tại trả 404, ngựa đã ngừng quản lý trả 409. Hai thao tác cùng lúc trên một chuồng: một bên thành công, bên kia nhận 409 kèm lý do.
-- Tien thêm:
-  - mỗi chuồng có người chăm sóc riêng (`PUT /stable/stalls/:id/caretaker`), ngựa đặt vào chuồng nào thì nhận người chăm sóc của chuồng đó;
-  - sửa hoặc ngừng dùng cả khu (`PUT` / `DELETE /stable/zones/:zone`).
-- Nhân viên chăm sóc bị khóa tài khoản hoặc đổi vai trò không còn được tính là đã phân công: bảng sẵn sàng của HLV báo vàng, hàng đợi của Quản lý đếm con ngựa đó.
-- Chạy server ở máy mình: MongoDB phải chạy replica set (xếp chuồng dùng transaction). Atlas trên Render đã là replica set.
-
-### Màn Quản lý và HLV
-- Xếp chuồng chọn được mọi ngựa (chọn ngựa đã có chuồng là chuyển chuồng). Từ danh sách ngựa, bấm ô **Chuồng** hoặc dùng dòng Chuồng trong form **Sửa hồ sơ**.
-- Hàng đợi việc và bảng kiểm tra sẵn sàng: API lỗi thì báo "chưa tải được" kèm nút **Thử lại**, không còn báo "đã xong".
-- Màu trên sơ đồ chuồng là **sức khỏe** ngựa, không phải "sẵn sàng tập".
-
-## 4. Việc của từng bạn
-
-| Người | Việc |
-|---|---|
-| Tien | App: tab chuồng đọc sơ đồ của Quản lý đã xong (`261f64d`). Lần sau làm lại trang nào thì sửa test của trang đó cùng lúc |
-| Quân | Xem lại 2 test Claude đã sửa ở mục 1 (`1d113f2`). Thẻ chuồng cho chủ ngựa đã xong (PR #9) |
-| trunghieu | Ngựa chấn thương nổi đỏ trên sơ đồ chuồng (`GET /stable/stalls`); có thể gắn `HorseStallCard` vào chi tiết ngựa phía bác sĩ |
-
-## 5. Demo tự động trên web thật: đã chạy xong
-
-- **21/10:** GitHub chạy trễ 2 tiếng (bắt đầu 07:13 thay vì 05:00), nên chỉ kịp **1 lượt**: ngựa "Test Demo 21/10 …" với các ca đạt, lỡ bữa, chưa đạt và chấn thương. Mọi bước đạt.
-- **22/10, 08:11:** nhập kết quả giải "TEST Cúp Demo 22/10". Mọi bước đạt.
-- Không còn lượt nào nữa. Đừng sửa hay xóa dữ liệu demo trước buổi gặp mentor ngày 23/10; sau đó Duy dọn.
-
-## 6. Đang chờ Duy chốt (chưa làm)
-
-- Kết quả giải có bắt buộc phải qua bước xác nhận tham gia không (dự kiến: có, làm sau 23/10).
-- Dọn các bản ghi chuồng cũ của ngựa đã ngừng quản lý trên web thật.
+- Kết quả giải có bắt buộc qua bước quyết định dự giải không (dự kiến có).
+- Dọn dữ liệu demo "Test Demo …" trên web thật, và các bản ghi chuồng cũ của ngựa đã ngừng quản lý.
+- Đưa ngựa 3D chuyển động sang màn chủ ngựa và bác sĩ (cần chủ màn đồng ý).
+- Lưu từng lần đo của buổi tập để xem lại buổi đã chạy (hiện chỉ lưu số tổng hợp).

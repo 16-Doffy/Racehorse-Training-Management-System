@@ -1,149 +1,77 @@
 import { useEffect, useRef, useState } from 'react';
 import { coatFor } from './horseBreeds';
-import { loadModelViewer, paintCoat } from './modelViewer';
 import { MOVING_HORSE } from './horseMotion';
 
-const STAGE_BG =
-  'radial-gradient(90% 70% at 50% 28%, rgba(16,120,86,.55) 0%, rgba(2,44,34,0) 60%), radial-gradient(120% 90% at 50% 100%, #03251c 0%, #01110c 70%)';
 const GLASS = { background: 'rgba(1,17,12,.62)', border: '1px solid rgba(255,255,255,.14)', backdropFilter: 'blur(6px)' };
 const TONES = { alert: '#fca5a5', warn: '#fde68a' };
-// One stripe pattern of the track, in px: it scrolls this far per cycle.
-const STRIPE = 80;
+const SURFACE_WORDS = { turf: 'mặt cỏ', dirt: 'mặt đất', sand: 'mặt cát', synthetic: 'mặt tổng hợp' };
 
 /**
- * A horse in 3D doing something: walking, trotting, galloping, grazing, resting — `motion` from
- * horseMotion.js. It wears its own coat (breed / colour on record). The clips run on the spot, so the
- * track under it scrolls with the speed; uphill work is drawn on a slope.
+ * A horse in 3D doing something — walking, trotting, galloping, lame, pulled up, grazing, resting —
+ * `motion` from horseMotion.js, on the track `surface` its plan trains on (turf, dirt, sand,
+ * synthetic). It wears its own coat (breed / colour on record). The stage itself is horseStage.js
+ * (three.js), loaded with this component so pages without a horse don't carry it.
  *
- * `view`: 'side' (side on, the legs read best) or 'turntable' (turns slowly by itself).
+ * `view`: 'side' (side on, the track streams by, drag to look around) or 'turntable' (turns by itself).
  */
-export default function MovingHorse3D({ breed, color, motion, height = 260, view = 'side', compact = false, showCoat = false, className = '' }) {
-  const viewer = useRef(null);
+export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', height = 260, view = 'side', compact = false, showCoat = false, className = '' }) {
+  const canvas = useRef(null);
+  const box = useRef(null);
+  const stage = useRef(null);
   const [status, setStatus] = useState('loading');
-  const [progress, setProgress] = useState(0);
-  // The clip played once (motion.then follows it) that has ended.
-  const [ended, setEnded] = useState(null);
   const coat = coatFor({ breed, color });
-  const coatNow = useRef(coat);
-  coatNow.current = coat;
-  const clip = motion?.then && ended === motion.clip ? motion.then : motion?.clip || 'Idle';
-  const playsOnce = Boolean(motion?.then) && clip === motion.clip;
+  const latest = useRef({ coat, motion, surface });
+  latest.current = { coat, motion, surface };
 
   useEffect(() => {
     let alive = true;
-    loadModelViewer().catch(() => alive && setStatus('error'));
+    let observer = null;
+    import('./horseStage')
+      .then(({ createHorseStage }) => {
+        if (!alive || !canvas.current) return;
+        const s = createHorseStage(canvas.current, { view });
+        stage.current = s;
+        const { coat: c, motion: m, surface: f } = latest.current;
+        s.setSurface(f);
+        s.setCoat(c);
+        s.setMotion(m);
+        observer = new ResizeObserver(([entry]) => s.resize(entry.contentRect.width, entry.contentRect.height));
+        observer.observe(box.current);
+        s.ready.then(() => alive && setStatus('ready')).catch(() => alive && setStatus('error'));
+      })
+      .catch(() => alive && setStatus('error'));
     return () => {
       alive = false;
+      observer?.disconnect();
+      stage.current?.dispose();
+      stage.current = null;
     };
-  }, []);
+  }, [view]);
 
   useEffect(() => {
-    const el = viewer.current;
-    if (!el) return undefined;
-    const onLoad = () => {
-      paintCoat(el, coatNow.current, MOVING_HORSE.coatMaterials);
-      setStatus('ready');
-    };
-    const onError = () => setStatus('error');
-    const onProgress = (e) => setProgress(e.detail?.totalProgress || 0);
-    el.addEventListener('load', onLoad);
-    el.addEventListener('error', onError);
-    el.addEventListener('progress', onProgress);
-    return () => {
-      el.removeEventListener('load', onLoad);
-      el.removeEventListener('error', onError);
-      el.removeEventListener('progress', onProgress);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (status === 'ready') paintCoat(viewer.current, coat, MOVING_HORSE.coatMaterials);
+    stage.current?.setCoat(coat);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, coat.key]);
-
-  // The pace of the legs follows the speed.
-  const timeScale = motion?.timeScale || 1;
+  }, [coat.key, status]);
   useEffect(() => {
-    if (viewer.current) viewer.current.timeScale = timeScale;
-  }, [timeScale, status]);
-
-  // A looping clip plays as soon as it is picked, even if the viewer was paused.
+    stage.current?.setSurface(surface);
+  }, [surface, status]);
+  // A new motion object each render: changed only when what it says changes.
+  const motionKey = JSON.stringify(motion || {});
   useEffect(() => {
-    const el = viewer.current;
-    if (status === 'ready' && el && !playsOnce) el.play();
-  }, [status, clip, playsOnce]);
-
-  // A clip played once (pulling up): when it ends, the next one takes over.
-  useEffect(() => {
-    const el = viewer.current;
-    if (status !== 'ready' || !el || !playsOnce) return undefined;
-    const onFinished = () => setEnded(clip);
-    el.addEventListener('finished', onFinished);
-    // After model-viewer switched to the clip: play it once instead of looping.
-    const start = setTimeout(() => el.play({ repetitions: 1 }), 50);
-    return () => {
-      clearTimeout(start);
-      el.removeEventListener('finished', onFinished);
-    };
-  }, [status, clip, playsOnce]);
+    stage.current?.setMotion(latest.current.motion);
+  }, [motionKey, status]);
 
   const kmh = motion?.kmh || 0;
-  const tilt = motion?.tilt || 0;
-  // About 4 px of track per km/h each second: a gallop streams past, a walk drifts.
-  const trackSeconds = kmh > 0 ? STRIPE / (kmh * 4) : 0;
   const caption = motion?.label;
 
   return (
     <div className={className}>
-      <div className="relative overflow-hidden rounded-xl select-none" style={{ height, background: STAGE_BG }}>
-        {/* Only while it moves: the track, tilted on a slope, its marks streaming back at the horse's speed. */}
-        {trackSeconds > 0 && status === 'ready' && (
-          <div className="absolute pointer-events-none" style={{ left: '-10%', right: '-10%', bottom: '13%', height: '5%', transform: `rotate(${-tilt}deg)`, transformOrigin: '50% 50%' }}>
-            <div
-              className="moving-horse-track h-full w-full"
-              style={{
-                background: `repeating-linear-gradient(90deg, rgba(234,179,8,.16) 0 ${STRIPE / 4}px, transparent ${STRIPE / 4}px ${STRIPE}px)`,
-                maskImage: 'linear-gradient(90deg, transparent, #000 25%, #000 75%, transparent)',
-                WebkitMaskImage: 'linear-gradient(90deg, transparent, #000 25%, #000 75%, transparent)',
-                '--track-seconds': `${trackSeconds.toFixed(2)}s`,
-              }}
-            />
-          </div>
-        )}
-        <model-viewer
-          ref={viewer}
-          src={MOVING_HORSE.src}
-          alt={`Ngựa 3D — ${caption || 'đứng yên'}`}
-          camera-controls=""
-          disable-zoom=""
-          disable-pan=""
-          touch-action="pan-y"
-          interaction-prompt="none"
-          {...(view === 'turntable' ? { 'auto-rotate': '', 'auto-rotate-delay': '2500', 'rotation-per-second': '18deg' } : {})}
-          // A boolean, not "": once <model-viewer> is defined React 19 sets it as a property, and "" turned autoplay off.
-          autoplay
-          animation-name={clip}
-          animation-crossfade-duration="350"
-          camera-orbit={view === 'turntable' ? MOVING_HORSE.turntableOrbit : MOVING_HORSE.sideOrbit}
-          min-camera-orbit="auto 40deg auto"
-          max-camera-orbit="auto 98deg auto"
-          field-of-view="28deg"
-          shadow-intensity="1.1"
-          shadow-softness="0.85"
-          environment-image="neutral"
-          exposure={1.05}
-          tone-mapping="neutral"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            background: 'transparent',
-            '--poster-color': 'transparent',
-            opacity: status === 'ready' ? 1 : 0,
-            transition: 'opacity .5s ease',
-            transform: tilt ? `rotate(${-tilt}deg)` : undefined,
-          }}
+      <div ref={box} className="relative overflow-hidden rounded-xl select-none bg-[#9fbfcf]" style={{ height }}>
+        <canvas
+          ref={canvas}
+          aria-label={`Ngựa 3D — ${caption || 'đứng yên'}${view === 'side' ? `, trên ${SURFACE_WORDS[surface] || 'mặt đất'}` : ''}`}
+          className="absolute inset-0 block h-full w-full"
+          style={{ opacity: status === 'ready' ? 1 : 0, transition: 'opacity .4s ease', touchAction: 'pan-y' }}
         />
 
         {caption && status === 'ready' && (
@@ -154,7 +82,11 @@ export default function MovingHorse3D({ breed, color, motion, height = 260, view
             </div>
           </div>
         )}
-
+        {view === 'side' && status === 'ready' && !compact && kmh > 0 && (
+          <div className="absolute right-3 top-3 pointer-events-none rounded-full px-2.5 py-1 text-white" style={{ ...GLASS, fontSize: 11 }}>
+            {SURFACE_WORDS[surface] || 'mặt đất'}
+          </div>
+        )}
         {showCoat && (
           <div className={`absolute pointer-events-none ${compact ? 'left-2 bottom-2' : 'left-3 bottom-3'}`}>
             <div className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-white" style={{ ...GLASS, fontSize: compact ? 10 : 12 }}>
@@ -165,18 +97,13 @@ export default function MovingHorse3D({ breed, color, motion, height = 260, view
         )}
 
         {status === 'loading' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
-            <div className="text-white/80" style={{ fontSize: compact ? 11 : 13 }}>
-              Đang tải mô hình 3D{progress ? ` · ${Math.round(progress * 100)}%` : '…'}
-            </div>
-            <div className="rounded-full overflow-hidden" style={{ width: '40%', height: 3, background: 'rgba(255,255,255,.12)' }}>
-              <div style={{ width: `${Math.round(progress * 100)}%`, height: '100%', background: 'linear-gradient(90deg,#eab308,#fde68a)', transition: 'width .2s' }} />
-            </div>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-[#0b2a20]" style={{ fontSize: compact ? 11 : 13 }}>
+            Đang tải mô hình 3D…
           </div>
         )}
         {status === 'error' && (
-          <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-white/80 pointer-events-none" style={{ fontSize: compact ? 11 : 13 }}>
-            Không tải được mô hình 3D — cần kết nối mạng để tải trình xem.
+          <div className="absolute inset-0 flex items-center justify-center px-4 text-center pointer-events-none text-[#0b2a20]" style={{ fontSize: compact ? 11 : 13 }}>
+            Không hiển thị được mô hình 3D trên thiết bị này.
           </div>
         )}
       </div>

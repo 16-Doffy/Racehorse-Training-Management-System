@@ -125,12 +125,3 @@ body {
   background: rgba(212, 175, 55, 0.18);
 }
 
-/* The track under the moving 3D horse (MovingHorse3D): its stripes stream back at the horse's speed. */
-@keyframes moving-horse-track {
-  from { background-position-x: 0; }
-  to { background-position-x: -80px; }
-}
-.moving-horse-track { animation: moving-horse-track var(--track-seconds, 1s) linear infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .moving-horse-track { animation: none; }
-}

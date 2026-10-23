@@ -10,7 +10,7 @@ import { trainingSessionApi } from './trainingApi';
 import { SESSION_KINDS, OBJECTIVE_LABELS } from './trainingVocab';
 import { FOREST, STATUS_TONES } from '../../layouts/forestTheme';
 import MovingHorse3D from '../horses/horse3d/MovingHorse3D';
-import { liveMotion } from '../horses/horse3d/horseMotion';
+import { liveMotion, surfaceOf } from '../horses/horse3d/horseMotion';
 
 const { Text } = Typography;
 
@@ -117,7 +117,7 @@ const CARD_STYLES = {
   title: { whiteSpace: 'normal', overflow: 'visible' },
 };
 
-function LiveCard({ session, readings, horse }) {
+function LiveCard({ session, readings, horse, surface }) {
   const { target, heartRate, speed, distance, targetDistance, over } = liveFigures(session, readings);
   const data = readings.map((r, i) => ({ i, hr: r.hr, speed: r.speed }));
   const waiting = speed == null;
@@ -142,7 +142,7 @@ function LiveCard({ session, readings, horse }) {
     >
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         <div className="lg:col-span-5 min-w-0">
-          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={motion} height={236} />
+          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={motion} surface={surface} height={236} />
         </div>
         <div className="lg:col-span-7 min-w-0">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -213,7 +213,7 @@ function LiveCard({ session, readings, horse }) {
 const COMPACT_FROM = 3;
 
 /** Several horses at once: a row per horse, the ones over their heart-rate ceiling first; a row opens its card. */
-function LiveBoard({ running, readings, horseOf }) {
+function LiveBoard({ running, readings, horseOf, surfaceFor }) {
   const [openId, setOpenId] = useState(null);
   const rows = running
     .map((s) => ({ s, f: liveFigures(s, readings[s._id] || []) }))
@@ -265,7 +265,7 @@ function LiveBoard({ running, readings, horseOf }) {
       </div>
       {open && (
         <div className="mt-3">
-          <LiveCard session={open} readings={readings[open._id] || []} horse={horseOf(open)} />
+          <LiveCard session={open} readings={readings[open._id] || []} horse={horseOf(open)} surface={surfaceFor(open)} />
         </div>
       )}
     </Card>
@@ -276,7 +276,7 @@ function LiveBoard({ running, readings, horseOf }) {
 const STOPPED_SHOWN_MS = 60 * 1000;
 
 /** A run the system stopped as a suspected injury: the horse pulls up and stands; what was done about it. */
-function StoppedCard({ session, horse, onClose }) {
+function StoppedCard({ session, horse, surface, onClose }) {
   return (
     <Card
       size="small"
@@ -295,7 +295,7 @@ function StoppedCard({ session, horse, onClose }) {
     >
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         <div className="lg:col-span-5 min-w-0">
-          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={liveMotion(session, 0, { stopped: true })} height={236} />
+          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={liveMotion(session, 0, { stopped: true })} surface={surface} height={236} />
         </div>
         <div className="lg:col-span-7 min-w-0 flex flex-col gap-2 text-sm text-gray-800">
           <p className="m-0">Tốc độ tụt hẳn và nhịp tim vọt lên giữa buổi: hệ thống đã dừng buổi tập để bảo vệ ngựa.</p>
@@ -320,7 +320,7 @@ function StoppedCard({ session, horse, onClose }) {
  * just stopped as a suspected injury): a card per horse, or a row per horse from COMPACT_FROM at once.
  * `horses` gives each horse's breed and colour, so it runs in its own coat.
  */
-export default function LiveSessionMonitor({ sessions = [], horses = [], onSessionCompleted }) {
+export default function LiveSessionMonitor({ sessions = [], horses = [], plans = [], onSessionCompleted }) {
   const running = sessions.filter((s) => s.status === 'in_progress');
   const [readings, setReadings] = useState(() => Object.fromEntries(liveCache));
   // Runs just stopped as a suspected injury: { session, at }.
@@ -329,6 +329,9 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], onSessi
   const runningIds = running.map((s) => s._id).join(',');
   const horseById = new Map(horses.map((h) => [String(h._id), h]));
   const horseOf = (session) => horseById.get(String(session.horse?._id || session.horse));
+  // The track the plan trains on that day: the horse runs on it.
+  const planById = new Map(plans.map((p) => [String(p._id), p]));
+  const surfaceFor = (session) => surfaceOf(planById.get(String(session.trainingPlan?._id || session.trainingPlan)), session.scheduledAt);
   // The sessions as last seen running: a stopped run has left the list by the time the feed says so.
   const lastSeen = useRef(new Map());
   useEffect(() => {
@@ -401,12 +404,12 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], onSessi
   return (
     <section aria-label="Buổi tập đang diễn ra" className="mb-4 flex flex-col gap-3">
       {stopped.map(({ session }) => (
-        <StoppedCard key={session._id} session={session} horse={horseOf(session)} onClose={() => closeStopped(session._id)} />
+        <StoppedCard key={session._id} session={session} horse={horseOf(session)} surface={surfaceFor(session)} onClose={() => closeStopped(session._id)} />
       ))}
       {running.length >= COMPACT_FROM ? (
-        <LiveBoard running={running} readings={readings} horseOf={horseOf} />
+        <LiveBoard running={running} readings={readings} horseOf={horseOf} surfaceFor={surfaceFor} />
       ) : (
-        running.map((s) => <LiveCard key={s._id} session={s} readings={readings[s._id] || []} horse={horseOf(s)} />)
+        running.map((s) => <LiveCard key={s._id} session={s} readings={readings[s._id] || []} horse={horseOf(s)} surface={surfaceFor(s)} />)
       )}
     </section>
   );

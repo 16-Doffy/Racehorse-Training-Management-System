@@ -48,7 +48,7 @@ import ReadinessPanel from './ReadinessPanel';
 import PreCheckModal from './PreCheckModal';
 import LiveSessionMonitor from './LiveSessionMonitor';
 import MovingHorse3D from '../horses/horse3d/MovingHorse3D';
-import { motionOfKind } from '../horses/horse3d/horseMotion';
+import { motionOfKind, surfaceOf } from '../horses/horse3d/horseMotion';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import { useClubPolicy, precheckRuleText, afternoonProblem } from './useClubPolicy';
 import { SESSION_STATUS_LABELS as STATUS_LABELS, SESSION_STATUS_COLORS as STATUS_COLORS } from './sessionStatus';
@@ -121,6 +121,7 @@ export default function TrainingSessionPage() {
   const [abortForm] = Form.useForm();
   const draftKind = Form.useWatch('kind', createForm);
   const draftSpeed = Form.useWatch(['prescription', 'targetSpeedKmh'], createForm);
+  const draftPlanId = Form.useWatch('trainingPlan', createForm);
   // The exam request being written: { horseId, session?, defaults? }.
   const [examFor, setExamFor] = useState(null);
   const [preCheckSession, setPreCheckSession] = useState(null);
@@ -801,7 +802,7 @@ export default function TrainingSessionPage() {
           }
         />
       )}
-      <LiveSessionMonitor sessions={sessionsData?.data || []} horses={horsesData?.data || []} onSessionCompleted={offerEvaluation} />
+      <LiveSessionMonitor sessions={sessionsData?.data || []} horses={horsesData?.data || []} plans={plansData?.data || []} onSessionCompleted={offerEvaluation} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Segmented
@@ -1132,6 +1133,7 @@ export default function TrainingSessionPage() {
                       breed={draftHorse?.breed}
                       color={draftHorse?.color}
                       motion={motionOfKind(draftKind, draftSpeed)}
+                      surface={surfaceOf((plansData?.data || []).find((p) => p._id === draftPlanId), draft.scheduledAt || undefined)}
                       height={170}
                       compact
                     />

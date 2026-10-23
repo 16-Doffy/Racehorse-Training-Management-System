@@ -17,6 +17,8 @@ const FALLBACK = { targetSpeedKmh: 35, targetHeartRateMax: 180, distanceM: 2000,
 // How well each running session's horse is going today: some days a horse holds its target pace,
 // some days it doesn't, which is what makes "Đạt / Chưa đạt" mean something. Per process is enough.
 const formOfSession = new Map();
+// Runs whose first lame reading has gone out: the next one stops them.
+const lameSessions = new Set();
 
 const jitter = (value, spread) => value * (1 - spread + Math.random() * 2 * spread);
 const round1 = (n) => Math.round(n * 10) / 10;
@@ -45,8 +47,8 @@ function targetsOf(session) {
  */
 // The scenario a trainer can play out on a running session (POST /training/sessions/:id/simulate).
 // "tired": the horse slows and its heart works harder, so the run ends short of its targets.
-// "injury": on the next reading the horse goes lame — speed falls away, heart rate shoots up — and
-// the feed stops the run as a suspected injury (stopForSuspectedInjury).
+// "injury": on the next reading the horse goes lame — speed falls away, heart rate shoots up — and on
+// the one after, still lame, the feed stops the run as a suspected injury (stopForSuspectedInjury).
 const TIRED_FORM = 0.8;
 
 /** One reading for every running session; startSensorSimulator calls it every tick. */
@@ -68,6 +70,22 @@ async function simulateTick() {
     if (scenario === 'injury') {
       const speed = round1(jitter(target.speed * 0.3, 0.1));
       const heartRate = Math.round(jitter(target.heartRateMax * 1.12, 0.02));
+      // The first lame reading goes out like any other (the trainer sees the horse go lame); the feed
+      // stops the run when the second one confirms it, as a monitor would not stop on one bad reading.
+      if (!lameSessions.has(key)) {
+        lameSessions.add(key);
+        const m = session.metrics;
+        m.distance = Math.min(target.distance, Math.round((m.distance || 0) + (speed / 3.6) * SIM_SECONDS_PER_TICK));
+        // eslint-disable-next-line no-await-in-loop
+        await TrainingSession.updateOne(
+          { _id: session._id, status: 'in_progress' },
+          { $set: { 'metrics.lastHeartRate': heartRate, 'metrics.lastSpeed': speed, 'metrics.distance': m.distance }, $max: { 'metrics.maxHeartRate': heartRate } }
+        );
+        pushReading(key, { hr: heartRate, speed, distance: m.distance, targetDistance: target.distance, at: Date.now() });
+        io.to(rooms).emit('sensor:reading', { sessionId: session._id, horseId: session.horse._id, heartRate, speed, distance: m.distance, targetDistance: target.distance, timestamp: Date.now() });
+        continue;
+      }
+      lameSessions.delete(key);
       formOfSession.delete(key);
       clearReadings(key);
       // eslint-disable-next-line no-await-in-loop

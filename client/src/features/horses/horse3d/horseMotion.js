@@ -4,8 +4,9 @@
  * session kind, a running session as the sensors report it, a horse at rest by its health.
  *
  * Its clips run on the spot (the horse gallops in place); the track under it scrolls with the speed
- * (MovingHorse3D). Each motion is { clip, timeScale, label, kmh, tilt, then?, tone? }: `then` is the
- * clip that follows a clip played once, `tilt` the slope in degrees (uphill work).
+ * (horseStage.js). Each motion is { clip, timeScale, label, kmh, tilt, then?, tone?, limp?, hold?,
+ * marker?, tired? }: `then` is the clip that follows a clip played once, `tilt` the slope in degrees
+ * (uphill work); `limp`, `hold`, `marker` and `tired` bend the bones on top of the clip.
  */
 export const MOVING_HORSE = {
   src: `${import.meta.env.BASE_URL}models/horse-animated.glb`,
@@ -48,11 +49,23 @@ export function motionOfKind(kind, kmh) {
  * injury — the horse pulls up and stands, head low.
  */
 export function liveMotion(session, speed, { stopped = false } = {}) {
-  if (stopped) return { clip: 'Run_Stop', then: 'Idle_Look', timeScale: 1, label: 'Nghi chấn thương: đã dừng', kmh: 0, tone: 'alert' };
+  // Standing with the sore foreleg off the ground, marked (no rearing pull-up: a lame horse just stops).
+  if (stopped) return { clip: 'Idle', timeScale: 1, hold: true, marker: true, label: 'Nghi chấn thương: đã dừng, chân trước không chịu lực', kmh: 0, tone: 'alert' };
   const motion = motionOfKind(session?.kind, speed ?? 0);
-  if (session?.simScenario === 'tired' && motion.kmh) return { ...motion, label: `${motion.label} · đang đuối sức`, tone: 'warn' };
-  if (session?.simScenario === 'injury' && motion.kmh) return { ...motion, label: `${motion.label} · bước hụt, nghi đau chân`, tone: 'alert' };
+  if (session?.simScenario === 'tired' && motion.kmh) return { ...motion, tired: true, label: `${motion.label}, đang đuối sức`, tone: 'warn' };
+  // Lame: a short, stiff stride on the sore foreleg, the head nodding up as it lands, whatever the speed.
+  if (session?.simScenario === 'injury' && motion.kmh) {
+    return { clip: 'Walk', timeScale: clamp(motion.kmh / 10, 0.8, 1.3), limp: true, marker: true, label: 'Khập khiễng, nghi đau chân trước', kmh: motion.kmh, tilt: motion.tilt, tone: 'alert' };
+  }
   return motion;
+}
+
+/** The track surface of a plan on a day: that day's phase's, else the plan's (trainingVocab SURFACE_LABELS). */
+export function surfaceOf(plan, date = new Date()) {
+  if (!plan) return 'dirt';
+  const t = new Date(date).getTime();
+  const phase = (plan.phases || []).find((p) => new Date(p.startDate).getTime() <= t && t <= new Date(p.endDate).getTime() + 86400000);
+  return phase?.surface || plan.surface || 'dirt';
 }
 
 /**
