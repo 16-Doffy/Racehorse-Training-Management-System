@@ -20,7 +20,7 @@ const Swatch = ({ color }) => (
 );
 
 const TABS = { profile: 'Hồ sơ', staff: 'Phụ trách', stall: 'Chuồng' };
-// The horse being filled in stands and looks around while it turns, so its coat shows from every side.
+// The horse being filled in stands in the pasture and looks around; drag it to see its coat from every side.
 const FORM_MOTION = { clip: 'Idle_Look' };
 const STEP_FIELDS = {
   profile: ['name', 'breed', 'color', 'sex', 'dob', 'weightKg', 'microchipNumber', 'registrationNumber', 'valuationVnd'],
@@ -181,7 +181,7 @@ export default function HorseFormModal({
           {/* The horse as everyone it is assigned to will see it, and what has been filled in so far. */}
           <aside className="min-w-0">
             <div className="hf-summary">
-              <MovingHorse3D breed={v.breed} color={v.color} motion={FORM_MOTION} view="turntable" height="var(--hf-stage)" compact showCoat />
+              <MovingHorse3D breed={v.breed} color={v.color} motion={FORM_MOTION} surface="pasture" height="var(--hf-stage)" compact showCoat />
               <div className={`hf-name mt-2 ${v.name ? '' : 'is-empty'}`}>{v.name || 'Ngựa mới'}</div>
               <div className="hf-muted text-xs">
                 {[breedLabel || 'Chưa chọn giống', HORSE_SEX_LABELS[v.sex], age !== null && age >= 0 ? `${age} tuổi` : null].filter(Boolean).join(' · ')}

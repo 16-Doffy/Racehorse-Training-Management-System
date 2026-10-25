@@ -519,6 +519,8 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
     for (const c of clouds?.children || []) c.material.color.set(s.clouds);
   };
   const setPasture = (on) => {
+    inPasture = on;
+    dress();
     if (on && !barn) {
       // The farm house far across the pasture (the drawn barn if it won't load).
       barn = new THREE.Group();
@@ -582,6 +584,13 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
   scene.add(marker);
 
   let horse = null;
+  // Turned out in the pasture a horse wears no saddle or bridle (one material in the model); on the track it does.
+  let inPasture = false;
+  const dress = () => {
+    horse?.traverse((o) => {
+      if (o.isMesh && o.material?.name === 'Saddle') o.visible = !inPasture;
+    });
+  };
   let mixer = null;
   const actions = {};
   let current = null;
@@ -654,6 +663,7 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
       }
     });
     paint();
+    dress();
     play();
   });
 

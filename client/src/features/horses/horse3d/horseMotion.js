@@ -75,13 +75,13 @@ export function surfaceOf(plan, date = new Date()) {
 }
 
 /**
- * A horse at rest by what the vet says: locked or injured, it stands still in its stall; recovering
+ * A horse at rest by what the vet says: locked or injured, it stands resting, head low; recovering
  * at a lower level, it is walked; fit, it grazes. `clearance` is the server's trainingClearance.
  */
 export function restingMotion(horse) {
   const level = horse?.trainingClearance?.level;
   if (level === 'none' || ['injured', 'quarantined'].includes(horse?.healthStatus)) {
-    return { clip: 'Sleep', timeScale: 0.8, label: horse?.healthStatus === 'injured' ? 'Đang chấn thương · nghỉ tại chuồng' : 'Bác sĩ khóa tập · nghỉ tại chuồng', kmh: 0, tone: 'alert' };
+    return { clip: 'Sleep', timeScale: 0.8, label: horse?.healthStatus === 'injured' ? 'Đang chấn thương, nghỉ không tập' : 'Bác sĩ khóa tập, đang nghỉ', kmh: 0, tone: 'alert' };
   }
   if (horse?.trainingClearance?.restricted) return { ...gaitAt(5), label: 'Đang hồi phục · chỉ đi bộ nhẹ', tone: 'warn' };
   return { clip: 'Eat', timeScale: 1, label: 'Khỏe · thư giãn gặm cỏ', kmh: 0 };
