@@ -65,12 +65,38 @@ export function useRealtimeAlerts() {
 
     socket.connect();
 
-    const handleNotification = (notification) => {
-      antdNotification[SEVERITY_TO_ANTD[notification.severity] || 'info']({
-        title: TYPE_LABELS[notification.type] || TYPE_LABELS.system,
-        description: notification.message,
+    // A watcher's round sends many at once (every missed meal of every horse): they are gathered for a
+    // moment and shown as one pop-up, which the next round replaces instead of stacking another column.
+    // Each one is still in the bell, where it opens its own page.
+    let batch = [];
+    let timer = null;
+    const show = () => {
+      const items = batch;
+      batch = [];
+      timer = null;
+      const worst = items.some((n) => n.severity === 'critical') ? 'critical' : items.some((n) => n.severity === 'warning') ? 'warning' : 'info';
+      if (items.length === 1) {
+        const [n] = items;
+        antdNotification[SEVERITY_TO_ANTD[n.severity] || 'info']({ key: 'realtime', title: TYPE_LABELS[n.type] || TYPE_LABELS.system, description: n.message, placement: 'topRight' });
+        return;
+      }
+      const byType = new Map();
+      for (const n of items) byType.set(n.type, [...(byType.get(n.type) || []), n]);
+      const lines = [...byType.entries()].map(([type, list]) => {
+        const names = [...new Set(list.map((n) => n.horse?.name).filter(Boolean))];
+        const who = names.length ? `: ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` và ${names.length - 3} ngựa khác` : ''}` : '';
+        return `${list.length} ${(TYPE_LABELS[type] || TYPE_LABELS.system).toLowerCase()}${who}`;
+      });
+      antdNotification[SEVERITY_TO_ANTD[worst]]({
+        key: 'realtime',
+        title: `${items.length} thông báo mới`,
+        description: `${lines.join('. ')}. Mở chuông để xem từng thông báo.`,
         placement: 'topRight',
       });
+    };
+    const handleNotification = (notification) => {
+      batch.push(notification);
+      if (!timer) timer = setTimeout(show, 1200);
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     };
 
@@ -85,6 +111,7 @@ export function useRealtimeAlerts() {
     socket.on('inventory:changed', handleInventory);
 
     return () => {
+      clearTimeout(timer);
       socket.off('notification:new', handleNotification);
       socket.off('inventory:changed', handleInventory);
     };
