@@ -115,6 +115,12 @@ Thông báo: mỗi việc liên quan tới vai trò nào thì menu của vai tr�
 - **Màu lông** ngựa chuyển động được làm đều lại (`prepare-animated.mjs`, hàm `evenOut`), nên giống màu ngựa trong chuồng 3D. `tools/horse-model/coat-luma.mjs` dùng để đo độ sáng hai mô hình.
 - **Hồ sơ ngựa** có nút ‹ › và ô chọn để chuyển sang ngựa khác của HLV, vẫn giữ tab đang mở.
 - **Lịch tuần và thời khóa biểu cho ăn:** mỗi buổi tập và bữa ăn tô màu theo trạng thái (xanh lá: xong; đỏ: bỏ lỡ; xanh dương: đang chạy; vàng hoặc xanh ngọc: đang chờ). Cột hôm nay có nhãn "Hôm nay".
+- **Danh sách ngựa trên màn rộng:** không còn khoảng trắng giữa bảng. Mọi cột có bề rộng cố định, trừ "Bước tiếp theo" lấy phần còn lại.
+  - Màn rộng thêm cột tuổi và cân nặng: HLV từ 1200 px, Quản lý từ 1600 px.
+  - Từ 1600 px, HLV thêm cột chủ và bác sĩ, và cột kế hoạch (giai đoạn, tuần, số ngày tới giải, buổi tới).
+  - Ngựa đủ điều kiện chỉ ghi "Đủ điều kiện" một lần.
+  - Ghi chú dài của bác sĩ hiện tối đa 2 dòng.
+- **CI:** giới hạn job nâng từ 15 lên 30 phút. Đã có 2 lần CI bị hủy đúng mốc 15 phút; một lần riêng bước cài trình duyệt mất 9 phút.
 
 ## 5. Cho dev: cách làm, test, deploy
 
