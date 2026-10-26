@@ -38,7 +38,10 @@ export default function HorseNextStep({ checklist }) {
         <Tag color={color} icon={blocked ? <StopOutlined /> : nextStep.done ? <CheckCircleFilled /> : <ClockCircleOutlined />} className="!m-0 !whitespace-normal">
           {nextStep.label}
         </Tag>
-        <div className="text-[11px] text-gray-500">{blocked ? nextStep.blockedReason : nextStep.done ? 'Đủ điều kiện' : `Người làm: ${nextStep.who}`}</div>
+        {/* A doctor's long reason in two lines at most: the whole of it is in the popover and the title. */}
+        <div className="line-clamp-2 text-[11px] text-gray-500" title={blocked ? nextStep.blockedReason : undefined}>
+          {blocked ? nextStep.blockedReason : nextStep.done ? 'Đủ điều kiện' : `Người làm: ${nextStep.who}`}
+        </div>
       </button>
     </Popover>
   );

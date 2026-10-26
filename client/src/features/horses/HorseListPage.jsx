@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Tag, Typography, Button, Modal, Form, Input, Select, Alert, Empty, Tooltip, Popconfirm, Segmented } from 'antd';
+import { Table, Tag, Typography, Button, Modal, Form, Input, Select, Alert, Empty, Tooltip, Popconfirm, Segmented, Grid } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined, SearchOutlined } from '@ant-design/icons';
 import { downloadFile } from '../../lib/files';
@@ -18,8 +18,17 @@ import { HORSE_SEX_LABELS } from '../../constants/horse';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import HorseFormModal from './HorseFormModal';
 import { fold } from '../../utils/fold';
+import { trainingPlanApi } from '../training/trainingApi';
+import { PHASE_SHORT, SESSION_KINDS, sessionTimeLabel } from '../training/trainingVocab';
 
 const { Title, Text } = Typography;
+
+/** "4 tuổi", or "7 tháng" for a horse under a year; null without a date of birth. */
+function ageOf(dob) {
+  if (!dob) return null;
+  const years = dayjs().diff(dayjs(dob), 'year');
+  return years > 0 ? `${years} tuổi` : `${dayjs().diff(dayjs(dob), 'month')} tháng`;
+}
 
 /** One line of who looks after the horse: the role, then the name — or the gap, for the Manager to fill. */
 function Person({ label, name, gap }) {
@@ -53,6 +62,13 @@ export default function HorseListPage() {
   // The Horse Owner has their own list (features/owner/OwnerHorses.jsx).
   // The Manager and the trainer run a horse from arrival to training: they see its next step.
   const showsNextStep = [ROLES.MANAGER, ROLES.HEAD_TRAINER].includes(user?.role);
+  // A wide screen gets more of each horse on its line (age and weight, then owner and vet) rather than
+  // an empty middle; a laptop keeps only the columns that fit it.
+  const screens = Grid.useBreakpoint();
+  const showAge = isManager ? screens.xxl : screens.xl;
+  const showPeople = !isManager && screens.xxl;
+  // The trainer's plan for each horse: where it is in its cycle and its next session.
+  const showPlan = user?.role === ROLES.HEAD_TRAINER && screens.xxl;
 
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
@@ -72,6 +88,8 @@ export default function HorseListPage() {
     ...(stallsData?.data?.stalls || []).filter((st) => st.occupant?.horse).map((st) => [String(st.occupant.horse._id), st.code]),
   ]);
   const mapStalls = stallsData?.data?.stalls || [];
+  const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list(), enabled: Boolean(showPlan) });
+  const planByHorse = new Map((plansData?.data || []).filter((p) => p.status === 'active').map((p) => [String(p.horse?._id || p.horse), p]));
   // Has a vet examined the horse? true / false, or undefined while that is still loading.
   const examined = (h) => checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === 'health')?.done;
 
@@ -238,44 +256,83 @@ export default function HorseListPage() {
         <Button
           size="small"
           type={code ? 'default' : 'dashed'}
-          className="tabular-nums !font-semibold"
+          className="!max-w-full tabular-nums !font-semibold"
+          title={code}
           onClick={(e) => {
             e.stopPropagation(); // not the row's click, which opens the horse
             navigate(`/admin/stables?horse=${h._id}`);
           }}
         >
-          {code || 'Xếp chuồng'}
+          <span className="min-w-0 truncate">{code || 'Xếp chuồng'}</span>
         </Button>
       );
     }
-    return code ? <Tag className="!m-0 tabular-nums">{code}</Tag> : <Tag className="!m-0">Chưa xếp</Tag>;
+    // A horse not yet on the map shows its free-text stall, which can be long: cut, the whole in its title.
+    return code ? (
+      <Tag className="!m-0 !inline-block !max-w-full truncate align-middle tabular-nums" title={code}>
+        {code}
+      </Tag>
+    ) : (
+      <Tag className="!m-0">Chưa xếp</Tag>
+    );
   };
 
   // A handful of columns, each answering one question — who the horse is, how it is, who looks
-  // after it, what comes next — so the list fits the page instead of scrolling sideways.
+  // after it, what comes next — so the list fits the page instead of scrolling sideways. Every column
+  // but the next step has its width; the next step, the longest to say, takes what is left.
   const columns = [
     {
       title: 'Ngựa',
       key: 'horse',
+      // Fixed beside the next step, which takes the rest; on its own (archived, other roles) it stretches.
+      width: showsNextStep && !archived ? (isManager ? 220 : 240) : undefined,
       render: (_, h) => (
-        <div className="min-w-0 max-w-[260px]">
+        <div className="min-w-0">
           <div className="truncate font-semibold" title={h.name}>
             {h.name}
           </div>
-          <Text type="secondary" className="block truncate !text-xs">
+          <Text type="secondary" className="block truncate !text-xs" title={[h.breed, HORSE_SEX_LABELS[h.sex], h.color].filter(Boolean).join(' · ')}>
             {[h.breed, HORSE_SEX_LABELS[h.sex], h.color].filter(Boolean).join(' · ') || 'Chưa có lý lịch'}
           </Text>
           {/* Roles other than the Manager only see their own horses: the owner is all they need here, on a small line. */}
-          {!isManager && <Text type="secondary" className="block truncate !text-xs">Chủ: {h.owner?.name || 'CLB sở hữu'}</Text>}
+          {!isManager && !showPeople && <Text type="secondary" className="block truncate !text-xs">Chủ: {h.owner?.name || 'CLB sở hữu'}</Text>}
         </div>
       ),
     },
   ];
-  if (showsNextStep && !archived) columns.push({ title: 'Chuồng', key: 'stall', width: 96, render: (_, h) => stallCell(h) });
+  if (showAge) {
+    columns.push({
+      title: 'Tuổi · cân nặng',
+      key: 'age',
+      width: 124,
+      render: (_, h) => (
+        <div className="text-[13px] leading-5 tabular-nums">
+          <div>{ageOf(h.dob) || '—'}</div>
+          <Text type="secondary" className="!text-xs">
+            {h.weightKg ? `${h.weightKg} kg` : 'Chưa cân'}
+          </Text>
+        </div>
+      ),
+    });
+  }
+  if (showPeople) {
+    columns.push({
+      title: 'Chủ & bác sĩ',
+      key: 'owner',
+      width: 210,
+      render: (_, h) => (
+        <div className="flex min-w-0 flex-col">
+          <Person label="Chủ" name={h.owner?.name || 'CLB sở hữu'} />
+          <Person label="BS" name={h.assignedVet?.name} />
+        </div>
+      ),
+    });
+  }
+  if (showsNextStep && !archived) columns.push({ title: 'Chuồng', key: 'stall', width: isManager ? 124 : 96, render: (_, h) => stallCell(h) });
   columns.push({
     title: 'Sức khỏe & tập',
     key: 'health',
-    width: 140,
+    width: 170,
     render: (_, h) => {
       const c = h.trainingClearance || { level: 'high' };
       const meta = TRAINING_LEVEL_META[c.level] || TRAINING_LEVEL_META.high;
@@ -291,21 +348,51 @@ export default function HorseListPage() {
               {HEALTH_LABELS[h.healthStatus] || h.healthStatus}
             </Tag>
           )}
-          <Tooltip title={c.restricted ? [c.reason, c.prescribedBy && `Bác sĩ ${c.prescribedBy}`].filter(Boolean).join(' — ') || 'Theo phác đồ điều trị' : undefined}>
-            <Tag className="!m-0" color={meta.color} variant="filled">
-              {meta.short}
-            </Tag>
-          </Tooltip>
+          {/* The training limit only when there is one: a horse cleared for all work says so once, not twice. */}
+          {(c.restricted || c.level !== 'high') && (
+            <Tooltip title={[c.reason, c.prescribedBy && `Bác sĩ ${c.prescribedBy}`].filter(Boolean).join(' — ') || 'Theo phác đồ điều trị'}>
+              <Tag className="!m-0 !max-w-full !whitespace-normal" color={meta.color} variant="filled">
+                {meta.short}
+              </Tag>
+            </Tooltip>
+          )}
         </div>
       );
     },
   });
+  if (showPlan) {
+    columns.push({
+      title: 'Kế hoạch',
+      key: 'plan',
+      width: 250,
+      render: (_, h) => {
+        const p = planByHorse.get(String(h._id));
+        if (!p) return <Text type="secondary" className="!text-xs">Chưa có kế hoạch</Text>;
+        const g = p.progress || {};
+        const where = !g.started ? `Bắt đầu ${dayjs(p.startDate).format('DD/MM')}` : g.ended ? 'Đã hết kế hoạch' : `${PHASE_SHORT[p.phase] || 'Đang tập'} · tuần ${g.week}/${g.totalWeeks}`;
+        const race = p.targetRace && g.raceInDays >= 0 ? ` · giải ${g.raceInDays ? `còn ${g.raceInDays} ngày` : 'hôm nay'}` : '';
+        const next = g.upcoming?.[0];
+        const nextText = next ? `Buổi tới: ${SESSION_KINDS[next.kind]?.short || SESSION_KINDS[next.kind]?.label || 'buổi tập'} · ${sessionTimeLabel(next.scheduledAt)}` : 'Chưa có buổi trong 2 tuần tới';
+        return (
+          <div className="min-w-0 text-[13px] leading-5">
+            <div className="truncate" title={p.targetRace?.raceName ? `${where}${race} (${p.targetRace.raceName})` : where}>
+              {where}
+              {race && <span className="text-pink-700">{race}</span>}
+            </div>
+            <Text type="secondary" className="block truncate !text-xs" title={nextText}>
+              {nextText}
+            </Text>
+          </div>
+        );
+      },
+    });
+  }
   // Who's responsible matters to the Manager (they assign it); other roles get the owner under the name.
   if (isManager) {
     columns.push({
       title: 'Phụ trách',
       key: 'people',
-      width: 210,
+      width: 200,
       render: (_, h) => (
         <div className="flex min-w-0 flex-col">
           <Person label="Chủ" name={h.owner?.name} gap />
@@ -316,7 +403,7 @@ export default function HorseListPage() {
     });
   }
   if (showsNextStep && !archived) {
-    columns.push({ title: 'Bước tiếp theo', key: 'nextStep', width: 200, render: (_, h) => <HorseNextStep checklist={checklistByHorse.get(String(h._id))} /> });
+    columns.push({ title: 'Bước tiếp theo', key: 'nextStep', render: (_, h) => <HorseNextStep checklist={checklistByHorse.get(String(h._id))} /> });
   }
   if (isManager && archived) {
     columns.push({
@@ -520,7 +607,7 @@ export default function HorseListPage() {
         dataSource={rows}
         loading={archived ? archivedLoading && !archivedData : isLoading && !data}
         tableLayout="fixed"
-        scroll={{ x: isManager ? 900 : 680 }}
+        scroll={{ x: isManager ? 960 : 700 }}
         pagination={rows.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
         locale={{
           emptyText:

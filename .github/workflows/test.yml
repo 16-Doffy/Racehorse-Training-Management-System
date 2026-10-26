@@ -13,7 +13,8 @@ jobs:
   verify:
     # Pinned: ubuntu-latest started moving to Ubuntu 26 on 19/10/2026 and the MongoDB replica set step failed there.
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # 54 browser tests take most of 15 minutes, and the browser install alone once took 9 (26/10): room for both.
+    timeout-minutes: 30
     env:
       TZ: Asia/Ho_Chi_Minh
       TEST_MONGO_URI: mongodb://127.0.0.1:27018/?replicaSet=wdp301Test
