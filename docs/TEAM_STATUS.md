@@ -99,6 +99,14 @@ Thông báo: mỗi việc liên quan tới vai trò nào thì menu của vai tr�
 - **Dashboard:** bỏ viền đỉnh nhiều màu. Thẻ không có việc thu còn một dòng (`QuietCard.jsx`).
 - **Lưu ý cỡ chữ heading:** một style toàn cục nằm ngoài layer của Tailwind đè lên `text-*` của `h1`/`h2`/`h3`. Muốn đổi cỡ heading thì dùng `!text-...`.
 
+**Gọn khi CLB có nhiều ngựa** (Duy góp ý: màn dài, rối)
+
+- Nguyên tắc: mỗi ngựa một dòng thấp; chi tiết mở khi rê chuột hoặc bấm; bảng dài có ô tìm ngựa (không phân biệt dấu, `utils/fold.js`) và lọc "Cần chú ý".
+- **Lịch tuần:** mỗi ngựa khoảng 50 px. Phong độ là chấm màu cạnh tên. "Xếp lại tuần" thành nút biểu tượng. Thẻ buổi một dòng, chỉ thêm dòng thứ hai khi có kết quả hoặc đang chờ xử lý. Ngựa có lịch trong tuần xếp lên đầu. Bảng cuộn trong khung, tiêu đề ngày và cột tên ngựa đứng yên (`wc-sticky`, có màu nền riêng ở chế độ tối trong `MainLayout`).
+- **Kế hoạch:** bảng mỗi ngựa một dòng (giai đoạn, tiến độ, buổi tới, giải, phong độ, trạng thái). Bấm "+" mở chi tiết.
+- **Chăm sóc và khẩu phần:** có ô tìm ngựa và lọc "Cần chú ý". Bỏ cột và nhãn trùng. Thời khóa biểu cho ăn hết cuộn ngang nhờ `table-fixed`.
+- Header các màn HLV/Quản lý bỏ câu mô tả dài.
+
 ## 5. Cho dev: cách làm, test, deploy
 
 - **Nhánh:** code trên nhánh của mình. Trước khi làm và trước khi merge: `git pull origin main`, sửa xung đột trên nhánh mình. Merge trên GitHub chọn **Create a merge commit**.

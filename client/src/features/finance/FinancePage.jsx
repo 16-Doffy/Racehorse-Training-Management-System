@@ -74,7 +74,6 @@ export default function FinancePage() {
         eyebrow="Sổ cái thu chi"
         roleLabel="Quản lý CLB"
         title="Sổ thu chi & tài chính câu lạc bộ"
-        subtitle="Tổng hợp thu chi toàn câu lạc bộ: tiền thưởng giải đấu, dịch vụ nội trú, chi phí thức ăn, thuốc thú y và vận hành."
         stats={[
           { label: 'Giao dịch', value: `${records.length} bản ghi` },
           { label: 'Doanh thu', value: <span className="text-emerald-300">{revenue.toLocaleString('vi-VN')} đ</span> },

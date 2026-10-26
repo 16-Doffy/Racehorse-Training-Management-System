@@ -401,6 +401,8 @@ test('the staff horse page names who looks after the horse instead of an empty p
   await expect(page.getByText(/Dòng dõi|Pedigree/)).toHaveCount(0);
 });
 test('the Manager works the stable map: an empty stall offers a horse, a taken one the change, the 3D barn beside it', async ({ page }) => {
+  // The stable page draws the zone's barn in 3D, slow on a busy machine.
+  test.setTimeout(90000);
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await login(page, 'manager');

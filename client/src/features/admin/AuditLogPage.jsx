@@ -187,7 +187,6 @@ export default function AuditLogPage() {
         eyebrow="Kiểm toán hệ thống"
         roleLabel="Quản lý CLB"
         title="Nhật ký thao tác hệ thống"
-        subtitle="Truy vết lịch sử vận hành: người thực hiện, thời điểm, loại thao tác và đối tượng tác động."
         stats={[
           { label: 'Thao tác ghi nhận', value: `${totalLogs.toLocaleString('vi-VN')} nhật ký` },
           { label: 'Nhân sự thao tác', value: `${totalActors} người` },

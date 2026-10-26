@@ -312,7 +312,6 @@ export default function StableAssignmentPage() {
         eyebrow="Vận hành chuồng trại"
         roleLabel="Quản lý CLB"
         title="Chuồng trại & người chăm sóc"
-        subtitle="Mỗi ngựa cần một ô chuồng và một nhân viên chăm sóc phụ trách để hệ thống tự tạo việc cho ăn hằng ngày và kiểm tra điều kiện trước buổi tập."
         stats={[
           { label: 'Tổng đàn', value: `${horses.length} ngựa` },
           { label: 'Đã xếp chuồng', value: `${assignments.length} ngựa` },

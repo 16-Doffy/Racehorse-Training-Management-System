@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Popover, Typography, Tooltip, Empty } from 'antd';
+import { Button, Popover, Typography, Tooltip, Empty, Input } from 'antd';
 import {
   LeftOutlined,
   RightOutlined,
@@ -12,15 +12,17 @@ import {
   PauseCircleOutlined,
   FlagOutlined,
   HistoryOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, mondayOf, DONE_STATUSES, canReplay } from './trainingVocab';
+import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, PHASE_SHORT, mondayOf, DONE_STATUSES, canReplay } from './trainingVocab';
 import { SESSION_STATUS_LABELS } from './sessionStatus';
 import { useClubPolicy, precheckRuleText } from './useClubPolicy';
 import SessionDetail from './SessionDetail';
 import { useLockedHorseIds } from './useLockedHorses';
-import { RaceFormTag } from './RaceForm';
+import { RaceFormDot } from './RaceForm';
+import { fold } from '../../utils/fold';
 
 const { Text } = Typography;
 
@@ -62,25 +64,20 @@ function plannedFor(plan, date) {
   return { entries };
 }
 
-/** A session the plan will book, not booked yet (the timetable books this week and next). */
+/** A session the plan will book, not booked yet (the timetable books this week and next): one dashed line. */
 function PlannedChip({ entry }) {
+  const kind = SESSION_KINDS[entry.kind];
   return (
-    <Tooltip title="Theo lịch tuần mẫu của kế hoạch: được xếp tự động khi tới tuần này hoặc tuần sau.">
-      <div className="w-full rounded-lg border border-dashed border-emerald-300/80 bg-emerald-50/20 px-2 py-1.5 text-left hover:border-emerald-500 transition-colors">
-        <div className="font-semibold text-xs text-emerald-950 truncate flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-          <span className="truncate">{SESSION_KINDS[entry.kind]?.label || 'Buổi tập'}</span>
-        </div>
-        <div className="mt-1 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
-          <span>{entry.slot === 'morning' ? 'Sáng' : 'Chiều'} {entry.at.format('HH:mm')}</span>
-          <span className="text-[10px] text-emerald-700 bg-emerald-100/60 px-1 rounded">Dự kiến</span>
-        </div>
+    <Tooltip title={`Dự kiến: ${kind?.label || 'Buổi tập'} ${entry.at.format('HH:mm')}, theo lịch tuần mẫu của kế hoạch. Được xếp tự động khi tới tuần này hoặc tuần sau.`}>
+      <div className="flex w-full items-center justify-between gap-1 rounded-md border border-dashed border-black/15 px-1.5 py-0.5 text-[11px] text-gray-500">
+        <span className="truncate">{kind?.short || kind?.label || 'Buổi tập'}</span>
+        <span className="shrink-0 tabular-nums">{entry.at.format('HH:mm')}</span>
       </div>
     </Tooltip>
   );
 }
 
-function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onCancel, onEnd, onAbort, onRequestExam, onReplay, starting, scheduling }) {
+function SessionChip({ session, replaced = [], onStart, onPreCheck, onEvaluate, onSchedule, onCancel, onEnd, onAbort, onRequestExam, onReplay, starting, scheduling }) {
   const policy = useClubPolicy();
   const [open, setOpen] = useState(false);
   const kind = SESSION_KINDS[session.kind];
@@ -100,6 +97,8 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onC
         )}
       {session.status === 'cancelled' && session.cancelReason && callout('bg-red-50 text-red-700', `Lý do hủy: ${session.cancelReason}`)}
       {session.status === 'blocked' && session.blockedReason && callout('bg-amber-50 text-amber-800', session.blockedReason)}
+      {replaced.length > 0 &&
+        callout('bg-gray-50 text-gray-600', `Thay cho ${replaced.length} buổi đã hủy${replaced.some((s) => s.cancelReason) ? `: ${replaced.map((s) => s.cancelReason).filter(Boolean).join('; ')}` : ''}.`)}
       {canChangeTime && <Text type="secondary" className="!text-[11px] leading-snug">{precheckRuleText(policy)}</Text>}
     </>
   );
@@ -167,21 +166,20 @@ function SessionChip({ session, onStart, onPreCheck, onEvaluate, onSchedule, onC
       <button
         type="button"
         aria-label={`${kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}, ${slotLabel(session.scheduledAt)} ${dayjs(session.scheduledAt).format('HH:mm')}, ${rescheduled ? 'Đã xếp lại lịch' : status.label}`}
-        className={`w-full cursor-pointer rounded-md border border-black/10 border-l-[3px] ${status.accent} bg-white px-2 py-1.5 text-left transition-shadow hover:shadow-xs ${session.status === 'cancelled' ? 'opacity-60 line-through' : ''}`}
+        className={`w-full cursor-pointer rounded-md border border-black/10 border-l-[3px] ${status.accent} bg-white px-1.5 py-0.5 text-left transition-shadow hover:shadow-xs ${session.status === 'cancelled' ? 'opacity-60 line-through' : ''}`}
       >
-        <div className="flex items-center justify-between gap-1.5">
-          <span className="truncate text-xs font-semibold text-gray-900">{kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}</span>
-          {met === true && <span className="shrink-0 text-[10px] font-semibold text-emerald-700">Đạt</span>}
-          {met === false && <span className="shrink-0 text-[10px] font-semibold text-rose-700">Chưa đạt</span>}
+        <div className="flex items-center justify-between gap-1 text-[11px]">
+          <span className="truncate font-semibold text-gray-900">{kind?.short || kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}</span>
+          <span className="shrink-0 tabular-nums text-gray-500">{dayjs(session.scheduledAt).format('HH:mm')}</span>
         </div>
-        <div className="mt-0.5 flex items-center justify-between gap-1 text-[11px] text-gray-500">
-          <span className="tabular-nums">
-            {slotLabel(session.scheduledAt)} {dayjs(session.scheduledAt).format('HH:mm')}
-          </span>
-          {['missed', 'blocked', 'cancelled', 'in_progress', 'ready'].includes(session.status) && (
-            <span className="truncate text-[10px] font-medium text-gray-600">{rescheduled ? 'Đã xếp lại' : status.label}</span>
-          )}
-        </div>
+        {/* A second line only for what needs a look: its result, or a state still waiting on someone. */}
+        {(met != null || ['missed', 'blocked', 'in_progress', 'ready'].includes(session.status)) && (
+          <div className="truncate text-[10px] font-medium leading-tight">
+            {met === true && <span className="text-emerald-700">Đạt</span>}
+            {met === false && <span className="text-rose-700">Chưa đạt</span>}
+            {met == null && <span className="text-gray-600">{rescheduled ? 'Đã xếp lại' : status.label}</span>}
+          </div>
+        )}
       </button>
     </Popover>
   );
@@ -230,12 +228,27 @@ export default function WeekCalendar({
   }
   const isThisWeek = weekStart.isSame(mondayOf(dayjs()), 'day');
   const lockedIds = useLockedHorseIds();
+  const [search, setSearch] = useState('');
+  // A club has many horses: one short line each, found by name, those with work this week first.
+  const booked = new Set(inWeek.map((s) => String(s.horse?._id)));
+  const weight = ({ horse, plan }) => {
+    const id = String(horse?._id);
+    if (booked.has(id)) return 0;
+    if (plan && !lockedIds.has(id)) return 1;
+    return plan ? 2 : 3;
+  };
+  const shown = [...rows.values()]
+    .filter(({ horse }) => !search.trim() || fold(horse?.name).includes(fold(search.trim())))
+    .sort((a, b) => weight(a) - weight(b) || (a.horse?.name || '').localeCompare(b.horse?.name || '', 'vi'));
 
   return (
     <div>
-      {/* One row: the page's own switches (`toolbar`) on the left, the week on the right. */}
+      {/* One row: the page's own switches (`toolbar`), the horse search, the week. */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div className="flex flex-wrap items-center gap-3">{toolbar}</div>
+        <div className="flex flex-wrap items-center gap-3">
+          {toolbar}
+          <Input allowClear prefix={<SearchOutlined className="text-gray-400" />} placeholder="Tìm ngựa" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-44" aria-label="Tìm ngựa trong lịch tuần" />
+        </div>
         <div className="light-surface-box flex flex-wrap items-center gap-1.5">
           <Button size="small" icon={<LeftOutlined />} aria-label="Tuần trước" onClick={() => onWeekChange(weekStart.subtract(7, 'day'))} />
           <Text strong className="px-1 text-sm tabular-nums text-gray-800">
@@ -255,86 +268,72 @@ export default function WeekCalendar({
 
       {rows.size === 0 ? (
         <Empty description="Tuần này chưa có buổi tập nào." />
+      ) : !shown.length ? (
+        <p className="light-surface-box m-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">Không có ngựa nào tên “{search}”.</p>
       ) : (
-        <div className="light-surface-box overflow-x-auto rounded-xl border border-[#E5DEC9] bg-white shadow-xs">
-          <table className="w-full min-w-[940px] border-collapse text-sm">
+        // Scrolls inside its frame when the club is large: the day row and the horse column stay put.
+        <div className="light-surface-box max-h-[calc(100vh-230px)] min-h-[240px] overflow-auto rounded-xl border border-[#E5DEC9] bg-white shadow-xs">
+          <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
             <thead>
-              <tr className="bg-[#FAF7F0] border-b border-[#E5DEC9]">
-                <th className="w-[200px] px-3.5 py-2.5 text-left font-semibold text-gray-700 text-xs">
-                  Ngựa
-                </th>
+              <tr>
+                <th className="wc-sticky sticky left-0 top-0 z-[3] w-[220px] border-b border-[#E5DEC9] bg-[#FAF7F0] px-3 py-2 text-left text-xs font-semibold text-gray-700">Ngựa</th>
                 {days.map((d) => {
                   const today = d.date.isSame(dayjs(), 'day');
                   return (
-                    <th
-                      key={d.day}
-                      className={`px-2 py-2.5 text-left font-semibold text-xs ${
-                        today ? 'bg-[#0F5A43]/10 text-[#0F5A43] font-bold' : 'text-gray-600'
-                      }`}
-                    >
-                      <div className="flex items-center gap-1">
-                        <span>{d.short}</span>
-                        <span className="tabular-nums font-normal text-gray-500">{d.date.format('DD/MM')}</span>
-                        {today && <span className="h-1.5 w-1.5 rounded-full bg-[#0F5A43] inline-block shrink-0" />}
-                      </div>
+                    <th key={d.day} className={`wc-sticky sticky top-0 z-[2] border-b border-[#E5DEC9] bg-[#FAF7F0] px-1.5 py-2 text-left text-xs ${today ? 'font-bold text-[#0F5A43]' : 'font-semibold text-gray-600'}`}>
+                      <span>{d.short}</span> <span className="font-normal tabular-nums text-gray-500">{d.date.format('DD/MM')}</span>
+                      {today && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-[#0F5A43] align-middle" />}
                     </th>
                   );
                 })}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {[...rows.values()].map(({ horse, plan }) => {
+              {shown.map(({ horse, plan }) => {
                 const locked = lockedIds.has(String(horse?._id));
                 const raceInDays = plan?.targetRace && plan.targetRace.status !== 'withdrawn' ? plan.progress?.raceInDays : null;
                 return (
-                  <tr key={horse?._id} className="align-top hover:bg-gray-50/40 transition-colors">
-                    <td className="px-3.5 py-3">
-                      <Link
-                        to={`?horse=${horse?._id}`}
-                        title="Xem lịch của riêng ngựa này"
-                        className="font-semibold text-emerald-950 hover:text-emerald-700 text-sm block truncate"
-                      >
-                        {horse?.name}
-                      </Link>
-                      {plan ? (
-                        <div className="mt-1 flex flex-col items-start gap-1">
-                          {/* One line under the name: the phase, a lock, the race it is building to. */}
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] leading-snug text-gray-600">
-                            <span>{PHASE_LABELS[plan.phase] || plan.phase}</span>
-                            {locked && <span className="font-medium text-rose-700">Đang khóa tập</span>}
-                            {raceInDays != null && raceInDays >= 0 && (
-                              <span className="inline-flex items-center gap-1 font-medium text-pink-700">
-                                <FlagOutlined className="text-[10px]" />
-                                {raceInDays === 0 ? 'Hôm nay đua' : `Còn ${raceInDays} ngày`} tới {plan.targetRace.raceName}
-                              </span>
-                            )}
-                          </div>
-                          <RaceFormTag form={plan.progress?.form} />
+                  <tr key={horse?._id} className="group align-top">
+                    {/* The horse on one line (its race form a dot), what it is building to on a second, small. */}
+                    <td className="wc-sticky sticky left-0 z-[1] bg-white px-3 py-1.5 group-hover:bg-[#FAF7F0]">
+                      <div className="flex items-center gap-1.5">
+                        <RaceFormDot form={plan?.progress?.form} />
+                        <Link to={`?horse=${horse?._id}`} title="Xem lịch của riêng ngựa này" className="min-w-0 truncate text-[13px] font-semibold text-emerald-950 hover:text-emerald-700">
+                          {horse?.name}
+                        </Link>
+                        {plan && (
                           <Tooltip
                             title={
                               locked
                                 ? 'Bác sĩ đang khóa tập: không xếp được buổi nào. Khi bác sĩ cho tập lại, lịch theo kế hoạch được xếp lại tự động.'
-                                : 'Tuần này và tuần sau được xếp tự động theo lịch tuần mẫu. Bấm để xếp lại các buổi còn trống của tuần đang xem, kể cả buổi đã hủy.'
+                                : 'Xếp lại tuần: các buổi còn trống của tuần đang xem, kể cả buổi đã hủy, theo lịch tuần mẫu (tuần này và tuần sau vốn được xếp tự động).'
                             }
                           >
                             <Button
                               size="small"
-                              type="link"
+                              type="text"
                               icon={<ScheduleOutlined />}
+                              aria-label="Xếp lại tuần"
                               loading={generatingPlanId === plan._id}
                               disabled={locked}
                               onClick={() => onGenerate(plan, weekStart)}
-                              className="!h-auto !p-0 !text-xs"
-                            >
-                              Xếp lại tuần
-                            </Button>
+                              className="!ml-auto !h-6 !w-6 shrink-0 !text-gray-500"
+                            />
                           </Tooltip>
-                        </div>
-                      ) : (
-                        <Text type="secondary" className="block !text-xs mt-0.5">
-                          Không có kế hoạch
-                        </Text>
-                      )}
+                        )}
+                      </div>
+                      <div className="flex min-w-0 items-center gap-x-2 truncate text-[11px] leading-snug text-gray-500">
+                        {plan ? <span className="truncate">{PHASE_SHORT[plan.phase] || PHASE_LABELS[plan.phase] || plan.phase}</span> : <span>Không có kế hoạch</span>}
+                        {locked && <span className="shrink-0 font-medium text-rose-700">Đang khóa tập</span>}
+                        {raceInDays != null && raceInDays >= 0 && (
+                          <Tooltip title={`${plan.targetRace.raceName}, ${dayjs(plan.targetRace.raceDate).format('DD/MM')}`}>
+                            <span className="inline-flex shrink-0 items-center gap-1 font-medium text-pink-700">
+                              <FlagOutlined className="text-[10px]" />
+                              {raceInDays === 0 ? 'Hôm nay đua' : `${raceInDays} ngày tới giải`}
+                            </span>
+                          </Tooltip>
+                        )}
+                      </div>
                     </td>
                     {days.map((d) => {
                       const cell = inWeek.filter((s) => String(s.horse?._id) === String(horse?._id) && dayjs(s.scheduledAt).isSame(d.date, 'day'));
@@ -346,12 +345,13 @@ export default function WeekCalendar({
                       const planned = locked ? [] : due;
                       const today = d.date.isSame(dayjs(), 'day');
                       return (
-                        <td key={d.day} className={`px-1.5 py-2.5 ${today ? 'bg-emerald-50/20' : ''}`}>
-                          <div className="flex flex-col gap-1.5">
+                        <td key={d.day} className={`px-1 py-1.5 ${today ? 'bg-emerald-50/20' : ''}`}>
+                          <div className="flex flex-col gap-1">
                             {list.map((s) => (
                               <SessionChip
                                 key={s._id}
                                 session={s}
+                                replaced={replaced.filter((r) => slotOf(r.scheduledAt) === slotOf(s.scheduledAt))}
                                 onStart={onStart}
                                 onPreCheck={onPreCheck}
                                 onEvaluate={onEvaluate}
@@ -366,26 +366,17 @@ export default function WeekCalendar({
                               />
                             ))}
                             {race && (
-                              <span className="flex items-center gap-1 rounded-lg border border-pink-200 bg-pink-50 px-2 py-1 text-[11px] font-semibold text-pink-700">
+                              <span className="flex items-center gap-1 rounded-md border border-pink-200 bg-pink-50 px-1.5 py-0.5 text-[11px] font-semibold text-pink-700">
                                 <FlagOutlined /> Ngày đua
                               </span>
                             )}
                             {planned.map((e) => (
                               <PlannedChip key={e.slot} entry={e} />
                             ))}
-                            {locked && due.length > 0 && !live.length && (
-                              <span className="text-[11px] font-medium text-red-600 block py-1 pl-1">
-                                Khóa tập
-                              </span>
-                            )}
-                            {replaced.length > 0 && (
-                              <Tooltip title={replaced.map((s) => s.cancelReason).filter(Boolean).join(' · ') || 'Buổi đã hủy'}>
-                                <span className="text-[10px] text-gray-500 pl-1">Đã thay {replaced.length} buổi hủy</span>
-                              </Tooltip>
-                            )}
+                            {locked && due.length > 0 && !live.length && <span className="py-0.5 pl-1 text-[11px] font-medium text-rose-700">Khóa tập</span>}
                             {/* A rest day: a faint dash, not the same word forty times over the week. */}
                             {!list.length && !planned.length && !race && !(locked && due.length) && (
-                              <div className="select-none py-2 text-center text-xs text-gray-300" title="Nghỉ">
+                              <div className="select-none text-center text-xs leading-6 text-gray-300" title="Nghỉ">
                                 <span aria-hidden="true">—</span>
                                 <span className="sr-only">Nghỉ</span>
                               </div>
@@ -401,6 +392,9 @@ export default function WeekCalendar({
           </table>
         </div>
       )}
+      <p className="m-0 mt-1.5 text-[11px] text-gray-500">
+        Viền nét đứt: buổi dự kiến theo kế hoạch, chưa xếp. Chấm cạnh tên: phong độ dự giải (rê chuột để xem).
+      </p>
     </div>
   );
 }

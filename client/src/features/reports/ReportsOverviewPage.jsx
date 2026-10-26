@@ -217,7 +217,6 @@ export default function ReportsOverviewPage() {
         eyebrow="Báo cáo tổng hợp"
         roleLabel="Quản lý CLB"
         title="Báo cáo vận hành & tài chính"
-        subtitle="Tổng hợp kết quả huấn luyện, chi phí vận hành theo hạng mục, doanh thu giải thưởng và mức độ phối hợp chăm sóc."
       />
 
       {/* Filters in one row above the charts. */}

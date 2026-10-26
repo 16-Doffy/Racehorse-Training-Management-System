@@ -445,7 +445,7 @@ function TaskList() {
       ) : (
         <>
           <Text type="secondary" className="block !text-xs mb-2">
-            Bấm vào một ngựa để xem thời khóa biểu cho ăn trong tuần (đã cho ăn hay chưa, ai cho, lúc nào) và các việc của nó.
+            Bấm một ngựa để xem thời khóa biểu cho ăn trong tuần và các việc của nó.
           </Text>
           <CareHorseList tasks={data?.data} horses={horsesData?.data || []} stallOfHorse={stallOfHorse} onSelect={focus.select} loading={isLoading} />
         </>
@@ -826,16 +826,12 @@ function RationList() {
       ) : (
         // Overview of all horses: how many horses, each horse's feed status, standing rations, warnings. Click to open details.
         <>
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
-            <Typography.Text type="secondary" className="text-sm max-w-3xl">
-              Mỗi chiến mã có lịch ăn riêng theo kế hoạch tập và khẩu phần mẫu. Bấm vào một ngựa để xem chi tiết lịch từng ngày,
-              thời khóa biểu tuần và quản lý khẩu phần.
-            </Typography.Text>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
-              Thêm khẩu phần
-            </Button>
-          </div>
           <RationHorseList
+            action={
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
+                Thêm khẩu phần
+              </Button>
+            }
             rations={data?.data || []}
             horses={horsesData?.data || []}
             tasks={tasksData?.data || []}
@@ -1162,7 +1158,6 @@ export default function StableAssignPage() {
         eyebrow="TEAM 8 • CHUỒNG TRẠI & CHĂM SÓC"
         roleLabel="Head Trainer"
         title="Chuồng trại, chăm sóc & khẩu phần ăn"
-        subtitle="Điều phối công việc chăm sóc hàng ngày, khẩu phần dinh dưỡng và sự cố chuồng trại đảm bảo thể trạng tốt nhất cho chiến mã."
       />
 
       <Tabs

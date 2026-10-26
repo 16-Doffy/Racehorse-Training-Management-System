@@ -632,7 +632,6 @@ export default function InventoryPage() {
         eyebrow="Hậu cần & tồn kho"
         roleLabel="Quản lý CLB"
         title="Kho vật tư"
-        subtitle="Một kho cho thức ăn, thuốc & vật tư y tế và dụng cụ: tồn kho, hạn dùng, đề xuất mua và hàng về. Khẩu phần và đơn thuốc tự trừ kho khi nhân viên làm xong."
         stats={[
           { label: 'Mặt hàng trong kho', value: stock.length },
           { label: 'Cần nhập thêm', value: <span className={outCount ? 'text-rose-300' : lowCount ? 'text-amber-300' : ''}>{lowCount}{outCount ? `, ${outCount} đã hết` : ''}</span> },

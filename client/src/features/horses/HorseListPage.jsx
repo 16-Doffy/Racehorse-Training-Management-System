@@ -17,11 +17,9 @@ import HorseNextStep from './HorseNextStep';
 import { HORSE_SEX_LABELS } from '../../constants/horse';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import HorseFormModal from './HorseFormModal';
+import { fold } from '../../utils/fold';
 
 const { Title, Text } = Typography;
-
-// Accent-insensitive contains, so "thunder" finds "Thunder Bolt" and "chu" finds "Chủ".
-const fold = (text = '') => String(text).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase();
 
 /** One line of who looks after the horse: the role, then the name — or the gap, for the Manager to fill. */
 function Person({ label, name, gap }) {
@@ -402,11 +400,6 @@ export default function HorseListPage() {
           eyebrow="Hồ sơ & danh mục ngựa"
           roleLabel={isManager ? 'Quản lý CLB' : 'HLV trưởng'}
           title={isManager ? 'Danh mục & quản lý đàn ngựa' : 'Danh sách ngựa phụ trách'}
-          subtitle={
-            isManager
-              ? 'Cập nhật hồ sơ lý lịch và phân công huấn luyện viên, bác sĩ thú y phụ trách từng ngựa.'
-              : 'Theo dõi thể trạng, mức độ cho phép tập luyện và bước chuẩn bị tiếp theo của từng ngựa.'
-          }
           actionButton={
             isManager ? (
               <div className="flex flex-wrap gap-2">

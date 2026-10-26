@@ -218,7 +218,6 @@ export default function UserManagementPage() {
         eyebrow="Quản trị nhân sự"
         roleLabel="Quản lý CLB"
         title="Nhân sự & phân quyền"
-        subtitle="Duyệt tài khoản đăng ký mới, tạo tài khoản trực tiếp và phân quyền vai trò cho thành viên câu lạc bộ."
         stats={[
           { label: 'Tổng nhân sự', value: `${totalCount} tài khoản` },
           { label: 'Đang hoạt động', value: `${activeCount} người` },

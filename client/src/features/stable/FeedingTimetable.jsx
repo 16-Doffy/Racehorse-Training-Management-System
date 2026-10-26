@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Spin, Tag, Tooltip } from 'antd';
-import { LeftOutlined, RightOutlined, ClockCircleOutlined, CheckCircleOutlined, UserOutlined } from '@ant-design/icons';
+import { LeftOutlined, RightOutlined, CheckCircleOutlined, UserOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { feedingApi } from '../feeding/feedingApi';
@@ -27,7 +27,7 @@ function MealCell({ meal, isToday }) {
 
   return (
     <div
-      className={`rounded-xl border p-2 text-left transition-all ${
+      className={`rounded-lg border px-1.5 py-1 text-left transition-all ${
         isPlanned
           ? 'border-dashed border-gray-200/90 bg-[#FAF7F0]/40'
           : isFed
@@ -36,10 +36,7 @@ function MealCell({ meal, isToday }) {
       } ${isToday ? 'ring-1 ring-emerald-500/30' : ''}`}
     >
       <div className="flex items-center justify-between gap-1">
-        <span className="text-xs font-semibold tabular-nums text-gray-900 flex items-center gap-1">
-          <ClockCircleOutlined className="text-[10px] text-gray-400" />
-          {meal.time}
-        </span>
+        <span className="text-xs font-semibold tabular-nums text-gray-900">{meal.time}</span>
         <Tag
           color={meta.color}
           className="!m-0 !px-1.5 !text-[10px] !leading-4 !font-medium rounded-full"
@@ -164,7 +161,7 @@ export default function FeedingTimetable({ horseId }) {
         </div>
       ) : (
         <div className="light-surface-box overflow-x-auto rounded-xl border border-[#E5DEC9] bg-white shadow-xs">
-          <table className="w-full min-w-[840px] border-collapse text-sm">
+          <table className="w-full min-w-[840px] table-fixed border-collapse text-sm">
             <thead>
               <tr className="border-b border-[#E5DEC9] bg-[#FAF7F0]">
                 <th className="w-[84px] px-3 py-2.5 text-left text-xs font-semibold text-gray-700">
@@ -192,7 +189,7 @@ export default function FeedingTimetable({ horseId }) {
             <tbody className="divide-y divide-gray-100">
               {Object.entries(SLOT_LABELS).map(([slot, label]) => (
                 <tr key={slot} className="align-top hover:bg-gray-50/30 transition-colors">
-                  <td className="px-3 py-3 text-xs font-semibold text-gray-800">
+                  <td className="px-3 py-2 text-xs font-semibold text-gray-800">
                     {label}
                   </td>
                   {days.map((d) => {
@@ -211,7 +208,7 @@ export default function FeedingTimetable({ horseId }) {
       )}
 
       <p className="text-[11px] text-gray-500 m-0 px-1 leading-relaxed">
-        Hôm nay và trước đó: bữa trong danh sách việc của nhân viên và kết quả thực tế. Ngày tới: bữa dự kiến theo lịch cho ăn đã xác nhận hoặc theo khẩu phần áp dụng.
+        Đến hôm nay: kết quả thực tế của nhân viên. Ngày tới: bữa dự kiến theo lịch ăn đã xác nhận hoặc khẩu phần mẫu. Rê chuột vào món để xem đủ.
       </p>
     </section>
   );

@@ -734,7 +734,6 @@ export default function TrainingSessionPage() {
         eyebrow="Lịch tập & đường đua"
         roleLabel="HLV trưởng"
         title="Buổi tập & đánh giá thể lực"
-        subtitle="Xếp lịch, kiểm tra sẵn sàng y tế và dinh dưỡng, giám sát trực tiếp buổi tập và ghi nhận đánh giá."
         stats={[
           { label: 'Tổng số buổi', value: `${allSessions.length} buổi` },
           { label: 'Hôm nay', value: `${allSessions.filter((s) => dayjs(s.scheduledAt).isSame(dayjs(), 'day')).length} buổi` },

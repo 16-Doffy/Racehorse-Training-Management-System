@@ -828,6 +828,10 @@ export default function MainLayout() {
         .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="divide-[#E4DFD3]"], [class~="divide-[#EFE8DA]"], [class~="divide-amber-200/50"], [class~="divide-gray-100"]) > * { border-color: rgba(212, 175, 55, 0.18) !important; }
         .forest-layout.is-dark-canvas.staff-dark .staff-revenue-text { color: #6EE7B7 !important; }
         .forest-layout.is-dark-canvas.staff-dark .staff-cost-text { color: #FDA4AF !important; }
+        /* Cells that stay put while a table scrolls under them (the week calendar) need a solid ground:
+           the recoloured light backgrounds above are see-through. */
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box .wc-sticky.wc-sticky { background-color: #10261E !important; }
+        .forest-layout.is-dark-canvas.staff-dark .light-surface-box th.wc-sticky.wc-sticky { background-color: #172E25 !important; }
         .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="hover:bg-rose-50/40"], [class~="hover:bg-gray-50/40"], [class~="hover:bg-emerald-50/40"], [class~="hover:bg-emerald-50/50"], [class~="hover:bg-amber-50/50"], [class~="hover:!bg-amber-50"], [class~="hover:bg-gray-50"], [class~="hover:bg-[#F2ECE0]"]):hover { background-color: rgba(255, 255, 255, 0.07) !important; }
         /* Item codes (<code>, inventory): Bootstrap's pink is too faint on the warm cards and on the dark ones. */
         .forest-layout.is-canvas code { color: #0F5A43 !important; }

@@ -400,7 +400,6 @@ export default function RacePage() {
         eyebrow="Thi đấu & giải thưởng"
         roleLabel="HLV trưởng"
         title="Đăng ký & quản lý giải đua"
-        subtitle="Đăng ký ngựa dự giải, theo dõi buổi chạy thử gắn với giải, quyết định tham gia hoặc rút lui và ghi nhận kết quả chính thức."
         stats={[
           { label: 'Đã đăng ký', value: `${registeredCount} giải` },
           { label: 'Đã xác nhận tham gia', value: `${confirmedCount} ngựa` },

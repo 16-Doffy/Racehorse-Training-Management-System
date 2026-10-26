@@ -1,8 +1,10 @@
-import { Table, Tag, Tooltip, Typography } from 'antd';
-import { ProfileOutlined, RightOutlined } from '@ant-design/icons';
+import { useState } from 'react';
+import { Input, Segmented, Table, Tag, Tooltip, Typography } from 'antd';
+import { ProfileOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { MealChip } from './CareHorseList';
+import { fold } from '../../utils/fold';
 
 const { Text } = Typography;
 
@@ -24,9 +26,11 @@ function mealOf(task, makeUp) {
 /**
  * The rations tab at a glance, one row per horse: who feeds it, the plan its meals follow, how today's
  * meals went, its standing ration and what needs a look. A click opens the horse: its feeding week,
- * its plan's feeding calendar and its rations.
+ * its plan's feeding calendar and its rations. Many horses: found by name, or only those needing a look.
  */
-export default function RationHorseList({ rations = [], horses = [], tasks = [], assignmentOf, planOf, onSelect, loading }) {
+export default function RationHorseList({ rations = [], horses = [], tasks = [], assignmentOf, planOf, onSelect, loading, action = null }) {
+  const [search, setSearch] = useState('');
+  const [only, setOnly] = useState('all');
   const today = (tasks || []).filter((t) => t.taskType === 'feeding' && dayjs(t.scheduledDate).isSame(dayjs(), 'day'));
   const rows = horses
     .filter((h) => !h.isArchived)
@@ -50,29 +54,36 @@ export default function RationHorseList({ rations = [], horses = [], tasks = [],
       }
       const flags = [];
       if (!groom?.name) flags.push(['orange', 'Chưa có người cho ăn']);
-      if (meals.some((m) => m.state === 'missed')) flags.push(['red', 'Lỡ bữa']);
       if (mine.some((r) => !r.approvedBy || !r.items?.length)) flags.push(['red', 'Khẩu phần chưa duyệt']);
       if (mine.some((r) => (r.items || []).some((i) => !i.inventoryItem))) flags.push(['orange', 'Có món chưa gắn kho']);
       if (mine.some((r) => (r.items || []).some((i) => typeof i.inventoryItem?.quantity === 'number' && i.inventoryItem.quantity < (i.amount || 0)))) flags.push(['red', 'Kho không đủ']);
       if (!mine.length && !plan) flags.push(['gold', 'Chưa có khẩu phần']);
-      return { key: id, horse: h, plan, groom, meals, rations: mine, perDay, flags };
+      const look = flags.length > 0 || meals.some((m) => m.state === 'missed');
+      return { key: id, horse: h, plan, groom, meals, rations: mine, perDay, flags, look };
     })
     .filter((r) => r.rations.length || r.plan || r.groom)
-    .sort((a, b) => b.flags.length - a.flags.length || a.horse.name.localeCompare(b.horse.name));
+    .sort((a, b) => Number(b.look) - Number(a.look) || b.flags.length - a.flags.length || a.horse.name.localeCompare(b.horse.name));
 
-  const needLook = rows.filter((r) => r.flags.length).length;
+  const needLook = rows.filter((r) => r.look).length;
+  const q = fold(search.trim());
+  const shown = rows.filter((r) => (only === 'all' || r.look) && (!q || fold(r.horse.name).includes(q)));
 
   const columns = [
     {
       title: 'Ngựa',
       key: 'horse',
       render: (_, r) => (
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-emerald-900">{r.horse.name}</span>
-          <Tooltip title="Hồ sơ ngựa">
-            <Link to={`/horses/${r.key}`} onClick={(e) => e.stopPropagation()} aria-label={`Hồ sơ ${r.horse.name}`} className="text-gray-400 hover:text-emerald-700">
-              <ProfileOutlined />
-            </Link>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-emerald-900">{r.horse.name}</span>
+            <Tooltip title="Hồ sơ ngựa">
+              <Link to={`/horses/${r.key}`} onClick={(e) => e.stopPropagation()} aria-label={`Hồ sơ ${r.horse.name}`} className="text-gray-400 hover:text-emerald-700">
+                <ProfileOutlined />
+              </Link>
+            </Tooltip>
+          </div>
+          <Tooltip title={r.plan?.goal}>
+            <div className="text-[11px] text-gray-500">{r.plan ? 'Lịch ăn theo kế hoạch tập' : 'Theo khẩu phần mẫu'}</div>
           </Tooltip>
         </div>
       ),
@@ -81,19 +92,6 @@ export default function RationHorseList({ rations = [], horses = [], tasks = [],
       title: 'Người cho ăn',
       key: 'groom',
       render: (_, r) => r.groom?.name || <Text type="warning">Chưa có</Text>,
-    },
-    {
-      title: 'Lịch ăn theo',
-      key: 'plan',
-      render: (_, r) =>
-        r.plan ? (
-          <div className="flex flex-col text-sm max-w-[220px]">
-            <span className="truncate">Kế hoạch tập</span>
-            <Text type="secondary" className="!text-xs truncate">{r.plan.goal || 'Đang áp dụng'}</Text>
-          </div>
-        ) : (
-          <Text type="secondary" className="!text-sm">Khẩu phần mẫu</Text>
-        ),
     },
     {
       title: 'Bữa hôm nay',
@@ -152,17 +150,28 @@ export default function RationHorseList({ rations = [], horses = [], tasks = [],
 
   return (
     <section aria-label="Khẩu phần theo ngựa">
-      <p className="text-sm mb-3">
-        <Text strong className="tabular-nums">{rows.length} ngựa</Text>
-        {needLook > 0 && <Text type="danger" className="tabular-nums"> · {needLook} cần chú ý</Text>}
-        <Text type="secondary"> · Bấm vào một ngựa để xem lịch ăn từng ngày, xác nhận lịch theo kế hoạch tập và sửa khẩu phần.</Text>
-      </p>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Segmented
+          value={only}
+          onChange={setOnly}
+          options={[
+            { value: 'all', label: `Tất cả (${rows.length})` },
+            { value: 'look', label: `Cần chú ý (${needLook})` },
+          ]}
+        />
+        <Input allowClear prefix={<SearchOutlined className="text-gray-400" />} placeholder="Tìm ngựa" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-48" aria-label="Tìm ngựa trong khẩu phần" />
+        <Text type="secondary" className="!text-xs">
+          Bấm một ngựa để xem lịch ăn từng ngày và sửa khẩu phần.
+        </Text>
+        {action && <div className="ml-auto">{action}</div>}
+      </div>
       <Table
         rowKey="key"
+        size="small"
         columns={columns}
-        dataSource={rows}
+        dataSource={shown}
         loading={loading}
-        pagination={rows.length > 20 ? { pageSize: 20 } : false}
+        pagination={shown.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
         scroll={{ x: 'max-content' }}
         onRow={(r) => ({ onClick: () => onSelect(r.key), className: 'cursor-pointer' })}
         locale={{ emptyText: 'Chưa có ngựa nào có khẩu phần, kế hoạch tập hay người chăm sóc.' }}

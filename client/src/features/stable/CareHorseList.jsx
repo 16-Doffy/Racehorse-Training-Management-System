@@ -1,8 +1,10 @@
-import { Table, Tag, Tooltip, Typography } from 'antd';
-import { ProfileOutlined } from '@ant-design/icons';
+import { useState } from 'react';
+import { Input, Segmented, Table, Tag, Tooltip, Typography } from 'antd';
+import { ProfileOutlined, SearchOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { MEAL_STATUS_META, TASK_TYPE_LABELS } from '../../constants/care';
+import { fold } from '../../utils/fold';
 
 const { Text } = Typography;
 
@@ -41,9 +43,11 @@ export function MealChip({ label, meal }) {
 /**
  * Today's care at a glance, one row per horse: its groom, how each meal went, the other jobs and what
  * needs a look. A horse that needs a look comes first, then the one whose work changed last. A click
- * opens the horse: its feeding timetable and its jobs.
+ * opens the horse: its feeding timetable and its jobs. Many horses: found by name, or only those needing a look.
  */
 export default function CareHorseList({ tasks = [], horses = [], stallOfHorse, onSelect, loading }) {
+  const [search, setSearch] = useState('');
+  const [only, setOnly] = useState('all');
   const today = (tasks || []).filter((t) => dayjs(t.scheduledDate).isSame(dayjs(), 'day'));
   const rows = horses
     .filter((h) => !h.isArchived)
@@ -56,16 +60,19 @@ export default function CareHorseList({ tasks = [], horses = [], stallOfHorse, o
       }).filter(Boolean);
       const others = mine.filter((t) => t.taskType !== 'feeding');
       const flags = [];
-      if (meals.some((m) => m.state === 'missed')) flags.push(['red', 'Lỡ bữa']);
       if (mine.some((t) => t.status === 'pending' && t.timing?.state === 'late')) flags.push(['orange', 'Trễ hạn']);
       if (mine.some((t) => t.status === 'pending' && t.supplyStatus && !t.supplyStatus.ok)) flags.push(['red', 'Thiếu vật tư']);
       if (mine.some((t) => t.incidentReport)) flags.push(['volcano', 'Có sự cố']);
       const stall = stallOfHorse.get(id);
       const changedAt = Math.max(0, ...mine.map((t) => new Date(t.updatedAt || t.createdAt || 0).getTime()));
-      return { key: id, horse: h, stall, meals, others, flags, changedAt };
+      const look = flags.length > 0 || meals.some((m) => m.state === 'missed');
+      return { key: id, horse: h, stall, meals, others, flags, changedAt, look };
     })
     .filter((r) => r.stall || r.meals.length || r.others.length)
-    .sort((a, b) => b.flags.length - a.flags.length || b.changedAt - a.changedAt || a.horse.name.localeCompare(b.horse.name));
+    .sort((a, b) => Number(b.look) - Number(a.look) || b.flags.length - a.flags.length || b.changedAt - a.changedAt || a.horse.name.localeCompare(b.horse.name));
+  const needLook = rows.filter((r) => r.look).length;
+  const q = fold(search.trim());
+  const shown = rows.filter((r) => (only === 'all' || r.look) && (!q || fold(r.horse.name).includes(q)));
 
   const columns = [
     {
@@ -136,15 +143,29 @@ export default function CareHorseList({ tasks = [], horses = [], stallOfHorse, o
   ];
 
   return (
-    <Table
-      rowKey="key"
-      columns={columns}
-      dataSource={rows}
-      loading={loading}
-      pagination={rows.length > 20 ? { pageSize: 20 } : false}
-      scroll={{ x: 'max-content' }}
-      onRow={(r) => ({ onClick: () => onSelect(r.key), className: 'cursor-pointer' })}
-      locale={{ emptyText: 'Chưa có ngựa nào được xếp chuồng và có người chăm sóc.' }}
-    />
+    <>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Segmented
+          value={only}
+          onChange={setOnly}
+          options={[
+            { value: 'all', label: `Tất cả (${rows.length})` },
+            { value: 'look', label: `Cần chú ý (${needLook})` },
+          ]}
+        />
+        <Input allowClear prefix={<SearchOutlined className="text-gray-400" />} placeholder="Tìm ngựa" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-48" aria-label="Tìm ngựa trong công việc chăm sóc" />
+      </div>
+      <Table
+        rowKey="key"
+        size="small"
+        columns={columns}
+        dataSource={shown}
+        loading={loading}
+        pagination={shown.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
+        scroll={{ x: 'max-content' }}
+        onRow={(r) => ({ onClick: () => onSelect(r.key), className: 'cursor-pointer' })}
+        locale={{ emptyText: rows.length ? 'Không có ngựa nào khớp.' : 'Chưa có ngựa nào được xếp chuồng và có người chăm sóc.' }}
+      />
+    </>
   );
 }

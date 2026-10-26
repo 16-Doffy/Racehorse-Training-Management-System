@@ -28,6 +28,19 @@ export function RaceFormTag({ form }) {
   );
 }
 
+const FORM_DOTS = { ready: 'bg-emerald-600', on_track: 'bg-blue-500', not_ready: 'bg-amber-500', blocked: 'bg-rose-600', pending: 'bg-gray-300' };
+
+/** The verdict as a dot beside a horse's name where a row has no room for a tag; the words on hover or focus. */
+export function RaceFormDot({ form }) {
+  if (!form) return null;
+  const words = `Phong độ dự giải: ${form.label}`;
+  return (
+    <Tooltip title={[`${words}.`, ...form.reasons, formFigures(form)].filter(Boolean).join(' ')} trigger={['hover', 'focus']}>
+      <span tabIndex={0} role="img" aria-label={words} className={`inline-block h-2 w-2 shrink-0 cursor-help rounded-full ${FORM_DOTS[form.status] || FORM_DOTS.pending}`} />
+    </Tooltip>
+  );
+}
+
 /**
  * The verdict for a plan card, in a line or two: the verdict, its numbers, then why when it is not
  * ready. The club's rule is behind the "?" instead of repeated on every card.

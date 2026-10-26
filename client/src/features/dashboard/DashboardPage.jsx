@@ -17,14 +17,6 @@ import ManagerQueueCard from './ManagerQueueCard';
 import MissedMealsCard from './MissedMealsCard';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 
-const ROLE_WELCOME = {
-  head_trainer: 'Theo dõi tiến độ huấn luyện, kiểm tra sẵn sàng và thể lực ngựa phụ trách.',
-  veterinarian: 'Theo dõi sơ đồ sức khỏe và xử lý các trường hợp cần can thiệp y tế.',
-  groom: 'Danh sách công việc chăm sóc hàng ngày của bạn nằm ở mục "Công việc Hàng ngày".',
-  owner: 'Theo dõi tình trạng và thành tích của những chú ngựa bạn sở hữu.',
-  manager: 'Điều phối nhân sự, danh mục ngựa, chuồng trại, kho vật tư và sổ thu chi.',
-};
-
 // Shared fallback dashboard for any role without a dedicated one (see RoleDashboard.jsx) —
 // currently Head Trainer and Club Manager. Groom/Veterinarian/Owner each have their own.
 export default function DashboardPage() {
@@ -65,7 +57,6 @@ export default function DashboardPage() {
         eyebrow="Tổng quan vận hành"
         roleLabel={ROLE_LABELS[user?.role]}
         title={`Xin chào, ${user?.name}`}
-        subtitle={ROLE_WELCOME[user?.role]}
         statusBadge={
           <div className="px-3.5 py-2 rounded-lg bg-white/5 border border-white/10 text-xs">
             {/* The vet's side only (healthy, examined, no restriction): a session still has its own checks. */}
