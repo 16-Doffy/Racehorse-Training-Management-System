@@ -38,7 +38,25 @@ const STATUS_ACCENT = {
   cancelled: 'border-l-gray-300',
   missed: 'border-l-rose-500',
 };
-const statusMeta = (status) => ({ label: SESSION_STATUS_LABELS[status] || status, accent: STATUS_ACCENT[status] || STATUS_ACCENT.scheduled });
+// And its ground, so a week reads at a glance: done green, missed red, running blue, waiting amber or cyan.
+const STATUS_FILL = {
+  scheduled: 'bg-white',
+  ready: 'bg-cyan-50',
+  blocked: 'bg-amber-50',
+  in_progress: 'bg-blue-50',
+  completed: 'bg-emerald-50',
+  evaluated: 'bg-emerald-50',
+  aborted: 'bg-orange-50',
+  cancelled: 'bg-gray-50',
+  missed: 'bg-rose-50',
+};
+const STATUS_TEXT = { missed: 'text-rose-700', blocked: 'text-amber-700', in_progress: 'text-blue-700', ready: 'text-cyan-700' };
+const statusMeta = (status) => ({
+  label: SESSION_STATUS_LABELS[status] || status,
+  accent: STATUS_ACCENT[status] || STATUS_ACCENT.scheduled,
+  fill: STATUS_FILL[status] || STATUS_FILL.scheduled,
+  text: STATUS_TEXT[status] || 'text-gray-600',
+});
 
 const slotLabel = (scheduledAt) => (dayjs(scheduledAt).hour() < 12 ? 'Sáng' : 'Chiều');
 const slotOf = (scheduledAt) => (dayjs(scheduledAt).hour() < 12 ? 'morning' : 'afternoon');
@@ -166,7 +184,7 @@ function SessionChip({ session, replaced = [], onStart, onPreCheck, onEvaluate, 
       <button
         type="button"
         aria-label={`${kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}, ${slotLabel(session.scheduledAt)} ${dayjs(session.scheduledAt).format('HH:mm')}, ${rescheduled ? 'Đã xếp lại lịch' : status.label}`}
-        className={`w-full cursor-pointer rounded-md border border-black/10 border-l-[3px] ${status.accent} bg-white px-1.5 py-0.5 text-left transition-shadow hover:shadow-xs ${session.status === 'cancelled' ? 'opacity-60 line-through' : ''}`}
+        className={`w-full cursor-pointer rounded-md border border-black/10 border-l-[3px] ${status.accent} ${status.fill} px-1.5 py-0.5 text-left transition-shadow hover:shadow-xs ${session.status === 'cancelled' ? 'opacity-60 line-through' : ''}`}
       >
         <div className="flex items-center justify-between gap-1 text-[11px]">
           <span className="truncate font-semibold text-gray-900">{kind?.short || kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}</span>
@@ -177,7 +195,7 @@ function SessionChip({ session, replaced = [], onStart, onPreCheck, onEvaluate, 
           <div className="truncate text-[10px] font-medium leading-tight">
             {met === true && <span className="text-emerald-700">Đạt</span>}
             {met === false && <span className="text-rose-700">Chưa đạt</span>}
-            {met == null && <span className="text-gray-600">{rescheduled ? 'Đã xếp lại' : status.label}</span>}
+            {met == null && <span className={rescheduled ? 'text-gray-600' : status.text}>{rescheduled ? 'Đã xếp lại' : status.label}</span>}
           </div>
         )}
       </button>
@@ -280,9 +298,9 @@ export default function WeekCalendar({
                 {days.map((d) => {
                   const today = d.date.isSame(dayjs(), 'day');
                   return (
-                    <th key={d.day} className={`wc-sticky sticky top-0 z-[2] border-b border-[#E5DEC9] bg-[#FAF7F0] px-1.5 py-2 text-left text-xs ${today ? 'font-bold text-[#0F5A43]' : 'font-semibold text-gray-600'}`}>
-                      <span>{d.short}</span> <span className="font-normal tabular-nums text-gray-500">{d.date.format('DD/MM')}</span>
-                      {today && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-[#0F5A43] align-middle" />}
+                    <th key={d.day} className={`wc-sticky sticky top-0 z-[2] border-b px-1.5 py-2 text-left text-xs ${today ? 'border-[#0F5A43] bg-[#DCEFE3] font-bold text-[#0F5A43]' : 'border-[#E5DEC9] bg-[#FAF7F0] font-semibold text-gray-600'}`}>
+                      <span>{d.short}</span> <span className={`tabular-nums ${today ? '' : 'font-normal text-gray-500'}`}>{d.date.format('DD/MM')}</span>
+                      {today && <span className="ml-1 inline-block whitespace-nowrap rounded bg-[#0F5A43] px-1 py-px text-[10px] font-semibold text-white">Hôm nay</span>}
                     </th>
                   );
                 })}
@@ -345,7 +363,7 @@ export default function WeekCalendar({
                       const planned = locked ? [] : due;
                       const today = d.date.isSame(dayjs(), 'day');
                       return (
-                        <td key={d.day} className={`px-1 py-1.5 ${today ? 'bg-emerald-50/20' : ''}`}>
+                        <td key={d.day} className={`px-1 py-1.5 ${today ? 'bg-emerald-50/70' : d.date.isBefore(dayjs(), 'day') ? 'bg-black/[0.015]' : ''}`}>
                           <div className="flex flex-col gap-1">
                             {list.map((s) => (
                               <SessionChip

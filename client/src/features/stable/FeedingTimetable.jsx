@@ -11,6 +11,19 @@ const SLOT_LABELS = { morning: 'Bữa sáng', noon: 'Bữa trưa', evening: 'B�
 const amount = (n) => Number(n).toLocaleString('vi-VN');
 const itemsText = (items) => (items || []).map((i) => `${amount(i.amount)} ${i.unit} ${i.name}`).join(', ');
 
+// Each meal's ground by what happened, so the week reads at a glance: fed green, due now blue, late
+// or skipped orange, missed red; a planned one only dashed.
+const MEAL_FILL = {
+  fed: 'border-emerald-200 bg-emerald-50',
+  open: 'border-blue-200 bg-blue-50',
+  late: 'border-amber-200 bg-amber-50',
+  missed: 'border-rose-200 bg-rose-50',
+  skipped: 'border-amber-200 bg-orange-50',
+  upcoming: 'border-gray-200 bg-white',
+  closed: 'border-gray-200 bg-gray-50',
+  planned: 'border-dashed border-gray-300 bg-white',
+};
+
 function MealCell({ meal, isToday }) {
   if (!meal?.status) {
     return (
@@ -27,13 +40,9 @@ function MealCell({ meal, isToday }) {
 
   return (
     <div
-      className={`rounded-lg border px-1.5 py-1 text-left transition-all ${
-        isPlanned
-          ? 'border-dashed border-gray-200/90 bg-[#FAF7F0]/40'
-          : isFed
-          ? 'border-emerald-200 bg-white shadow-2xs'
-          : 'border-gray-200 bg-white shadow-2xs'
-      } ${isToday ? 'ring-1 ring-emerald-500/30' : ''}`}
+      className={`rounded-lg border px-1.5 py-1 text-left transition-all ${MEAL_FILL[meal.status] || 'border-gray-200 bg-white'} ${
+        isToday ? 'ring-1 ring-emerald-500/30' : ''
+      }`}
     >
       {/* A planned meal says so by its dashed edge; a meal that happened (or should have) by its tag. */}
       <div className="flex flex-wrap items-center justify-between gap-x-1">
@@ -172,14 +181,12 @@ export default function FeedingTimetable({ horseId }) {
                   return (
                     <th
                       key={d.day}
-                      className={`px-2 py-2 text-left text-xs font-semibold ${
-                        today ? 'bg-[#0F5A43]/10 text-[#0F5A43] font-bold' : 'text-gray-600'
-                      }`}
+                      className={`border-b px-2 py-2 text-left text-xs font-semibold ${today ? 'border-[#0F5A43] bg-[#DCEFE3] font-bold text-[#0F5A43]' : 'border-transparent text-gray-600'}`}
                     >
-                      <div className="flex items-center gap-1">
+                      <div className="flex flex-wrap items-center gap-1">
                         <span>{d.short}</span>
-                        <span className="font-normal tabular-nums text-gray-500">{d.date.format('DD/MM')}</span>
-                        {today && <span className="h-1.5 w-1.5 rounded-full bg-[#0F5A43] inline-block shrink-0" />}
+                        <span className={`tabular-nums ${today ? '' : 'font-normal text-gray-500'}`}>{d.date.format('DD/MM')}</span>
+                        {today && <span className="whitespace-nowrap rounded bg-[#0F5A43] px-1 py-px text-[10px] font-semibold text-white">Hôm nay</span>}
                       </div>
                     </th>
                   );
@@ -195,7 +202,7 @@ export default function FeedingTimetable({ horseId }) {
                   {days.map((d) => {
                     const today = d.date.isSame(dayjs(), 'day');
                     return (
-                      <td key={d.day} className={`px-1.5 py-2 ${today ? 'bg-emerald-50/20' : ''}`}>
+                      <td key={d.day} className={`px-1.5 py-2 ${today ? 'bg-emerald-50/70' : ''}`}>
                         <MealCell meal={mealOf(d.date, slot)} isToday={today} />
                       </td>
                     );

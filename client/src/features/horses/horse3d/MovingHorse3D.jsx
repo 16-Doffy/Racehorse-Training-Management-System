@@ -8,6 +8,14 @@ const GLASS = { background: 'rgba(1,17,12,.62)', border: '1px solid rgba(255,255
 const TONES = { alert: '#fca5a5', warn: '#fde68a' };
 const SURFACE_WORDS = { turf: 'mặt cỏ', dirt: 'mặt đất', sand: 'mặt cát', synthetic: 'mặt tổng hợp', pasture: 'đồng cỏ' };
 
+/** The time in Vietnam now and the part of the day it is in, as the pasture's sky shows it: "Chiều, 17:32". */
+function vietnamClock() {
+  const d = new Date(Date.now() + 7 * 3600 * 1000);
+  const h = d.getUTCHours();
+  const part = h < 5 ? 'Đêm' : h < 11 ? 'Sáng' : h < 13 ? 'Trưa' : h < 18 ? 'Chiều' : h < 22 ? 'Tối' : 'Đêm';
+  return `${part}, ${String(h).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
 /**
  * A horse in 3D doing something — walking, trotting, galloping, lame, pulled up, grazing, resting —
  * `motion` from horseMotion.js, on the track `surface` its plan trains on (turf, dirt, sand,
@@ -25,6 +33,14 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
   const box = useRef(null);
   const stage = useRef(null);
   const [status, setStatus] = useState('loading');
+  // The pasture's sky follows the clock in Vietnam (horseStage.js): its corner says what time it is.
+  const realTime = surface === 'pasture' && hour == null;
+  const [clock, setClock] = useState(vietnamClock);
+  useEffect(() => {
+    if (!realTime) return undefined;
+    const timer = setInterval(() => setClock(vietnamClock()), 30000);
+    return () => clearInterval(timer);
+  }, [realTime]);
   const coat = coatFor({ breed, color });
   const latest = useRef({ coat, motion, surface, hour });
   latest.current = { coat, motion, surface, hour };
@@ -94,7 +110,12 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
             </div>
           </div>
         )}
-        {view === 'side' && status === 'ready' && !compact && kmh > 0 && (
+        {realTime && status === 'ready' && !compact && (
+          <div className="absolute right-3 top-3 pointer-events-none rounded-full px-2.5 py-1 tabular-nums text-white" style={{ ...GLASS, fontSize: 11 }} title="Trời theo giờ thực ở Việt Nam">
+            {clock}
+          </div>
+        )}
+        {view === 'side' && status === 'ready' && !compact && kmh > 0 && !realTime && (
           <div className="absolute right-3 top-3 pointer-events-none rounded-full px-2.5 py-1 text-white" style={{ ...GLASS, fontSize: 11 }}>
             {SURFACE_WORDS[surface] || 'mặt đất'}
           </div>

@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useQuery } from '@tanstack/react-query';
-import { Table, Card, Breadcrumb, Row, Col, Empty, Button, Alert, Tabs } from 'antd';
+import { Table, Card, Breadcrumb, Row, Col, Empty, Button, Alert, Tabs, Select, Tooltip } from 'antd';
 import { HORSE_SEX_LABELS, formatVnd } from '../../constants/horse';
-import { MedicineBoxOutlined } from '@ant-design/icons';
+import { MedicineBoxOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
+import { fold } from '../../utils/fold';
 import { horsesApi } from './horsesApi';
 import HorseTimeline from './HorseTimeline';
 import CareHistoryCard from './CareHistoryCard';
@@ -56,6 +57,10 @@ export default function HorseDetailPage() {
   const [examModalOpen, setExamModalOpen] = useState(false);
   // ?tab=stall|races opens that part of the page (a link from the stable map, say).
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  // The other horses (the same list as the horse list page, cached): the page moves from one to the next.
+  const { data: listData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
+  const herd = (listData?.data || []).filter((h) => !h.isArchived).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'));
   const tab = TABS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'history';
 
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -120,11 +125,38 @@ export default function HorseDetailPage() {
   ];
 
   const clearanceLevel = horse.trainingClearance?.level || 'high';
+  const at = herd.findIndex((h) => h._id === id);
+  const prev = at > 0 ? herd[at - 1] : null;
+  const next = at >= 0 && at < herd.length - 1 ? herd[at + 1] : null;
+  const goTo = (to) => navigate(`/horses/${to}${tab === 'history' ? '' : `?tab=${tab}`}`);
   const coat = coatFor({ breed: horse.breed, color: horse.color });
   const clearance = horse.trainingClearance;
   return (
     <div className="space-y-4">
-      <Breadcrumb items={[{ title: <Link to="/horses">Danh sách đàn ngựa</Link> }, { title: horse.name }]} />
+      {/* Where it sits, and the way to the next horse without going back to the list (same tab kept). */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Breadcrumb items={[{ title: <Link to="/horses">Danh sách đàn ngựa</Link> }, { title: horse.name }]} />
+        {herd.length > 1 && (
+          <div className="flex items-center gap-1.5">
+            <Tooltip title={prev ? `Ngựa trước: ${prev.name}` : null}>
+              <Button size="small" icon={<LeftOutlined />} disabled={!prev} onClick={() => goTo(prev._id)} aria-label="Ngựa trước" />
+            </Tooltip>
+            <Select
+              size="small"
+              showSearch
+              value={id}
+              onChange={goTo}
+              options={herd.map((h) => ({ value: h._id, label: h.name }))}
+              filterOption={(input, option) => fold(option.label).includes(fold(input))}
+              className="!w-56"
+              aria-label="Xem ngựa khác"
+            />
+            <Tooltip title={next ? `Ngựa sau: ${next.name}` : null}>
+              <Button size="small" icon={<RightOutlined />} disabled={!next} onClick={() => goTo(next._id)} aria-label="Ngựa sau" />
+            </Tooltip>
+          </div>
+        )}
+      </div>
 
       <PageHeroBanner
         eyebrow="Hồ sơ lý lịch"
