@@ -27,8 +27,10 @@ function vietnamClock() {
  * it the pasture shows the sky of now and a track a plain one.
  * `creditInFrame`: the models' authors (their CC BY licence asks for them) behind an "i" in the
  * frame's corner instead of in two lines under it.
+ * `fill`: the frame grows to the height of its parent (a grid cell beside a taller card), `height`
+ * being its least.
  */
-export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', hour = null, height = 260, view = 'side', compact = false, showCoat = false, creditInFrame = false, className = '' }) {
+export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', hour = null, height = 260, view = 'side', compact = false, showCoat = false, creditInFrame = false, fill = false, className = '' }) {
   const canvas = useRef(null);
   const box = useRef(null);
   const stage = useRef(null);
@@ -93,8 +95,8 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
   const caption = motion?.label;
 
   return (
-    <div className={className}>
-      <div ref={box} className="relative overflow-hidden rounded-xl select-none bg-[#9fbfcf]" style={{ height }}>
+    <div className={`${fill ? "flex h-full flex-col" : ""} ${className}`}>
+      <div ref={box} className={`relative overflow-hidden rounded-xl select-none bg-[#9fbfcf] ${fill ? "flex-1" : ""}`} style={fill ? { minHeight: height } : { height }}>
         <canvas
           ref={canvas}
           aria-label={`Ngựa 3D — ${caption || 'đứng yên'}${view === 'side' ? `, trên ${SURFACE_WORDS[surface] || 'mặt đất'}` : ''}`}

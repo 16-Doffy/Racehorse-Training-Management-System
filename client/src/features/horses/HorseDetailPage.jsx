@@ -183,11 +183,12 @@ export default function HorseDetailPage() {
 
       <Row gutter={[16, 16]}>
         {/* The horse in 3D, in the breed and coat the Manager set, doing what its health allows. */}
-        <Col xs={24} lg={13}>
-          {/* At rest it is out in the pasture (the sessions page shows it on its training track). */}
-          <MovingHorse3D creditInFrame breed={horse.breed} color={horse.color} motion={restingMotion(horse, injury)} surface="pasture" height="clamp(300px, 34vw, 470px)" />
+        <Col xs={24} lg={14}>
+          {/* At rest it is out in the pasture (the sessions page shows it on its training track). As tall as
+              the card beside it, so no gap is left under the frame. */}
+          <MovingHorse3D creditInFrame fill breed={horse.breed} color={horse.color} motion={restingMotion(horse, injury)} surface="pasture" height="clamp(320px, 36vw, 520px)" />
         </Col>
-        <Col xs={24} lg={11}>
+        <Col xs={24} lg={10}>
           <Card className="h-full !rounded-xl !border-[#E2D9C8]" title="Hồ sơ lý lịch">
             <Facts
               items={[
