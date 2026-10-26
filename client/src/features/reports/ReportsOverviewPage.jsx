@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Typography, Row, Col, Statistic, DatePicker, Empty, Segmented, Tag, Table, Alert, Button } from 'antd';
+import { Card, Typography, Row, Col, DatePicker, Empty, Segmented, Tag, Table, Alert, Button } from 'antd';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, ResponsiveContainer, Legend } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -81,8 +81,8 @@ function CashFlowChart() {
       ) : (
         <>
           <div className="flex flex-wrap gap-x-6 gap-y-1 mb-3 text-sm">
-            <span>Thu: <strong className="text-green-700">{formatVnd(chart.totals.revenue)}</strong></span>
-            <span>Chi: <strong className="text-red-700">{formatVnd(chart.totals.cost)}</strong></span>
+            <span>Thu: <strong>{formatVnd(chart.totals.revenue)}</strong></span>
+            <span>Chi: <strong>{formatVnd(chart.totals.cost)}</strong></span>
             <span>Lãi/lỗ: <strong className={chart.totals.net >= 0 ? 'text-green-700' : 'text-red-700'}>{formatVnd(chart.totals.net)}</strong></span>
           </div>
           <ResponsiveContainer width="100%" height={260}>
@@ -92,8 +92,10 @@ function CashFlowChart() {
               <YAxis tickFormatter={formatVndCompact} width={56} tickLine={false} axisLine={false} />
               <Tooltip formatter={(value, name) => [formatVnd(value), name]} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
               <Legend />
-              <Bar dataKey="revenue" name="Thu" fill="#16a34a" radius={[4, 4, 0, 0]} maxBarSize={22} />
-              <Bar dataKey="cost" name="Chi" fill="#dc2626" radius={[4, 4, 0, 0]} maxBarSize={22} />
+              {/* The page's own two hues for money in and out (see HUE_REVENUE): green against red is the
+                  pair red-green colour blindness cannot tell apart. */}
+              <Bar dataKey="revenue" name="Thu" fill={HUE_REVENUE} radius={[4, 4, 0, 0]} maxBarSize={22} />
+              <Bar dataKey="cost" name="Chi" fill={HUE_COST} radius={[4, 4, 0, 0]} maxBarSize={22} />
             </BarChart>
           </ResponsiveContainer>
         </>
@@ -203,6 +205,7 @@ export default function ReportsOverviewPage() {
   const training = report?.trainingPerformance;
   const overrides = report?.readinessOverrides;
   const care = report?.careCoordination;
+  const openIncidents = (care?.incidents?.byStatus?.open ?? 0) + (care?.incidents?.byStatus?.acknowledged ?? 0);
   const cost = report?.operatingCost;
   const revenue = report?.raceRevenue;
   const races = report?.raceParticipation;
@@ -325,36 +328,19 @@ export default function ReportsOverviewPage() {
           Sự cố do nhân viên chăm sóc báo phải được bác sĩ kết luận; y lệnh của bác sĩ phải được chuồng trại
           thực hiện. Sự cố tồn đọng hoặc y lệnh bị bỏ dở là chỗ quy trình đang đứt.
         </Typography.Paragraph>
-        <Row gutter={[16, 16]}>
-          <Col xs={12} lg={6}>
-            <Statistic title="Sự cố được báo" value={care?.incidents?.reported ?? 0} />
-          </Col>
-          <Col xs={12} lg={6}>
-            <Statistic
-              title="Sự cố chưa được kết luận"
-              value={(care?.incidents?.byStatus?.open ?? 0) + (care?.incidents?.byStatus?.acknowledged ?? 0)}
-              styles={{
-                content: {
-                  color: (care?.incidents?.byStatus?.open ?? 0) + (care?.incidents?.byStatus?.acknowledged ?? 0) > 0 ? '#d4380d' : undefined,
-                },
-              }}
-            />
-          </Col>
-          <Col xs={12} lg={6}>
-            <Statistic
-              title="Thời gian xử lý sự cố (TB)"
-              value={care?.incidents?.avgHoursToResolve ?? '—'}
-              suffix={care?.incidents?.avgHoursToResolve != null ? 'giờ' : null}
-            />
-          </Col>
-          <Col xs={12} lg={6}>
-            <Statistic
-              title="Y lệnh bác sĩ đã thực hiện"
-              value={care?.vetCareTasks?.completed ?? 0}
-              suffix={`/ ${care?.vetCareTasks?.assigned ?? 0}`}
-            />
-          </Col>
-        </Row>
+        <dl className="m-0 grid grid-cols-2 gap-y-3 border-y border-gray-100 py-3 lg:grid-cols-4">
+          {[
+            ['Sự cố được báo', care?.incidents?.reported ?? 0],
+            ['Sự cố chưa được kết luận', openIncidents, openIncidents > 0],
+            ['Thời gian xử lý sự cố (TB)', care?.incidents?.avgHoursToResolve != null ? `${care.incidents.avgHoursToResolve} giờ` : '—'],
+            ['Y lệnh bác sĩ đã thực hiện', `${care?.vetCareTasks?.completed ?? 0}/${care?.vetCareTasks?.assigned ?? 0}`],
+          ].map(([label, value, alert]) => (
+            <div key={label} className="pr-3">
+              <dt className="text-xs text-gray-500">{label}</dt>
+              <dd className={`m-0 mt-1 text-xl font-semibold tabular-nums ${alert ? 'text-rose-700' : 'text-gray-900'}`}>{value}</dd>
+            </div>
+          ))}
+        </dl>
         <Typography.Text type="secondary" className="!text-xs block mt-3">
           Yêu cầu khám do hệ thống tự tạo vì buổi tập vượt ngưỡng nhịp tim: {care?.autoExamRequests ?? 0}
         </Typography.Text>

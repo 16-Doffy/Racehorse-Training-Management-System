@@ -34,6 +34,7 @@ import {
   CheckCircleOutlined,
   PauseCircleOutlined,
   MoreOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -47,8 +48,9 @@ import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } fro
 import ReadinessPanel from './ReadinessPanel';
 import PreCheckModal from './PreCheckModal';
 import LiveSessionMonitor from './LiveSessionMonitor';
+import SessionReplay from './SessionReplay';
 import MovingHorse3D from '../horses/horse3d/MovingHorse3D';
-import { motionOfKind, surfaceOf } from '../horses/horse3d/horseMotion';
+import { hourOf, motionOfKind, surfaceOf } from '../horses/horse3d/horseMotion';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import { useClubPolicy, precheckRuleText, afternoonProblem } from './useClubPolicy';
 import { SESSION_STATUS_LABELS as STATUS_LABELS, SESSION_STATUS_COLORS as STATUS_COLORS } from './sessionStatus';
@@ -73,6 +75,7 @@ import {
   actualTimeLabel,
   TRAINER_ABORT_OPTIONS,
   TRIAL_MIN_RACE_SHARE,
+  canReplay,
 } from './trainingVocab';
 import { newestFirst } from '../../utils/newestFirst';
 
@@ -118,6 +121,8 @@ export default function TrainingSessionPage() {
   const [endSession, setEndSession] = useState(null);
   const [endForm] = Form.useForm();
   const [abortSession, setAbortSession] = useState(null);
+  // The finished run being played back.
+  const [replaySession, setReplaySession] = useState(null);
   const [abortForm] = Form.useForm();
   const draftKind = Form.useWatch('kind', createForm);
   const draftSpeed = Form.useWatch(['prescription', 'targetSpeedKmh'], createForm);
@@ -660,6 +665,11 @@ export default function TrainingSessionPage() {
                 Sửa đánh giá
               </Button>
             )}
+            {canReplay(record) && (
+              <Button size="small" icon={<HistoryOutlined />} onClick={() => setReplaySession(record)}>
+                Xem lại buổi chạy
+              </Button>
+            )}
             {/* 4. Missed reschedule primary */}
             {record.status === 'missed' && !record.rescheduledTo && (
               <Button
@@ -693,6 +703,28 @@ export default function TrainingSessionPage() {
       onDone={invalidate}
       onRequestExam={() => setExamFor({ horseId: preCheckSession?.horse?._id, session: preCheckSession, defaults: { priority: 'high' } })}
     />
+  );
+  // The view and the kind of session: on the week picker's row in the week view, on their own over the list.
+  const toolbar = (
+    <>
+      <Segmented
+        value={view}
+        onChange={setView}
+        options={[
+          { value: 'week', label: 'Lịch tuần', icon: <CalendarOutlined /> },
+          { value: 'list', label: 'Danh sách', icon: <UnorderedListOutlined /> },
+        ]}
+      />
+      <Segmented
+        value={typeFilter}
+        onChange={setTypeFilter}
+        options={[
+          { value: 'all', label: 'Tất cả' },
+          { value: 'training', label: SESSION_TYPE_LABELS.training },
+          { value: 'trial_run', label: SESSION_TYPE_LABELS.trial_run },
+        ]}
+      />
+    </>
   );
 
   return (
@@ -804,28 +836,11 @@ export default function TrainingSessionPage() {
       )}
       <LiveSessionMonitor sessions={sessionsData?.data || []} horses={horsesData?.data || []} plans={plansData?.data || []} onSessionCompleted={offerEvaluation} />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Segmented
-          value={view}
-          onChange={setView}
-          options={[
-            { value: 'week', label: 'Lịch tuần', icon: <CalendarOutlined /> },
-            { value: 'list', label: 'Danh sách', icon: <UnorderedListOutlined /> },
-          ]}
-        />
-        <Segmented
-          value={typeFilter}
-          onChange={setTypeFilter}
-          options={[
-            { value: 'all', label: 'Tất cả' },
-            { value: 'training', label: SESSION_TYPE_LABELS.training },
-            { value: 'trial_run', label: SESSION_TYPE_LABELS.trial_run },
-          ]}
-        />
-      </div>
+      {view === 'list' && <div className="mb-4 flex flex-wrap items-center gap-3">{toolbar}</div>}
 
       {view === 'week' && (
         <WeekCalendar
+          toolbar={toolbar}
           weekStart={weekStart}
           onWeekChange={(w) => setWeekStart(w || mondayOf(dayjs()))}
           sessions={sessionsData?.data || []}
@@ -841,6 +856,7 @@ export default function TrainingSessionPage() {
           onEnd={setEndSession}
           onAbort={setAbortSession}
           onRequestExam={requestExamFor}
+          onReplay={setReplaySession}
           schedulingId={scheduleMutation.isPending ? scheduleMutation.variables?.session._id : null}
         />
       )}
@@ -1134,6 +1150,7 @@ export default function TrainingSessionPage() {
                       color={draftHorse?.color}
                       motion={motionOfKind(draftKind, draftSpeed)}
                       surface={surfaceOf((plansData?.data || []).find((p) => p._id === draftPlanId), draft.scheduledAt || undefined)}
+                      hour={hourOf(draft.scheduledAt)}
                       height={170}
                       compact
                     />
@@ -1156,6 +1173,13 @@ export default function TrainingSessionPage() {
           </Row>
         </Form>
       </Modal>
+
+      <SessionReplay
+        session={replaySession}
+        horse={replaySession && (horsesData?.data || []).find((h) => String(h._id) === String(replaySession.horse?._id || replaySession.horse))}
+        plan={replaySession && (plansData?.data || []).find((p) => String(p._id) === String(replaySession.trainingPlan?._id || replaySession.trainingPlan))}
+        onClose={() => setReplaySession(null)}
+      />
 
       <Modal
         title={`${activeSession?.status === 'evaluated' ? 'Sửa đánh giá' : 'Đánh giá buổi tập'} — ${activeSession?.horse?.name || ''}`}

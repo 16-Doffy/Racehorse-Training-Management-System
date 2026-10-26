@@ -219,6 +219,12 @@ export default function UserManagementPage() {
         roleLabel="Quản lý CLB"
         title="Nhân sự & phân quyền"
         subtitle="Duyệt tài khoản đăng ký mới, tạo tài khoản trực tiếp và phân quyền vai trò cho thành viên câu lạc bộ."
+        stats={[
+          { label: 'Tổng nhân sự', value: `${totalCount} tài khoản` },
+          { label: 'Đang hoạt động', value: `${activeCount} người` },
+          { label: 'Chờ duyệt đăng ký', value: <span className={pendingCount > 0 ? 'text-amber-300' : ''}>{pendingCount} tài khoản</span> },
+          { label: 'Đã khóa', value: <span className={lockedCount > 0 ? 'text-rose-300' : ''}>{lockedCount} tài khoản</span> },
+        ]}
         actionButton={
           <Button
             type="primary"
@@ -230,29 +236,6 @@ export default function UserManagementPage() {
           </Button>
         }
       />
-
-      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
-        <div className="p-3.5 sm:p-4">
-          <div className="text-xs font-medium text-slate-600">Tổng nhân sự</div>
-          <div className="text-xl sm:text-2xl font-bold text-[#0F5A43] tabular-nums mt-1">{totalCount} <span className="text-xs font-normal text-slate-500">tài khoản</span></div>
-        </div>
-        <div className="p-3.5 sm:p-4">
-          <div className="text-xs font-medium text-slate-600">Đang hoạt động</div>
-          <div className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums mt-1">{activeCount} <span className="text-xs font-normal text-slate-500">người</span></div>
-        </div>
-        <div className="p-3.5 sm:p-4">
-          <div className="text-xs font-medium text-slate-600">Chờ duyệt đăng ký</div>
-          <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${pendingCount > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
-            {pendingCount} <span className="text-xs font-normal text-slate-500">tài khoản</span>
-          </div>
-        </div>
-        <div className="p-3.5 sm:p-4">
-          <div className="text-xs font-medium text-slate-600">Đã khóa</div>
-          <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 ${lockedCount > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
-            {lockedCount} <span className="text-xs font-normal text-slate-500">tài khoản</span>
-          </div>
-        </div>
-      </div>
 
       {isError && (
         <Alert

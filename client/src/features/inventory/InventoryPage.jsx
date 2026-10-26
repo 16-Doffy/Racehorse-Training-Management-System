@@ -512,7 +512,7 @@ export default function InventoryPage() {
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className={r.isActive === false ? 'text-gray-400 line-through' : 'font-semibold'}>{r.name}</span>
               {FEED_TYPE_BY_VALUE[r.feedType] && (
-                <Tag color={FEED_TYPE_BY_VALUE[r.feedType].color} bordered={false} className="!m-0 !text-xs">
+                <Tag color={FEED_TYPE_BY_VALUE[r.feedType].color} variant="filled" className="!m-0 !text-xs">
                   {FEED_TYPE_BY_VALUE[r.feedType].label}
                 </Tag>
               )}
@@ -563,7 +563,7 @@ export default function InventoryPage() {
             ))}
             {r.category !== 'equipment' && f?.dailyUsage ? (
               <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{`Dùng ${f.dailyUsage} ${r.unit}/ngày\n${usedBy}`}</span>}>
-                <Tag className="!m-0" color={f.quantity <= 0 || f.daysLeft < 3 ? 'red' : f.daysLeft < 7 ? 'orange' : 'default'} bordered={false}>
+                <Tag className="!m-0" color={f.quantity <= 0 || f.daysLeft < 3 ? 'red' : f.daysLeft < 7 ? 'orange' : 'default'} variant="filled">
                   {f.quantity <= 0 ? 'Đã hết' : f.daysLeft < 1 ? 'Đủ dưới 1 ngày' : `Đủ ~${f.daysLeft} ngày`}
                 </Tag>
               </Tooltip>
@@ -623,30 +623,6 @@ export default function InventoryPage() {
     },
   ];
 
-  const toggleStatus = (key) => setStatus((s) => (s === key ? 'all' : key));
-  const tiles = [
-    {
-      key: 'all',
-      label: 'Mặt hàng trong kho',
-      value: stock.length,
-      unit: 'mặt hàng',
-      tone: 'text-[#0F5A43]',
-      onClick: () => {
-        setStatus('all');
-        setTab('all');
-      },
-    },
-    { key: 'restock', label: 'Cần nhập thêm', value: lowCount, unit: outCount ? `· ${outCount} đã hết` : 'mặt hàng', tone: outCount ? 'text-rose-600' : lowCount ? 'text-amber-700' : 'text-slate-700', onClick: () => toggleStatus('restock') },
-    { key: 'expiry', label: `Hết hạn / hết hạn trong ${EXPIRY_SOON_DAYS} ngày`, value: expiringCount, unit: 'mặt hàng', tone: expiringCount ? 'text-amber-700' : 'text-slate-700', onClick: () => toggleStatus('expiry') },
-    {
-      key: 'requests',
-      label: 'Đề xuất mua',
-      value: pendingCount,
-      unit: awaitingCount ? `chờ duyệt · ${awaitingCount} chờ hàng về` : 'chờ duyệt',
-      tone: pendingCount ? 'text-amber-700' : 'text-slate-700',
-      onClick: () => document.getElementById('inv-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-    },
-  ];
   const kind = CATEGORY_BY_KEY[tab];
   const addHere = () => setEditing({ __category: tab === 'all' ? 'feed' : tab });
 
@@ -657,6 +633,11 @@ export default function InventoryPage() {
         roleLabel="Quản lý CLB"
         title="Kho vật tư"
         subtitle="Một kho cho thức ăn, thuốc & vật tư y tế và dụng cụ: tồn kho, hạn dùng, đề xuất mua và hàng về. Khẩu phần và đơn thuốc tự trừ kho khi nhân viên làm xong."
+        stats={[
+          { label: 'Mặt hàng trong kho', value: stock.length },
+          { label: 'Cần nhập thêm', value: <span className={outCount ? 'text-rose-300' : lowCount ? 'text-amber-300' : ''}>{lowCount}{outCount ? `, ${outCount} đã hết` : ''}</span> },
+          { label: 'Đề xuất mua chờ duyệt', value: <span className={pendingCount ? 'text-amber-300' : ''}>{pendingCount}{awaitingCount ? `, ${awaitingCount} chờ hàng về` : ''}</span> },
+        ]}
         actionButton={
           <Button
             type="primary"
@@ -668,27 +649,6 @@ export default function InventoryPage() {
           </Button>
         }
       />
-
-      {/* The counts double as filters for the list below. */}
-      <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-4 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
-        {tiles.map((t) => {
-          const on = (t.key === 'restock' || t.key === 'expiry') && status === t.key;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              aria-pressed={on}
-              onClick={t.onClick}
-              className={`cursor-pointer border-0 p-3.5 text-left transition-colors sm:p-4 ${on ? 'bg-[#0F5A43]/10 shadow-[inset_0_-3px_0_#0F5A43]' : 'bg-transparent hover:bg-black/[0.03]'}`}
-            >
-              <div className="text-xs font-medium text-slate-600">{t.label}</div>
-              <div className={`mt-1 text-xl font-bold tabular-nums sm:text-2xl ${t.tone}`}>
-                {t.value} <span className="text-xs font-normal text-slate-500">{t.unit}</span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
 
       {isError && (
         <Alert

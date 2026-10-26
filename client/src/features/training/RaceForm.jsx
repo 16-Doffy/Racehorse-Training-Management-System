@@ -1,5 +1,5 @@
 import { Tag, Tooltip } from 'antd';
-import { TrophyOutlined, WarningFilled, CloseCircleFilled } from '@ant-design/icons';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useClubPolicy } from './useClubPolicy';
 
@@ -28,54 +28,29 @@ export function RaceFormTag({ form }) {
   );
 }
 
-/** The verdict with its numbers, reasons and the club's rule: for a plan card. */
+/**
+ * The verdict for a plan card, in a line or two: the verdict, its numbers, then why when it is not
+ * ready. The club's rule is behind the "?" instead of repeated on every card.
+ */
 export function RaceFormBlock({ form }) {
   const policy = useClubPolicy();
   if (!form) return null;
   const pct = (share) => `${Math.round(share * 100)}%`;
-  const isBlocked = form.status === 'blocked';
+  const rule = `Theo quy định CLB: tập từ ${pct(policy.raceFormMinDone)} số buổi đến hạn, đạt chỉ tiêu từ ${pct(policy.raceFormMinMet)} số buổi đã tập, chạy thử cho giải đạt, bác sĩ không khóa tập.`;
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <TrophyOutlined className="text-amber-700 text-xs" />
-          <span className="text-xs font-semibold text-gray-800">
-            Phong độ dự giải
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="text-xs font-semibold text-gray-900">Phong độ dự giải</span>
+        <Tooltip title={rule} trigger={['hover', 'focus']}>
+          <span tabIndex={0} role="img" aria-label={rule} className="cursor-help text-[11px] text-gray-400">
+            <QuestionCircleOutlined />
           </span>
-        </div>
+        </Tooltip>
         <RaceFormTag form={form} />
+        <span className="text-xs tabular-nums text-gray-600">{formFigures(form)}</span>
       </div>
-
-      <div className="p-2 rounded-lg bg-white/80 border border-[#E5DEC9] text-xs font-medium text-gray-800 tabular-nums shadow-2xs">
-        {formFigures(form)}
-      </div>
-
-      {form.reasons.length > 0 && (
-        <div className="space-y-1">
-          {form.reasons.map((r) => (
-            <div
-              key={r}
-              className={`text-xs px-2 py-1 rounded flex items-center gap-1.5 ${
-                isBlocked
-                  ? 'bg-rose-50 text-rose-800 border border-rose-200/80'
-                  : 'bg-amber-50 text-amber-900 border border-amber-200/80'
-              }`}
-            >
-              {isBlocked ? (
-                <CloseCircleFilled className="text-rose-600 text-[11px] shrink-0" />
-              ) : (
-                <WarningFilled className="text-amber-600 text-[11px] shrink-0" />
-              )}
-              <span className="leading-snug">{r}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <p className="text-[11px] text-gray-500 m-0 leading-relaxed">
-        Theo quy định CLB: tập từ {pct(policy.raceFormMinDone)} số buổi đến hạn, đạt chỉ tiêu từ {pct(policy.raceFormMinMet)} số buổi đã tập, chạy thử cho giải đạt, bác sĩ không khóa tập.
-      </p>
+      {form.reasons.length > 0 && <p className={`m-0 text-xs leading-snug ${form.status === 'blocked' ? 'text-rose-700' : 'text-amber-700'}`}>{form.reasons.join(' ')}</p>}
     </div>
   );
 }

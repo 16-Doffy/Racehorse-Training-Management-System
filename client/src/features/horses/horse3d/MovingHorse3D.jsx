@@ -13,15 +13,17 @@ const SURFACE_WORDS = { turf: 'mặt cỏ', dirt: 'mặt đất', sand: 'mặt c
  * (three.js), loaded with this component so pages without a horse don't carry it.
  *
  * `view`: 'side' (side on, the track streams by, drag to look around) or 'turntable' (turns by itself).
+ * `hour`: the hour of the day (Vietnam, hourOf) whose sky the track shows — a session's; without
+ * it the pasture shows the sky of now and a track a plain one.
  */
-export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', height = 260, view = 'side', compact = false, showCoat = false, className = '' }) {
+export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', hour = null, height = 260, view = 'side', compact = false, showCoat = false, className = '' }) {
   const canvas = useRef(null);
   const box = useRef(null);
   const stage = useRef(null);
   const [status, setStatus] = useState('loading');
   const coat = coatFor({ breed, color });
-  const latest = useRef({ coat, motion, surface });
-  latest.current = { coat, motion, surface };
+  const latest = useRef({ coat, motion, surface, hour });
+  latest.current = { coat, motion, surface, hour };
 
   useEffect(() => {
     let alive = true;
@@ -31,7 +33,8 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
         if (!alive || !canvas.current) return;
         const s = createHorseStage(canvas.current, { view });
         stage.current = s;
-        const { coat: c, motion: m, surface: f } = latest.current;
+        const { coat: c, motion: m, surface: f, hour: h } = latest.current;
+        s.setHour(h);
         s.setSurface(f);
         s.setCoat(c);
         s.setMotion(m);
@@ -55,6 +58,11 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
   useEffect(() => {
     stage.current?.setSurface(surface);
   }, [surface, status]);
+  // To the quarter hour: a running session's clock does not repaint the sky every render.
+  const quarter = hour == null ? null : Math.floor(hour * 4) / 4;
+  useEffect(() => {
+    stage.current?.setHour(quarter);
+  }, [quarter, status]);
   // A new motion object each render: changed only when what it says changes.
   const motionKey = JSON.stringify(motion || {});
   useEffect(() => {

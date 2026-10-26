@@ -15,10 +15,16 @@ export const trainingPlanApi = {
 export const trainingSessionApi = {
   ...sessionsBase,
   recordEvaluation: (id, payload) => axiosClient.patch(`/training/sessions/${id}/evaluation`, payload),
-  /** The last sensor readings of a running session, to draw the chart when the screen opens mid-run. */
+  /**
+   * The sensor readings of a session: a running one's last few, to draw the chart when the screen
+   * opens mid-run; an ended one's whole run (up to 400), to play it back.
+   */
   readings: (id) => axiosClient.get(`/training/sessions/${id}/readings`),
-  /** Simulated sensors only: play out 'tired' or 'injury' on a running session (demo). */
-  simulate: (id, scenario) => axiosClient.post(`/training/sessions/${id}/simulate`, { scenario }),
+  /**
+   * Simulated sensors only: play out 'tired' or 'injury' on a running session (demo); an injury on
+   * `leg` (fore_left, fore_right, hind_left, hind_right — fore_right if not given).
+   */
+  simulate: (id, scenario, leg) => axiosClient.post(`/training/sessions/${id}/simulate`, { scenario, leg }),
   // The four readiness gates for a proposed session (medical, vet clearance, nutrition, care
   // assignment). Open to every role, so other screens can show the same board.
   readiness: (params) => axiosClient.get('/training/sessions/readiness', { params }),

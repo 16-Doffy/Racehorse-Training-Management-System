@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Empty, Spin, Tag, Tooltip } from 'antd';
+import { Button, Spin, Tag, Tooltip } from 'antd';
 import { LeftOutlined, RightOutlined, ClockCircleOutlined, CheckCircleOutlined, UserOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -93,7 +93,7 @@ function MealCell({ meal, isToday }) {
 export default function FeedingTimetable({ horseId }) {
   const [weekStart, setWeekStart] = useState(() => mondayOf(dayjs()));
   const week = weekStart.format('YYYY-MM-DD');
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['feeding-timetable', horseId, week],
     queryFn: () => feedingApi.timetable(horseId, week),
     enabled: Boolean(horseId),
@@ -156,7 +156,12 @@ export default function FeedingTimetable({ horseId }) {
           <Spin />
         </div>
       ) : !timetable ? (
-        <Empty description="Chưa tải được thời khóa biểu." className="py-6 bg-white rounded-xl border border-gray-200/80" />
+        <div className="light-surface-box flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">
+          Chưa tải được thời khóa biểu.
+          <Button size="small" onClick={() => refetch()}>
+            Thử lại
+          </Button>
+        </div>
       ) : (
         <div className="light-surface-box overflow-x-auto rounded-xl border border-[#E5DEC9] bg-white shadow-xs">
           <table className="w-full min-w-[840px] border-collapse text-sm">

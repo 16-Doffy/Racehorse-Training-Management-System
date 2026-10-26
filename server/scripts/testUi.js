@@ -56,7 +56,7 @@ async function main() {
       await browser.close();
     }
     const status = await new Promise((resolve, reject) => {
-      const tests = spawn(process.execPath, [path.join(root, 'node_modules/@playwright/test/cli.js'), 'test'], {
+      const tests = spawn(process.execPath, [path.join(root, 'node_modules/@playwright/test/cli.js'), 'test', ...process.argv.slice(2)], {
         cwd: path.join(root, 'client'), stdio: 'inherit', env: { ...process.env, UI_TEST_FIXTURE: fixture },
       });
       tests.on('error', reject);

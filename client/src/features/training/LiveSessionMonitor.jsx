@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Card, Dropdown, Progress, Tag, Typography } from 'antd';
-import { HeartFilled, ThunderboltFilled, AimOutlined, ExperimentOutlined, LineChartOutlined } from '@ant-design/icons';
+import { ExperimentOutlined, LineChartOutlined } from '@ant-design/icons';
 import { LineChart, Line, XAxis, YAxis, ReferenceLine, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { useQueryClient } from '@tanstack/react-query';
 import { message } from '../../lib/antdStatic';
 import dayjs from 'dayjs';
 import { getSocket } from '../../lib/socket';
 import { trainingSessionApi } from './trainingApi';
-import { SESSION_KINDS, OBJECTIVE_LABELS } from './trainingVocab';
+import { SESSION_KINDS, OBJECTIVE_LABELS, sessionTargets } from './trainingVocab';
 import { FOREST, STATUS_TONES } from '../../layouts/forestTheme';
 import MovingHorse3D from '../horses/horse3d/MovingHorse3D';
-import { liveMotion, surfaceOf } from '../horses/horse3d/horseMotion';
+import Telemetry from './Telemetry';
+import { hourOf, liveMotion, surfaceOf } from '../horses/horse3d/horseMotion';
 
 const { Text } = Typography;
 
@@ -23,42 +24,9 @@ const toPoint = (r) => ({ hr: r.hr ?? r.heartRate, speed: r.speed, distance: r.d
 const GRID = '#E4DFD3';
 const AXIS = '#8A8578';
 
-/** The workout a running session is measured against (same fallbacks as the server's simulator). */
-function targetsOf(session) {
-  const kind = SESSION_KINDS[session.kind]?.prescription || {};
-  const p = session.prescription || {};
-  const pick = (f) => p[f] ?? kind[f];
-  return {
-    heartRateMax: pick('targetHeartRateMax') || 180,
-    speed: pick('targetSpeedKmh'),
-    distance: (pick('distanceM') || 2000) * (p.reps ?? kind.reps ?? 1),
-  };
-}
-
-function Figure({ icon, label, value, unit, sub, tone }) {
-  const isBad = tone === STATUS_TONES.bad;
-  return (
-    <div
-      className={`flex min-w-0 flex-col gap-0.5 rounded-lg border p-2.5 transition-colors ${
-        isBad ? 'bg-rose-50/70 border-rose-200 text-rose-900' : 'bg-gray-50/60 border-gray-200/80 text-gray-900'
-      }`}
-    >
-      <span className={`flex items-center gap-1.5 text-xs font-medium ${isBad ? 'text-rose-700' : 'text-gray-500'}`}>
-        {icon}
-        {label}
-      </span>
-      <span className={`text-xl font-bold tabular-nums leading-tight ${isBad ? 'text-rose-700' : 'text-gray-900'}`}>
-        {value ?? '—'}
-        <span className="ml-1 text-xs font-normal text-gray-400">{unit}</span>
-      </span>
-      {sub && <span className="truncate text-[11px] text-gray-400 mt-0.5">{sub}</span>}
-    </div>
-  );
-}
-
 /** What a running session shows now: the latest reading, else the last one the server kept. */
 function liveFigures(session, readings) {
-  const target = targetsOf(session);
+  const target = sessionTargets(session);
   const last = readings[readings.length - 1];
   const heartRate = last?.hr ?? session.metrics?.lastHeartRate;
   const speed = last?.speed ?? session.metrics?.lastSpeed;
@@ -67,22 +35,45 @@ function liveFigures(session, readings) {
   return { target, heartRate, speed, distance, targetDistance, over: heartRate != null && heartRate > target.heartRateMax };
 }
 
-// Demo only (simulated sensors): make the running horse tire, or go lame so the system stops the run.
+/**
+ * What the horse does now (horseMotion liveMotion); a trial with the metres it has left and those the
+ * last reading added, for its finish post. Null before the first reading.
+ */
+function motionNow(session, f, readings = []) {
+  if (f.speed == null) return null;
+  const [prev, last] = readings.slice(-2);
+  const step = prev && last ? last.distance - prev.distance : undefined;
+  return liveMotion(session, f.speed, session.kind === 'trial' ? { remaining: f.targetDistance - f.distance, step } : {});
+}
+// The session's sky: the hour it started (or was booked for).
+const hourOfSession = (session) => hourOf(session.actualStartAt || session.scheduledAt);
+
+// Demo only (simulated sensors): make the running horse tire, or go lame on a leg so the system stops the run.
+const LEGS = { fore_left: 'Chân trước trái', fore_right: 'Chân trước phải', hind_left: 'Chân sau trái', hind_right: 'Chân sau phải' };
 const SCENARIO_ITEMS = [
   { key: 'tired', label: 'Ngựa mệt dần (tốc độ giảm, nhịp tim tăng)' },
-  { key: 'injury', label: 'Nghi chấn thương (hệ thống tự dừng buổi)' },
+  { type: 'divider' },
+  {
+    type: 'group',
+    label: 'Nghi chấn thương, hệ thống tự dừng buổi. Chân đau:',
+    children: Object.entries(LEGS).map(([leg, label]) => ({ key: `injury:${leg}`, label })),
+  },
 ];
 function ScenarioButton({ session }) {
   const queryClient = useQueryClient();
-  const play = ({ key }) =>
+  const play = ({ key }) => {
+    const [scenario, leg] = key.split(':');
     trainingSessionApi
-      .simulate(session._id, key)
+      .simulate(session._id, scenario, leg)
       .then(() => {
         // The horse on the card plays the scenario from the next reading.
         queryClient.invalidateQueries({ queryKey: ['training-sessions'] });
-        message.info(key === 'injury' ? 'Đã giả lập nghi chấn thương — lần đo tới hệ thống sẽ dừng buổi.' : 'Đã giả lập ngựa mệt dần từ lần đo tới.');
+        message.info(
+          leg ? `Đã giả lập đau ${LEGS[leg].toLowerCase()}: ngựa khập khiễng từ lần đo tới, rồi hệ thống tự dừng buổi.` : 'Đã giả lập ngựa mệt dần từ lần đo tới.'
+        );
       })
       .catch((err) => message.error(err.message || 'Không giả lập được.'));
+  };
   return (
     <Dropdown menu={{ items: SCENARIO_ITEMS, onClick: play }} trigger={['click']}>
       <Button size="small" icon={<ExperimentOutlined />}>
@@ -118,11 +109,11 @@ const CARD_STYLES = {
 };
 
 function LiveCard({ session, readings, horse, surface }) {
-  const { target, heartRate, speed, distance, targetDistance, over } = liveFigures(session, readings);
+  const figures = liveFigures(session, readings);
+  const { target, heartRate, speed, distance, targetDistance, over } = figures;
   const data = readings.map((r, i) => ({ i, hr: r.hr, speed: r.speed }));
-  const waiting = speed == null;
   // The horse runs as the sensors say: its gait and pace follow the latest speed.
-  const motion = waiting ? { clip: 'Idle_Look', label: 'Đã bắt đầu, chờ tín hiệu cảm biến' } : liveMotion(session, speed);
+  const motion = motionNow(session, figures, readings) || { clip: 'Idle_Look', label: 'Đã bắt đầu, chờ tín hiệu cảm biến' };
 
   return (
     <Card
@@ -142,39 +133,12 @@ function LiveCard({ session, readings, horse, surface }) {
     >
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         <div className="lg:col-span-5 min-w-0">
-          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={motion} surface={surface} height={236} />
+          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={motion} surface={surface} hour={hourOfSession(session)} height={236} />
         </div>
         <div className="lg:col-span-7 min-w-0">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <Figure
-              icon={<HeartFilled />}
-              label="Nhịp tim"
-              value={heartRate}
-              unit="bpm"
-              sub={`Giới hạn ${target.heartRateMax}, trung bình ${session.metrics?.avgHeartRate ? Math.round(session.metrics.avgHeartRate) : '—'}`}
-              tone={over ? STATUS_TONES.bad : STATUS_TONES.neutral}
-            />
-            <Figure
-              icon={<ThunderboltFilled />}
-              label="Tốc độ"
-              value={speed}
-              unit="km/h"
-              sub={target.speed ? `Mục tiêu ${target.speed} km/h` : null}
-              tone={STATUS_TONES.neutral}
-            />
-            <Figure icon={<AimOutlined />} label="Cự ly" value={distance} unit="m" sub={`Mục tiêu ${targetDistance} m`} tone={STATUS_TONES.neutral} />
-          </div>
-          <div className="mt-2.5">
-            <div className="flex items-center justify-between text-[11px] text-gray-500 mb-1">
-              <span>Tiến độ cự ly</span>
-              <span className="tabular-nums font-medium text-gray-700">
-                {distance} / {targetDistance} m
-              </span>
-            </div>
-            <Progress className="!m-0" percent={Math.min(100, Math.round((distance / targetDistance) * 100))} strokeColor={FOREST.primary} size="small" showInfo={false} />
-          </div>
+          <Telemetry heartRate={heartRate} heartRateMax={target.heartRateMax} speed={speed} targetSpeed={target.speed} distance={distance} targetDistance={targetDistance} />
           {data.length > 1 ? (
-            <div className="mt-1 h-28 w-full">
+            <div className="mt-2 h-28 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
                   <CartesianGrid stroke={GRID} vertical={false} />
@@ -240,7 +204,7 @@ function LiveBoard({ running, readings, horseOf, surfaceFor }) {
                   <div className="font-semibold text-gray-900">{s.horse?.name}</div>
                   <div className="text-xs text-gray-500">{SESSION_KINDS[s.kind]?.label || OBJECTIVE_LABELS[s.objective] || 'Buổi tập'}</div>
                 </td>
-                <td className="py-2 pr-3 text-gray-700">{f.speed == null ? 'Chờ cảm biến' : liveMotion(s, f.speed).label}</td>
+                <td className="py-2 pr-3 text-gray-700">{motionNow(s, f)?.label || 'Chờ cảm biến'}</td>
                 <td className="py-2 pr-3 tabular-nums text-right whitespace-nowrap">
                   <span className={f.over ? 'font-bold text-rose-700' : 'font-semibold'}>{f.heartRate ?? '—'}</span>
                   <span className="text-xs text-gray-400"> / {f.target.heartRateMax} bpm</span>
@@ -295,7 +259,7 @@ function StoppedCard({ session, horse, surface, onClose }) {
     >
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         <div className="lg:col-span-5 min-w-0">
-          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={liveMotion(session, 0, { stopped: true })} surface={surface} height={236} />
+          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={liveMotion(session, 0, { stopped: true })} surface={surface} hour={hourOfSession(session)} height={236} />
         </div>
         <div className="lg:col-span-7 min-w-0 flex flex-col gap-2 text-sm text-gray-800">
           <p className="m-0">Tốc độ tụt hẳn và nhịp tim vọt lên giữa buổi: hệ thống đã dừng buổi tập để bảo vệ ngựa.</p>

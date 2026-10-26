@@ -75,6 +75,12 @@ export default function FinancePage() {
         roleLabel="Quản lý CLB"
         title="Sổ thu chi & tài chính câu lạc bộ"
         subtitle="Tổng hợp thu chi toàn câu lạc bộ: tiền thưởng giải đấu, dịch vụ nội trú, chi phí thức ăn, thuốc thú y và vận hành."
+        stats={[
+          { label: 'Giao dịch', value: `${records.length} bản ghi` },
+          { label: 'Doanh thu', value: <span className="text-emerald-300">{revenue.toLocaleString('vi-VN')} đ</span> },
+          { label: 'Chi phí', value: <span className="text-rose-300">{cost.toLocaleString('vi-VN')} đ</span> },
+          { label: 'Lợi nhuận ròng', value: <span className={net >= 0 ? 'text-emerald-300' : 'text-rose-300'}>{net.toLocaleString('vi-VN')} đ</span> },
+        ]}
         actionButton={
             <div className="flex flex-wrap gap-2">
               <Button
@@ -95,25 +101,6 @@ export default function FinancePage() {
             </div>
         }
       />
-
-      <div className="light-surface-box grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs">
-        <div className="p-3.5 sm:p-4 min-w-0">
-          <div className="text-xs font-medium text-slate-600">Tổng giao dịch</div>
-          <div className="text-base sm:text-lg xl:text-xl font-bold text-slate-800 tabular-nums mt-1 break-words leading-snug">{records.length} <span className="text-xs font-normal text-slate-500">bản ghi</span></div>
-        </div>
-        <div className="p-3.5 sm:p-4 min-w-0">
-          <div className="text-xs font-medium text-slate-600">Tổng doanh thu</div>
-          <div className="text-base sm:text-lg xl:text-xl font-bold text-[#0F5A43] tabular-nums mt-1 break-words leading-snug">{revenue.toLocaleString('vi-VN')} đ</div>
-        </div>
-        <div className="p-3.5 sm:p-4 min-w-0">
-          <div className="text-xs font-medium text-slate-600">Tổng chi phí</div>
-          <div className="text-base sm:text-lg xl:text-xl font-bold text-rose-600 tabular-nums mt-1 break-words leading-snug">{cost.toLocaleString('vi-VN')} đ</div>
-        </div>
-        <div className="p-3.5 sm:p-4 min-w-0">
-          <div className="text-xs font-medium text-slate-600">Lợi nhuận ròng</div>
-          <div className={`text-base sm:text-lg xl:text-xl font-bold tabular-nums mt-1 break-words leading-snug ${net >= 0 ? 'text-[#0F5A43]' : 'text-rose-600'}`}>{net.toLocaleString('vi-VN')} đ</div>
-        </div>
-      </div>
 
       {isError && (
         <Alert

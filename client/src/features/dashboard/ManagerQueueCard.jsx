@@ -97,12 +97,12 @@ export default function ManagerQueueCard() {
 
   return (
     <Card
-      className="light-surface-box shadow-xs border-[#E5DEC9] border-t-2 border-t-[#0F5A43] rounded-xl overflow-hidden"
+      className="light-surface-box shadow-xs border-[#E5DEC9] rounded-xl overflow-hidden"
       styles={{ body: { padding: 0 }, title: { whiteSpace: 'normal', overflow: 'visible' }, header: { height: 'auto' } }}
       title={
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold text-gray-900 text-base">Việc đang chờ bạn</span>
+            <span className="font-semibold text-gray-900 text-[15px]">Việc đang chờ bạn</span>
             {waiting > 0 && (
               <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
                 {waiting} cần xử lý

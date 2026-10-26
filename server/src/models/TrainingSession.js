@@ -62,6 +62,9 @@ const trainingSessionSchema = new mongoose.Schema(
     // What the simulated sensors play out on this run (demo only, set while it runs): a horse that
     // tires, or one that goes lame part-way — the sensor feed then stops the run itself.
     simScenario: { type: String, enum: ['normal', 'tired', 'injury'], default: 'normal' },
+    // The leg that goes lame in the "injury" scenario, as the trainer picked it: the stop, the first aid and
+    // the exam request name it, and the 3D horse limps on it.
+    simLeg: { type: String, enum: ['fore_left', 'fore_right', 'hind_left', 'hind_right', null], default: null },
     blockedReason: { type: String },
     cancelReason: { type: String },
     // Who called it off: the trainer, the vet's lock or lower level, the plan ending, the horse leaving the club.
@@ -78,6 +81,13 @@ const trainingSessionSchema = new mongoose.Schema(
       // The latest sensor reading, kept so a screen opened mid-run shows numbers, not dashes.
       lastHeartRate: { type: Number },
       lastSpeed: { type: Number },
+    },
+    // Every sensor reading of the run, to play it back once it is over (GET .../readings). Kept out of
+    // every other query (select: false): a long run holds hundreds.
+    trace: {
+      type: [{ _id: false, at: Date, hr: Number, speed: Number, distance: Number, scenario: { type: String, enum: ['tired', 'injury'] } }],
+      default: undefined,
+      select: false,
     },
     trainerComment: { type: String },
     performanceRating: { type: Number, min: 1, max: 10 },

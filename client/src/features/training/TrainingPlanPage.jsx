@@ -5,10 +5,6 @@ import {
   CalendarOutlined,
   ScheduleOutlined,
   DownOutlined,
-  ThunderboltOutlined,
-  DashboardOutlined,
-  EnvironmentOutlined,
-  ClockCircleOutlined,
   FlagOutlined,
 } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -104,53 +100,40 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, updati
           />
         </div>
 
+        {/* The card's one focus: the phases of the cycle and where today falls in them. */}
         <PlanTimeline phases={plan.phases} raceDate={plan.targetRace?.raceDate} />
+        <span className="text-xs font-semibold text-gray-900">{whereNow(plan)}</span>
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs font-semibold text-gray-800 bg-[#FAF7F0] px-2.5 py-1 rounded-md border border-[#E5DEC9]">
-            {whereNow(plan)}
-          </span>
-        </div>
-
-        <div className="light-surface-box grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] rounded-lg border border-[#E4DFD3] bg-[#FAF7F0] text-xs overflow-hidden">
-          <div className="px-3 py-2">
-            <div className="text-slate-500 font-medium mb-1 flex items-center gap-1">
-              <ThunderboltOutlined className="text-[11px] text-amber-600" />
-              <span>Cường độ</span>
-            </div>
-            <Tag color={INTENSITY_COLORS[plan.intensity]} className="!m-0 font-medium">
-              {INTENSITY_LABELS[plan.intensity]}
-            </Tag>
+        {/* The plan's four figures on one ruled strip. */}
+        <dl className="m-0 grid grid-cols-2 gap-y-2.5 border-y border-[#E4DFD3] py-2.5 text-xs sm:grid-cols-4">
+          <div className="pr-3">
+            <dt className="text-gray-500">Cường độ</dt>
+            <dd className="m-0 mt-1">
+              <Tag color={INTENSITY_COLORS[plan.intensity]} className="!m-0 font-medium">
+                {INTENSITY_LABELS[plan.intensity]}
+              </Tag>
+            </dd>
           </div>
-          <div className="px-3 py-2">
-            <div className="text-slate-500 font-medium mb-1 flex items-center gap-1">
-              <DashboardOutlined className="text-[11px] text-blue-600" />
-              <span>Khối lượng tuần</span>
-            </div>
-            <div className="font-semibold text-gray-900 tabular-nums">{plan.weeklyVolumeKm} km/tuần</div>
+          <div className="pr-3">
+            <dt className="text-gray-500">Khối lượng tuần</dt>
+            <dd className="m-0 mt-1 font-semibold tabular-nums text-gray-900">{plan.weeklyVolumeKm} km/tuần</dd>
           </div>
-          <div className="px-3 py-2">
-            <div className="text-slate-500 font-medium mb-1 flex items-center gap-1">
-              <EnvironmentOutlined className="text-[11px] text-emerald-600" />
-              <span>Cự ly &amp; sân</span>
-            </div>
-            <div className="font-semibold text-gray-900 tabular-nums">
-              {plan.distanceTarget}m · {SURFACE_LABELS[plan.surface]}
-            </div>
+          <div className="pr-3">
+            <dt className="text-gray-500">Cự ly &amp; sân</dt>
+            <dd className="m-0 mt-1 font-semibold tabular-nums text-gray-900">
+              {plan.distanceTarget} m, {SURFACE_LABELS[plan.surface]}
+            </dd>
           </div>
-          <div className="px-3 py-2">
-            <div className="text-slate-500 font-medium mb-1 flex items-center gap-1">
-              <ClockCircleOutlined className="text-[11px] text-purple-600" />
-              <span>Khung giờ tập</span>
-            </div>
-            <div className="font-medium text-gray-800 tabular-nums">
-              Sáng {plan.sessionTime || '07:30'} · Chiều {plan.afternoonTime || '16:00'}
-            </div>
+          <div>
+            <dt className="text-gray-500">Khung giờ tập</dt>
+            <dd className="m-0 mt-1 tabular-nums text-gray-900">
+              Sáng {plan.sessionTime || '07:30'}, chiều {plan.afternoonTime || '16:00'}
+            </dd>
           </div>
-        </div>
+        </dl>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="p-2.5 rounded-lg border border-[#E5DEC9] bg-[#FAF7F0]/40">
+          <div>
             <Text type="secondary" className="!text-xs font-medium">
               Tiến độ giai đoạn này
             </Text>
@@ -160,7 +143,7 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, updati
                 size="small"
                 showInfo={false}
                 strokeColor="#0F5A43"
-                trailColor="#EBE5D8"
+                railColor="#EBE5D8"
                 className="!m-0 w-24"
               />
               <Text className="!text-sm font-semibold tabular-nums whitespace-nowrap text-gray-900">
@@ -172,7 +155,7 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, updati
             </Text>
           </div>
 
-          <div className="p-2.5 rounded-lg border border-[#E5DEC9] bg-[#FAF7F0]/40">
+          <div>
             <Text type="secondary" className="!text-xs font-medium">
               Buổi sắp tới
             </Text>
@@ -198,9 +181,11 @@ function ActivePlanCard({ plan, locked, onGenerate, generating, onStatus, updati
         </div>
 
         {/* From the plan's start to today (the whole cycle once over): ready for its race or not. */}
-        <div className="light-surface-box rounded-xl border border-[#E4DFD3] bg-[#FAF7F0] p-3 shadow-2xs">
-          <RaceFormBlock form={p.form} />
-        </div>
+        {p.form && (
+          <div className="border-t border-[#E4DFD3] pt-3">
+            <RaceFormBlock form={p.form} />
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2 pt-1 border-t border-gray-100">
           <Space.Compact size="small">

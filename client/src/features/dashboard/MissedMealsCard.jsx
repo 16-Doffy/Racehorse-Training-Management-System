@@ -45,7 +45,7 @@ export default function MissedMealsCard() {
 
   return (
     <Card
-      className="shadow-xs border-rose-300/80 bg-[#FFFDF8] rounded-xl overflow-hidden border-t-3 border-t-rose-600"
+      className="shadow-xs border-[#E5DEC9] bg-[#FFFDF8] rounded-xl overflow-hidden"
       styles={{
         title: { whiteSpace: 'normal', overflow: 'visible', padding: '12px 16px' },
         body: { padding: '12px 16px 16px 16px' },
@@ -53,8 +53,7 @@ export default function MissedMealsCard() {
       title={
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-0.5">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-600 shrink-0 animate-pulse" />
-            <span className="font-semibold text-gray-900 text-sm">Bữa ăn bị bỏ lỡ</span>
+            <span className="font-semibold text-gray-900 text-[15px]">Bữa ăn bị bỏ lỡ</span>
             <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-rose-50 text-rose-800 border border-rose-200 shrink-0 tabular-nums">
               {missed.length} bữa
             </span>

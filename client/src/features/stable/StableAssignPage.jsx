@@ -29,6 +29,7 @@ import {
   StopOutlined,
   MedicineBoxOutlined,
   ProfileOutlined,
+  CloseOutlined,
 } from '@ant-design/icons';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -111,23 +112,22 @@ function useHorseFocus() {
 }
 const horseIdOf = (row) => String(row?.horse?._id || row?.horse || '');
 const ofHorse = (rows, horse) => (horse ? (rows || []).filter((r) => horseIdOf(r) === horse) : rows);
+/**
+ * The horse being looked at on its own, and the way back to every horse. It stays at the top of the
+ * page while the timetable and the rations scroll under it.
+ */
 function HorseFocusTag({ focus, rows }) {
   if (!focus.horse) return null;
-  const name = (rows || []).find((r) => horseIdOf(r) === focus.horse)?.horse?.name || 'ngựa được chọn';
+  const name = (rows || []).find((r) => horseIdOf(r) === focus.horse && r.horse?.name)?.horse?.name || 'ngựa được chọn';
   return (
-    <div className="mb-3.5 flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-[#FAF7F0] border border-[#D4AF37]/40 shadow-2xs">
-      <div className="flex items-center gap-2.5 min-w-0">
-        <span className="w-2.5 h-2.5 rounded-full bg-[#0F5A43] shrink-0" />
-        <span className="text-xs text-gray-500 font-medium">Đang xem riêng:</span>
-        <span className="text-sm font-semibold text-emerald-950 truncate">{name}</span>
+    <div className="light-surface-box sticky top-0 z-10 mb-3.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl border border-[#D4AF37]/40 bg-[#FAF7F0] px-3.5 py-2 shadow-2xs">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+        <span className="text-xs text-gray-500">Đang xem riêng:</span>
+        <span className="text-sm font-semibold text-gray-900">{name}</span>
       </div>
-      <button
-        type="button"
-        onClick={focus.clear}
-        className="text-xs font-semibold text-emerald-800 hover:text-emerald-950 px-2.5 py-1 rounded-md bg-white border border-[#E5DEC9] hover:border-emerald-700 transition-colors cursor-pointer shrink-0"
-      >
-        ✕ Xem tất cả ngựa
-      </button>
+      <Button size="small" icon={<CloseOutlined />} onClick={focus.clear}>
+        Xem tất cả ngựa
+      </Button>
     </div>
   );
 }
@@ -800,12 +800,12 @@ function RationList() {
           </div>
           <FeedingTimetable horseId={focus.horse} />
           <FeedingCalendarPanel plans={plansData?.data || []} horseId={focus.horse} feedItems={feedItems} />
-          <div className="mt-4">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
+          <div>
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h3 className="text-base font-semibold m-0">Khẩu phần mẫu của ngựa này</h3>
-                <Typography.Text type="secondary" className="text-sm">
-                  Dùng cho các ngày không có lịch ăn theo kế hoạch tập. Giờ ăn thực tế là căn cứ kiểm tra trước buổi tập.
+                <h3 className="!m-0 !text-[15px] font-semibold">Khẩu phần mẫu của ngựa này</h3>
+                <Typography.Text type="secondary" className="!text-xs">
+                  Cho những ngày không có lịch ăn theo kế hoạch tập.
                 </Typography.Text>
               </div>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal({ horse: focus.horse })}>
@@ -1161,7 +1161,7 @@ export default function StableAssignPage() {
       <PageHeroBanner
         eyebrow="TEAM 8 • CHUỒNG TRẠI & CHĂM SÓC"
         roleLabel="Head Trainer"
-        title="Chuồng Trại, Chăm Sóc & Khẩu Phần Ăn"
+        title="Chuồng trại, chăm sóc & khẩu phần ăn"
         subtitle="Điều phối công việc chăm sóc hàng ngày, khẩu phần dinh dưỡng và sự cố chuồng trại đảm bảo thể trạng tốt nhất cho chiến mã."
       />
 

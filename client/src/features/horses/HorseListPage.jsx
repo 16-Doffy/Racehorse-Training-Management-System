@@ -297,7 +297,7 @@ export default function HorseListPage() {
             </Tag>
           )}
           <Tooltip title={c.restricted ? [c.reason, c.prescribedBy && `Bác sĩ ${c.prescribedBy}`].filter(Boolean).join(' — ') || 'Theo phác đồ điều trị' : undefined}>
-            <Tag className="!m-0" color={meta.color} bordered={false}>
+            <Tag className="!m-0" color={meta.color} variant="filled">
               {meta.short}
             </Tag>
           </Tooltip>
@@ -449,11 +449,13 @@ export default function HorseListPage() {
                   setView('active');
                   setFocus(on && t.key !== 'all' ? 'all' : t.key);
                 }}
-                className={`cursor-pointer border-0 p-3.5 text-left transition-colors sm:p-4 ${on ? 'bg-[#0F5A43]/10 shadow-[inset_0_-3px_0_#0F5A43]' : 'bg-transparent hover:bg-black/[0.03]'}`}
+                className={`cursor-pointer border-0 px-4 py-2.5 text-left transition-colors ${on ? 'bg-[#0F5A43]/10 shadow-[inset_0_-3px_0_#0F5A43]' : 'bg-transparent hover:bg-black/[0.03]'}`}
               >
-                <div className="text-xs font-medium text-slate-600">{t.label}</div>
-                <div className={`mt-1 text-xl font-bold tabular-nums sm:text-2xl ${t.tone}`}>
-                  {t.value} <span className="text-xs font-normal text-slate-500">ngựa</span>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-xs font-medium text-slate-600">{t.label}</span>
+                  <span className={`whitespace-nowrap text-lg font-bold tabular-nums ${t.tone}`}>
+                    {t.value} <span className="text-xs font-normal text-slate-500">ngựa</span>
+                  </span>
                 </div>
                 {t.hint && <div className="mt-0.5 text-[11px] text-slate-500">{t.hint}</div>}
               </button>

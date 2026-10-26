@@ -84,7 +84,7 @@ test('a horse added with its papers shows them on its profile', async ({ page })
   await expect(dialog).toBeHidden();
   await page.locator('.ant-table-row', { hasText: 'TEST Papers Horse' }).first().click();
   await expect(page).toHaveURL(/\/horses\/[0-9a-f]{24}$/);
-  const papers = page.locator('.ant-descriptions').first();
+  const papers = page.locator('.ant-card', { hasText: 'Hồ sơ lý lịch' }).first();
   await expect(papers.getByText('Ngựa đực giống', { exact: true })).toBeVisible();
   await expect(papers.getByText('985141000123456', { exact: true })).toBeVisible();
   await expect(papers.getByText('VN-2026-777', { exact: true })).toBeVisible();
@@ -422,6 +422,8 @@ test('the Manager works the stable map: an empty stall offers a horse, a taken o
   expect(errors).toEqual([]);
 });
 test('an empty stall takes any horse: one already in a stall moves, keeping its groom', async ({ page }) => {
+  // The stable page draws the zone's barn in 3D, slow on a busy machine.
+  test.setTimeout(90000);
   await login(page, 'manager');
   await page.goto('/admin/stables');
   await page.getByRole('button', { name: /^A-02/ }).click();

@@ -5,7 +5,8 @@ import { ROLES } from '../../constants/roles';
 
 /**
  * Reusable Hero Banner for Team 8 WDP301.
- * - Head Trainer & Club Manager: disciplined architectural forest header with tabular summary strip.
+ * - Head Trainer & Club Manager: a compact one-band header (title, counts, actions), so the page's
+ *   own work starts near the top.
  * - Horse Owner & other roles: preserves the original atmospheric banner untouched.
  */
 export default function PageHeroBanner({
@@ -78,56 +79,39 @@ export default function PageHeroBanner({
     );
   }
 
+  // One band: the title (its one-line description beside it from a tablet up), the counts on the same
+  // line, the page's own actions on the right. The role and section are already in the sidebar, so the
+  // staff header leaves out `roleLabel` and `eyebrow`. The heading's size is set with !: a global
+  // heading style outside Tailwind's layer otherwise wins and makes it 40px.
   return (
     <div
-      className={`relative rounded-xl overflow-hidden border border-[#1E4638] border-l-4 border-l-[#D4AF37] bg-[#0B241B] px-5 py-4 sm:px-6 sm:py-5 text-white mb-5 shadow-xs ${className}`}
+      className={`rounded-xl border border-[#1E4638] border-l-4 border-l-[#D4AF37] bg-[#0B241B] px-4 py-3 sm:px-5 text-white mb-4 shadow-xs ${className}`}
     >
-      <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div className="max-w-3xl">
-          {(roleLabel || eyebrow) && (
-            <div className="flex flex-wrap items-center gap-2 mb-1.5 text-xs text-[#A7C4B5]">
-              {roleLabel && (
-                <span className="font-semibold text-[#F2C14E]">
-                  {roleLabel}
-                </span>
-              )}
-              {roleLabel && eyebrow && (
-                <span className="text-white/25 select-none" aria-hidden="true">|</span>
-              )}
-              {eyebrow && (
-                <span className="font-medium text-[#C3D4CA]">
-                  {eyebrow}
-                </span>
-              )}
-            </div>
-          )}
-
+      {/* Wraps instead of squeezing: the title keeps 280px, the counts and the actions move to the next line. */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5">
+        <div className="min-w-0 flex-[1_1_280px]">
           <h1
-            className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-[#FAF8F5] mb-1"
+            className="!m-0 !text-xl sm:!text-[22px] !leading-tight font-semibold tracking-tight text-balance text-[#FAF8F5]"
             style={{ fontFamily: "'Lora', Georgia, serif" }}
           >
             {title}
           </h1>
-          {subtitle && (
-            <p className="text-xs sm:text-sm text-[#C3D4CA] mb-0 leading-relaxed max-w-2xl">
-              {subtitle}
-            </p>
-          )}
-
-          {stats.length > 0 && (
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 mt-3 pt-2.5 border-t border-white/10 text-xs">
-              {stats.map((stat, idx) => (
-                <div key={idx} className="flex items-center gap-1.5 text-[#C3D4CA]">
-                  <span className="text-[#A7C4B5] font-medium">{stat.label}:</span>
-                  <span className="text-[#FAF8F5] font-semibold tabular-nums">{stat.value}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          {subtitle && <p className="m-0 mt-0.5 hidden max-w-2xl text-xs leading-snug text-[#C3D4CA] sm:block">{subtitle}</p>}
         </div>
 
+        {stats.length > 0 && (
+          <dl className="m-0 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-xs">
+            {stats.map((stat, idx) => (
+              <div key={idx} className="flex items-baseline gap-1.5">
+                <dt className="text-[#A7C4B5]">{stat.label}</dt>
+                <dd className="m-0 font-semibold tabular-nums text-[#FAF8F5]">{stat.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+
         {(statusBadge || actionButton) && (
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <div className="ml-auto flex shrink-0 flex-wrap items-center gap-3">
             {statusBadge}
             {actionButton}
           </div>

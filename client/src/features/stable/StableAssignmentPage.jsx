@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Table, Button, Modal, Form, Select, Input, Tag, Alert, Popconfirm, Space, Empty, Tabs, Card } from 'antd';
+import { Table, Button, Modal, Form, Select, Input, Tag, Alert, Popconfirm, Space, Empty, Tabs, Card, Dropdown } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { EditOutlined, DeleteOutlined, HomeOutlined, PlusOutlined, AppstoreAddOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, HomeOutlined, PlusOutlined, AppstoreAddOutlined, DownOutlined } from '@ant-design/icons';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { stableAssignmentApi, stallApi } from './stableApi';
@@ -339,48 +339,32 @@ export default function StableAssignmentPage() {
       />
 
       {(unstabled.length > 0 || unplaced.length > 0 || uncared.length > 0) && (
-        // What still needs the Manager, in one place: horses without a stall, horses on a hand-written
-        // stall, stalls whose horse has nobody to feed it. Each name opens its stall form.
-        <div className="light-surface-box mb-4 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm">
-          <div className="mb-1.5 font-semibold text-amber-900">Cần xử lý</div>
-          <div className="space-y-1.5">
-            {unstabled.length > 0 && (
-              <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
-                <span className="mr-1 text-gray-700">{unstabled.length} ngựa chưa có chuồng:</span>
-                {unstabled.map((h) => (
-                  <Button key={h._id} size="small" type="link" className="!h-auto !px-1 !py-0" onClick={() => openModal(null, h._id)}>
-                    {h.name}
-                  </Button>
-                ))}
-              </div>
-            )}
-            {unplaced.length > 0 && (
-              <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
-                <span className="mr-1 text-gray-700">{unplaced.length} ngựa ở chuồng ghi tay, chưa có trên sơ đồ:</span>
-                {unplaced.map((u) => (
-                  <Button
-                    key={u.assignment}
-                    size="small"
-                    type="link"
-                    className="!h-auto !px-1 !py-0"
-                    onClick={() => openModal({ assignment: u.assignment, horse: u.horse, caretaker: u.caretaker })}
-                  >
-                    {u.horse.name} ({u.stableBlock})
-                  </Button>
-                ))}
-              </div>
-            )}
-            {uncared.length > 0 && (
-              <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
-                <span className="mr-1 text-gray-700">{uncared.length} ngựa chưa có người chăm sóc (không được tự tạo việc cho ăn):</span>
-                {uncared.map((a) => (
-                  <Button key={a._id} size="small" type="link" className="!h-auto !px-1 !py-0" onClick={() => openModal(a)}>
-                    {a.horse?.name} ({a.stableBlock})
-                  </Button>
-                ))}
-              </div>
-            )}
-          </div>
+        // What still needs the Manager, on one line: horses without a stall, horses on a hand-written
+        // stall, stalls whose horse has nobody to feed it. Each opens its list; a name opens its stall form.
+        <div className="light-surface-box mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm">
+          <span className="mr-1 font-semibold text-amber-900">Cần xử lý</span>
+          {[
+            unstabled.length > 0 && { key: 'unstabled', label: 'Chưa có chuồng', items: unstabled.map((h) => ({ key: h._id, label: h.name, onClick: () => openModal(null, h._id) })) },
+            unplaced.length > 0 && {
+              key: 'unplaced',
+              label: 'Chuồng ghi tay, chưa có trên sơ đồ',
+              items: unplaced.map((u) => ({ key: u.assignment, label: `${u.horse.name} (${u.stableBlock})`, onClick: () => openModal({ assignment: u.assignment, horse: u.horse, caretaker: u.caretaker }) })),
+            },
+            uncared.length > 0 && {
+              key: 'uncared',
+              label: 'Chưa có người chăm sóc',
+              hint: 'Không có người chăm sóc thì không tự tạo được việc cho ăn hằng ngày.',
+              items: uncared.map((a) => ({ key: a._id, label: `${a.horse?.name} (${a.stableBlock})`, onClick: () => openModal(a) })),
+            },
+          ]
+            .filter(Boolean)
+            .map((group) => (
+              <Dropdown key={group.key} trigger={['click']} menu={{ items: group.items }}>
+                <Button size="small" title={group.hint}>
+                  {group.label}: <span className="font-semibold tabular-nums">{group.items.length}</span> <DownOutlined className="text-[10px]" />
+                </Button>
+              </Dropdown>
+            ))}
         </div>
       )}
       {isError && (

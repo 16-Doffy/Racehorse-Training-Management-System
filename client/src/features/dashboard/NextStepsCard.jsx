@@ -30,7 +30,7 @@ export default function NextStepsCard() {
 
   return (
     <Card
-      className="shadow-xs border-[#E5DEC9] border-t-3 border-t-[#0F5A43] rounded-xl overflow-hidden bg-[#FFFDF8]"
+      className="shadow-xs border-[#E5DEC9] rounded-xl overflow-hidden bg-[#FFFDF8]"
       styles={{
         title: { whiteSpace: 'normal', overflow: 'visible', padding: '14px 16px' },
         body: { padding: '12px 16px 16px 16px' },
@@ -38,7 +38,7 @@ export default function NextStepsCard() {
       title={
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-gray-900 text-base">Bước tiếp theo của từng ngựa</span>
+            <span className="font-semibold text-gray-900 text-[15px]">Bước tiếp theo của từng ngựa</span>
             {openCount > 0 && (
               <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
                 {openCount} cần xử lý
@@ -65,7 +65,7 @@ export default function NextStepsCard() {
           rowKey={(r) => r.horse._id}
           loading={isLoading}
           pagination={{
-            pageSize: 6,
+            pageSize: 5,
             size: 'small',
             hideOnSinglePage: true,
             showTotal: (total) => <span className="text-xs text-gray-500 tabular-nums">{total} ngựa</span>,
@@ -116,7 +116,7 @@ export default function NextStepsCard() {
                       size={['100%', 4]}
                       showInfo={false}
                       strokeColor={percent === 100 ? '#2E7D4F' : '#0F5A43'}
-                      trailColor="#EBE5D8"
+                      railColor="#EBE5D8"
                       className="!m-0 w-16"
                     />
                   </div>

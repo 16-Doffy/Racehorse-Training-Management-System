@@ -8,6 +8,7 @@ import { trainingSessionApi } from '../training/trainingApi';
 import { ROLE_LABELS, ROLES } from '../../constants/roles';
 import { TRAINING_LEVEL_META } from '../../constants/health';
 import FitnessOverviewChart from './FitnessOverviewChart';
+import LiveTrackOval from './LiveTrackOval';
 import ExamRequestsCard from './ExamRequestsCard';
 import OpenIncidentsCard from './OpenIncidentsCard';
 import CareOrdersCard from './CareOrdersCard';
@@ -162,6 +163,9 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: Core Workstream (65% on desktop) */}
         <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+          {/* Horses out on the track right now, on one oval (only while something runs) */}
+          {isHeadTrainer && <LiveTrackOval sessions={sessionsData?.data || []} horses={horses} />}
+
           {/* Manager Action Queue */}
           {isManager && <ManagerQueueCard />}
 
@@ -177,7 +181,7 @@ export default function DashboardPage() {
               className="shadow-xs border-[#E5DEC9] rounded-xl"
               title={
                 <div>
-                  <span className="font-semibold text-gray-900 text-base">Biểu đồ thể lực tổng quan</span>
+                  <span className="font-semibold text-gray-900 text-[15px]">Biểu đồ thể lực tổng quan</span>
                   <p className="text-xs text-gray-600 font-normal m-0 mt-0.5">Chọn ngày và ngựa để xem kết quả từng buổi tập</p>
                 </div>
               }
@@ -190,10 +194,7 @@ export default function DashboardPage() {
         {/* Right Column: Health, Alerts & Operational Guardrails (35% on desktop) */}
         <div className="lg:col-span-5 xl:col-span-4 space-y-5">
           <div className="light-surface-box flex items-center justify-between pb-1 px-1">
-            <span className="guardrail-title text-xs font-semibold text-[#0F5A43] flex items-center gap-1.5">
-              <span className="guardrail-dot w-1.5 h-1.5 rounded-full bg-[#0F5A43]" />
-              An toàn tập luyện &amp; y tế
-            </span>
+            <span className="guardrail-title text-xs font-semibold text-[#0F5A43]">An toàn tập luyện &amp; y tế</span>
             <span className="text-xs px-2 py-0.5 rounded bg-[#EAE1D2] text-slate-700 font-medium tabular-nums">
               {restrictedHorses.length > 0 ? `${restrictedHorses.length} ngựa hạn chế` : 'Không có khóa tập'}
             </span>
@@ -201,14 +202,9 @@ export default function DashboardPage() {
 
           {/* Medical Clearance Alert: compact operational card */}
           {restrictedHorses.length > 0 && (
-            <div className="light-surface-box rounded-xl border border-amber-300/90 bg-[#FAF7F0] p-4 shadow-xs border-t-3 border-t-amber-600">
+            <div className="light-surface-box rounded-xl border border-[#E5DEC9] bg-[#FFFDF8] p-4 shadow-xs">
               <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-200/80">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                  <span className="font-semibold text-amber-950 text-sm">
-                    {restrictedHorses.length} ngựa bị hạn chế tập luyện
-                  </span>
-                </div>
+                <span className="font-semibold text-gray-900 text-[15px]">{restrictedHorses.length} ngựa bị hạn chế tập luyện</span>
                 <span className="text-[11px] font-medium text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded border border-amber-200">
                   Bác sĩ chỉ định
                 </span>

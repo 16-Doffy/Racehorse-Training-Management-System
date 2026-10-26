@@ -1,4 +1,4 @@
-# Racehorse TMS: web đang có gì và chạy theo luồng nào (23/10/2026)
+# Racehorse TMS: web đang có gì và chạy theo luồng nào (26/10/2026)
 
 Duy cập nhật (Claude soạn). Đọc mục 1–3 để hiểu hệ thống, mục 4 cho phần mới hôm nay, mục 5 trước khi
 code. Chi tiết API: Swagger tại `/api-docs` của server; chuồng: [STALL_API.md](STALL_API.md).
@@ -75,6 +75,29 @@ Thông báo: mỗi việc liên quan tới vai trò nào thì menu của vai tr�
   - Kịch bản "mệt": đầu cúi, chậm dần. Kịch bản "nghi chấn thương": đi khập khiễng một lần đo, rồi đứng co chân đau, có vòng đỏ ở móng.
 - **Chỗ khác:** form tạo buổi (ngựa đã chọn tập thử bài đã chọn); trang chi tiết ngựa (khỏe thì gặm cỏ, hồi phục thì đi bộ, bị khóa thì đứng nghỉ); form thêm ngựa.
 - **Code:** `client/src/features/horses/horse3d/` gồm `horseMotion.js` (chọn chuyển động), `horseStage.js` (cảnh three.js), `MovingHorse3D.jsx`. Màn chủ ngựa và bác sĩ vẫn dùng `Horse3D` (mô hình đứng yên WildMesh).
+
+## 4b. Mới ngày 26/10
+
+**3D theo buổi tập**
+
+- **Chấn thương đúng chân:** nút "Mô phỏng sự cố" cho HLV chọn chân đau. Server lưu `TrainingSession.simLeg`; lý do dừng, việc chườm lạnh và yêu cầu khám (`bodyAreas`) đều ghi chân đó. Ngựa 3D khập khiễng và co đúng chân ấy.
+- **Trang chi tiết ngựa:** đọc vết thương bác sĩ đánh dấu (InjuryMarker) hoặc chân què ở lần khám mới nhất (`clinical.lamenessLimb`). Ngựa đứng co chân đau hoặc có vòng đỏ ở vùng bị thương.
+- **Bầu trời theo giờ buổi tập:** buổi 07:30 có trời sáng, buổi 17:00 có hoàng hôn (prop `hour` của `MovingHorse3D`).
+- **Chạy thử:** cột mốc đỏ dọc rào và cột đích. Cột đích hiện khi lần đo tới sẽ về đích. Nhãn báo "còn N m".
+- **Tập dốc** có đồi phía xa. **Kiệu** là dáng chạy riêng, dựng lại từ clip Walk.
+- **Xem lại buổi chạy:** server lưu mọi lần đo vào `TrainingSession.trace` (tối đa 400, `select: false`, kèm cờ `tired`/`injury`). `GET /training/sessions/:id/readings` trả cả buổi khi buổi đã xong. Nút "Xem lại buổi chạy" có ở lịch tuần và danh sách (`SessionReplay.jsx`): ngựa 3D chạy lại, biểu đồ, phát/tạm dừng/tua. Các buổi chạy trước 26/10 không xem lại được.
+- **Dashboard HLV:** khi có buổi đang chạy, sân oval hiện vị trí từng ngựa theo phần cự ly đã chạy (`LiveTrackOval.jsx`).
+
+**Giao diện HLV/Quản lý** (theo đề xuất của Antigravity, `scratch/UI_UX_REDESIGN_HLV_MANAGER.md`)
+
+- **Header** (`PageHeroBanner`) gọn còn một tầng. Số liệu nằm cùng hàng tiêu đề. Các trang Thu chi, Nhân sự, Giải đua, Nhật ký, Kho bỏ dải ô số riêng.
+- **Hồ sơ ngựa:** thông số và người phụ trách nằm chung một thẻ cạnh ngựa 3D. Phần dưới chia tab: hành trình, chuồng (3D chỉ tải khi mở tab), thành tích. Có thể mở thẳng bằng `?tab=stall`.
+- **Lịch tuần:** bộ lọc và chọn tuần chung một hàng. Thẻ buổi có vạch màu trạng thái bên trái. Ngày nghỉ là gạch mảnh.
+- **Thẻ kế hoạch:** bỏ hộp lồng nhau. Câu quy định phong độ chuyển vào dấu "?".
+- **Thẻ trực tiếp:** dải số đo kẻ mảnh (`Telemetry.jsx`).
+- **Xếp chuồng:** "Cần xử lý" gọn còn một dòng nút. Thanh chọn khu nằm ngay trên khung 3D.
+- **Dashboard:** bỏ viền đỉnh nhiều màu. Thẻ không có việc thu còn một dòng (`QuietCard.jsx`).
+- **Lưu ý cỡ chữ heading:** một style toàn cục nằm ngoài layer của Tailwind đè lên `text-*` của `h1`/`h2`/`h3`. Muốn đổi cỡ heading thì dùng `!text-...`.
 
 ## 5. Cho dev: cách làm, test, deploy
 

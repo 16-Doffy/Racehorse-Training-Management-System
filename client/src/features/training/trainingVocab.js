@@ -208,6 +208,21 @@ export const TRAINER_ABORT_OPTIONS = ['health', 'injury', 'behaviour', 'weather'
 // A completed run and an evaluated one are both done work.
 export const DONE_STATUSES = ['completed', 'evaluated'];
 
+/** The workout a session is measured against (same fallbacks as the server's sensor simulator). */
+export function sessionTargets(session) {
+  const kind = SESSION_KINDS[session?.kind]?.prescription || {};
+  const p = session?.prescription || {};
+  const pick = (f) => p[f] ?? kind[f];
+  return {
+    heartRateMax: pick('targetHeartRateMax') || 180,
+    speed: pick('targetSpeedKmh'),
+    distance: (pick('distanceM') || 2000) * (p.reps ?? kind.reps ?? 1),
+  };
+}
+
+/** A run that can be played back: it ran, it is over, and the sensors reported during it. */
+export const canReplay = (s) => Boolean(s?.actualStartAt) && (DONE_STATUSES.includes(s.status) || s.status === 'aborted') && s.metrics?.lastSpeed != null;
+
 // Only light work in the afternoon: the main workout is in the morning (server: AFTERNOON_KINDS).
 export const AFTERNOON_KINDS = ['walk', 'canter'];
 

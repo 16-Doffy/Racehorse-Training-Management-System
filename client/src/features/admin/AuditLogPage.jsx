@@ -188,22 +188,12 @@ export default function AuditLogPage() {
         roleLabel="Quản lý CLB"
         title="Nhật ký thao tác hệ thống"
         subtitle="Truy vết lịch sử vận hành: người thực hiện, thời điểm, loại thao tác và đối tượng tác động."
+        stats={[
+          { label: 'Thao tác ghi nhận', value: `${totalLogs.toLocaleString('vi-VN')} nhật ký` },
+          { label: 'Nhân sự thao tác', value: `${totalActors} người` },
+          { label: 'Phân hệ nghiệp vụ', value: `${totalFamilies} nhóm việc` },
+        ]}
       />
-
-      <div className="light-surface-box grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
-        <div className="p-3.5 sm:p-4">
-          <div className="text-xs font-medium text-slate-600">Tổng thao tác ghi nhận</div>
-          <div className="text-xl sm:text-2xl font-bold text-[#0F5A43] tabular-nums mt-1">{totalLogs.toLocaleString('vi-VN')} <span className="text-xs font-normal text-slate-500">nhật ký</span></div>
-        </div>
-        <div className="p-3.5 sm:p-4">
-          <div className="text-xs font-medium text-slate-600">Nhân sự thao tác</div>
-          <div className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums mt-1">{totalActors} <span className="text-xs font-normal text-slate-500">người</span></div>
-        </div>
-        <div className="p-3.5 sm:p-4">
-          <div className="text-xs font-medium text-slate-600">Phân hệ nghiệp vụ</div>
-          <div className="text-xl sm:text-2xl font-bold text-slate-700 tabular-nums mt-1">{totalFamilies} <span className="text-xs font-normal text-slate-500">nhóm việc</span></div>
-        </div>
-      </div>
 
       <div className="light-surface-box bg-white p-3.5 rounded-xl border border-[#E4DFD3] shadow-xs mb-4">
         <Space wrap className="w-full">

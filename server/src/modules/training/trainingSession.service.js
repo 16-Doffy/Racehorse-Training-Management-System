@@ -10,6 +10,7 @@ const { openExamRequest } = require('../health/examRequest.service');
 const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const { MIN_DIGEST_MINUTES } = require('./readiness.service');
 const clubPolicy = require('../../config/clubPolicy');
+const { BODY_AREAS } = require('../../constants/examRequest');
 const {
   OBJECTIVE_LABELS,
   SESSION_KINDS,
@@ -331,6 +332,8 @@ async function onAborted(session, actor) {
         priority: 'high',
         observedAt: new Date(),
         trainingSession: session._id,
+        // The leg the sensors (or the trainer) saw go lame: the vet's form opens on it.
+        bodyAreas: session.abortCategory === 'injury' && session.simLeg ? [session.simLeg] : [],
         message: `🩺 [ƯU TIÊN CAO] ${horse.name} phải dừng buổi ${what} giữa chừng — ${why}. Cần bác sĩ khám.`,
       });
     }
@@ -345,7 +348,9 @@ async function onAborted(session, actor) {
  * the first aid to do now. Returns the stopped session, or null if the run had already ended.
  */
 async function stopForSuspectedInjury(session, { speed, heartRate, targetSpeed }) {
-  const reason = `Cảm biến: tốc độ tụt còn ${speed} km/h (mục tiêu ${targetSpeed} km/h), nhịp tim ${heartRate} bpm, bước chạy lệch — hệ thống tự dừng`;
+  // The leg the trainer's scenario made lame, in the vet's words ("chân trước trái").
+  const leg = session.simLeg ? BODY_AREAS[session.simLeg].toLowerCase() : 'chân';
+  const reason = `Cảm biến: tốc độ tụt còn ${speed} km/h (mục tiêu ${targetSpeed} km/h), nhịp tim ${heartRate} bpm, bước chạy lệch${session.simLeg ? `, nghi đau ${leg}` : ''} — hệ thống tự dừng`;
   const stopped = await closeRun(session._id, { to: SESSION_STATUS.ABORTED, abortCategory: 'injury', abortReason: reason });
   if (!stopped) return null;
   const horse = await Horse.findById(stopped.horse).select('name');
@@ -367,7 +372,7 @@ async function stopForSuspectedInjury(session, { speed, heartRate, targetSpeed }
       taskType: 'icing',
       source: 'system',
       trainingSession: stopped._id,
-      note: 'Nghi chấn thương khi đang tập: dắt ngựa về chuồng, chườm lạnh chân ngay, không cho tập và chờ bác sĩ khám.',
+      note: `Nghi chấn thương khi đang tập: dắt ngựa về chuồng, chườm lạnh ${leg} ngay, không cho tập và chờ bác sĩ khám.`,
       scheduledDate: now,
       dueTime: hhmm(now),
       status: 'pending',
@@ -377,7 +382,7 @@ async function stopForSuspectedInjury(session, { speed, heartRate, targetSpeed }
       trainingSession: stopped._id,
       type: 'task_assigned',
       severity: 'critical',
-      message: `🚨 ${horse?.name || 'Ngựa'} nghi chấn thương khi đang tập: chườm lạnh chân ngay, giữ ngựa trong chuồng và chờ bác sĩ.`,
+      message: `🚨 ${horse?.name || 'Ngựa'} nghi chấn thương khi đang tập: chườm lạnh ${leg} ngay, giữ ngựa trong chuồng và chờ bác sĩ.`,
     });
   }
   return stopped;

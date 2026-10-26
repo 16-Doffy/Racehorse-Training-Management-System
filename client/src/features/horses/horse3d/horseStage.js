@@ -35,10 +35,29 @@ const GRASS_PER_PATCH = 1900;
 // long blades would stand taller than the horse.
 const GRASS_DEPTH = { near: 3.2, far: -3.3, mown: 1.0 };
 // The bones bent by hand, by the start of their names (the exporter adds numbers). The rig names them
-// after a human arm, one joint off: on the right foreleg UpperArm turns at the elbow (0.9 m up),
-// Forearm at the knee (0.48 m), Hand at the fetlock (0.22 m), Toe_047_0 is the hoof.
-const LEG = { elbow: 'BN_R_UpperArm', knee: 'BN_R_Forearm', fetlock: 'BN_R_Hand', hoof: 'BN_R_Toe_047_0' };
+// after a human arm and leg, one joint off (heights measured standing): a foreleg's UpperArm turns at
+// the elbow (0.8 m), Forearm at the knee (0.45 m), Hand at the fetlock (0.15 m); a hind leg's Thing at
+// the hip (1.15 m), Calf at the stifle (0.82 m), HorseLink at the hock (0.5 m), Foot at the fetlock.
+// RF/LF/RH/LH: right/left fore/hind; the camera sees the right side.
+const LEGS = {
+  RF: { upper: 'BN_R_UpperArm', knee: 'BN_R_Forearm', fetlock: 'BN_R_Hand', hoof: 'BN_R_Toe_047', chain: ['BN_R_Clavicle', 'BN_R_UpperArm', 'BN_R_Forearm', 'BN_R_Hand', 'BN_R_Toe_047'] },
+  LF: { upper: 'BN_L_UpperArm', knee: 'BN_l_Forearm', fetlock: 'BN_L_Hand', hoof: 'BN_L_Toe_042', chain: ['BN_L_Clavicle', 'BN_L_UpperArm', 'BN_l_Forearm', 'BN_L_Hand', 'BN_L_Toe_042'] },
+  RH: { upper: 'BN_R_Thing', stifle: 'BN_R_Calf', knee: 'BN_R_HorseLink', fetlock: 'BN_R_Foot', hoof: 'BN_R_Toe_2_059', chain: ['BN_R_Thing', 'BN_R_Calf', 'BN_R_HorseLink', 'BN_R_Foot', 'BN_R_Toe_2_059'] },
+  LH: { upper: 'BN_L_Thing', stifle: 'BN_L_Calf', knee: 'BN_L_HorseLink', fetlock: 'BN_L_Foot', hoof: 'BN_L_Toe_2_055', chain: ['BN_L_Thing', 'BN_L_Calf', 'BN_L_HorseLink', 'BN_L_Foot', 'BN_L_Toe_2_055'] },
+};
+// A sore leg held off the ground (radians, positive anticlockwise seen from the camera): a foreleg
+// folds at the knee and fetlock, a hind leg draws up at the hip and hock and rests on its toe.
+const HOLD = {
+  fore: { upper: 0.25, knee: -1.5, fetlock: -0.6 },
+  hind: { upper: 0.35, stifle: -0.5, knee: 1.3, fetlock: -0.8 },
+};
+// Where a mark goes for an injury that is not in a leg (vet's body regions, horseMotion.js markAt).
+const MARK_BONES = { head: 'BN_Head_00', neck: 'BN_Neck_02', back: 'BN_Spine_02', shoulder: 'BN_R_Clavicle', croup: 'BN_Pelvis', chest: 'BN_Spine_00', belly: 'BN_Stomach' };
 const NECK = 'BN_Neck_00';
+// A trot made from the walk: each leg's swing moved in the cycle so the diagonal pairs (left fore with
+// right hind, right fore with left hind) step together, half a cycle apart. The walk's swing peaks are
+// at LF 0, RH 0.175, RF 0.425, LH 0.75 of its cycle (measured).
+const TROT_SHIFT = { LF: 0, RH: -0.24, RF: 0.075, LH: -0.325 };
 
 // The pasture's tree and house, loaded with the pasture only (credits: PASTURE_CREDIT, horseMotion.js).
 // The maple: "Maple tree" by atrodler, its 2,071 pieces merged into a trunk and a crown of leaves. The
@@ -373,6 +392,46 @@ function makeTree() {
   return { tree, crown };
 }
 
+/** The trot (TROT_SHIFT): the walk resampled, each leg's tracks moved along the cycle; the rest kept. */
+function makeTrot(walk) {
+  const d = walk.duration;
+  const shiftOf = (trackName) => {
+    const node = trackName.split('.')[0];
+    const leg = Object.keys(LEGS).find((key) => LEGS[key].chain.some((prefix) => node.startsWith(prefix)));
+    return leg ? TROT_SHIFT[leg] : 0;
+  };
+  const SAMPLES = 25;
+  const tracks = walk.tracks.map((track) => {
+    const shift = shiftOf(track.name);
+    if (!shift) return track.clone();
+    const interpolant = track.createInterpolant();
+    const times = [];
+    const values = [];
+    for (let i = 0; i < SAMPLES; i += 1) {
+      const t = (i / (SAMPLES - 1)) * d;
+      times.push(t);
+      values.push(...interpolant.evaluate((((t - shift * d) % d) + d) % d));
+    }
+    return new track.constructor(track.name, times, values);
+  });
+  return new THREE.AnimationClip('Trot', d, tracks);
+}
+
+/** A board of black and white squares, for the finish post of a trial. */
+function checkerTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const g = canvas.getContext('2d');
+  for (let y = 0; y < 4; y += 1) for (let x = 0; x < 4; x += 1) {
+    g.fillStyle = (x + y) % 2 ? '#111' : '#f4f2ec';
+    g.fillRect(x * 16, y * 16, 16, 16);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 /** The bounds of a skinned model as posed (Box3 alone ignores the bones), from a sample of its vertices. */
 function skinnedBox(root) {
   root.updateMatrixWorld(true);
@@ -484,6 +543,48 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
     posts.instanceMatrix.needsUpdate = true;
   };
   placePosts(0);
+  // A trial: red race poles along the far rail every MARK_EVERY metres, and the finish post with its line
+  // across the track once the sensors say the end is near (motion.course.remaining).
+  // About one always in view (the camera sees some 10 m of the far rail); it divides TRACK_LENGTH, so the
+  // poles stay evenly spaced where the track wraps round.
+  const MARK_EVERY = 10;
+  const markCount = Math.ceil(TRACK_LENGTH / MARK_EVERY);
+  const raceMarks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.05, 1.7, 8), new THREE.MeshStandardMaterial({ color: '#c62828', roughness: 0.6 }), markCount);
+  raceMarks.visible = false;
+  world.add(raceMarks);
+  const placeMarks = (travelled) => {
+    const m = new THREE.Matrix4();
+    for (let i = 0; i < markCount; i += 1) {
+      const x = ((((i * MARK_EVERY - travelled) % TRACK_LENGTH) + TRACK_LENGTH) % TRACK_LENGTH) - TRACK_LENGTH / 2;
+      raceMarks.setMatrixAt(i, m.makeTranslation(x, 0.85, -3.15));
+    }
+    raceMarks.instanceMatrix.needsUpdate = true;
+  };
+  placeMarks(0);
+  const checker = checkerTexture();
+  const finish = new THREE.Group();
+  const finishPole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 8), new THREE.MeshStandardMaterial({ color: '#f4f2ec', roughness: 0.6 }));
+  finishPole.position.set(0, 1.3, -3.2);
+  const finishBoard = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ map: checker }));
+  finishBoard.position.set(0, 2.5, -3.14);
+  const finishLine = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 7), new THREE.MeshBasicMaterial({ color: '#f4f2ec' }));
+  finishLine.rotation.x = -Math.PI / 2;
+  finishLine.position.y = 0.015;
+  finish.add(finishPole, finishBoard, finishLine);
+  finish.visible = false;
+  world.add(finish);
+  let finishAt = null;
+  // Uphill work: rolling hills far off, level, so the tilted track reads as a hillside.
+  const hills = new THREE.Group();
+  const hillMat = new THREE.MeshStandardMaterial({ color: '#4f7f3f', roughness: 1 });
+  for (const [x, z, r, h] of [[-28, -34, 16, 6], [-6, -40, 20, 8], [17, -35, 15, 7], [36, -42, 18, 9]]) {
+    const hill = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), hillMat);
+    hill.scale.set(r, h, r * 0.6);
+    hill.position.set(x, -0.5, z);
+    hills.add(hill);
+  }
+  hills.visible = false;
+  scene.add(hills);
   // The pasture's long grass: made the first time the pasture is shown, then only hidden or shown.
   let grass = null;
   const grassTime = { value: 0 };
@@ -504,8 +605,10 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
   const BARN_X = -5.5;
   const TREE_X = 4.2;
   const BARN_LOOP = 40; // walking, the barn comes round again every 40 m
+  // The hour the sky shows: a session's own (setHour), else the clock in Vietnam (the pasture).
+  let fixedHour = null;
   const showSky = (now) => {
-    const s = pastureSkyAt(vietnamHour());
+    const s = pastureSkyAt(fixedHour ?? vietnamHour());
     skyCheckedAt = now;
     if (s === pastureSky) return;
     pastureSky = s;
@@ -517,6 +620,31 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
     fill.color.set(s.fill[0]);
     fill.intensity = s.fill[1];
     for (const c of clouds?.children || []) c.material.color.set(s.clouds);
+  };
+  // The track's sky when no hour is given: plain and bright.
+  const plainSky = () => {
+    if (!pastureSky) return;
+    pastureSky = null;
+    if (scene.background?.isTexture) scene.background.dispose();
+    scene.background = sky;
+    scene.fog.color.copy(sky);
+    sun.color.set('#fff3dd');
+    sun.intensity = 2.2;
+    fill.color.set('#e8f2ff');
+    fill.intensity = 1.3;
+  };
+  const ensureClouds = () => {
+    if (clouds) return;
+    clouds = new THREE.Group();
+    const puff = cloudTexture();
+    for (let i = 0; i < 7; i += 1) {
+      const cloud = new THREE.Sprite(new THREE.SpriteMaterial({ map: puff, transparent: true, depthWrite: false, fog: false }));
+      cloud.position.set(-30 + i * 9 + (i % 2) * 3, 7.5 + (i % 3) * 1.6, -30 - (i % 4) * 3);
+      cloud.scale.set(9 + (i % 3) * 2, 4 + (i % 2), 1);
+      clouds.add(cloud);
+    }
+    scene.add(clouds);
+    if (pastureSky) for (const c of clouds.children) c.material.color.set(pastureSky.clouds);
   };
   const setPasture = (on) => {
     inPasture = on;
@@ -548,33 +676,16 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
         .then((gltf) => !disposed && tree.add(sized(gltf, 'y', TREE_HEIGHT)))
         .catch(() => !disposed && tree.add(makeTree().tree));
       world.add(barn);
-      clouds = new THREE.Group();
-      const puff = cloudTexture();
-      for (let i = 0; i < 7; i += 1) {
-        const cloud = new THREE.Sprite(new THREE.SpriteMaterial({ map: puff, transparent: true, depthWrite: false, fog: false }));
-        cloud.position.set(-30 + i * 9 + (i % 2) * 3, 7.5 + (i % 3) * 1.6, -30 - (i % 4) * 3);
-        cloud.scale.set(9 + (i % 3) * 2, 4 + (i % 2), 1);
-        clouds.add(cloud);
-      }
-      scene.add(clouds);
     }
+    if (on) ensureClouds();
     white.color.set(on ? WOOD : '#f4f2ec');
     white.roughness = on ? 0.85 : 0.6;
     lowerRail.visible = on;
     if (barn) barn.visible = on;
     if (tree) tree.visible = on;
-    if (clouds) clouds.visible = on;
-    if (on) showSky(performance.now());
-    else if (pastureSky) {
-      pastureSky = null;
-      if (scene.background?.isTexture) scene.background.dispose();
-      scene.background = sky;
-      scene.fog.color.copy(sky);
-      sun.color.set('#fff3dd');
-      sun.intensity = 2.2;
-      fill.color.set('#e8f2ff');
-      fill.intensity = 1.3;
-    }
+    if (clouds) clouds.visible = on || fixedHour != null;
+    if (on || fixedHour != null) showSky(performance.now());
+    else plainSky();
   };
 
   // The sore leg: a pulsing red ring at its hoof.
@@ -597,7 +708,9 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
   let motion = { clip: 'Idle' };
   let coat = null;
   const bones = {};
+  const markBones = {};
   const rest = new Map();
+  let baseY = 0;
   const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
   const paint = () => {
@@ -648,12 +761,19 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
     const b2 = skinnedBox(horse);
     const c2 = b2.getCenter(new THREE.Vector3());
     horse.position.set(-c2.x, -b2.min.y, -c2.z);
+    baseY = horse.position.y;
     world.add(horse);
-    for (const [key, prefix] of Object.entries(LEG)) bones[key] = boneNamed(horse, prefix);
+    for (const [leg, def] of Object.entries(LEGS)) {
+      bones[leg] = {};
+      for (const key of ['upper', 'stifle', 'knee', 'fetlock', 'hoof']) if (def[key]) bones[leg][key] = boneNamed(horse, def[key]);
+      for (const key of ['upper', 'stifle', 'knee', 'fetlock']) if (bones[leg][key]) rest.set(bones[leg][key], bones[leg][key].quaternion.clone());
+    }
     bones.neck = boneNamed(horse, NECK);
-    for (const bone of Object.values(bones)) if (bone) rest.set(bone, bone.quaternion.clone());
+    if (bones.neck) rest.set(bones.neck, bones.neck.quaternion.clone());
+    for (const [region, prefix] of Object.entries(MARK_BONES)) markBones[region] = boneNamed(horse, prefix);
     mixer = new THREE.AnimationMixer(horse);
     for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
+    if (actions.Walk) actions.Trot = mixer.clipAction(makeTrot(actions.Walk.getClip()));
     mixer.addEventListener('finished', (e) => {
       if (e.action === current && motion.then && actions[motion.then]) {
         const next = actions[motion.then];
@@ -706,12 +826,20 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
       travelled += ((motion.kmh || 0) / 3.6) * dt;
       if (trackTexture) trackTexture.offset.x = (travelled / TILE_M) % 1;
       placePosts(travelled);
+      if (raceMarks.visible) placeMarks(travelled);
       if (grass) grass.position.x = -(travelled % GRASS_PATCH);
       // Walking, the barn and the tree go by and come round again every BARN_LOOP metres.
       const loop = (x) => ((((x - travelled) % BARN_LOOP) + BARN_LOOP * 1.5) % BARN_LOOP) - BARN_LOOP / 2;
       if (barn) barn.position.x = loop(BARN_X);
       if (tree) tree.position.x = loop(TREE_X);
     }
+    // A trial's finish post comes in from the right as the end nears; the hills show on a slope.
+    if (finishAt != null) {
+      const x = finishAt - travelled;
+      finish.visible = x > -TRACK_LENGTH / 2 && x < TRACK_LENGTH / 2;
+      finish.position.x = x;
+    }
+    hills.visible = tilt.now > 0.02;
     if (grass?.visible && !reduceMotion) grassTime.value = now / 1000;
     // The tree leans with the same gusts as the grass, a little, from its foot.
     if (tree?.visible && !reduceMotion) {
@@ -731,24 +859,27 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
       mixer.update(dt);
       horse.updateMatrixWorld(true);
       const phase = current ? (current.time / current.getClip().duration) % 1 : 0;
-      // A lame foreleg: stiff (held near its rest pose), the head nodding up as it lands.
+      const leg = LEGS[motion.leg] ? motion.leg : 'RF';
+      const fore = leg.endsWith('F');
+      const sore = bones[leg] || {};
+      // A lame leg: stiff (held near its rest pose). Lame in front, the head nods up as the sore leg
+      // lands; lame behind, it dips instead.
       if (motion.limp) {
-        for (const key of ['elbow', 'knee', 'fetlock']) if (bones[key]) bones[key].quaternion.slerp(rest.get(bones[key]), 0.55);
-        swing(bones.neck, 0.3 * Math.max(0, Math.sin(phase * Math.PI * 2)));
+        for (const key of ['upper', 'stifle', 'knee', 'fetlock']) if (sore[key]) sore[key].quaternion.slerp(rest.get(sore[key]), 0.55);
+        swing(bones.neck, (fore ? 0.3 : -0.15) * Math.max(0, Math.sin(phase * Math.PI * 2)));
       }
-      // The sore leg held off the ground, the knee folded.
-      if (motion.hold) {
-        swing(bones.elbow, 0.25);
-        swing(bones.knee, -1.5);
-        swing(bones.fetlock, -0.6);
-      }
+      // The sore leg held off the ground.
+      if (motion.hold) for (const [key, angle] of Object.entries(fore ? HOLD.fore : HOLD.hind)) swing(sore[key], angle);
+      // The trot's spring: the body rises twice a stride, as each diagonal pair pushes off.
+      horse.position.y = current === actions.Trot ? baseY + 0.035 * Math.abs(Math.sin(phase * Math.PI * 2)) : baseY;
       // A tired horse carries its head low and nods heavily with each stride.
       if (motion.tired) swing(bones.neck, -(0.45 + 0.1 * Math.sin(phase * Math.PI * 4)));
-      const hoof = bones.hoof || bones.knee;
-      marker.visible = Boolean(motion.marker && hoof);
+      // The mark: on the sore leg's hoof, or on the part of the body the vet named (motion.markAt).
+      const spot = motion.markAt ? markBones[motion.markAt] : sore.hoof;
+      marker.visible = Boolean(motion.marker && spot);
       if (marker.visible) {
         horse.updateMatrixWorld(true);
-        hoof.getWorldPosition(marker.position);
+        spot.getWorldPosition(marker.position);
         marker.quaternion.copy(camera.quaternion);
         marker.scale.setScalar(1 + 0.25 * Math.sin(now / 180));
       }
@@ -771,7 +902,24 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
     },
     setMotion(next) {
       motion = next || { clip: 'Idle' };
+      // A trial: race poles; once the next reading ends the run, the finish post, reached a little before
+      // that reading so the horse is seen crossing it (the readings' metres are not the stage's: the
+      // simulated sensors compress the run).
+      raceMarks.visible = Boolean(motion.course);
+      if (motion.course?.finishIn == null) finishAt = null;
+      else if (finishAt == null) finishAt = travelled + ((motion.kmh || 0) / 3.6) * Math.max(Math.min(0.4, motion.course.finishIn), motion.course.finishIn - 2);
+      if (finishAt == null) finish.visible = false;
       play();
+    },
+    /** The sky of an hour of the day (a session's), or null: the clock in Vietnam in the pasture, a plain sky on the track. */
+    setHour(hour) {
+      fixedHour = Number.isFinite(hour) ? hour : null;
+      if (fixedHour != null) ensureClouds();
+      if (clouds) clouds.visible = inPasture || fixedHour != null;
+      if (inPasture || fixedHour != null) {
+        pastureSky = null;
+        showSky(performance.now());
+      } else plainSky();
     },
     setSurface(kind) {
       const next = SURFACES[kind] ? kind : 'dirt';
@@ -802,6 +950,7 @@ export function createHorseStage(canvas, { view = 'side' } = {}) {
       mixer?.stopAllAction();
       trackTexture?.dispose();
       shadowTexture.dispose();
+      checker.dispose();
       if (scene.background?.isTexture) scene.background.dispose();
       clouds?.children[0]?.material.map?.dispose();
       scene.traverse((o) => {

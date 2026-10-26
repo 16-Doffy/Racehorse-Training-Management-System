@@ -17,6 +17,12 @@ const FALLBACK = { targetSpeedKmh: 35, targetHeartRateMax: 180, distanceM: 2000,
 // How well each running session's horse is going today: some days a horse holds its target pace,
 // some days it doesn't, which is what makes "Đạt / Chưa đạt" mean something. Per process is enough.
 const formOfSession = new Map();
+// A reading kept on the run for playing it back (TrainingSession.trace), the last TRACE_KEEP of them,
+// with the scenario it was played under (the replay tires or lames the horse from that reading on).
+const TRACE_KEEP = 400;
+const traceOf = (reading, scenario) => ({
+  trace: { $each: [{ at: new Date(), ...reading, ...(scenario && scenario !== 'normal' ? { scenario } : {}) }], $slice: -TRACE_KEEP },
+});
 // Runs whose first lame reading has gone out: the next one stops them.
 const lameSessions = new Set();
 
@@ -79,7 +85,7 @@ async function simulateTick() {
         // eslint-disable-next-line no-await-in-loop
         await TrainingSession.updateOne(
           { _id: session._id, status: 'in_progress' },
-          { $set: { 'metrics.lastHeartRate': heartRate, 'metrics.lastSpeed': speed, 'metrics.distance': m.distance }, $max: { 'metrics.maxHeartRate': heartRate } }
+          { $set: { 'metrics.lastHeartRate': heartRate, 'metrics.lastSpeed': speed, 'metrics.distance': m.distance }, $max: { 'metrics.maxHeartRate': heartRate }, $push: traceOf({ hr: heartRate, speed, distance: m.distance }, 'injury') }
         );
         pushReading(key, { hr: heartRate, speed, distance: m.distance, targetDistance: target.distance, at: Date.now() });
         io.to(rooms).emit('sensor:reading', { sessionId: session._id, horseId: session.horse._id, heartRate, speed, distance: m.distance, targetDistance: target.distance, timestamp: Date.now() });
@@ -91,7 +97,7 @@ async function simulateTick() {
       // eslint-disable-next-line no-await-in-loop
       await TrainingSession.updateOne(
         { _id: session._id, status: 'in_progress' },
-        { $set: { 'metrics.lastHeartRate': heartRate, 'metrics.lastSpeed': speed }, $max: { 'metrics.maxHeartRate': heartRate } }
+        { $set: { 'metrics.lastHeartRate': heartRate, 'metrics.lastSpeed': speed }, $max: { 'metrics.maxHeartRate': heartRate }, $push: traceOf({ hr: heartRate, speed, distance: session.metrics?.distance || 0 }, 'injury') }
       );
       // eslint-disable-next-line no-await-in-loop
       const stopped = await stopForSuspectedInjury(session, { speed, heartRate, targetSpeed: target.speed });
@@ -120,7 +126,10 @@ async function simulateTick() {
     // eslint-disable-next-line no-await-in-loop
     const kept = await TrainingSession.updateOne(
       { _id: session._id, status: 'in_progress' },
-      { $set: { 'metrics.avgHeartRate': m.avgHeartRate, 'metrics.sampleCount': m.sampleCount, 'metrics.maxHeartRate': m.maxHeartRate, 'metrics.maxSpeed': m.maxSpeed, 'metrics.distance': m.distance, 'metrics.lastHeartRate': heartRate, 'metrics.lastSpeed': speed } }
+      {
+        $set: { 'metrics.avgHeartRate': m.avgHeartRate, 'metrics.sampleCount': m.sampleCount, 'metrics.maxHeartRate': m.maxHeartRate, 'metrics.maxSpeed': m.maxSpeed, 'metrics.distance': m.distance, 'metrics.lastHeartRate': heartRate, 'metrics.lastSpeed': speed },
+        $push: traceOf({ hr: heartRate, speed, distance: m.distance }, scenario),
+      }
     );
     if (!kept.modifiedCount) {
       formOfSession.delete(key);
