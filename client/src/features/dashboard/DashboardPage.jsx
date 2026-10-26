@@ -15,6 +15,7 @@ import CareOrdersCard from './CareOrdersCard';
 import NextStepsCard from './NextStepsCard';
 import ManagerQueueCard from './ManagerQueueCard';
 import MissedMealsCard from './MissedMealsCard';
+import { useFirst } from './useFirst';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 
 // Shared fallback dashboard for any role without a dedicated one (see RoleDashboard.jsx) —
@@ -44,6 +45,7 @@ export default function DashboardPage() {
   // Horses the vet has restricted — locked, or recovering at a reduced level — from the clearance
   // the server attaches to every horse.
   const restrictedHorses = horses.filter((h) => h.trainingClearance?.restricted);
+  const [restrictedShown, restrictedMore] = useFirst(restrictedHorses, 3);
 
   // A new horse is "eligible" by default before any vet has seen it, so the count also needs the
   // exam and no restriction from the vet — the same things the pre-check looks at.
@@ -165,21 +167,6 @@ export default function DashboardPage() {
 
           {/* Trainer Exam Requests */}
           {isHeadTrainer && <ExamRequestsCard />}
-
-          {/* Trainer Fitness Overview */}
-          {isHeadTrainer && (
-            <Card
-              className="shadow-xs border-[#E5DEC9] rounded-xl"
-              title={
-                <div>
-                  <span className="font-semibold text-gray-900 text-[15px]">Biểu đồ thể lực tổng quan</span>
-                  <p className="text-xs text-gray-600 font-normal m-0 mt-0.5">Chọn ngày và ngựa để xem kết quả từng buổi tập</p>
-                </div>
-              }
-            >
-              <FitnessOverviewChart sessions={sessionsData?.data || []} />
-            </Card>
-          )}
         </div>
 
         {/* Right Column: Health, Alerts & Operational Guardrails (35% on desktop) */}
@@ -201,22 +188,23 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="divide-y divide-amber-200/50">
-                {restrictedHorses.map((h) => {
+                {restrictedShown.map((h) => {
                   const c = h.trainingClearance;
+                  const why = `${c.reason || 'theo phác đồ điều trị'}${c.prescribedBy ? ` (BS ${c.prescribedBy})` : ''}`;
                   return (
-                    <div key={h._id} className="py-2.5 flex items-start justify-between gap-2 text-sm">
+                    <div key={h._id} className="py-2 flex items-center justify-between gap-2 text-sm">
                       <div className="min-w-0 pr-2 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <Tag color={TRAINING_LEVEL_META[c.level]?.color} className="!m-0 text-xs font-medium">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <Tag color={TRAINING_LEVEL_META[c.level]?.color} className="!m-0 shrink-0 text-xs font-medium">
                             {TRAINING_LEVEL_META[c.level]?.short}
                           </Tag>
-                          <Link to={`/horses/${h._id}`} className="font-semibold text-emerald-950 hover:text-emerald-800 break-words underline decoration-emerald-950/20">
+                          <Link to={`/horses/${h._id}`} className="truncate font-semibold text-emerald-950 hover:text-emerald-800 underline decoration-emerald-950/20" title={h.name}>
                             {h.name}
                           </Link>
                         </div>
-                        <p className="text-xs text-gray-600 m-0 mt-1 break-words">
-                          {c.reason || 'theo phác đồ điều trị'}
-                          {c.prescribedBy ? ` (BS ${c.prescribedBy})` : ''}
+                        {/* The doctor's reason on one line; all of it on hover and on the horse's page. */}
+                        <p className="text-xs text-gray-600 m-0 mt-0.5 truncate" title={why}>
+                          {why}
                         </p>
                       </div>
                       {isHeadTrainer && (
@@ -232,6 +220,7 @@ export default function DashboardPage() {
                   );
                 })}
               </div>
+              {restrictedMore}
             </div>
           )}
 
@@ -245,6 +234,22 @@ export default function DashboardPage() {
           <CareOrdersCard />
         </div>
       </div>
+
+      {/* Trainer Fitness Overview: under both columns, the width of the page, so its charts have room
+          and neither column runs on alone beside an empty one. */}
+      {isHeadTrainer && (
+        <Card
+          className="shadow-xs border-[#E5DEC9] rounded-xl"
+          title={
+            <div>
+              <span className="font-semibold text-gray-900 text-[15px]">Biểu đồ thể lực tổng quan</span>
+              <p className="text-xs text-gray-600 font-normal m-0 mt-0.5">Chọn ngày và ngựa để xem kết quả từng buổi tập</p>
+            </div>
+          }
+        >
+          <FitnessOverviewChart sessions={sessionsData?.data || []} />
+        </Card>
+      )}
     </div>
   );
 }

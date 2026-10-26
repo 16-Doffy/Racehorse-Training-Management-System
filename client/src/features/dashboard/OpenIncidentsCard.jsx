@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import { incidentApi } from '../stable/stableApi';
 import { INCIDENT_STATUS_META, INCIDENT_SEVERITY_META, incidentStatusOf } from '../../constants/care';
 import QuietCard from './QuietCard';
+import { useFirst } from './useFirst';
 
 const { Text } = Typography;
 
@@ -19,6 +20,7 @@ export default function OpenIncidentsCard() {
     queryFn: () => incidentApi.list({ status: 'unresolved' }),
   });
   const tasks = data?.data || [];
+  const [shown, more] = useFirst(tasks, 3);
   if (!isLoading && !tasks.length) return <QuietCard title="Sự cố đang mở">Không có sự cố nào đang mở</QuietCard>;
 
   return (
@@ -43,7 +45,7 @@ export default function OpenIncidentsCard() {
       }
     >
       <div className="flex flex-col divide-y divide-gray-100">
-        {tasks.slice(0, 6).map((t) => {
+        {shown.map((t) => {
           const incident = t.incidentReport;
           const status = INCIDENT_STATUS_META[incidentStatusOf(incident)];
           const severity = INCIDENT_SEVERITY_META[incident.severity];
@@ -66,9 +68,11 @@ export default function OpenIncidentsCard() {
                   {dayjs(incident.reportedAt).format('DD/MM HH:mm')}
                 </Text>
               </div>
-              <Text className="!text-sm text-gray-600">{incident.description}</Text>
+              <Text className="line-clamp-2 !text-sm text-gray-600" title={incident.description}>
+                {incident.description}
+              </Text>
               {incident.response && (
-                <Text className="!text-sm">
+                <Text className="line-clamp-2 !text-sm">
                   {incident.handledBy?.name ? `Bác sĩ ${incident.handledBy.name}` : 'Bác sĩ'}: {incident.response}
                 </Text>
               )}
@@ -76,6 +80,7 @@ export default function OpenIncidentsCard() {
           );
         })}
       </div>
+      {more}
     </Card>
   );
 }

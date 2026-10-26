@@ -6,6 +6,7 @@ import { healthRecordApi } from '../health/healthApi';
 import { HEALTH_LABELS, HEALTH_COLORS } from '../../constants/health';
 import { areasText, dueByOf, symptomsText } from '../../constants/examRequest';
 import QuietCard from './QuietCard';
+import { useFirst } from './useFirst';
 
 const { Text } = Typography;
 
@@ -26,7 +27,9 @@ export default function ExamRequestsCard() {
     queryKey: ['exam-requests', 'mine'],
     queryFn: () => healthRecordApi.listExamRequests(),
   });
-  const requests = (data?.data || []).slice(0, 6);
+  const requests = data?.data || [];
+  // The three latest; the rest open on demand, so the card stays as short as the column beside it.
+  const [shown, more] = useFirst(requests, 3);
   if (!isLoading && !requests.length) return <QuietCard title="Yêu cầu khám đã gửi">Không có yêu cầu nào chờ bác sĩ</QuietCard>;
   const pending = (data?.data || []).filter((r) => r.status === 'pending').length;
 
@@ -52,7 +55,7 @@ export default function ExamRequestsCard() {
       }
     >
       <div className="flex flex-col divide-y divide-gray-100">
-        {requests.map((r) => {
+        {shown.map((r) => {
           // An open request the vet has taken on reads as accepted, with the appointment if there is one.
           const accepted = r.status === 'pending' && r.acceptedAt;
           const status = accepted ? { label: 'Bác sĩ đã nhận', color: 'blue' } : STATUS_META[r.status] || STATUS_META.pending;
@@ -82,20 +85,20 @@ export default function ExamRequestsCard() {
                 </Text>
               </div>
               {(r.symptoms?.length > 0 || r.bodyAreas?.length > 0) && (
-                <Text className="!text-sm text-gray-600">
+                <Text className="line-clamp-2 !text-sm text-gray-600">
                   Dấu hiệu: {[symptomsText(r.symptoms), areasText(r.bodyAreas)].filter(Boolean).join(' · ')}
                 </Text>
               )}
-              {r.reason && <Text className="!text-sm text-gray-600">Lý do: {r.reason}</Text>}
+              {r.reason && <Text className="line-clamp-2 !text-sm text-gray-600">Lý do: {r.reason}</Text>}
               {accepted && (
-                <Text className="!text-sm">
+                <Text className="line-clamp-2 !text-sm">
                   {r.acceptedBy?.name ? `Bác sĩ ${r.acceptedBy.name}` : 'Bác sĩ'} đã nhận
                   {r.scheduledFor ? `, hẹn khám ${dayjs(r.scheduledFor).format('HH:mm DD/MM')}` : ''}
                   {r.resolutionNote ? ` — ${r.resolutionNote}` : ''}
                 </Text>
               )}
               {r.status === 'done' && result && (
-                <Text className="!text-sm">
+                <Text className="line-clamp-2 !text-sm">
                   {r.resolvedBy?.name ? `Bác sĩ ${r.resolvedBy.name}` : 'Bác sĩ'} kết luận{' '}
                   <Tag color={HEALTH_COLORS[result.resultStatus]} className="!m-0">
                     {HEALTH_LABELS[result.resultStatus] || result.resultStatus}
@@ -104,12 +107,13 @@ export default function ExamRequestsCard() {
                 </Text>
               )}
               {r.status !== 'pending' && !result && r.resolutionNote && (
-                <Text className="!text-sm text-gray-600">Ghi chú của bác sĩ: {r.resolutionNote}</Text>
+                <Text className="line-clamp-2 !text-sm text-gray-600">Ghi chú của bác sĩ: {r.resolutionNote}</Text>
               )}
             </div>
           );
         })}
       </div>
+      {more}
     </Card>
   );
 }
