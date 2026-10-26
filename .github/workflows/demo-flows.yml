@@ -2,16 +2,18 @@ name: Demo flows (live)
 # Demo rounds on the REAL club database (server/scripts/demoFlows.js). Each round: new "Test Demo"
 # horses through every role, each a different case — one fed, trained to "Đạt mục tiêu", evaluated,
 # then trial-run and confirmed for the demo race; one whose breakfast was missed, refused, fed late,
-# stopped early ("Chưa đạt") and sent to the vet; in round 1 one that goes lame, is found injured and is
-# withdrawn from the race. A round starts at once and another every 45 minutes until 07:30 (four rounds
+# stopped early ("Chưa đạt") and sent to the vet. Round 1 adds seven more, most running at the same
+# time: lame (the sensors stop it, the vet treats it, it is withdrawn), tired, light work only, locked by
+# the vet mid-run, stopped for rain, a refused breakfast made up, a missed session booked again; and two
+# groom incidents and a restock request. A round starts at once and another every 45 minutes until 07:30 (four rounds
 # from 05:00, the last done by about 10:00, each one waiting the 90-minute digestion time). The next
 # day is race day: the trainer records the race's results. A second trigger each morning covers a late
 # or dropped schedule (GitHub delayed the 16/10 run by two hours); it stops when the work is done.
 # Remove the schedule after the demo.
 on:
   schedule:
-    - cron: '0 22 22 10 *' # 05:00 Vietnam time on 23/10 (demo morning): the rounds
-    - cron: '30 23 22 10 *' # 06:30 on 23/10: backup, skipped once round 1 exists
+    - cron: '0 22 26 10 *' # 05:00 Vietnam time on 27/10 (the mentor's day): the rounds
+    - cron: '30 23 26 10 *' # 06:30 on 27/10: backup, skipped once round 1 exists
   workflow_dispatch:
     inputs:
       mode:
@@ -46,7 +48,7 @@ jobs:
           DEMO_ROUND_EVERY_MIN: 45
           DEMO_LAST_START: '07:30'
           # The crons fire every year on these dates; only 2026 writes. The button runs what it is told.
-          DEMO_ONLY_DATE: ${{ github.event_name == 'schedule' && '2026-10-23' || '' }}
-          # No race-day run is scheduled this time: the rounds' race (24/10) is recorded by hand if needed.
+          DEMO_ONLY_DATE: ${{ github.event_name == 'schedule' && '2026-10-27' || '' }}
+          # No race-day run is scheduled this time: the rounds' race (28/10) is recorded by hand if needed.
           DEMO_RESULT_DATE: ''
           DEMO_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || '' }}

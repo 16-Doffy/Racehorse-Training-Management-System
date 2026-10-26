@@ -128,6 +128,19 @@ Thông báo: mỗi việc liên quan tới vai trò nào thì menu của vai tr�
   - Y lệnh bác sĩ: mỗi ngựa một dòng (tiến độ, số liều bỏ lỡ), bấm để xem từng liều.
   - Ngựa bị hạn chế, yêu cầu khám, sự cố: văn bản dài cắt còn 1–2 dòng.
   - Biểu đồ thể lực chuyển xuống một hàng ngang toàn trang, nên hai cột phía trên dài gần bằng nhau.
+- **Demo tự chạy sáng 27/10 (05:00, dự phòng 06:30) trên dữ liệu thật** (`server/scripts/demoFlows.js`, workflow "Demo flows (live)"):
+  - Lượt 1 có 9 ngựa "Test Demo 27/10 R1 · …":
+    - Đạt (kèm giải, chạy thử, quyết định dự giải);
+    - Không đạt;
+    - Chấn thương (cảm biến tự dừng, bác sĩ kê đơn và khóa tập, rút khỏi giải);
+    - Mệt;
+    - Chỉ tập nhẹ;
+    - Khóa giữa buổi;
+    - Dừng vì mưa;
+    - Ăn bù;
+    - Lỡ giờ.
+  - Lượt 1 có thêm 2 sự cố chuồng (1 đã xử lý, 1 còn mở) và 1 đề xuất nhập kho được duyệt một phần.
+  - Lượt 2–4 (05:45, 06:30, 07:15) mỗi lượt có Đạt và Không đạt. Giải "TEST Cúp Demo 28/10".
 - **CI:** giới hạn job nâng từ 15 lên 30 phút. Đã có 2 lần CI bị hủy đúng mốc 15 phút; một lần riêng bước cài trình duyệt mất 9 phút.
 
 ## 5. Cho dev: cách làm, test, deploy
