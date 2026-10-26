@@ -100,7 +100,7 @@ function ReplayBody({ session, readings, horse, plan }) {
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
       <div className="min-w-0 lg:col-span-6">
-        <MovingHorse3D
+        <MovingHorse3D creditInFrame
           breed={horse?.breed}
           color={horse?.color}
           motion={motionAt(session, readings, index, running, target, pace)}

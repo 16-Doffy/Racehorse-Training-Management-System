@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { Tooltip } from 'antd';
+import { InfoCircleOutlined } from '@ant-design/icons';
 import { coatFor } from './horseBreeds';
 import { MOVING_HORSE, PASTURE_CREDIT } from './horseMotion';
 
@@ -15,8 +17,10 @@ const SURFACE_WORDS = { turf: 'mặt cỏ', dirt: 'mặt đất', sand: 'mặt c
  * `view`: 'side' (side on, the track streams by, drag to look around) or 'turntable' (turns by itself).
  * `hour`: the hour of the day (Vietnam, hourOf) whose sky the track shows — a session's; without
  * it the pasture shows the sky of now and a track a plain one.
+ * `creditInFrame`: the models' authors (their CC BY licence asks for them) behind an "i" in the
+ * frame's corner instead of in two lines under it.
  */
-export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', hour = null, height = 260, view = 'side', compact = false, showCoat = false, className = '' }) {
+export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', hour = null, height = 260, view = 'side', compact = false, showCoat = false, creditInFrame = false, className = '' }) {
   const canvas = useRef(null);
   const box = useRef(null);
   const stage = useRef(null);
@@ -114,14 +118,39 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
             Không hiển thị được mô hình 3D trên thiết bị này.
           </div>
         )}
+        {creditInFrame && (
+          <Tooltip
+            trigger={['hover', 'focus', 'click']}
+            placement="topRight"
+            title={
+              <div className="text-xs leading-snug">
+                <div>{MOVING_HORSE.credit}</div>
+                {surface === 'pasture' && <div className="mt-1">{PASTURE_CREDIT.full}</div>}
+              </div>
+            }
+          >
+            <button
+              type="button"
+              aria-label="Nguồn mô hình 3D"
+              className={`absolute flex h-6 w-6 cursor-pointer items-center justify-center rounded-full p-0 text-white ${compact ? 'right-2 bottom-2' : 'right-3 bottom-3'}`}
+              style={{ ...GLASS, fontSize: 12 }}
+            >
+              <InfoCircleOutlined />
+            </button>
+          </Tooltip>
+        )}
       </div>
-      <div className="text-right text-gray-400 mt-1 truncate" style={{ fontSize: compact ? 9 : 10 }} title={MOVING_HORSE.credit}>
-        {MOVING_HORSE.credit}
-      </div>
-      {surface === 'pasture' && (
-        <div className="text-right text-gray-400 truncate" style={{ fontSize: compact ? 9 : 10 }} title={PASTURE_CREDIT.full}>
-          {PASTURE_CREDIT.short}
-        </div>
+      {!creditInFrame && (
+        <>
+          <div className="text-right text-gray-400 mt-1 truncate" style={{ fontSize: compact ? 9 : 10 }} title={MOVING_HORSE.credit}>
+            {MOVING_HORSE.credit}
+          </div>
+          {surface === 'pasture' && (
+            <div className="text-right text-gray-400 truncate" style={{ fontSize: compact ? 9 : 10 }} title={PASTURE_CREDIT.full}>
+              {PASTURE_CREDIT.short}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

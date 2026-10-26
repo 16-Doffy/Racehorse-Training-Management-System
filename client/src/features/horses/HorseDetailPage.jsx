@@ -34,7 +34,7 @@ function calcAge(dob) {
 /** Facts in a grid, the label small above its value; `items` are [label, value] or null. */
 function Facts({ items, className = '' }) {
   return (
-    <dl className={`m-0 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 ${className}`}>
+    <dl className={`m-0 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-2 2xl:grid-cols-3 ${className}`}>
       {items.filter(Boolean).map(([label, value]) => (
         <div key={label} className="min-w-0">
           <dt className="text-xs text-gray-500">{label}</dt>
@@ -151,11 +151,11 @@ export default function HorseDetailPage() {
 
       <Row gutter={[16, 16]}>
         {/* The horse in 3D, in the breed and coat the Manager set, doing what its health allows. */}
-        <Col xs={24} lg={10}>
+        <Col xs={24} lg={13}>
           {/* At rest it is out in the pasture (the sessions page shows it on its training track). */}
-          <MovingHorse3D breed={horse.breed} color={horse.color} motion={restingMotion(horse, injury)} surface="pasture" height={320} />
+          <MovingHorse3D creditInFrame breed={horse.breed} color={horse.color} motion={restingMotion(horse, injury)} surface="pasture" height="clamp(300px, 34vw, 470px)" />
         </Col>
-        <Col xs={24} lg={14}>
+        <Col xs={24} lg={11}>
           <Card className="h-full !rounded-xl !border-[#E2D9C8]" title="Hồ sơ lý lịch">
             <Facts
               items={[

@@ -133,7 +133,7 @@ function LiveCard({ session, readings, horse, surface }) {
     >
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         <div className="lg:col-span-5 min-w-0">
-          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={motion} surface={surface} hour={hourOfSession(session)} height={236} />
+          <MovingHorse3D creditInFrame breed={horse?.breed} color={horse?.color} motion={motion} surface={surface} hour={hourOfSession(session)} height={236} />
         </div>
         <div className="lg:col-span-7 min-w-0">
           <Telemetry heartRate={heartRate} heartRateMax={target.heartRateMax} speed={speed} targetSpeed={target.speed} distance={distance} targetDistance={targetDistance} />
@@ -259,7 +259,7 @@ function StoppedCard({ session, horse, surface, onClose }) {
     >
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         <div className="lg:col-span-5 min-w-0">
-          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={liveMotion(session, 0, { stopped: true })} surface={surface} hour={hourOfSession(session)} height={236} />
+          <MovingHorse3D creditInFrame breed={horse?.breed} color={horse?.color} motion={liveMotion(session, 0, { stopped: true })} surface={surface} hour={hourOfSession(session)} height={236} />
         </div>
         <div className="lg:col-span-7 min-w-0 flex flex-col gap-2 text-sm text-gray-800">
           <p className="m-0">Tốc độ tụt hẳn và nhịp tim vọt lên giữa buổi: hệ thống đã dừng buổi tập để bảo vệ ngựa.</p>

@@ -181,7 +181,7 @@ export default function HorseFormModal({
           {/* The horse as everyone it is assigned to will see it, and what has been filled in so far. */}
           <aside className="min-w-0">
             <div className="hf-summary">
-              <MovingHorse3D breed={v.breed} color={v.color} motion={FORM_MOTION} surface="pasture" height="var(--hf-stage)" compact showCoat />
+              <MovingHorse3D creditInFrame breed={v.breed} color={v.color} motion={FORM_MOTION} surface="pasture" height="var(--hf-stage)" compact showCoat />
               <div className={`hf-name mt-2 ${v.name ? '' : 'is-empty'}`}>{v.name || 'Ngựa mới'}</div>
               <div className="hf-muted text-xs">
                 {[breedLabel || 'Chưa chọn giống', HORSE_SEX_LABELS[v.sex], age !== null && age >= 0 ? `${age} tuổi` : null].filter(Boolean).join(' · ')}
