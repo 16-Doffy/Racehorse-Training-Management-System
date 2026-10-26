@@ -34,7 +34,7 @@ function calcAge(dob) {
 /** Facts in a grid, the label small above its value; `items` are [label, value] or null. */
 function Facts({ items, className = '' }) {
   return (
-    <dl className={`m-0 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-2 2xl:grid-cols-3 ${className}`}>
+    <dl className={`m-0 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 min-[992px]:grid-cols-2 2xl:grid-cols-3 ${className}`}>
       {items.filter(Boolean).map(([label, value]) => (
         <div key={label} className="min-w-0">
           <dt className="text-xs text-gray-500">{label}</dt>

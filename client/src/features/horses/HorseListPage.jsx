@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Tag, Typography, Button, Modal, Form, Input, Select, Alert, Empty, Tooltip, Popconfirm, Segmented, Avatar } from 'antd';
+import { Table, Tag, Typography, Button, Modal, Form, Input, Select, Alert, Empty, Tooltip, Popconfirm, Segmented } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined, SearchOutlined } from '@ant-design/icons';
 import { downloadFile } from '../../lib/files';
@@ -258,32 +258,29 @@ export default function HorseListPage() {
       title: 'Ngựa',
       key: 'horse',
       render: (_, h) => (
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar shape="square" size={40} style={{ background: '#0F5A43', color: '#D4AF37', fontWeight: 700, flexShrink: 0 }}>
-            {h.name?.[0]?.toUpperCase() || '?'}
-          </Avatar>
-          <div className="min-w-0">
-            <div className="truncate font-semibold" title={h.name}>
-              {h.name}
-            </div>
-            <Text type="secondary" className="!text-xs">
-              {[h.breed, HORSE_SEX_LABELS[h.sex], h.color].filter(Boolean).join(' · ') || 'Chưa có lý lịch'}
-            </Text>
+        <div className="min-w-0 max-w-[260px]">
+          <div className="truncate font-semibold" title={h.name}>
+            {h.name}
           </div>
+          <Text type="secondary" className="block truncate !text-xs">
+            {[h.breed, HORSE_SEX_LABELS[h.sex], h.color].filter(Boolean).join(' · ') || 'Chưa có lý lịch'}
+          </Text>
+          {/* Roles other than the Manager only see their own horses: the owner is all they need here, on a small line. */}
+          {!isManager && <Text type="secondary" className="block truncate !text-xs">Chủ: {h.owner?.name || 'CLB sở hữu'}</Text>}
         </div>
       ),
     },
   ];
-  if (showsNextStep && !archived) columns.push({ title: 'Chuồng', key: 'stall', width: 120, render: (_, h) => stallCell(h) });
+  if (showsNextStep && !archived) columns.push({ title: 'Chuồng', key: 'stall', width: 96, render: (_, h) => stallCell(h) });
   columns.push({
     title: 'Sức khỏe & tập',
     key: 'health',
-    width: 170,
+    width: 140,
     render: (_, h) => {
       const c = h.trainingClearance || { level: 'high' };
       const meta = TRAINING_LEVEL_META[c.level] || TRAINING_LEVEL_META.high;
       return (
-        <div className="flex flex-col items-start gap-1">
+        <div className="flex flex-wrap items-start gap-1">
           {/* A horse nobody has examined yet starts as "eligible" in the record; say what is true instead. */}
           {examined(h) === false ? (
             <Tooltip title="Bác sĩ chưa khám tiếp nhận ngựa này — bài nặng và chạy thử cần giấy khám.">
@@ -303,25 +300,23 @@ export default function HorseListPage() {
       );
     },
   });
-  // Who's responsible matters to the Manager (they assign it) — other roles already only see the
-  // horses assigned to them, so they get the owner alone.
-  columns.push({
-    title: isManager ? 'Phụ trách' : 'Chủ sở hữu',
-    key: 'people',
-    width: isManager ? 210 : 170,
-    render: (_, h) =>
-      isManager ? (
+  // Who's responsible matters to the Manager (they assign it); other roles get the owner under the name.
+  if (isManager) {
+    columns.push({
+      title: 'Phụ trách',
+      key: 'people',
+      width: 210,
+      render: (_, h) => (
         <div className="flex min-w-0 flex-col">
           <Person label="Chủ" name={h.owner?.name} gap />
           <Person label="HLV" name={h.assignedTrainer?.name} gap />
           <Person label="BS" name={h.assignedVet?.name} gap />
         </div>
-      ) : (
-        <span className="truncate">{h.owner?.name || '—'}</span>
       ),
-  });
+    });
+  }
   if (showsNextStep && !archived) {
-    columns.push({ title: 'Bước tiếp theo', key: 'nextStep', width: 220, render: (_, h) => <HorseNextStep checklist={checklistByHorse.get(String(h._id))} /> });
+    columns.push({ title: 'Bước tiếp theo', key: 'nextStep', width: 200, render: (_, h) => <HorseNextStep checklist={checklistByHorse.get(String(h._id))} /> });
   }
   if (isManager && archived) {
     columns.push({
@@ -444,8 +439,8 @@ export default function HorseListPage() {
                 }}
                 className={`cursor-pointer border-0 px-4 py-2.5 text-left transition-colors ${on ? 'bg-[#0F5A43]/10 shadow-[inset_0_-3px_0_#0F5A43]' : 'bg-transparent hover:bg-black/[0.03]'}`}
               >
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-xs font-medium text-slate-600">{t.label}</span>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                  <span className="whitespace-nowrap text-xs font-medium text-slate-600">{t.label}</span>
                   <span className={`whitespace-nowrap text-lg font-bold tabular-nums ${t.tone}`}>
                     {t.value} <span className="text-xs font-normal text-slate-500">ngựa</span>
                   </span>
@@ -520,12 +515,12 @@ export default function HorseListPage() {
 
       <Table
         rowKey="_id"
-        size="middle"
+        size="small"
         columns={columns}
         dataSource={rows}
         loading={archived ? archivedLoading && !archivedData : isLoading && !data}
         tableLayout="fixed"
-        scroll={{ x: isManager ? 1060 : 900 }}
+        scroll={{ x: isManager ? 900 : 680 }}
         pagination={rows.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
         locale={{
           emptyText:

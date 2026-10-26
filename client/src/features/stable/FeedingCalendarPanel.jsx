@@ -126,9 +126,9 @@ export default function FeedingCalendarPanel({ plans = [], horseId, feedItems = 
               Xác nhận lịch ăn toàn kỳ
             </Button>
           </div>
-          {(calendar?.problems || []).length > 0 && <Alert className="!mb-3" type="warning" title="Chưa thể xác nhận" description={calendar.problems.join(' ')} />}
-          {calendar?.weightNote && <Alert className="!mb-3" type="warning" title="Kiểm tra cân nặng trước khi xác nhận" description={calendar.weightNote} />}
-          {(calendar?.warnings || []).length > 0 && <Alert className="!mb-3" type="info" title="Kho cần bổ sung trong kỳ" description={calendar.warnings.join(' ')} />}
+          {(calendar?.problems || []).length > 0 && <Alert className="!mb-2" type="warning" showIcon title={`Chưa thể xác nhận: ${calendar.problems.join(' ')}`} />}
+          {calendar?.weightNote && <Alert className="!mb-2" type="warning" showIcon title={`Kiểm tra cân nặng trước khi xác nhận: ${calendar.weightNote}`} />}
+          {(calendar?.warnings || []).length > 0 && <Alert className="!mb-2" type="info" showIcon title={`Kho cần bổ sung trong kỳ: ${calendar.warnings.join(' ')}`} />}
           <div className="flex flex-wrap gap-x-4 gap-y-2 items-end mb-3">
             {Object.entries(SLOT_LABELS).map(([slot, label]) => <label key={slot} className="flex flex-col gap-1 text-xs">
               Giờ bữa {label.toLowerCase()}

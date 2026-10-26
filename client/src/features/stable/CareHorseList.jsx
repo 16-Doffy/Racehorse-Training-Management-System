@@ -45,7 +45,7 @@ export function MealChip({ label, meal }) {
  * needs a look. A horse that needs a look comes first, then the one whose work changed last. A click
  * opens the horse: its feeding timetable and its jobs. Many horses: found by name, or only those needing a look.
  */
-export default function CareHorseList({ tasks = [], horses = [], stallOfHorse, onSelect, loading }) {
+export default function CareHorseList({ tasks = [], horses = [], stallOfHorse, onSelect, loading, action = null }) {
   const [search, setSearch] = useState('');
   const [only, setOnly] = useState('all');
   const today = (tasks || []).filter((t) => dayjs(t.scheduledDate).isSame(dayjs(), 'day'));
@@ -79,21 +79,22 @@ export default function CareHorseList({ tasks = [], horses = [], stallOfHorse, o
       title: 'Ngựa',
       key: 'horse',
       render: (_, r) => (
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-emerald-900">{r.horse.name}</span>
-          <Tooltip title="Hồ sơ ngựa">
-            <Link to={`/horses/${r.key}`} onClick={(e) => e.stopPropagation()} aria-label={`Hồ sơ ${r.horse.name}`} className="text-gray-400 hover:text-emerald-700">
-              <ProfileOutlined />
-            </Link>
-          </Tooltip>
-          {r.stall?.code && <Text type="secondary" className="!text-xs">Chuồng {r.stall.code}</Text>}
+        <div className="max-w-[260px]">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-emerald-900">{r.horse.name}</span>
+            <Tooltip title="Hồ sơ ngựa">
+              <Link to={`/horses/${r.key}`} onClick={(e) => e.stopPropagation()} aria-label={`Hồ sơ ${r.horse.name}`} className="text-gray-400 hover:text-emerald-700">
+                <ProfileOutlined />
+              </Link>
+            </Tooltip>
+          </div>
+          {/* Its stall and its groom on one small line, instead of a column of the groom's name. */}
+          <div className="truncate text-[11px] text-gray-500">
+            {r.stall?.code ? `Chuồng ${r.stall.code}, ` : ''}
+            {r.stall?.caretaker?.name || 'chưa có người chăm sóc'}
+          </div>
         </div>
       ),
-    },
-    {
-      title: 'Nhân viên chăm sóc',
-      key: 'caretaker',
-      render: (_, r) => r.stall?.caretaker?.name || <Text type="secondary">Chưa có</Text>,
     },
     {
       title: 'Bữa hôm nay',
@@ -154,6 +155,7 @@ export default function CareHorseList({ tasks = [], horses = [], stallOfHorse, o
           ]}
         />
         <Input allowClear prefix={<SearchOutlined className="text-gray-400" />} placeholder="Tìm ngựa" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-48" aria-label="Tìm ngựa trong công việc chăm sóc" />
+        {action && <div className="ml-auto">{action}</div>}
       </div>
       <Table
         rowKey="key"

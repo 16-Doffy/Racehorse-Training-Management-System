@@ -407,19 +407,17 @@ function TaskList() {
     },
   ];
 
+  // Meals, post-work care and the vet's orders make themselves; the trainer only adds the odd job.
+  const addJob = (
+    <Tooltip title="Bữa ăn tự tạo theo khẩu phần và lịch ăn đã xác nhận; việc sau buổi tập nặng tự sinh khi kết thúc buổi; y lệnh do bác sĩ chỉ định. Chỉ cần giao thêm việc phát sinh.">
+      <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
+        Giao việc phát sinh
+      </Button>
+    </Tooltip>
+  );
+
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
-        <Typography.Text type="secondary" className="text-sm max-w-3xl">
-          Bữa ăn tự tạo theo khẩu phần và lịch cho ăn đã xác nhận (tab Khẩu phần ăn); việc sau buổi tập nặng tự sinh khi kết
-          thúc buổi; y lệnh do bác sĩ chỉ định. Bạn chỉ cần giao thêm việc phát sinh. Bữa ăn được ghi nhận ảnh hưởng tới điều kiện
-          xếp lịch tập.
-        </Typography.Text>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
-          Giao việc phát sinh
-        </Button>
-      </div>
-
       {focus.horse ? (
         // One horse: its feeding week, meal by meal, then all its jobs.
         <div className="flex flex-col gap-4">
@@ -428,9 +426,12 @@ function TaskList() {
           </div>
           <FeedingTimetable horseId={focus.horse} />
           <div>
-            <Text strong className="!text-sm">
-              Các việc của ngựa này
-            </Text>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Text strong className="!text-sm">
+                Các việc của ngựa này
+              </Text>
+              {addJob}
+            </div>
             <Table
               className="mt-2"
               rowKey="_id"
@@ -443,12 +444,7 @@ function TaskList() {
           </div>
         </div>
       ) : (
-        <>
-          <Text type="secondary" className="block !text-xs mb-2">
-            Bấm một ngựa để xem thời khóa biểu cho ăn trong tuần và các việc của nó.
-          </Text>
-          <CareHorseList tasks={data?.data} horses={horsesData?.data || []} stallOfHorse={stallOfHorse} onSelect={focus.select} loading={isLoading} />
-        </>
+        <CareHorseList tasks={data?.data} horses={horsesData?.data || []} stallOfHorse={stallOfHorse} onSelect={focus.select} loading={isLoading} action={addJob} />
       )}
 
       <Modal

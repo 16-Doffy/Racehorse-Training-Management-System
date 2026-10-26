@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Tag, Card, Select, Empty, Dropdown, Modal, Progress, Space, Alert, Tooltip, Input } from 'antd';
+import { Table, Button, Typography, Tag, Card, Select, Empty, Dropdown, Modal, Space, Alert, Input } from 'antd';
 import {
   PlusOutlined,
   CalendarOutlined,
-  ScheduleOutlined,
   FlagOutlined,
   SearchOutlined,
+  MoreOutlined,
 } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,7 +17,7 @@ import { raceApi } from '../race/raceApi';
 import { useLockedHorseIds } from './useLockedHorses';
 import PlanTimeline from './PlanTimeline';
 import PlanWizard from './PlanWizard';
-import { RaceFormBlock, RaceFormTag } from './RaceForm';
+import { RaceFormBlock, RaceFormDot, RaceFormTag } from './RaceForm';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import {
   PHASE_LABELS,
@@ -185,121 +185,92 @@ export default function TrainingPlanPage() {
 
   const [search, setSearch] = useState('');
   const shownActive = active.filter((p) => !search.trim() || fold(p.horse?.name).includes(fold(search.trim())));
-  // One line per horse: where it is in its cycle, how the phase is going, what comes next, its race.
+  // One line per horse in four columns, so it fits a laptop screen: the horse (its race form a dot),
+  // where it is in its cycle and how the phase is going, what comes next, and the actions.
   const activeColumns = [
     {
       title: 'Ngựa',
       key: 'horse',
-      fixed: 'left',
       render: (_, r) => (
-        <div className="flex items-center gap-1.5 whitespace-nowrap">
-          <Link to={`/horses/${r.horse?._id}`} className="font-semibold">
+        <div className="flex max-w-[240px] items-center gap-1.5">
+          <RaceFormDot form={r.progress?.form} />
+          <Link to={`/horses/${r.horse?._id}`} className="truncate font-semibold" title={r.horse?.name}>
             {r.horse?.name}
           </Link>
-          {lockedHorseIds.has(r.horse?._id) && <span className="text-[11px] font-medium text-rose-700">Đang khóa</span>}
+          {lockedHorseIds.has(r.horse?._id) && <span className="shrink-0 text-[11px] font-medium text-rose-700">Đang khóa</span>}
         </div>
       ),
     },
     {
       title: 'Đang ở',
       key: 'where',
-      render: (_, r) => (
-        <div className="w-56">
-          <PlanTimeline phases={r.phases} raceDate={r.targetRace?.raceDate} compact />
-          <div className="mt-0.5 truncate text-[11px] text-gray-600">{whereNow(r)}</div>
-        </div>
-      ),
-    },
-    {
-      title: 'Giai đoạn này',
-      key: 'phase',
       render: (_, r) => {
         const ps = r.progress?.phaseSessions || { planned: 0, completed: 0, met: 0 };
         return (
-          <div className="w-36 text-xs">
-            <Progress percent={ps.planned ? Math.round((ps.completed / ps.planned) * 100) : 0} size="small" showInfo={false} strokeColor="#0F5A43" railColor="#EBE5D8" className="!m-0" />
-            <div className="tabular-nums text-gray-600">
-              {ps.completed}/{ps.planned} buổi{ps.completed ? `, đạt ${ps.met}` : ''}
+          <div className="w-48">
+            <PlanTimeline phases={r.phases} raceDate={r.targetRace?.raceDate} compact />
+            <div className="mt-0.5 truncate text-[11px] text-gray-600" title={whereNow(r)}>
+              {whereNow(r)}
+            </div>
+            <div className="text-[11px] tabular-nums text-gray-500">
+              Giai đoạn này: {ps.completed}/{ps.planned} buổi{ps.completed ? `, đạt ${ps.met}` : ''}
             </div>
           </div>
         );
       },
     },
     {
-      title: 'Buổi tới',
+      title: 'Sắp tới',
       key: 'next',
       render: (_, r) => {
         const s = r.progress?.upcoming?.[0];
-        return s ? (
-          <div className="whitespace-nowrap text-xs">
-            <div className="font-medium text-gray-900">{SESSION_KINDS[s.kind]?.label || 'Buổi tập'}</div>
-            <div className="tabular-nums text-gray-500">{sessionTimeLabel(s.scheduledAt)}</div>
+        const race = r.targetRace;
+        return (
+          <div className="max-w-[200px] text-xs">
+            {s ? (
+              <div className="truncate text-gray-900">
+                {SESSION_KINDS[s.kind]?.short || SESSION_KINDS[s.kind]?.label || 'Buổi tập'} <span className="tabular-nums text-gray-500">{sessionTimeLabel(s.scheduledAt)}</span>
+              </div>
+            ) : (
+              <div className="text-gray-500">Chưa có buổi trong 2 tuần tới</div>
+            )}
+            {race && (
+              <div className="truncate text-pink-700" title={`${race.raceName}, ${dayjs(race.raceDate).format('DD/MM/YYYY')}`}>
+                <FlagOutlined className="mr-1" />
+                {race.raceName}
+                {r.progress?.raceInDays > 0 ? `, còn ${r.progress.raceInDays} ngày` : r.progress?.raceInDays === 0 ? ', hôm nay' : ''}
+              </div>
+            )}
           </div>
-        ) : (
-          <Text type="secondary" className="!text-xs">—</Text>
         );
       },
-    },
-    {
-      title: 'Giải mục tiêu',
-      key: 'race',
-      render: (_, r) =>
-        r.targetRace ? (
-          <div className="max-w-[180px] text-xs">
-            <div className="truncate font-medium text-gray-900" title={r.targetRace.raceName}>
-              <FlagOutlined className="mr-1 text-pink-600" />
-              {r.targetRace.raceName}
-            </div>
-            <div className="tabular-nums text-gray-500">
-              {dayjs(r.targetRace.raceDate).format('DD/MM')}
-              {r.progress?.raceInDays > 0 ? `, còn ${r.progress.raceInDays} ngày` : r.progress?.raceInDays === 0 ? ', hôm nay' : ''}
-            </div>
-          </div>
-        ) : (
-          <Text type="secondary" className="!text-xs">—</Text>
-        ),
-    },
-    { title: 'Phong độ', key: 'form', render: (_, r) => <RaceFormTag form={r.progress?.form} /> },
-    {
-      title: 'Trạng thái',
-      key: 'status',
-      render: (_, r) => (
-        <Select
-          size="small"
-          value={r.status}
-          disabled={statusMutation.isPending && statusMutation.variables?.id === r._id}
-          style={{ width: 132 }}
-          options={STATUS_CHOICES[r.status].map((s) => ({ value: s, label: PLAN_STATUS_LABELS[s] }))}
-          onChange={(status) => confirmStatus(r, status)}
-        />
-      ),
     },
     {
       title: '',
       key: 'actions',
-      fixed: 'right',
       render: (_, r) => {
         const locked = lockedHorseIds.has(r.horse?._id);
         const generating = generateMutation.isPending && generateMutation.variables?.plan._id === r._id;
+        // Ending or dropping a plan is rare: it waits behind "⋯" with the week booking.
+        const items = [
+          { key: 'next', label: 'Xếp lại tuần tới', disabled: locked },
+          { key: 'this', label: 'Xếp lại tuần này', disabled: locked },
+          { type: 'divider' },
+          ...STATUS_CHOICES[r.status].filter((s) => s !== r.status).map((s) => ({ key: `status:${s}`, label: s === 'completed' ? 'Kết thúc kế hoạch' : s === 'cancelled' ? 'Hủy kế hoạch' : PLAN_STATUS_LABELS[s], danger: s === 'cancelled' })),
+        ];
         return (
           <Space size={4}>
-            <Tooltip title="Xem lịch tập">
-              <Button size="small" type="text" icon={<CalendarOutlined />} aria-label="Xem lịch tập" onClick={() => navigate(`/training/sessions?plan=${r._id}`)} />
-            </Tooltip>
+            <Button size="small" icon={<CalendarOutlined />} onClick={() => navigate(`/training/sessions?plan=${r._id}`)}>
+              Lịch tập
+            </Button>
             <Dropdown
-              disabled={locked || generating}
               trigger={['click']}
               menu={{
-                items: [
-                  { key: 'next', label: 'Xếp lại tuần tới' },
-                  { key: 'this', label: 'Xếp lại tuần này' },
-                ],
-                onClick: ({ key }) => generateMutation.mutate({ plan: r, which: key }),
+                items,
+                onClick: ({ key }) => (key.startsWith('status:') ? confirmStatus(r, key.slice(7)) : generateMutation.mutate({ plan: r, which: key })),
               }}
             >
-              <Tooltip title={locked ? 'Bác sĩ đang khóa tập: không xếp được buổi nào.' : 'Xếp lại các buổi còn trống, kể cả buổi đã hủy'}>
-                <Button size="small" type="text" icon={<ScheduleOutlined />} loading={generating} disabled={locked} aria-label="Xếp lại tuần" />
-              </Tooltip>
+              <Button size="small" type="text" icon={<MoreOutlined />} loading={generating || (statusMutation.isPending && statusMutation.variables?.id === r._id)} aria-label={`Thao tác khác với kế hoạch của ${r.horse?.name}`} />
             </Dropdown>
           </Space>
         );

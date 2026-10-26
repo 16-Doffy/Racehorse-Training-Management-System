@@ -83,7 +83,10 @@ export default function RationHorseList({ rations = [], horses = [], tasks = [],
             </Tooltip>
           </div>
           <Tooltip title={r.plan?.goal}>
-            <div className="text-[11px] text-gray-500">{r.plan ? 'Lịch ăn theo kế hoạch tập' : 'Theo khẩu phần mẫu'}</div>
+            <div className="text-[11px] text-gray-500">
+              {r.plan ? 'Theo kế hoạch tập' : 'Theo khẩu phần mẫu'}
+              {r.perDay.size > 0 && `, ${[...r.perDay].map(([unit, n]) => `${amountText(n)} ${unit}`).join(' + ')} mỗi ngày`}
+            </div>
           </Tooltip>
         </div>
       ),
@@ -105,23 +108,6 @@ export default function RationHorseList({ rations = [], horses = [], tasks = [],
           </div>
         ) : (
           <Text type="secondary" className="!text-xs">Chưa có bữa nào hôm nay</Text>
-        ),
-    },
-    {
-      title: 'Khẩu phần mẫu',
-      key: 'rations',
-      render: (_, r) =>
-        r.rations.length ? (
-          <div className="flex flex-col text-sm">
-            <span className="tabular-nums">{r.rations.length} bữa</span>
-            {r.perDay.size > 0 && (
-              <Text type="secondary" className="!text-xs tabular-nums">
-                {[...r.perDay].map(([unit, n]) => `${amountText(n)} ${unit}`).join(' · ')} mỗi ngày
-              </Text>
-            )}
-          </div>
-        ) : (
-          <span className="text-gray-400">—</span>
         ),
     },
     {
@@ -160,9 +146,6 @@ export default function RationHorseList({ rations = [], horses = [], tasks = [],
           ]}
         />
         <Input allowClear prefix={<SearchOutlined className="text-gray-400" />} placeholder="Tìm ngựa" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-48" aria-label="Tìm ngựa trong khẩu phần" />
-        <Text type="secondary" className="!text-xs">
-          Bấm một ngựa để xem lịch ăn từng ngày và sửa khẩu phần.
-        </Text>
         {action && <div className="ml-auto">{action}</div>}
       </div>
       <Table

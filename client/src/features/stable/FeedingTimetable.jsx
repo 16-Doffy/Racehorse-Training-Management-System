@@ -35,14 +35,14 @@ function MealCell({ meal, isToday }) {
           : 'border-gray-200 bg-white shadow-2xs'
       } ${isToday ? 'ring-1 ring-emerald-500/30' : ''}`}
     >
-      <div className="flex items-center justify-between gap-1">
+      {/* A planned meal says so by its dashed edge; a meal that happened (or should have) by its tag. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-1">
         <span className="text-xs font-semibold tabular-nums text-gray-900">{meal.time}</span>
-        <Tag
-          color={meta.color}
-          className="!m-0 !px-1.5 !text-[10px] !leading-4 !font-medium rounded-full"
-        >
-          {meta.label}
-        </Tag>
+        {!isPlanned && (
+          <Tag color={meta.color} className="!m-0 !px-1.5 !text-[10px] !leading-4 !font-medium rounded-full">
+            {meta.label}
+          </Tag>
+        )}
       </div>
 
       {isFed && meal.doneAt && (
@@ -161,10 +161,10 @@ export default function FeedingTimetable({ horseId }) {
         </div>
       ) : (
         <div className="light-surface-box overflow-x-auto rounded-xl border border-[#E5DEC9] bg-white shadow-xs">
-          <table className="w-full min-w-[840px] table-fixed border-collapse text-sm">
+          <table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
             <thead>
               <tr className="border-b border-[#E5DEC9] bg-[#FAF7F0]">
-                <th className="w-[84px] px-3 py-2.5 text-left text-xs font-semibold text-gray-700">
+                <th className="w-[72px] px-3 py-2.5 text-left text-xs font-semibold text-gray-700">
                   Bữa
                 </th>
                 {days.map((d) => {
@@ -208,7 +208,7 @@ export default function FeedingTimetable({ horseId }) {
       )}
 
       <p className="text-[11px] text-gray-500 m-0 px-1 leading-relaxed">
-        Đến hôm nay: kết quả thực tế của nhân viên. Ngày tới: bữa dự kiến theo lịch ăn đã xác nhận hoặc khẩu phần mẫu. Rê chuột vào món để xem đủ.
+        Đến hôm nay: kết quả thực tế của nhân viên. Ngày tới (viền nét đứt): bữa dự kiến theo lịch ăn đã xác nhận hoặc khẩu phần mẫu. Rê chuột vào món để xem đủ.
       </p>
     </section>
   );

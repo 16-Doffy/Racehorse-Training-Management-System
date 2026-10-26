@@ -80,18 +80,18 @@ export default function DashboardPage() {
       />
 
       {/* KPI Metric Strip: Unified, dense, tabular, no floating template boxes */}
-      <div className="light-surface-box bg-[#FAF7F0] rounded-xl border border-[#E5DEC9] shadow-xs divide-y sm:divide-y-0 sm:divide-x divide-[#EFE8DA] grid grid-cols-2 lg:grid-cols-4 overflow-hidden">
+      <div className="light-surface-box bg-[#FAF7F0] rounded-xl border border-[#E5DEC9] shadow-xs divide-y sm:divide-y-0 sm:divide-x divide-[#EFE8DA] grid grid-cols-2 md:grid-cols-4 overflow-hidden">
         <button
           type="button"
           onClick={() => navigate('/horses')}
           style={{ border: 'none' }}
-          className="bg-transparent border-0 font-inherit appearance-none m-0 text-left p-4 sm:p-5 hover:bg-[#F2ECE0] transition-colors cursor-pointer group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:z-10"
+          className="bg-transparent border-0 font-inherit appearance-none m-0 text-left px-4 py-3 hover:bg-[#F2ECE0] transition-colors cursor-pointer group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:z-10"
         >
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
             <span className="font-medium group-hover:text-emerald-900 transition-colors">Tổng số ngựa</span>
             <AppstoreOutlined className="text-gray-400 group-hover:text-emerald-700" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 tabular-nums">
+          <div className="text-2xl font-bold tracking-tight text-gray-900 tabular-nums">
             {horses.length}
           </div>
           <div className="text-[11px] text-gray-600 font-medium mt-1">{isHeadTrainer ? 'Ngựa bạn phụ trách' : 'Toàn CLB'}</div>
@@ -101,9 +101,9 @@ export default function DashboardPage() {
           type="button"
           onClick={() => navigate('/horses')}
           style={{ border: 'none' }}
-          className="bg-transparent border-0 font-inherit appearance-none m-0 text-left p-4 sm:p-5 hover:bg-emerald-50/50 transition-colors cursor-pointer group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:z-10"
+          className="bg-transparent border-0 font-inherit appearance-none m-0 text-left px-4 py-3 hover:bg-emerald-50/50 transition-colors cursor-pointer group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:z-10"
         >
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
             <Tooltip title="Ngựa khỏe, đã có hồ sơ khám của bác sĩ và không bị hạn chế tập. Ngựa mới chưa khám không được tính.">
               <span className="font-medium text-emerald-800 flex items-center gap-1">
                 Đủ điều kiện tập <InfoCircleOutlined className="text-[10px]" />
@@ -111,7 +111,7 @@ export default function DashboardPage() {
             </Tooltip>
             <CheckCircleOutlined className="text-emerald-600" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold tracking-tight text-emerald-700 tabular-nums">
+          <div className="text-2xl font-bold tracking-tight text-emerald-700 tabular-nums">
             {eligible}
           </div>
           <div className="text-[11px] text-emerald-800 font-medium mt-1">Đã khám, không bị hạn chế tập</div>
@@ -121,13 +121,13 @@ export default function DashboardPage() {
           type="button"
           onClick={() => navigate('/horses')}
           style={{ border: 'none' }}
-          className="bg-transparent border-0 font-inherit appearance-none m-0 text-left p-4 sm:p-5 hover:bg-amber-50/50 transition-colors cursor-pointer group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:z-10"
+          className="bg-transparent border-0 font-inherit appearance-none m-0 text-left px-4 py-3 hover:bg-amber-50/50 transition-colors cursor-pointer group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:z-10"
         >
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
             <span className="font-medium text-amber-800 group-hover:text-amber-900">Cần theo dõi</span>
             <EyeOutlined className="text-amber-600" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold tracking-tight text-amber-700 tabular-nums">
+          <div className="text-2xl font-bold tracking-tight text-amber-700 tabular-nums">
             {monitoring}
           </div>
           <div className="text-[11px] text-amber-900 font-medium mt-1">Có cảnh báo sức khỏe nhẹ</div>
@@ -137,13 +137,13 @@ export default function DashboardPage() {
           type="button"
           onClick={() => navigate('/horses')}
           style={{ border: 'none' }}
-          className="bg-transparent border-0 font-inherit appearance-none m-0 text-left p-4 sm:p-5 hover:bg-rose-50/40 transition-colors cursor-pointer group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-rose-700 focus-visible:z-10"
+          className="bg-transparent border-0 font-inherit appearance-none m-0 text-left px-4 py-3 hover:bg-rose-50/40 transition-colors cursor-pointer group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-rose-700 focus-visible:z-10"
         >
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
             <span className="font-medium text-rose-800 group-hover:text-rose-900">Chấn thương</span>
             <MedicineBoxOutlined className="text-rose-600" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold tracking-tight text-rose-700 tabular-nums">
+          <div className="text-2xl font-bold tracking-tight text-rose-700 tabular-nums">
             {injured}
           </div>
           <div className="text-[11px] text-rose-900 font-medium mt-1">Đang tạm ngưng luyện tập</div>
