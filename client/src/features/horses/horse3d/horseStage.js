@@ -425,7 +425,8 @@ function makeFarmProps(house) {
 // The pasture's sky through the day in Vietnam, blended minute by minute between these moments: night,
 // dawn, morning, noon, afternoon, the golden hour, dusk, night again. sky = top of the sky, horizon =
 // the haze at the horizon (and the fog), sun = the key light (the moon at night), fill = the sky's light.
-const NIGHT = { sky: '#0f1d36', horizon: '#33476a', sun: ['#b4c8ff', 1.4], fill: ['#9fb6e0', 1.05], clouds: '#5d6b85' };
+// A moonlit night, light enough that a dark coat still shows against the grass.
+const NIGHT = { sky: '#1a2c4e', horizon: '#4a5e86', sun: ['#c8d6ff', 2.1], fill: ['#b4c6ea', 1.65], clouds: '#6f7d98' };
 const PASTURE_SKIES = [
   { at: 0, ...NIGHT },
   { at: 5, ...NIGHT },
