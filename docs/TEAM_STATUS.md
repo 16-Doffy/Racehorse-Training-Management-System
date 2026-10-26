@@ -107,6 +107,15 @@ Thông báo: mỗi việc liên quan tới vai trò nào thì menu của vai tr�
 - **Chăm sóc và khẩu phần:** có ô tìm ngựa và lọc "Cần chú ý". Bỏ cột và nhãn trùng. Thời khóa biểu cho ăn hết cuộn ngang nhờ `table-fixed`.
 - Header các màn HLV/Quản lý bỏ câu mô tả dài.
 
+**Bãi cỏ 360°, trời giờ thực, chuyển ngựa, màu trạng thái** (Duy góp ý: xoay 360° không khớp cảnh, ngựa hơi tối, phải quay lại danh sách mới xem ngựa khác)
+
+- **Ngựa đang nghỉ** đứng trong bãi cỏ tròn có rào quanh, xoay hướng nào cũng kín cảnh (`horseStage.js`, `PADDOCK`). Bên ngoài rào có cổng giằng chéo, nhà trại với đường đất từ cổng tới cửa, cây phong, kiện rơm tròn, silo, máng nước, hàng cây và đồi thấp ở chân trời. Ngựa đang tập vẫn chạy trên dải đường chạy. Ở dải này góc xoay bị giới hạn để không nhìn thấy mép.
+- **Ngựa đang hồi phục** đi vòng trong bãi, camera đi theo.
+- **Trời bãi cỏ theo giờ thực ở Việt Nam,** chuyển dần từng phút qua đêm, bình minh, sáng, trưa, chiều, hoàng hôn, chạng vạng. Mặt trời đi theo giờ. Góc khung ghi giờ, ví dụ "Chiều, 17:32".
+- **Màu lông** ngựa chuyển động được làm đều lại (`prepare-animated.mjs`, hàm `evenOut`), nên giống màu ngựa trong chuồng 3D. `tools/horse-model/coat-luma.mjs` dùng để đo độ sáng hai mô hình.
+- **Hồ sơ ngựa** có nút ‹ › và ô chọn để chuyển sang ngựa khác của HLV, vẫn giữ tab đang mở.
+- **Lịch tuần và thời khóa biểu cho ăn:** mỗi buổi tập và bữa ăn tô màu theo trạng thái (xanh lá: xong; đỏ: bỏ lỡ; xanh dương: đang chạy; vàng hoặc xanh ngọc: đang chờ). Cột hôm nay có nhãn "Hôm nay".
+
 ## 5. Cho dev: cách làm, test, deploy
 
 - **Nhánh:** code trên nhánh của mình. Trước khi làm và trước khi merge: `git pull origin main`, sửa xung đột trên nhánh mình. Merge trên GitHub chọn **Create a merge commit**.
