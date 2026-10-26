@@ -47,7 +47,8 @@ import {
   shortBodyPart,
   vitalOff,
 } from '../../components/veterinarian/vetFormat';
-import Horse3D from '../../features/horses/horse3d/Horse3D';
+import MovingHorse3D from '../../features/horses/horse3d/MovingHorse3D';
+import { injuryFrom, restingMotion } from '../../features/horses/horse3d/horseMotion';
 import { careEventDetails } from '../../constants/care';
 import { message } from '../../lib/antdStatic';
 import { useCareEvents, useCareOrders, useExamRequests, useHealthRecords, useIncidents, useInjuries, useTreatments, useVetHorse, useVetRefresh } from '../../hooks/useVetData';
@@ -581,7 +582,12 @@ export default function HorseHealthDetail() {
       <div className="vet-card vet-horse-head">
         <div className="vet-horse-grid">
           <div className="vet-horse-visual">
-            {horse.photoUrl ? <HorseAvatar horse={horse} size={128} /> : <Horse3D breed={horse.breed} color={horse.color} height="var(--vet-horse-stage)" compact />}
+            {/* The same 3D horse as the trainer's page: out in the paddock, holding up or favouring the leg this vet marked. */}
+            {horse.photoUrl ? (
+              <HorseAvatar horse={horse} size={128} />
+            ) : (
+              <MovingHorse3D creditInFrame breed={horse.breed} color={horse.color} motion={restingMotion(horse, injuryFrom({ markers: injuries, records }))} surface="pasture" height="var(--vet-horse-stage)" />
+            )}
           </div>
           <div className="vet-horse-body">
             <div className="vet-horse-top">

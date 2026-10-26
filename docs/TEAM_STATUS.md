@@ -120,6 +120,8 @@ Thông báo: mỗi việc liên quan tới vai trò nào thì menu của vai tr�
   - Từ 1600 px, HLV thêm cột chủ và bác sĩ, và cột kế hoạch (giai đoạn, tuần, số ngày tới giải, buổi tới).
   - Ngựa đủ điều kiện chỉ ghi "Đủ điều kiện" một lần.
   - Ghi chú dài của bác sĩ hiện tối đa 2 dòng.
+- **Ngựa 3D mới cho mọi vai trò:** trang ngựa của bác sĩ (`HorseHealthDetail`) bỏ `Horse3D` cũ, dùng cùng bãi cỏ và trời theo giờ như HLV. Ngựa co hoặc đỡ đúng chân mà bác sĩ đã đánh dấu. Trang chủ ngựa (đã dùng `MovingHorse3D`) nay cũng có đồng hồ. Đồng hồ ẩn khi khung hẹp dưới 300 px (điện thoại).
+- **Hồ sơ ngựa (HLV/Quản lý):** khung 3D to hơn (chiếm 14/24 cột) và cao bằng thẻ hồ sơ bên cạnh (prop `fill`). Ban đêm sáng hơn, kiểu trời có trăng, nên ngựa lông sẫm vẫn nhìn rõ.
 - **CI:** giới hạn job nâng từ 15 lên 30 phút. Đã có 2 lần CI bị hủy đúng mốc 15 phút; một lần riêng bước cài trình duyệt mất 9 phút.
 
 ## 5. Cho dev: cách làm, test, deploy

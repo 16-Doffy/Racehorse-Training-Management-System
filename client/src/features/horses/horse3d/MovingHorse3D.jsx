@@ -96,7 +96,7 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
 
   return (
     <div className={`${fill ? "flex h-full flex-col" : ""} ${className}`}>
-      <div ref={box} className={`relative overflow-hidden rounded-xl select-none bg-[#9fbfcf] ${fill ? "flex-1" : ""}`} style={fill ? { minHeight: height } : { height }}>
+      <div ref={box} className={`@container relative overflow-hidden rounded-xl select-none bg-[#9fbfcf] ${fill ? "flex-1" : ""}`} style={fill ? { minHeight: height } : { height }}>
         <canvas
           ref={canvas}
           aria-label={`Ngựa 3D — ${caption || 'đứng yên'}${view === 'side' ? `, trên ${SURFACE_WORDS[surface] || 'mặt đất'}` : ''}`}
@@ -112,8 +112,9 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
             </div>
           </div>
         )}
-        {realTime && status === 'ready' && !compact && (
-          <div className="absolute right-3 top-3 pointer-events-none rounded-full px-2.5 py-1 tabular-nums text-white" style={{ ...GLASS, fontSize: 11 }} title="Trời theo giờ thực ở Việt Nam">
+        {/* Not on a frame narrower than 300 px (a phone), where it would run into the caption. */}
+        {realTime && status === 'ready' && (
+          <div className={`@max-[300px]:hidden absolute pointer-events-none rounded-full px-2.5 py-1 tabular-nums text-white ${compact ? "right-2 top-2" : "right-3 top-3"}`} style={{ ...GLASS, fontSize: compact ? 10 : 11 }} title="Trời theo giờ thực ở Việt Nam">
             {clock}
           </div>
         )}
