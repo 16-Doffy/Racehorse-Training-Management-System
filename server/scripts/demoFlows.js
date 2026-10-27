@@ -761,6 +761,113 @@ async function round(ctx, r, startAt) {
   summary(`\n#### Lượt ${r} (bắt đầu ${outcome.start}): ${outcome.cases.map(([l, v]) => `${l}: ${v}`).join(' · ')}\n\n${table(steps.filter((s) => s.flow.startsWith(`R${r} `)))}`);
 }
 
+// ---- Demo data, clean (DEMO_MODE=prepare) ----
+// The mentor's review (RV2): clean demo data — one horse just taken on, one fed and ready, one to play
+// the injury out on — and the stable split into normal zones and an isolation zone. Safe to run again:
+// what exists is kept, and the ready horses get today's open meal (run it on the demo morning).
+const OLD_TEST_HORSE = /^(Test Demo |TEST )|^Sao Mai Test$/i;
+const DEMO_HORSES = {
+  fresh: 'Demo 1 · Mới tiếp nhận',
+  ready: 'Demo 2 · Sẵn sàng tập',
+  injury: 'Demo 3 · Diễn tập chấn thương',
+};
+const DEMO_ZONES = [
+  { zone: 'CL', count: 3, zoneName: 'Khu cách ly', zonePurpose: 'Ngựa bệnh có thể lây, chờ bác sĩ', type: 'isolation' },
+  { zone: 'HP', count: 2, zoneName: 'Khu hồi phục', zonePurpose: 'Ngựa chấn thương đang điều trị', type: 'recovery' },
+];
+const DEMO_MEALS = [
+  ['morning', '06:00', 3, 1],
+  ['noon', '11:30', 2, 1],
+  ['evening', '17:30', 5, 2],
+];
+
+async function prepareDemo(accounts) {
+  const P = 'Dữ liệu demo';
+  if (!(await wake())) {
+    log(P, '-', 'API trả lời health-check', false, 'không trả lời sau 4 phút');
+    return;
+  }
+  log(P, '-', 'API trả lời health-check', true, BASE);
+  for (const role of Object.keys(ROLE_OF)) {
+    if (!(await login(P, accounts, role))) return;
+  }
+
+  // 1. The old test horses leave every working list (archived: their records stay, "Khôi phục" brings one back).
+  const horses = (await read('manager', '/horses')) || [];
+  const old = horses.filter((h) => OLD_TEST_HORSE.test(h.name || ''));
+  for (const h of old) {
+    await must(P, 'manager', `ngừng quản lý ngựa test cũ "${h.name}"`, 'PATCH', `/horses/${h._id}/archive`, { reason: 'Dữ liệu demo cũ — dọn theo góp ý mentor (RV2)' });
+  }
+  log(P, 'manager', `dọn ${old.length} ngựa test cũ`, true, old.length ? '' : 'không còn ngựa test cũ');
+
+  // 2. The isolation and recovery zones, if the stable has none of that kind yet.
+  const stallsOf = async () => (await read('manager', '/stable/stalls'))?.stalls || [];
+  let stalls = await stallsOf();
+  for (const z of DEMO_ZONES) {
+    if (stalls.some((s) => s.type === z.type)) {
+      log(P, 'manager', `đã có ${z.zoneName.toLowerCase()}`, true);
+      continue;
+    }
+    await must(P, 'manager', `tạo ${z.zoneName} (${z.count} chuồng, ${z.zonePurpose.toLowerCase()})`, 'POST', '/stable/stalls/generate', z, 201);
+  }
+  stalls = await stallsOf();
+
+  // 3. The three demo horses.
+  const feedStock = ((await read('manager', '/inventory')) || []).filter((i) => i.category === 'feed' && i.isActive !== false && /^kg$/i.test(i.unit));
+  const grain = feedStock.filter((i) => GRAIN.test(i.name) && !FORAGE.test(i.name)).sort((a, b) => b.quantity - a.quantity)[0];
+  const hay = feedStock.filter((i) => FORAGE.test(i.name)).sort((a, b) => b.quantity - a.quantity)[0];
+  log(P, 'manager', 'chọn cỏ và thức ăn tinh trong kho', Boolean(grain && hay), `${hay?.name || 'thiếu cỏ'} · ${grain?.name || 'thiếu thức ăn tinh'}`);
+  const existing = (name) => horses.find((h) => h.name === name && !h.isArchived);
+  const profile = { breed: 'Thoroughbred', sex: 'gelding', color: 'Bay', weightKg: 480, dob: '2021-04-12', owner: ids.owner, assignedTrainer: ids.trainer, assignedVet: ids.vet };
+
+  const fresh = existing(DEMO_HORSES.fresh) || (await must(P, 'manager', `thêm "${DEMO_HORSES.fresh}" (chưa xếp chuồng, chưa khám, chưa có khẩu phần)`, 'POST', '/horses', { name: DEMO_HORSES.fresh, ...profile, color: 'Grey' }));
+  log(P, 'manager', `"${fresh.name}" chờ tiếp nhận: xếp chuồng → bác sĩ khám → HLV lập khẩu phần và kế hoạch`, true);
+
+  /** A horse set up for training: stall in a normal zone and its groom, an exam, three meals, a plan. */
+  const setUp = async (name, extra) => {
+    let horse = existing(name);
+    if (horse) {
+      log(P, 'manager', `"${name}" đã có — giữ nguyên`, true);
+      return horse;
+    }
+    horse = await must(P, 'manager', `thêm "${name}"`, 'POST', '/horses', { name, ...profile, ...extra });
+    const free = stalls.find((s) => s.type === 'standard' && s.status !== 'maintenance' && !s.occupied && !s.taken);
+    const stallBody = free ? { stall: free._id } : { stableBlock: `Demo ${name.slice(5, 6)}` };
+    const placed = await must(P, 'manager', `xếp chuồng ${free?.code || stallBody.stableBlock} (khu thường), giao nhân viên chăm sóc`, 'POST', '/stable/assignments', { horse: horse._id, ...stallBody, assignedCaretaker: ids.groom });
+    if (free) free.taken = Boolean(placed);
+    await must(P, 'vet', `khám tiếp nhận "${name}": đủ điều kiện, không hạn chế`, 'POST', '/health/records', { horse: horse._id, ...INTAKE_EXAM.body });
+    if (grain && hay) {
+      for (const [slot, time, hayKg, grainKg] of DEMO_MEALS) {
+        await must(P, 'trainer', `khẩu phần ${slot === 'morning' ? 'sáng' : slot === 'noon' ? 'trưa' : 'chiều'} ${time}: ${hayKg} kg cỏ + ${grainKg} kg thức ăn tinh`, 'POST', '/feeding', {
+          horse: horse._id, mealTime: slot, timeOfDay: time, items: [{ inventoryItem: hay._id, amount: hayKg }, { inventoryItem: grain._id, amount: grainKg }],
+        });
+      }
+    }
+    await must(P, 'trainer', 'kế hoạch nền tảng sức bền (đang áp dụng)', 'POST', '/training/plans', {
+      horse: horse._id, phase: 'base_building', distanceTarget: 1600, weeklyVolumeKm: 20, intensity: 'moderate', surface: 'dirt',
+      startDate: new Date().toISOString(), status: 'active', goal: 'Nền tảng sức bền trước mùa giải',
+    });
+    return horse;
+  };
+  const ready = await setUp(DEMO_HORSES.ready, {});
+  const injury = await setUp(DEMO_HORSES.injury, { color: 'Chestnut' });
+  // The injury horse aims at a race, so the demo can show it withdrawn after the vet's lock.
+  const entries = ((await read('trainer', '/races')) || []).filter((e) => String(e.horse?._id || e.horse) === String(injury._id) && !['withdrawn', 'completed'].includes(e.status));
+  if (!entries.length) {
+    const date = new Date(Date.now() + minutes(14 * 24 * 60));
+    date.setHours(15, 0, 0, 0);
+    await must(P, 'trainer', `đăng ký "${injury.name}" vào giải "Cúp Demo CLB" ngày ${ddmm(date)}`, 'POST', '/races', { horse: injury._id, raceName: 'Cúp Demo CLB', raceDate: date.toISOString(), ...RACE }, 201);
+  }
+
+  // 4. The ready horses are fed now: the groom records today's meal that is open (or late but still recordable).
+  for (const horse of [ready, injury]) {
+    const tasks = (await groomTasks(horse)).filter((t) => t.taskType === 'feeding' && t.status === 'pending' && !t.makeUpOf && ['open', 'late'].includes(t.timing?.state));
+    const meal = tasks.sort((a, b) => new Date(b.scheduledDate) - new Date(a.scheduledDate))[0];
+    if (meal) await feed(P, meal._id, `cho "${horse.name}" ăn bữa ${hhmm(new Date(meal.scheduledDate))}`);
+    else log(P, 'groom', `"${horse.name}": chưa có bữa nào mở để cho ăn lúc này`, true, 'chạy lại vào buổi sáng hôm demo để ngựa vừa được cho ăn');
+  }
+}
+
 // The race itself is not simulated: the horses that ran finish in the order of their trial (a trial
 // that met its targets first, then the faster pace), and the first three take prize money.
 const PRIZES = [30000000, 15000000, 8000000];
@@ -805,6 +912,21 @@ async function main() {
     return;
   }
 
+  if (process.env.DEMO_MODE === 'prepare') {
+    if (!WRITE) {
+      console.log('Dữ liệu demo: chỉ ghi khi DEMO_CONFIRM=write.');
+      return;
+    }
+    try {
+      await prepareDemo(accounts);
+    } catch (error) {
+      console.error(error);
+      failed = true;
+    } finally {
+      summary(`### Dữ liệu demo · ${BASE}\n\n${table(steps)}`);
+    }
+    return;
+  }
   if (process.env.DEMO_MODE === 'results' || process.env.DEMO_RESULT_DATE === today) {
     if (!WRITE) {
       console.log('Ngày đua: chỉ nhập kết quả khi DEMO_CONFIRM=write.');

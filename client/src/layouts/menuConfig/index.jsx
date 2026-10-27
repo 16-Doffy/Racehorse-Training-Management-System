@@ -35,13 +35,16 @@ const MENUS = {
     { key: 'finance', icon: <DollarOutlined />, label: 'Báo cáo Tài chính', path: '/finance' },
     { key: 'audit', icon: <FileTextOutlined />, label: 'Nhật ký Hệ thống', path: '/admin/audit-logs' },
   ],
+  // The trainer's tabs in the order the work is done, numbered as the steps of TrainerFlowBar: take
+  // the horse on, its ration, the race it aims at, the plan towards that race, then the sessions and
+  // their evaluation.
   [ROLES.HEAD_TRAINER]: [
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
-    { key: 'horses', icon: <ProfileOutlined />, label: 'Danh sách Ngựa', path: '/horses' },
-    { key: 'training-plans', icon: <ScheduleOutlined />, label: 'Kế hoạch Huấn luyện', path: '/training/plans' },
-    { key: 'training-sessions', icon: <ScheduleOutlined />, label: 'Buổi Tập & Đánh giá', path: '/training/sessions' },
-    { key: 'stable-tasks', icon: <HomeOutlined />, label: 'Chuồng trại & Chăm sóc', path: '/stable/tasks' },
-    { key: 'races', icon: <TrophyOutlined />, label: 'Đăng ký Giải đua', path: '/races' },
+    { key: 'horses', icon: <ProfileOutlined />, label: 'Danh sách Ngựa', path: '/horses', step: 1 },
+    { key: 'stable-tasks', icon: <HomeOutlined />, label: 'Khẩu phần & Chăm sóc', path: '/stable/tasks', step: 2 },
+    { key: 'races', icon: <TrophyOutlined />, label: 'Đăng ký Giải đua', path: '/races', step: 3 },
+    { key: 'training-plans', icon: <ScheduleOutlined />, label: 'Kế hoạch Huấn luyện', path: '/training/plans', step: 4 },
+    { key: 'training-sessions', icon: <CalendarOutlined />, label: 'Buổi Tập & Đánh giá', path: '/training/sessions', step: 5 },
   ],
   // The vet's day: the queue first, then the horses, and one place each for treatments (the
   // prescription and the training level live in the same form), injuries, routine care and the

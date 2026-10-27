@@ -9,6 +9,7 @@ const { getScopedHorseIds, isHorseInScope, canAccessHorse, FORBIDDEN_HORSE_MESSA
 const { ROLES } = require('../../constants/roles');
 const { CARETAKER_FIELDS, caretakerProblem } = require('./caretaker');
 const { setStallCaretaker } = require('./stallCaretaker.service');
+const { placementProblem } = require('./placement');
 
 const { STALL_TYPES, STALL_STATUSES, ZONE_KEY } = Stall;
 const MAX_ZONE_STALLS = 40;
@@ -91,7 +92,13 @@ const listStalls = asyncHandler(async (req, res) => {
   const unplaced = legacy
     .filter((a) => a.horse && !a.horse.isArchived && isHorseInScope(scoped, a.horse._id))
     .map((a) => ({ assignment: a._id, horse: horseCard(a.horse), stableBlock: a.stableBlock, caretaker: a.assignedCaretaker ? { _id: a.assignedCaretaker._id, name: a.assignedCaretaker.name } : null }));
-  return ok(res, { stalls: stalls.map((s) => stallJson(s, byStall.get(String(s._id)), req.user)), unplaced }, 'Stalls fetched.');
+  // A horse in the wrong part of the stable for its health (placement.js): said on its stall.
+  const recoveryStalls = stalls.some((s) => s.isActive && s.type === 'recovery');
+  const withPlacement = (s) => {
+    const occupant = byStall.get(String(s._id));
+    return { ...stallJson(s, occupant, req.user), placement: occupant?.horse ? placementProblem(occupant.horse, s, { recoveryStalls }) : null };
+  };
+  return ok(res, { stalls: stalls.map(withPlacement), unplaced }, 'Stalls fetched.');
 });
 
 /** GET /stable/stalls/by-horse/:horseId — the horse's stall and caretaker, for its detail page (any role that may see the horse). */

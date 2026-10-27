@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Card, Popconfirm, Segmented, Select, Space, Tag, Tooltip } from 'antd';
+import { Alert, Button, Card, Popconfirm, Segmented, Select, Space, Tag, Tooltip } from 'antd';
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -105,7 +105,13 @@ export default function StableMapBoard({
             <Segmented
               value={zone.key}
               onChange={changeZone}
-              options={zones.map((z) => ({ value: z.key, label: `${z.name} · ${z.stalls.filter((s) => s.occupied).length}/${z.stalls.length}` }))}
+              // A zone of isolation or recovery stalls says so, and a zone holding a horse in the wrong
+              // part of the stable for its health is marked (placement on the stall, from the server).
+              options={zones.map((z) => {
+                const kind = z.stalls.every((s) => s.type === 'isolation') ? ' · cách ly' : z.stalls.every((s) => s.type === 'recovery') ? ' · hồi phục' : '';
+                const wrong = z.stalls.some((s) => s.placement) ? ' ⚠' : '';
+                return { value: z.key, label: `${z.name}${kind} · ${z.stalls.filter((s) => s.occupied).length}/${z.stalls.length}${wrong}` };
+              })}
               className="max-w-full overflow-x-auto"
             />
             <span className="text-xs text-gray-600">
@@ -157,6 +163,7 @@ export default function StableMapBoard({
               <Tag color={STALL_STATES[key].tag}>{STALL_STATES[key].label}</Tag>
             </Space>
           </div>
+          {selected.placement && <Alert className="!mt-3" type="warning" showIcon title={selected.placement.message} />}
 
           <div className="mt-3 grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-4 gap-y-2 text-sm">
             <span className="text-gray-600">Ngựa</span>

@@ -14,8 +14,9 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { loggedOut } from '../features/auth/authSlice';
 import { siderCollapsedSet } from '../store/uiSlice';
 import { getMenuByRole } from './menuConfig';
-import { ROLE_LABELS } from '../constants/roles';
+import { ROLE_LABELS, ROLES } from '../constants/roles';
 import AlertBell from '../features/alerts/AlertBell';
+import TrainerFlowBar from '../components/common/TrainerFlowBar';
 import { notificationsApi } from '../features/alerts/notificationsApi';
 import { notificationTarget, menuKeyFor } from '../features/alerts/notificationTarget';
 import { disconnectSocket } from '../lib/socket';
@@ -232,7 +233,15 @@ export default function MainLayout() {
                 icon: siderCollapsed && count ? <Badge dot offset={[2, 0]}>{m.icon}</Badge> : m.icon,
                 label: (
                   <span className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-sm truncate">{m.label}</span>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {/* The trainer's tabs carry the number of their step in the work (menuConfig). */}
+                      {m.step && (
+                        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white/15 text-[10px] font-bold tabular-nums" aria-label={`Bước ${m.step}`}>
+                          {m.step}
+                        </span>
+                      )}
+                      <span className="font-medium text-sm truncate">{m.label}</span>
+                    </span>
                     {count > 0 && <Badge count={count} size="small" overflowCount={99} title={`${count} thông báo chưa xem`} />}
                   </span>
                 ),
@@ -294,7 +303,7 @@ export default function MainLayout() {
 
       {/* MAIN CONTENT AREA */}
       <Layout style={{ ...pageBgStyle, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0 }}>
-        <div className="flex justify-between items-center px-4 pt-3 md:px-8 md:pt-4 shrink-0 bg-transparent">
+        <div className="flex flex-wrap justify-between items-center gap-y-2 px-4 pt-3 md:px-8 md:pt-4 shrink-0 bg-transparent">
           {canvas ? (
             <Segmented
               size="small"
@@ -307,6 +316,12 @@ export default function MainLayout() {
               ]}
             />
           ) : <div />}
+          {/* The trainer's steps in order, between the canvas switch and the bell (TrainerFlowBar). */}
+          {user?.role === ROLES.HEAD_TRAINER && (
+            <div className="order-last w-full min-w-0 md:order-none md:w-auto md:flex-1 md:px-4">
+              <TrainerFlowBar />
+            </div>
+          )}
           <AlertBell />
         </div>
         <Content

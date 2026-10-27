@@ -156,6 +156,24 @@ test('stall catalogue and stable map against real MongoDB', { skip: !process.env
     await api('manager', 'POST', '/stable/assignments', { horse: next._id, stall: a04._id }, 201);
   });
 
+  await t.test('a quarantined horse goes to the isolation zone only; the map says who is in the wrong zone', async () => {
+    const isolation = (await api('manager', 'POST', '/stable/stalls/generate', { zone: 'IS', count: 2, zoneName: 'Khu cách ly', zonePurpose: 'Ngựa bệnh có thể lây', type: 'isolation' }, 201)).created;
+    const [normal] = (await api('manager', 'POST', '/stable/stalls/generate', { zone: 'QN', count: 1, zoneName: 'Khu thường' }, 201)).created;
+    const sick = await api('manager', 'POST', '/horses', { name: 'TEST Stall Sick', breed: 'Arabian', assignedVet: users.vet.id }, 201);
+    await api('vet', 'POST', '/health/records', { horse: sick._id, diagnosis: 'Nghi cúm ngựa', resultStatus: 'quarantined', vitalSigns: { temperatureC: 39.4 } }, 201);
+    assert.ok(await models.Notification.exists({ recipientRole: 'manager', message: /TEST Stall Sick cần cách ly \(chưa có chuồng\)/ }), 'the Manager is told to isolate it');
+    const refused = await raw('manager', 'POST', '/stable/assignments', { horse: sick._id, stall: normal._id });
+    assert.equal(refused.status, 409);
+    assert.match(refused.body.message, /chỉ xếp vào chuồng khu cách ly/);
+    await api('manager', 'POST', '/stable/assignments', { horse: sick._id, stall: isolation[0]._id }, 201);
+    // A healthy horse may take an isolation stall, but the map asks to move it back.
+    const healthy = await api('manager', 'POST', '/horses', { name: 'TEST Stall Healthy', breed: 'Arabian' }, 201);
+    await api('manager', 'POST', '/stable/assignments', { horse: healthy._id, stall: isolation[1]._id }, 201);
+    assert.equal((await stallOf('IS-01')).placement, null, 'the sick horse is where it belongs');
+    assert.equal((await stallOf('IS-02')).placement.level, 'warn');
+    assert.match((await stallOf('IS-02')).placement.message, /không bị cách ly/);
+  });
+
   // Requests on the same records at the same moment, in a set order (see interleave).
   let r;
   const newHorse = async (name) => api('manager', 'POST', '/horses', { name, breed: 'Arabian' }, 201);

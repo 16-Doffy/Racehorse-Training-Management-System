@@ -54,6 +54,8 @@ export default function StableAssignmentPage() {
   const assignments = assignmentsData?.data || [];
   const stalls = stallsData?.data?.stalls || [];
   const unplaced = stallsData?.data?.unplaced || [];
+  // Horses in the wrong part of the stable for their health (server: stable/placement.js).
+  const wrongZone = stalls.filter((s) => s.placement && s.occupant?.horse);
   const horses = horsesData?.data || [];
   const grooms = (groomsData?.data || []).filter((u) => u.isActive !== false);
 
@@ -337,7 +339,7 @@ export default function StableAssignmentPage() {
         }
       />
 
-      {(unstabled.length > 0 || unplaced.length > 0 || uncared.length > 0) && (
+      {(unstabled.length > 0 || unplaced.length > 0 || uncared.length > 0 || wrongZone.length > 0) && (
         // What still needs the Manager, on one line: horses without a stall, horses on a hand-written
         // stall, stalls whose horse has nobody to feed it. Each opens its list; a name opens its stall form.
         <div className="light-surface-box mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm">
@@ -348,6 +350,16 @@ export default function StableAssignmentPage() {
               key: 'unplaced',
               label: 'Chuồng ghi tay, chưa có trên sơ đồ',
               items: unplaced.map((u) => ({ key: u.assignment, label: `${u.horse.name} (${u.stableBlock})`, onClick: () => openModal({ assignment: u.assignment, horse: u.horse, caretaker: u.caretaker }) })),
+            },
+            wrongZone.length > 0 && {
+              key: 'wrong-zone',
+              label: 'Sai khu theo sức khỏe',
+              hint: 'Ngựa cách ly chỉ ở khu cách ly; ngựa khỏe trả chuồng cách ly cho ngựa bệnh; ngựa chấn thương nên ở chuồng hồi phục.',
+              items: wrongZone.map((s) => ({
+                key: s._id,
+                label: `${s.code}: ${s.placement.message}`,
+                onClick: () => openModal({ assignment: s.occupant?.assignment, horse: s.occupant?.horse, caretaker: s.occupant?.caretaker }),
+              })),
             },
             uncared.length > 0 && {
               key: 'uncared',

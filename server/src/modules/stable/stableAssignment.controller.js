@@ -14,6 +14,7 @@ const { pushNotification } = require('../alerts/notification.service');
 const { ensureFeedingTasks } = require('../../realtime/dailyTaskGenerator');
 const { runTransaction, operationError } = require('../../utils/transaction');
 const { handOverTasks, isActiveGroom } = require('./stallCaretaker.service');
+const { placementProblem } = require('./placement');
 
 // Owners, trainers and vets see the stalls of their own horses; the Manager and grooms see the
 // whole stable (a groom's map shows neighbouring stalls too). This used to return every horse's
@@ -51,7 +52,7 @@ async function claimHorse(horse, session) {
     { _id: horse, isArchived: { $ne: true } },
     { $set: { updatedAt: new Date() } },
     { new: true, session, timestamps: false }
-  ).select('name');
+  ).select('name healthStatus');
   if (claimed) return claimed;
   if (await Horse.exists({ _id: horse }).session(session)) {
     throw operationError(409, 'Ngựa này đã ngừng quản lý — đưa ngựa trở lại quản lý trước khi xếp chuồng.');
@@ -81,6 +82,9 @@ const upsertAssignment = asyncHandler(async (req, res) => {
     if (req.body.stall && !target) throw operationError(404, 'Không tìm thấy chuồng.');
     if (target && !target.isActive) throw operationError(409, `Chuồng ${target.code} đã ngừng sử dụng.`);
     if (target && target.status === 'maintenance') throw operationError(409, `Chuồng ${target.code} đang bảo trì${target.maintenanceNote ? ` (${target.maintenanceNote})` : ''} — chọn chuồng khác.`);
+    // A quarantined horse goes to the isolation zone only (placement.js).
+    const wrongZone = placementProblem(horseDoc, target);
+    if (wrongZone?.level === 'block') throw operationError(409, wrongZone.message);
 
     const code = target ? target.code : String(stableBlock).trim();
     const occupied = await StableAssignment.findOne({ $or: [{ stableBlock: code }, ...(target ? [{ stall: target._id }] : [])], horse: { $ne: horse } })

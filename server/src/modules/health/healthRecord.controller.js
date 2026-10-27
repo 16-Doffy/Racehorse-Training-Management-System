@@ -9,6 +9,7 @@ const { getScopedHorseIds, horseFilter, canAccessHorse, FORBIDDEN_HORSE_MESSAGE 
 const { pushNotification, notifyHorseStaff } = require('../alerts/notification.service');
 const { getTrainingClearance, LEVELS, LEVEL_LABELS } = require('./trainingClearance');
 const { openExamRequest } = require('./examRequest.service');
+const { askToIsolate } = require('../stable/placement');
 const { resolveIncidentsWithRecord } = require('../stable/incident.service');
 const { ROLES } = require('../../constants/roles');
 const { BODY_AREAS, EXAM_PRIORITIES, EXAM_SYMPTOMS, fmtWhen, knownKeys, ruleOf, scheduleProblem } = require('../../constants/examRequest');
@@ -148,6 +149,8 @@ const createRecord = asyncHandler(async (req, res) => {
   await logAction({ actorId: req.user._id, action: 'healthRecord.create', targetModel: 'HealthRecord', targetId: record._id });
   if (record.clearedLevel) await applyReturnAssessment(record, req.user);
   await closeRequestsWithRecord(record, req.user);
+  // Quarantined: the Manager is told to move the horse to the isolation zone (stable/placement.js).
+  if (record.resultStatus === 'quarantined') await askToIsolate(record.horse);
   // The same exam answers whatever the groom reported about this horse.
   await resolveIncidentsWithRecord(record, req.user);
 
