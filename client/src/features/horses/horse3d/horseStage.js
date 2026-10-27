@@ -12,6 +12,9 @@ import { MOVING_HORSE } from './horseMotion';
  * as the sore leg lands), a sore leg held off the ground, a tired horse's low, heavy head.
  *
  * World: metres, the horse runs towards +x, the camera looks from +z.
+ *
+ * The model, the sky, the surfaces and the scenery are exported for the training oval on the trainer's
+ * home page (dashboard/track3d/trackStage.js), so both scenes look alike and the model loads once.
  */
 
 // The track surfaces a plan trains on (trainingVocab SURFACE_LABELS), drawn on a canvas.
@@ -89,7 +92,7 @@ function sized(gltf, axis, metres) {
 }
 
 let model = null;
-function loadModel() {
+export function loadModel() {
   if (!model) {
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
@@ -101,7 +104,7 @@ function loadModel() {
   return model;
 }
 
-function surfaceTexture(kind) {
+export function surfaceTexture(kind) {
   const s = SURFACES[kind] || SURFACES.dirt;
   const size = 512;
   const canvas = document.createElement('canvas');
@@ -441,7 +444,7 @@ const PASTURE_SKIES = [
 ];
 const mix = (a, b, t) => `#${new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString()}`;
 /** The pasture sky at an hour of the day (0–24, Vietnam time), blended between the two moments around it. */
-function pastureSkyAt(hour) {
+export function pastureSkyAt(hour) {
   const h = ((hour % 24) + 24) % 24;
   const i = Math.max(0, PASTURE_SKIES.findIndex((k) => k.at > h) - 1);
   const a = PASTURE_SKIES[i];
@@ -458,13 +461,13 @@ function pastureSkyAt(hour) {
   };
 }
 /** The hour of the day in Vietnam (UTC+7, no summer time), whatever the viewer's clock is set to. */
-const vietnamHour = (now = Date.now()) => {
+export const vietnamHour = (now = Date.now()) => {
   const d = new Date(now + 7 * 3600 * 1000);
   return d.getUTCHours() + d.getUTCMinutes() / 60;
 };
 
 /** A sky painted top to horizon, as the scene's background. */
-function skyTexture(top, horizon) {
+export function skyTexture(top, horizon) {
   const canvas = document.createElement('canvas');
   canvas.width = 2;
   canvas.height = 256;
@@ -481,7 +484,7 @@ function skyTexture(top, horizon) {
 }
 
 /** One soft cloud, a few overlapping puffs, painted once and shared by every cloud. */
-function cloudTexture() {
+export function cloudTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 128;
@@ -515,7 +518,7 @@ function gable(width, height, length, material) {
  * doors with white cross braces, and a small cupola on the ridge. Its long side faces the camera (+z).
  * Plain boxes and prisms, so it costs next to nothing.
  */
-function makeBarn() {
+export function makeBarn() {
   const barn = new THREE.Group();
   const L = 10; // along the barn
   const D = 4; // front to back
@@ -575,7 +578,7 @@ function makeBarn() {
  * A round-crowned shade tree: a trunk and a crown of a few lumpy green balls (flat-shaded, so it
  * reads as a tree from afar), drawn when the maple cannot be loaded. `crown` is returned too.
  */
-function makeTree() {
+export function makeTree() {
   const tree = new THREE.Group();
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.28, 2.4, 8), new THREE.MeshStandardMaterial({ color: '#6b4a2e', roughness: 1 }));
   trunk.position.y = 1.2;
@@ -598,7 +601,7 @@ function makeTree() {
 }
 
 /** The trot (TROT_SHIFT): the walk resampled, each leg's tracks moved along the cycle; the rest kept. */
-function makeTrot(walk) {
+export function makeTrot(walk) {
   const d = walk.duration;
   const shiftOf = (trackName) => {
     const node = trackName.split('.')[0];
@@ -623,7 +626,7 @@ function makeTrot(walk) {
 }
 
 /** A board of black and white squares, for the finish post of a trial. */
-function checkerTexture() {
+export function checkerTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 64;
   canvas.height = 64;
@@ -638,7 +641,7 @@ function checkerTexture() {
 }
 
 /** The bounds of a skinned model as posed (Box3 alone ignores the bones), from a sample of its vertices. */
-function skinnedBox(root) {
+export function skinnedBox(root) {
   root.updateMatrixWorld(true);
   const out = new THREE.Box3();
   const v = new THREE.Vector3();
@@ -657,7 +660,7 @@ function skinnedBox(root) {
 }
 
 /** The bone whose name starts with `prefix` (the exporter adds numbers after the names). */
-const boneNamed = (root, prefix) => {
+export const boneNamed = (root, prefix) => {
   let found = null;
   root.traverse((o) => {
     if (!found && o.isBone && o.name.startsWith(prefix)) found = o;

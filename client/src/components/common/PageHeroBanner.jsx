@@ -111,7 +111,8 @@ export default function PageHeroBanner({
         )}
 
         {(statusBadge || actionButton) && (
-          <div className="ml-auto flex shrink-0 flex-wrap items-center gap-3">
+          // Wraps on a phone, where the badge and the button do not fit side by side.
+          <div className="ml-auto flex max-w-full flex-wrap items-center gap-3">
             {statusBadge}
             {actionButton}
           </div>

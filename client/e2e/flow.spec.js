@@ -217,6 +217,20 @@ test('trainer dashboard fitness panel shows the chosen run against its targets',
   await expect(panel.getByText(/Xu hướng \d+ buổi gần nhất của ngựa/)).toBeVisible();
   await expect(panel.getByText(/So sánh các ngựa ngày/)).toBeVisible();
 });
+test('trainer home shows the 3D track and the board of the day', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await login(page, 'trainer');
+  // The fixture's walk ran today and met its targets: its line on the board says so.
+  const board = page.locator('.ant-card', { hasText: 'Bảng việc hôm nay' }).first();
+  const row = board.locator('.ant-table-row', { hasText: 'TEST Browser Horse' });
+  await expect(row).toContainText('Đi bộ');
+  await expect(row).toContainText('Đạt');
+  await expect(board.getByText(/Cần xử lý \(\d+\)/)).toBeVisible();
+  // The track draws in WebGL; its frame is there whether or not this browser can draw it.
+  await expect(page.locator('.ant-card', { hasText: 'Sân tập hôm nay' }).locator('canvas')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
 
 // ---- Horse Owner pages ----
 // Is the text of this element dark? (Any CSS colour, oklch included, is read back through a canvas.)

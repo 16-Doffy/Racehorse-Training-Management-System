@@ -8,7 +8,8 @@ import { trainingSessionApi } from '../training/trainingApi';
 import { ROLE_LABELS, ROLES } from '../../constants/roles';
 import { TRAINING_LEVEL_META } from '../../constants/health';
 import FitnessOverviewChart from './FitnessOverviewChart';
-import LiveTrackOval from './LiveTrackOval';
+import TrainingTrackCard from './TrainingTrackCard';
+import TodayBoard from './TodayBoard';
 import ExamRequestsCard from './ExamRequestsCard';
 import OpenIncidentsCard from './OpenIncidentsCard';
 import CareOrdersCard from './CareOrdersCard';
@@ -52,6 +53,60 @@ export default function DashboardPage() {
   const eligible = horses.filter((h) => h.healthStatus === 'eligible' && itemDone(h, 'health') && itemDone(h, 'clearance')).length;
   const monitoring = horses.filter((h) => h.healthStatus === 'monitoring').length;
   const injured = horses.filter((h) => h.healthStatus === 'injured').length;
+
+  // The safety and medical side of the day: its heading, and the horses the vet has restricted.
+  const safetyHeader = (
+    <div className="light-surface-box flex items-center justify-between pb-1 px-1">
+      <span className="guardrail-title text-xs font-semibold text-[#0F5A43]">An toàn tập luyện &amp; y tế</span>
+      <span className="text-xs px-2 py-0.5 rounded bg-[#EAE1D2] text-slate-700 font-medium tabular-nums">
+        {restrictedHorses.length > 0 ? `${restrictedHorses.length} ngựa hạn chế` : 'Không có khóa tập'}
+      </span>
+    </div>
+  );
+  const restrictedCard = restrictedHorses.length > 0 && (
+    <div className="light-surface-box rounded-xl border border-[#E5DEC9] bg-[#FFFDF8] p-4 shadow-xs">
+      <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-200/80">
+        <span className="font-semibold text-gray-900 text-[15px]">{restrictedHorses.length} ngựa bị hạn chế tập luyện</span>
+        <span className="text-[11px] font-medium text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded border border-amber-200">
+          Bác sĩ chỉ định
+        </span>
+      </div>
+      <div className="divide-y divide-amber-200/50">
+        {restrictedShown.map((h) => {
+          const c = h.trainingClearance;
+          const why = `${c.reason || 'theo phác đồ điều trị'}${c.prescribedBy ? ` (BS ${c.prescribedBy})` : ''}`;
+          return (
+            <div key={h._id} className="py-2 flex items-center justify-between gap-2 text-sm">
+              <div className="min-w-0 pr-2 flex-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Tag color={TRAINING_LEVEL_META[c.level]?.color} className="!m-0 shrink-0 text-xs font-medium">
+                    {TRAINING_LEVEL_META[c.level]?.short}
+                  </Tag>
+                  <Link to={`/horses/${h._id}`} className="truncate font-semibold text-emerald-950 hover:text-emerald-800 underline decoration-emerald-950/20" title={h.name}>
+                    {h.name}
+                  </Link>
+                </div>
+                {/* The doctor's reason on one line; all of it on hover and on the horse's page. */}
+                <p className="text-xs text-gray-600 m-0 mt-0.5 truncate" title={why}>
+                  {why}
+                </p>
+              </div>
+              {isHeadTrainer && (
+                <Button
+                  size="small"
+                  className="shrink-0 text-xs !text-amber-950 font-semibold !bg-white hover:!bg-amber-50 border-amber-300 shadow-xs"
+                  onClick={() => navigate(`/training/sessions?horse=${h._id}`)}
+                >
+                  Xem buổi tập
+                </Button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {restrictedMore}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -152,88 +207,40 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {/* Main 2-Column Operational Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Core Workstream (65% on desktop) */}
-        <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-          {/* Horses out on the track right now, on one oval (only while something runs) */}
-          {isHeadTrainer && <LiveTrackOval sessions={sessionsData?.data || []} horses={horses} />}
-
-          {/* Manager Action Queue */}
-          {isManager && <ManagerQueueCard />}
-
-          {/* Horse Onboarding / Next steps */}
-          <NextStepsCard />
-
-          {/* Trainer Exam Requests */}
-          {isHeadTrainer && <ExamRequestsCard />}
-        </div>
-
-        {/* Right Column: Health, Alerts & Operational Guardrails (35% on desktop) */}
-        <div className="lg:col-span-5 xl:col-span-4 space-y-5">
-          <div className="light-surface-box flex items-center justify-between pb-1 px-1">
-            <span className="guardrail-title text-xs font-semibold text-[#0F5A43]">An toàn tập luyện &amp; y tế</span>
-            <span className="text-xs px-2 py-0.5 rounded bg-[#EAE1D2] text-slate-700 font-medium tabular-nums">
-              {restrictedHorses.length > 0 ? `${restrictedHorses.length} ngựa hạn chế` : 'Không có khóa tập'}
-            </span>
-          </div>
-
-          {/* Medical Clearance Alert: compact operational card */}
-          {restrictedHorses.length > 0 && (
-            <div className="light-surface-box rounded-xl border border-[#E5DEC9] bg-[#FFFDF8] p-4 shadow-xs">
-              <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-200/80">
-                <span className="font-semibold text-gray-900 text-[15px]">{restrictedHorses.length} ngựa bị hạn chế tập luyện</span>
-                <span className="text-[11px] font-medium text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded border border-amber-200">
-                  Bác sĩ chỉ định
-                </span>
-              </div>
-              <div className="divide-y divide-amber-200/50">
-                {restrictedShown.map((h) => {
-                  const c = h.trainingClearance;
-                  const why = `${c.reason || 'theo phác đồ điều trị'}${c.prescribedBy ? ` (BS ${c.prescribedBy})` : ''}`;
-                  return (
-                    <div key={h._id} className="py-2 flex items-center justify-between gap-2 text-sm">
-                      <div className="min-w-0 pr-2 flex-1">
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <Tag color={TRAINING_LEVEL_META[c.level]?.color} className="!m-0 shrink-0 text-xs font-medium">
-                            {TRAINING_LEVEL_META[c.level]?.short}
-                          </Tag>
-                          <Link to={`/horses/${h._id}`} className="truncate font-semibold text-emerald-950 hover:text-emerald-800 underline decoration-emerald-950/20" title={h.name}>
-                            {h.name}
-                          </Link>
-                        </div>
-                        {/* The doctor's reason on one line; all of it on hover and on the horse's page. */}
-                        <p className="text-xs text-gray-600 m-0 mt-0.5 truncate" title={why}>
-                          {why}
-                        </p>
-                      </div>
-                      {isHeadTrainer && (
-                        <Button
-                          size="small"
-                          className="shrink-0 text-xs !text-amber-950 font-semibold !bg-white hover:!bg-amber-50 border-amber-300 shadow-xs"
-                          onClick={() => navigate(`/training/sessions?horse=${h._id}`)}
-                        >
-                          Xem buổi tập
-                        </Button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {restrictedMore}
+      {isHeadTrainer ? (
+        <>
+          {/* The Head Trainer's day: the track today in 3D (the horses out running, today's others by the
+              finish post), the board of the day, then the safety and medical cards in columns that pack
+              tight whatever their heights. */}
+          <TrainingTrackCard sessions={sessionsData?.data || []} horses={horses} />
+          <TodayBoard horses={horses} sessions={sessionsData?.data || []} />
+          <section className="space-y-3">
+            {safetyHeader}
+            <div className="columns-1 gap-5 md:columns-2 2xl:columns-3 [&>*]:mb-5 [&>*]:break-inside-avoid">
+              {restrictedCard}
+              <MissedMealsCard />
+              <ExamRequestsCard />
+              <OpenIncidentsCard />
+              <CareOrdersCard />
             </div>
-          )}
-
-          {/* Missed Meals (Blocks hard sessions) */}
-          <MissedMealsCard />
-
-          {/* Open Incidents (Groom reported) */}
-          <OpenIncidentsCard />
-
-          {/* Care Orders (Vet prescribed medication and tasks) */}
-          <CareOrdersCard />
+          </section>
+        </>
+      ) : (
+        /* The Manager: the queue and each horse's next steps, beside the safety and medical cards. */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+            {isManager && <ManagerQueueCard />}
+            <NextStepsCard />
+          </div>
+          <div className="lg:col-span-5 xl:col-span-4 space-y-5">
+            {safetyHeader}
+            {restrictedCard}
+            <MissedMealsCard />
+            <OpenIncidentsCard />
+            <CareOrdersCard />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Trainer Fitness Overview: under both columns, the width of the page, so its charts have room
           and neither column runs on alone beside an empty one. */}
