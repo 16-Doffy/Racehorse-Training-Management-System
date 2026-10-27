@@ -572,6 +572,10 @@ function RationList() {
   const watchedHorse = Form.useWatch('horse', form);
   const watchedSlot = Form.useWatch('mealTime', form);
   const formHorse = (horsesData?.data || []).find((h) => h._id === watchedHorse);
+  // A meal has one ration: adding one for a meal the horse already has adds to that ration instead
+  // (the server refuses a second one).
+  const existingRation = !editing && watchedHorse && watchedSlot ? (data?.data || []).find((r) => idOf(r.horse) === watchedHorse && r.mealTime === watchedSlot) : null;
+  const itemsText = (items) => (items || []).map((i) => `${i.amount ?? ''} ${i.unit || ''} ${i.type || i.inventoryItem?.name || ''}`.replace(/\s+/g, ' ').trim()).filter(Boolean).join(', ');
   const formGroom = watchedHorse ? assignmentOf(watchedHorse) : null;
   const formPlan = watchedHorse ? planOf(watchedHorse) : null;
   // Worked out on the server from the plan's phase, the horse's weight and the whole stock.
@@ -608,11 +612,13 @@ function RationList() {
 
   const saveMutation = useMutation({
     mutationFn: ({ id, payload }) => (id ? feedingApi.update(id, payload) : feedingApi.create(payload)),
-    onSuccess: (_res, { payload }) => {
-      message.success(editing ? 'Đã cập nhật khẩu phần.' : 'Đã tạo khẩu phần.');
+    onSuccess: (_res, { payload, added, fedToday }) => {
+      message.success(added ? `Đã thêm món vào khẩu phần ${(MEAL_LABELS[payload.mealTime] || 'bữa này').toLowerCase()} sẵn có.` : editing ? 'Đã cập nhật khẩu phần.' : 'Đã tạo khẩu phần.');
       // Mirrors utils/taskTiming.js on the server: a meal is recordable until 4h after its time.
       const at = dayjs(`${dayjs().format('YYYY-MM-DD')} ${payload.timeOfDay || DEFAULT_MEAL_TIMES[payload.mealTime]}`);
-      if (at.add(4, 'hour').isBefore(dayjs())) {
+      if (fedToday) {
+        message.info(`Hôm nay ${(MEAL_LABELS[payload.mealTime] || 'bữa này').toLowerCase()} đã cho ăn — khẩu phần mới áp dụng từ bữa này ngày mai.`);
+      } else if (at.add(4, 'hour').isBefore(dayjs())) {
         message.info('Hôm nay đã qua giờ bữa này — việc cho ăn sẽ bắt đầu từ ngày mai.');
       }
       invalidate();
@@ -853,16 +859,25 @@ function RationList() {
         <Form
           form={form}
           layout="vertical"
-          onFinish={(values) =>
+          onFinish={(values) => {
+            const items = (values.items || []).filter((i) => i?.inventoryItem && i?.amount).map((i) => ({ inventoryItem: i.inventoryItem, amount: i.amount }));
+            // Into the ration the meal already has: its items kept, an item picked again takes the new amount.
+            const merged = existingRation
+              ? [
+                  ...(existingRation.items || [])
+                    .filter((i) => i.inventoryItem && !items.some((n) => n.inventoryItem === idOf(i.inventoryItem)))
+                    .map((i) => ({ inventoryItem: idOf(i.inventoryItem), amount: i.amount })),
+                  ...items,
+                ]
+              : items;
+            const target = editing || existingRation;
             saveMutation.mutate({
-              id: editing?._id,
-              payload: {
-                ...values,
-                timeOfDay: values.timeOfDay ? dayjs(values.timeOfDay).format('HH:mm') : undefined,
-                items: (values.items || []).filter((i) => i?.inventoryItem && i?.amount).map((i) => ({ inventoryItem: i.inventoryItem, amount: i.amount })),
-              },
-            })
-          }
+              id: target?._id,
+              added: Boolean(existingRation),
+              fedToday: target ? todayMeal(target)?.status === 'completed' : false,
+              payload: { ...values, timeOfDay: values.timeOfDay ? dayjs(values.timeOfDay).format('HH:mm') : undefined, items: merged },
+            });
+          }}
         >
           <Form.Item
             name="horse"
@@ -902,6 +917,15 @@ function RationList() {
             </Form.Item>
           </div>
 
+          {existingRation && (
+            <Alert
+              type="warning"
+              showIcon
+              className="!mb-3"
+              title={`${formHorse?.name || 'Ngựa này'} đã có khẩu phần ${(MEAL_LABELS[watchedSlot] || 'bữa này').toLowerCase()}${existingRation.items?.length ? `: ${itemsText(existingRation.items)}` : ''}.`}
+              description={`Bấm Đồng ý sẽ thêm các món dưới đây vào khẩu phần đó (món đã có thì lấy lượng mới) và đặt giờ cho ăn theo ô Giờ cho ăn.${todayMeal(existingRation)?.status === 'completed' ? ' Bữa này hôm nay đã cho ăn — khẩu phần mới áp dụng từ ngày mai.' : ''}`}
+            />
+          )}
           {suggestion && (
             <Alert
               type="info"
