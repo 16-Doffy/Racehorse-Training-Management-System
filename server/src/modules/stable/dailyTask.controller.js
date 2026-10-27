@@ -106,6 +106,12 @@ const listTasks = asyncHandler(async (req, res) => {
   // the horses assigned to them, not the whole club's worklist.
   const horse = await horseFilter(req.user, req.query.horse);
   if (horse !== undefined) filter.horse = horse;
+  // The worklists leave out horses the club no longer manages: archiving one skips its open work, and
+  // those meals must not read as missed on today's lists. One horse asked for by id keeps its history.
+  if (!req.query.horse) {
+    const archived = await Horse.find({ isArchived: true }).distinct('_id');
+    if (archived.length) filter.horse = { ...(filter.horse || {}), $nin: archived };
+  }
   if (status) filter.status = status;
 
   // A Groom always gets their own worklist. An explicit ?assignedTo= used to win over the role

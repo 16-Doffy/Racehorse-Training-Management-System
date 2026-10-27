@@ -140,8 +140,14 @@ test('real MongoDB + HTTP flow across Manager, Trainer, Vet, Groom and Owner', {
     assert.equal((await getTrainingClearance(fixture.horse._id)).level, 'none');
     await api('vet', 'POST', '/health/records', { horse: fixture.horse._id, diagnosis: 'Return to work', resultStatus: 'eligible', clearedLevel: 'high' }, 201);
     assert.equal((await getTrainingClearance(fixture.horse._id)).level, 'high');
+    // A meal still open when the horse leaves is skipped — and drops out of the club's lists, so it
+    // does not read as a missed meal; the horse's own page keeps it as history.
+    const meal = await models.DailyTask.create({ horse: fixture.horse._id, assignedTo: users.groom.id, taskType: 'feeding', source: 'system', mealSlot: 'evening', scheduledDate: new Date() });
     await api('manager', 'PATCH', `/horses/${fixture.horse._id}/archive`, { reason: 'End test' });
     assert.equal((await models.Horse.findById(fixture.horse._id)).isArchived, true);
+    assert.equal((await models.DailyTask.findById(meal._id)).status, 'skipped');
+    assert.ok(!(await api('manager', 'GET', '/stable/tasks')).some((task) => String(task._id) === String(meal._id)), 'not on the club\'s list');
+    assert.ok((await api('manager', 'GET', `/stable/tasks?horse=${fixture.horse._id}`)).some((task) => String(task._id) === String(meal._id)), 'still in its own history');
     await api('trainer', 'GET', `/horses/${fixture.horse._id}`, undefined, 403);
     assert.ok(await api('owner', 'GET', `/horses/${fixture.horse._id}`));
   });
