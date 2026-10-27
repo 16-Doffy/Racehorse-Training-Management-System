@@ -316,14 +316,20 @@ export default function MainLayout() {
               ]}
             />
           ) : <div />}
-          {/* The trainer's steps in order, between the canvas switch and the bell (TrainerFlowBar). */}
+          {/* The trainer's steps in order (TrainerFlowBar): between the canvas switch and the bell on a
+              wide screen, on a row of their own under them on a phone. */}
           {user?.role === ROLES.HEAD_TRAINER && (
-            <div className="order-last w-full min-w-0 md:order-none md:w-auto md:flex-1 md:px-4">
+            <div className="hidden min-w-0 flex-1 px-4 md:block">
               <TrainerFlowBar />
             </div>
           )}
           <AlertBell />
         </div>
+        {user?.role === ROLES.HEAD_TRAINER && (
+          <div className="min-w-0 px-4 pt-2 md:hidden">
+            <TrainerFlowBar />
+          </div>
+        )}
         <Content
           style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto', overflowX: 'hidden' }}
           className="p-4 md:px-8 md:pb-8 relative"
