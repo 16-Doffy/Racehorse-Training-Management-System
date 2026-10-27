@@ -16,6 +16,9 @@ import CareOrdersCard from './CareOrdersCard';
 import NextStepsCard from './NextStepsCard';
 import ManagerQueueCard from './ManagerQueueCard';
 import MissedMealsCard from './MissedMealsCard';
+import StableOverviewCard from './StableOverviewCard';
+import StaffTodayCard from './StaffTodayCard';
+import StockWatchCard from './StockWatchCard';
 import { useFirst } from './useFirst';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 
@@ -216,7 +219,7 @@ export default function DashboardPage() {
           <TodayBoard horses={horses} sessions={sessionsData?.data || []} />
           <section className="space-y-3">
             {safetyHeader}
-            <div className="columns-1 gap-5 md:columns-2 2xl:columns-3 [&>*]:mb-5 [&>*]:break-inside-avoid">
+            <div className="columns-1 gap-5 md:columns-2 2xl:columns-3 [&>*]:!mb-5 [&>*]:break-inside-avoid">
               {restrictedCard}
               <MissedMealsCard />
               <ExamRequestsCard />
@@ -226,20 +229,27 @@ export default function DashboardPage() {
           </section>
         </>
       ) : (
-        /* The Manager: the queue and each horse's next steps, beside the safety and medical cards. */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+        <>
+          {/* The Manager's club today: the stable in 3D with every zone, what waits on them, the grooms'
+              day and the store, then the safety and medical cards, all in columns that pack tight;
+              each horse's next step last. */}
+          <StableOverviewCard />
+          <div className="columns-1 gap-5 md:columns-2 [&>*]:!mb-5 [&>*]:break-inside-avoid">
             {isManager && <ManagerQueueCard />}
-            <NextStepsCard />
+            <StaffTodayCard />
+            <StockWatchCard />
           </div>
-          <div className="lg:col-span-5 xl:col-span-4 space-y-5">
+          <section className="space-y-3">
             {safetyHeader}
-            {restrictedCard}
-            <MissedMealsCard />
-            <OpenIncidentsCard />
-            <CareOrdersCard />
-          </div>
-        </div>
+            <div className="columns-1 gap-5 md:columns-2 2xl:columns-3 [&>*]:!mb-5 [&>*]:break-inside-avoid">
+              {restrictedCard}
+              <MissedMealsCard />
+              <OpenIncidentsCard />
+              <CareOrdersCard />
+            </div>
+          </section>
+          <NextStepsCard />
+        </>
       )}
 
       {/* Trainer Fitness Overview: under both columns, the width of the page, so its charts have room

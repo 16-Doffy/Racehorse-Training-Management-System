@@ -37,7 +37,8 @@ export default function NextStepsCard() {
       }}
       title={
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+          {/* Wraps on a phone: the count goes under the title instead of out of the card. */}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="font-semibold text-gray-900 text-[15px]">Bước tiếp theo của từng ngựa</span>
             {openCount > 0 && (
               <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
@@ -54,7 +55,7 @@ export default function NextStepsCard() {
               { label: `Cần làm (${openCount})`, value: 'pending' },
               { label: `Đạt (${doneCount})`, value: 'done' },
             ]}
-            className="self-start sm:self-auto bg-[#F2EDE2]"
+            className="self-start sm:self-auto max-w-full overflow-x-auto bg-[#F2EDE2]"
           />
         </div>
       }
@@ -108,7 +109,7 @@ export default function NextStepsCard() {
                 const percent = total > 0 ? Math.round((done / total) * 100) : 0;
                 return (
                   <div className="flex flex-col items-end gap-1">
-                    <span className="tabular-nums font-semibold text-xs text-gray-800">
+                    <span className="tabular-nums font-semibold text-xs text-gray-900">
                       {done}/{total} mục
                     </span>
                     <Progress
@@ -116,7 +117,7 @@ export default function NextStepsCard() {
                       size={['100%', 4]}
                       showInfo={false}
                       strokeColor={percent === 100 ? '#2E7D4F' : '#0F5A43'}
-                      railColor="#EBE5D8"
+                      railColor="rgba(120, 112, 90, 0.22)"
                       className="!m-0 w-16"
                     />
                   </div>

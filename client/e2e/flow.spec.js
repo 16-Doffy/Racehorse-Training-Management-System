@@ -231,6 +231,21 @@ test('trainer home shows the 3D track and the board of the day', async ({ page }
   await expect(page.locator('.ant-card', { hasText: 'Sân tập hôm nay' }).locator('canvas')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
+test('manager home shows the stable, the grooms\' day and the store', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await login(page, 'manager');
+  // The fixture's zone holds the fixture horse, so it is the one shown in 3D.
+  const stable = page.locator('.ant-card', { hasText: 'Chuồng trại toàn CLB' }).first();
+  await expect(stable.getByRole('button', { name: /Khu A/ })).toBeVisible();
+  await stable.getByRole('button', { name: /Khu A/ }).click();
+  await expect(stable.getByRole('button', { name: /Khu A/ })).toHaveAttribute('aria-pressed', 'true');
+  // Each card says so in one line when there is nothing to show.
+  await expect(page.getByText('Nhân viên chăm sóc hôm nay')).toBeVisible();
+  await expect(page.getByText('Kho cần chú ý')).toBeVisible();
+  await expect(page.locator('.ant-card', { hasText: 'Việc đang chờ bạn' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
 
 // ---- Horse Owner pages ----
 // Is the text of this element dark? (Any CSS colour, oklch included, is read back through a canvas.)
