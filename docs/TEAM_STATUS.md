@@ -141,6 +141,12 @@ Thông báo: mỗi việc liên quan tới vai trò nào thì menu của vai tr�
     - Lỡ giờ.
   - Lượt 1 có thêm 2 sự cố chuồng (1 đã xử lý, 1 còn mở) và 1 đề xuất nhập kho được duyệt một phần.
   - Lượt 2–4 (05:45, 06:30, 07:15) mỗi lượt có Đạt và Không đạt. Giải "TEST Cúp Demo 28/10".
+- **Góp ý mentor RV2 (27/10):**
+  - **Tab HLV theo thứ tự công việc:** menu đánh số 1 Danh sách ngựa → 2 Khẩu phần & Chăm sóc → 3 Đăng ký giải đua → 4 Kế hoạch → 5 Buổi tập & đánh giá. Thanh "Quy trình" ở hàng trên cùng (`TrainerFlowBar.jsx`) tô sáng bước của trang đang mở và đếm số ngựa chờ mỗi bước.
+  - **Khu thường / khu cách ly** (`stable/placement.js`):
+    - ngựa bị bác sĩ kết luận cách ly chỉ được xếp vào chuồng cách ly, và Quản lý được báo để chuyển ngựa;
+    - sơ đồ đánh dấu ngựa sai khu (ngựa cách ly ở ngoài khu cách ly, ngựa khỏe chiếm chuồng cách ly, ngựa chấn thương ở chuồng thường khi đã có chuồng hồi phục) và đưa vào "Cần xử lý → Sai khu theo sức khỏe".
+  - **Dữ liệu demo sạch** (`demoFlows.js` `DEMO_MODE=prepare`): cất các ngựa test cũ, tạo khu cách ly + khu hồi phục, tạo 3 ngựa "Demo 1 · Mới tiếp nhận", "Demo 2 · Sẵn sàng tập", "Demo 3 · Diễn tập chấn thương". Chạy lại được nhiều lần. Chưa chạy trên web thật: cần Duy bật chế độ này trong workflow.
 - **CI:** giới hạn job nâng từ 15 lên 30 phút. Đã có 2 lần CI bị hủy đúng mốc 15 phút; một lần riêng bước cài trình duyệt mất 9 phút.
 
 ## 5. Cho dev: cách làm, test, deploy
