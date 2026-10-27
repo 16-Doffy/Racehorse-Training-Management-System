@@ -100,7 +100,9 @@ export default function FeedingTimetable({ horseId }) {
   const [weekStart, setWeekStart] = useState(() => mondayOf(dayjs()));
   const week = weekStart.format('YYYY-MM-DD');
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['feeding-timetable', horseId, week],
+    // Under ['feeding']: confirming the feeding calendar, editing a meal or saving a ration refreshes it
+    // at once (they invalidate ['feeding']), instead of at the next minute's refetch.
+    queryKey: ['feeding', 'timetable', horseId, week],
     queryFn: () => feedingApi.timetable(horseId, week),
     enabled: Boolean(horseId),
     refetchInterval: 60 * 1000,
