@@ -146,7 +146,12 @@ Thông báo: mỗi việc liên quan tới vai trò nào thì menu của vai tr�
   - **Khu thường / khu cách ly** (`stable/placement.js`):
     - ngựa bị bác sĩ kết luận cách ly chỉ được xếp vào chuồng cách ly, và Quản lý được báo để chuyển ngựa;
     - sơ đồ đánh dấu ngựa sai khu (ngựa cách ly ở ngoài khu cách ly, ngựa khỏe chiếm chuồng cách ly, ngựa chấn thương ở chuồng thường khi đã có chuồng hồi phục) và đưa vào "Cần xử lý → Sai khu theo sức khỏe".
-  - **Dữ liệu demo sạch** (`demoFlows.js` `DEMO_MODE=prepare`): cất các ngựa test cũ, tạo khu cách ly + khu hồi phục, tạo 3 ngựa "Demo 1 · Mới tiếp nhận", "Demo 2 · Sẵn sàng tập", "Demo 3 · Diễn tập chấn thương". Chạy lại được nhiều lần. Chưa chạy trên web thật: cần Duy bật chế độ này trong workflow.
+  - **Dữ liệu demo sạch** (`demoFlows.js` `DEMO_MODE=prepare`): cất các ngựa test cũ, tạo khu cách ly + khu hồi phục, tạo 3 ngựa "Demo 1 · Mới tiếp nhận", "Demo 2 · Sẵn sàng tập", "Demo 3 · Diễn tập chấn thương". Chạy lại được nhiều lần.
+  - **Dữ liệu trên web thật đã dọn (27/10, bằng phiên Quản lý):**
+    - cất 18 ngựa test ("Test Demo …", "Sao Mai Test"), khôi phục được trong "Đã ngừng quản lý";
+    - đổi tên 2 ngựa đủ hồ sơ thành "Demo · Sẵn sàng tập" (A-02) và "Demo · Diễn tập chấn thương" (A-04);
+    - tạo Khu cách ly (CL, 3 chuồng) và Khu hồi phục (HP, 2 chuồng); Taurus đang chấn thương chuyển sang HP-01; ngựa "demo" mới tiếp nhận ở C-01.
+    - Còn 7 ngựa, không còn mục "Cần xử lý".
 - **CI:** giới hạn job nâng từ 15 lên 30 phút. Đã có 2 lần CI bị hủy đúng mốc 15 phút; một lần riêng bước cài trình duyệt mất 9 phút.
 
 ## 5. Cho dev: cách làm, test, deploy
