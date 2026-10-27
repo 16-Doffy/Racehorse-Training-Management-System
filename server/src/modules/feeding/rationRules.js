@@ -12,6 +12,8 @@
  * - From stock, for each kind: the item the horse already eats, else one with enough for the coming
  *   week, expiring first, then the fullest.
  */
+const { feedTypeOf } = require('../inventory/feedType');
+
 const SHARES = {
   rest: { forage: 0.02, concentrate: 0.0025 },
   light: { forage: 0.02, concentrate: 0.005 },
@@ -63,7 +65,9 @@ function workOf(phase, date) {
 
 /** The stock item of one kind (forage | concentrate) to use: the horse's current one, else enough for a week, expiring first, then the fullest. */
 function pickFeed(stock, kind, { keep = [], weekNeed = 0, day = new Date() } = {}) {
-  const usable = stock.filter((i) => i.feedType === kind && unitOf(i) === 'kg' && usableOn(i, day));
+  // feedTypeOf: an item stocked before kinds existed has none stored, and the guess from its name is
+  // only filled in when its category is read — a query selecting a few fields would see no hay at all.
+  const usable = stock.filter((i) => feedTypeOf(i) === kind && unitOf(i) === 'kg' && usableOn(i, day));
   const current = usable.find((i) => keep.includes(String(i._id)));
   if (current) return current;
   const expiry = (i) => (i.expiryDate ? new Date(i.expiryDate).getTime() : Infinity);
@@ -74,7 +78,7 @@ function pickFeed(stock, kind, { keep = [], weekNeed = 0, day = new Date() } = {
 function pickSupplements(stock, day = new Date()) {
   return SUPPLEMENTS.map((rule) => {
     const item = stock
-      .filter((i) => i.feedType === 'supplement' && rule.match.test(i.name) && rule.dose[unitOf(i)] && usableOn(i, day))
+      .filter((i) => feedTypeOf(i) === 'supplement' && rule.match.test(i.name) && rule.dose[unitOf(i)] && usableOn(i, day))
       .sort((a, b) => (a.expiryDate ? new Date(a.expiryDate) : Infinity) - (b.expiryDate ? new Date(b.expiryDate) : Infinity))[0];
     return item ? { rule, item } : null;
   }).filter(Boolean);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Button, Form, InputNumber, Modal, Select, Table, Tag, TimePicker, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -46,11 +46,23 @@ export default function FeedingCalendarPanel({ plans = [], horseId, feedItems = 
   const actualPage = Math.min(Math.max(page ?? startPage, 0), Math.max(0, Math.ceil(days.length / 7) - 1));
   const shown = days.slice(actualPage * 7, actualPage * 7 + 7);
   const confirmed = future.filter((d) => d.approved && !d.stale).length;
+  const undoTimes = () => setClockDraft((old) => Object.fromEntries(Object.entries(old).filter(([key]) => key !== planId)));
+  // New meal times live only on this page until the timetable is confirmed: reloading or leaving would
+  // drop them without a word, so the browser asks first.
+  useEffect(() => {
+    if (!editedTimes) return undefined;
+    const keep = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', keep);
+    return () => window.removeEventListener('beforeunload', keep);
+  }, [editedTimes]);
   const mutation = useMutation({
     mutationFn: () => feedingApi.confirmCalendar(planId, calendar.plan.updatedAt, clockDraft[planId] || {}),
     onSuccess: (res) => {
       message.success(res.data?.changed ? `Đã xác nhận lịch ăn; nhân viên đã nhận thông báo.` : 'Lịch ăn đã được xác nhận.');
-      setClockDraft((old) => Object.fromEntries(Object.entries(old).filter(([key]) => key !== planId)));
+      undoTimes();
       queryClient.invalidateQueries({ queryKey: ['feeding-calendar', planId] });
       queryClient.invalidateQueries({ queryKey: ['feeding'] });
       queryClient.invalidateQueries({ queryKey: ['daily-tasks-all'] });
@@ -123,7 +135,7 @@ export default function FeedingCalendarPanel({ plans = [], horseId, feedItems = 
               <div><Text type="secondary" className="!text-xs">Người cho ăn: {calendar?.caretaker?.name || 'chưa xếp'}; nhân viên thấy lịch trước và ghi nhận từ giờ hẹn.</Text></div>
             </div>
             <Button type="primary" disabled={isLoading || !future.length || Boolean(calendar?.problems?.length) || confirmed === future.length && !editedTimes} loading={mutation.isPending} onClick={() => mutation.mutate()}>
-              Xác nhận lịch ăn toàn kỳ
+              {editedTimes ? 'Lưu giờ mới và xác nhận lịch' : 'Xác nhận lịch ăn toàn kỳ'}
             </Button>
           </div>
           {(calendar?.problems || []).length > 0 && <Alert className="!mb-2" type="warning" showIcon title={`Chưa thể xác nhận: ${calendar.problems.join(' ')}`} />}
@@ -136,6 +148,15 @@ export default function FeedingCalendarPanel({ plans = [], horseId, feedItems = 
             </label>)}
             <Text type="secondary" className="!text-xs">Bữa ăn mở đúng giờ đã đặt. Thay giờ rồi xác nhận lại lịch.</Text>
           </div>
+          {editedTimes && (
+            <Alert
+              className="!mb-3"
+              type="warning"
+              showIcon
+              title={calendar?.problems?.length ? `Giờ mới chưa lưu được: ${calendar.problems.join(' ')}` : 'Giờ mới chưa được lưu. Bấm "Lưu giờ mới và xác nhận lịch" để giao cho nhân viên; tải lại trang lúc này sẽ mất thay đổi.'}
+              action={<Button size="small" onClick={undoTimes}>Hoàn tác</Button>}
+            />
+          )}
           <Table rowKey="date" size="small" columns={columns} dataSource={shown} loading={isLoading && !calendar} pagination={false} scroll={{ x: 900 }} locale={{ emptyText: 'Kế hoạch chưa có ngày để xếp lịch ăn.' }} />
           {days.length > 7 && <div className="flex items-center justify-between mt-3 gap-2">
             <Button disabled={actualPage === 0} onClick={() => setPage(actualPage - 1)}>7 ngày trước</Button>

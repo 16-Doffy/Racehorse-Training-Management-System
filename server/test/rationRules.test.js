@@ -41,6 +41,14 @@ test('stock: the horse\'s current item first, else enough for the week, expiring
   assert.deepEqual(kinds, ['mineral', 'oil', 'electrolyte'], 'a salt lick counted in "viên" has no dose');
 });
 
+test('stock stocked before feed kinds existed is still found, by its name', () => {
+  // As the feeding calendar reads stock (a few fields, no category): no kind stored on these items.
+  const old = stock.map(({ feedType, ...item }) => item);
+  assert.equal(pickFeed(old, 'forage', { weekNeed: 60 }).name, 'Cỏ khô Timothy', 'hay without a stored kind is forage');
+  assert.equal(pickFeed(old, 'concentrate', { weekNeed: 10 }).name, 'Yến mạch');
+  assert.deepEqual(pickSupplements(old).map((s) => s.rule.key), ['mineral', 'oil', 'electrolyte']);
+});
+
 test('meals have roles: a light breakfast before training, the main meal at night, supplements by phase and work', () => {
   const feeds = { forage: stock[0], concentrate: stock[2], supplements: pickSupplements(stock) };
   const [breakfast, lunch, dinner] = dayMeals({ weightKg: 480, work: 'high', phase: phase('speed', 'high'), clocks, feeds });
