@@ -311,7 +311,13 @@ async function nutritionGate(horse, when, { intensity } = {}) {
 
   if (!lastMeal) {
     gate.status = blockHardWork ? 'blocked' : 'caution';
-    gate.detail = `Không có bữa ăn nào trong 24 giờ trước giờ tập — tập khi đói ngựa sẽ không đủ sức.${blockHardWork ? hardWorkNote : ''}`;
+    // Fed, but only a supplement (a salt lick, oil, minerals): said as such — the groom did feed it, it
+    // is the ration that has no hay or grain in it.
+    const extra = feedings.filter((t) => t.mealSlot && kindOf(t) === 'supplement').pop();
+    const extraNames = [...new Set((extra?.supplies || []).map((i) => String(i.name || '').split(' (')[0]).filter(Boolean))].join(', ');
+    gate.detail = extra
+      ? `${mealLabel(extra)} (${formatTime(extra.scheduledDate)}) chỉ có thức ăn bổ sung${extraNames ? ` (${extraNames})` : ''} — không tính là một bữa ăn, nên 24 giờ trước giờ tập ngựa chưa có bữa chính nào. Lập khẩu phần có cỏ hoặc thức ăn tinh cho ngựa.${blockHardWork ? hardWorkNote : ''}`
+      : `Không có bữa ăn nào trong 24 giờ trước giờ tập — tập khi đói ngựa sẽ không đủ sức.${blockHardWork ? hardWorkNote : ''}`;
     return gate;
   }
 

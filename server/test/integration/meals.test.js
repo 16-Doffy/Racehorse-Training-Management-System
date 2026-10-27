@@ -153,9 +153,12 @@ test('meals: ration times, missed meals, hard work on an empty stomach, make-up,
     assert.notEqual(oilOnly.status, 'blocked', oilOnly.detail);
     assert.match(oilOnly.detail, /Bữa sáng cho ăn lúc .*có thể đã đói/);
 
-    // Oil was all the horse had: that is no meal in 24 hours.
+    // Oil was all the horse had: no meal in 24 hours, said as a fed supplement (the ration is the problem).
     await models.DailyTask.deleteMany({ horse: horse._id, taskType: 'feeding', mealSlot: 'morning' });
-    assert.match((await nutrition()).detail, /Không có bữa ăn nào trong 24 giờ/);
+    const onlyOil = await nutrition();
+    assert.equal(onlyOil.status, 'blocked', onlyOil.detail);
+    assert.match(onlyOil.detail, /Bữa chiều \(\d\d:\d\d\) chỉ có thức ăn bổ sung \(TEST Flaxseed\) — không tính là một bữa ăn/);
+    assert.match(onlyOil.detail, /Lập khẩu phần có cỏ hoặc thức ăn tinh/);
   });
 
   await t.test('a meal missed earlier today and not made up is a warning, even after a later meal', async () => {

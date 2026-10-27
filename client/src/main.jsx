@@ -14,6 +14,21 @@ import './index.css';
 // now means it is usually ready by the time the user has typed their password.
 wakeServer();
 
+// After a deploy the files of the old build are gone, so a page opened before it cannot load a part
+// it loads on demand (the 3D stage, a page): reload once to pick up the new build. Once per page per
+// tab, so a part that is really missing shows its own message instead of reloading in a loop.
+window.addEventListener('vite:preloadError', (event) => {
+  const key = 'reloaded-for-new-build';
+  try {
+    if (sessionStorage.getItem(key) === window.location.pathname) return;
+    sessionStorage.setItem(key, window.location.pathname);
+  } catch {
+    return;
+  }
+  event.preventDefault();
+  window.location.reload();
+});
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <Provider store={store}>

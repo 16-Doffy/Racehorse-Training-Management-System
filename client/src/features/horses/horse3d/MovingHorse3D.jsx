@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Tooltip } from 'antd';
+import { Button, Tooltip } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { coatFor } from './horseBreeds';
 import { MOVING_HORSE, PASTURE_CREDIT } from './horseMotion';
@@ -51,9 +51,15 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
     let alive = true;
     let observer = null;
     import('./horseStage')
-      .then(({ createHorseStage }) => {
-        if (!alive || !canvas.current) return;
-        const s = createHorseStage(canvas.current, { view });
+      // The stage's own file did not load: after a deploy, a page opened before it asks for a file of the
+      // old build (main.jsx reloads the page once; past that the frame says so and offers a reload).
+      .catch(() => {
+        if (alive) setStatus('stale');
+        return null;
+      })
+      .then((mod) => {
+        if (!mod?.createHorseStage || !alive || !canvas.current) return;
+        const s = mod.createHorseStage(canvas.current, { view });
         stage.current = s;
         const { coat: c, motion: m, surface: f, hour: h } = latest.current;
         s.setHour(h);
@@ -135,6 +141,14 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
         {status === 'loading' && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-[#0b2a20]" style={{ fontSize: compact ? 11 : 13 }}>
             Đang tải mô hình 3D…
+          </div>
+        )}
+        {status === 'stale' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center text-[#0b2a20]" style={{ fontSize: compact ? 11 : 13 }}>
+            Trang vừa có bản cập nhật — tải lại để xem mô hình 3D.
+            <Button size="small" onClick={() => window.location.reload()}>
+              Tải lại trang
+            </Button>
           </div>
         )}
         {status === 'error' && (
