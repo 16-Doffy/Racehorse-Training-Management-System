@@ -608,6 +608,8 @@ function RationList() {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['feeding'] });
     queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    // A ration changes today's meals on the groom's list too (the "Bữa hôm nay" column).
+    queryClient.invalidateQueries({ queryKey: ['daily-tasks-all'] });
   };
 
   const saveMutation = useMutation({

@@ -94,17 +94,32 @@ export function useRealtimeAlerts() {
         placement: 'topRight',
       });
     };
+    // Something happened elsewhere (another role, the groom's app, a watcher): whatever this page shows
+    // is reloaded, not just the bell — the meal just given, the exam just filed, the session just
+    // stopped appear without a reload. Gathered for a moment, so a burst reloads once; only the lists
+    // on screen are fetched again, the others are marked old.
+    let refreshTimer = null;
+    const refreshPage = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== 'notifications' });
+      }, 1500);
+    };
     const handleNotification = (notification) => {
       batch.push(notification);
       if (!timer) timer = setTimeout(show, 1200);
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      refreshPage();
     };
 
     // Stock changed somewhere (a delivery, a new item, a meal or dose taking it out): the storeroom
-    // and anything showing stock reload now rather than on their next visit.
+    // and anything showing stock reload now rather than on their next visit — and a meal or a dose
+    // given is news for the rest of the page too.
     const handleInventory = () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['inventory-forecast'] });
+      refreshPage();
     };
 
     socket.on('notification:new', handleNotification);
@@ -112,6 +127,7 @@ export function useRealtimeAlerts() {
 
     return () => {
       clearTimeout(timer);
+      clearTimeout(refreshTimer);
       socket.off('notification:new', handleNotification);
       socket.off('inventory:changed', handleInventory);
     };
