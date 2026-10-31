@@ -7,11 +7,6 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "rtmsgroom",
-    "splash": {
-      "backgroundColor": "#022c22",
-      "resizeMode": "contain",
-      "image": "./assets/splash-icon.png"
-    },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -26,8 +21,7 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
-      "edgeToEdgeEnabled": true
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -40,7 +34,17 @@
           "cameraPermission": "Cho phép chụp ảnh hiện trường khi báo cáo sự cố."
         }
       ],
-      "expo-asset"
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#022c22",
+          "resizeMode": "contain",
+          "image": "./assets/splash-icon.png"
+        }
+      ],
+      "expo-asset",
+      "expo-status-bar",
+      "expo-font"
     ]
   }
 }
