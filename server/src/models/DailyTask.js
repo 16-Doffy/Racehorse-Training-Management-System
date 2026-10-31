@@ -38,6 +38,9 @@ const dailyTaskSchema = new mongoose.Schema(
     source: { type: String, enum: ['trainer', 'vet', 'system'], default: 'trainer' },
     // The treatment a vet's care order belongs to; it ends when the treatment does.
     treatment: { type: mongoose.Schema.Types.ObjectId, ref: 'Treatment', default: null },
+    // The long-running job (CareRoutine) this day's task comes from, and how long each time takes.
+    routine: { type: mongoose.Schema.Types.ObjectId, ref: 'CareRoutine', default: null },
+    durationMinutes: { type: Number, default: null },
     // Which meal a feeding task covers. Null for every other task type. Without it one horse's
     // three meals a day were indistinguishable, so nothing could tell whether the horse had
     // eaten recently enough — or long enough ago — to be worked.

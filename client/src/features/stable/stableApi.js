@@ -15,6 +15,14 @@ export const dailyTaskApi = {
     }),
 };
 
+// Care handed out for a stretch of days: times a day, minutes each, how. Each day it becomes tasks.
+export const careRoutineApi = {
+  list: (params) => axiosClient.get('/stable/routines', { params }),
+  create: (payload) => axiosClient.post('/stable/routines', payload),
+  update: (id, payload) => axiosClient.put(`/stable/routines/${id}`, payload),
+  stop: (id) => axiosClient.post(`/stable/routines/${id}/stop`),
+};
+
 // Incident reports as a list with a status. Handling one (PATCH) is the vet's action.
 export const incidentApi = {
   list: (params) => axiosClient.get('/stable/incidents', { params }),

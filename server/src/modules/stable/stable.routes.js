@@ -6,6 +6,7 @@ const { ROLES } = require('../../constants/roles');
 const taskCtrl = require('./dailyTask.controller');
 const assignmentCtrl = require('./stableAssignment.controller');
 const stallCtrl = require('./stall.controller');
+const routineCtrl = require('./careRoutine.controller');
 
 router.use(protect);
 
@@ -27,6 +28,12 @@ router.post(
   uploadIncidentImages.array('images', 5),
   taskCtrl.reportIncident
 );
+
+// Care handed out for a stretch of days (times a day, minutes each, how): one task per time on each day it is due.
+router.get('/routines', routineCtrl.listRoutines);
+router.post('/routines', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), routineCtrl.createRoutine);
+router.put('/routines/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), routineCtrl.updateRoutine);
+router.post('/routines/:id/stop', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), routineCtrl.stopRoutine);
 
 // Incident reports as a list with a lifecycle: the groom files one, the vet picks it up and closes it.
 router.get('/incidents', taskCtrl.listIncidents);

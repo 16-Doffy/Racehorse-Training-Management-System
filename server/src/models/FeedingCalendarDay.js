@@ -22,6 +22,8 @@ const schema = new mongoose.Schema({
   phase: { type: String, required: true },
   work: { type: String, enum: ['rest', 'light', 'moderate', 'high'], required: true },
   meals: { type: [mealSchema], required: true },
+  // The meals the trainer chose not to give that day, so confirming the plan again does not bring them back.
+  removedSlots: { type: [{ type: String, enum: ['morning', 'noon', 'evening'] }], default: [] },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   approvedPlanUpdatedAt: { type: Date, required: true },
 }, { timestamps: true });

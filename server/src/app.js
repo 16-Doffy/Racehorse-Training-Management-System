@@ -25,7 +25,8 @@ const reportsRoutes = require('./modules/reports/reports.routes');
 const app = express();
 
 app.use(cors({ origin: clientOrigins, credentials: true }));
-app.use(express.json());
+// 1 MB: a horse's whole feeding calendar, edited in the planner, is confirmed in one request.
+app.use(express.json({ limit: '1mb' }));
 app.use(rejectOperatorKeys);
 app.use(morgan('dev'));
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));

@@ -12,7 +12,6 @@ const DailyTask = require('../../models/DailyTask');
 const { ensureFeedingTasks, atClock, DEFAULT_MEAL_TIMES } = require('../../realtime/dailyTaskGenerator');
 const { taskTiming, dayBounds } = require('../../utils/taskTiming');
 
-const InventoryItem = require('../../models/InventoryItem');
 const StableAssignment = require('../../models/StableAssignment');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, fail } = require('../../utils/apiResponse');
@@ -20,39 +19,12 @@ const { canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseSc
 const { logAction } = require('../audit/audit.service');
 const { pushNotification } = require('../alerts/notification.service');
 const clubPolicy = require('../../config/clubPolicy');
+const { SLOT_MINUTES, SLOT_RANGE_TEXT, SLOT_LABELS, CLOCK, minutesOf, readRationItems, mealSetProblem } = require('./mealInput');
 
-// The part of the day each meal belongs to: breakfast before 11:00, lunch 11:00–15:59, the
-// evening meal from 16:00 — so "lunch at 23:00" cannot be saved.
-const SLOT_MINUTES = { morning: [0, 11 * 60], noon: [11 * 60, 16 * 60], evening: [16 * 60, 24 * 60] };
-const SLOT_RANGE_TEXT = { morning: 'trước 11:00', noon: 'từ 11:00 đến 15:59', evening: 'từ 16:00 trở đi' };
-const SLOT_LABELS = { morning: 'Bữa sáng', noon: 'Bữa trưa', evening: 'Bữa chiều' };
-const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
-const minutesOf = (clock) => Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3, 5));
-
-/**
- * Ration items come from the stock list: each names a food item in stock and an amount per meal in
- * that item's unit. The display text (type, quantity) is written from the item, so screens that
- * only read those keep working. Older text-only items are kept as they are.
- */
-async function readRationItems(rawItems) {
-  if (!Array.isArray(rawItems)) return { message: 'items phải là danh sách.' };
-  const ids = rawItems.map((i) => i?.inventoryItem).filter(Boolean);
-  const stock = ids.length ? await InventoryItem.find({ _id: { $in: ids } }).select('name unit category isActive') : [];
-  const byId = new Map(stock.map((s) => [String(s._id), s]));
-  const items = [];
-  for (const [i, raw] of rawItems.entries()) {
-    if (!raw) continue;
-    if (!raw.inventoryItem) return { message: `Món thứ ${i + 1}: chọn mặt hàng trong kho — món ghi bằng chữ không trừ kho được.` };
-    const item = byId.get(String(raw.inventoryItem));
-    if (!item) return { message: `Món thứ ${i + 1}: không tìm thấy mặt hàng trong kho.` };
-    if (item.category !== 'feed') return { message: `Món thứ ${i + 1}: "${item.name}" không thuộc loại thức ăn.` };
-    if (item.isActive === false) return { message: `Món thứ ${i + 1}: "${item.name}" đã ngừng sử dụng.` };
-    const amount = Number(raw.amount);
-    if (!Number.isFinite(amount) || amount <= 0) return { message: `Món thứ ${i + 1}: lượng mỗi bữa phải là số dương.` };
-    items.push({ type: item.name, quantity: `${amount} ${item.unit}`, inventoryItem: item._id, amount, unit: item.unit });
-  }
-  if (!items.length) return { message: 'Khẩu phần cần ít nhất một món chọn từ kho.' };
-  return { items };
+/** Whether the horse's meals ahead follow a confirmed calendar of a plan still in use (a closed plan's days no longer feed it). */
+async function followsCalendar(horse) {
+  const plans = await FeedingCalendarDay.distinct('plan', { horse, date: { $gte: dateKey(new Date()) } });
+  return plans.length > 0 && Boolean(await TrainingPlan.exists({ _id: { $in: plans }, status: 'active' }));
 }
 
 async function normalizeRationItems(req, res, next) {
@@ -83,8 +55,7 @@ async function validateRation(req, { existing }) {
   const horse = req.body.horse || existing?.horse;
   const mealTime = req.body.mealTime || existing?.mealTime;
   if (!horse || !mealTime) return null;
-  const approvedCalendar = await FeedingCalendarDay.exists({ horse, date: { $gte: dateKey(new Date()) } });
-  if (approvedCalendar) return { status: 409, message: 'Ngựa đã có lịch ăn theo kế hoạch. Hãy sửa bữa trong lịch theo ngày ở phía trên.' };
+  if (await followsCalendar(horse)) return { status: 409, message: 'Ngựa đã có lịch ăn theo kế hoạch. Hãy sửa bữa trong lịch theo ngày ở phía trên.' };
   const others = await FeedingSchedule.find({ horse, ...(existing ? { _id: { $ne: existing._id } } : {}) }).select('mealTime timeOfDay');
   if (others.some((o) => o.mealTime === mealTime)) return 'Ngựa này đã có khẩu phần cho bữa đó — hãy sửa khẩu phần hiện có.';
   if (!SLOT_MINUTES[mealTime]) return null; // the schema refuses an unknown meal
@@ -184,10 +155,10 @@ router.patch('/calendar/:planId/day/:date/:slot', authorize(ROLES.HEAD_TRAINER, 
   await logAction({ actorId: req.user._id, action: 'feeding.calendar_meal_update', targetModel: 'FeedingCalendarDay', targetId: calendar._id, metadata: { date, slot } });
   return ok(res, calendar, 'Feeding calendar meal updated.');
 }));
-/** GET /feeding/suggest?horse=&slot= — one meal as rationRules.js suggests it today (the single-ration form). */
+/** GET /feeding/suggest?horse=&slot= — the meals as rationRules.js suggests them today (`items`: the slot's, `meals`: all three; slot optional). */
 router.get('/suggest', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), asyncHandler(async (req, res) => {
   const { horse, slot } = req.query;
-  if (!/^[0-9a-f]{24}$/i.test(String(horse || '')) || !SLOT_MINUTES[slot]) return fail(res, 'Chọn ngựa và bữa.', 400);
+  if (!/^[0-9a-f]{24}$/i.test(String(horse || '')) || (slot !== undefined && !SLOT_MINUTES[slot])) return fail(res, 'Chọn ngựa và bữa.', 400);
   if (!(await canAccessHorse(req.user, horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
   return ok(res, await suggestMeal({ horseId: horse, slot }), 'Meal suggested.');
 }));
@@ -211,7 +182,8 @@ router.post('/calendar/:planId/confirm', authorize(ROLES.HEAD_TRAINER, ROLES.MAN
   const plan = await TrainingPlan.findById(req.params.planId);
   if (!plan) return fail(res, 'Không tìm thấy kế hoạch huấn luyện.', 404);
   if (!(await canAccessHorse(req.user, plan.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
-  const result = await confirmCalendar({ plan, actor: req.user, expectedUpdatedAt: req.body?.expectedUpdatedAt, times: req.body?.times });
+  // `days`: the days the trainer changed in the planner, as they set them; `fresh`: every other day back to the suggestion.
+  const result = await confirmCalendar({ plan, actor: req.user, expectedUpdatedAt: req.body?.expectedUpdatedAt, times: req.body?.times, days: req.body?.days, fresh: req.body?.fresh === true });
   if (result.error) return fail(res, result.error, result.status);
   return ok(res, result, 'Feeding calendar confirmed.');
 }));
@@ -219,26 +191,6 @@ router.get('/', ctrl.list);
 router.get('/:id', ctrl.getOne);
 router.post('/', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), normalizeRationItems, ctrl.createOne);
 router.put('/:id', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), normalizeRationItems, ctrl.updateOne);
-/** Whether a horse's meal times, all together, fit their parts of the day and the club's gap between meals. */
-function mealSetProblem(clocks) {
-  const slots = Object.keys(clocks);
-  for (const slot of slots) {
-    const clock = clocks[slot];
-    if (typeof clock !== 'string' || !CLOCK.test(clock)) return `Giờ cho ăn phải có dạng HH:mm (${SLOT_LABELS[slot].toLowerCase()}).`;
-    const [from, to] = SLOT_MINUTES[slot];
-    if (minutesOf(clock) < from || minutesOf(clock) >= to) return `${SLOT_LABELS[slot]} phải ${SLOT_RANGE_TEXT[slot]} (đang chọn ${clock}).`;
-  }
-  const gap = clubPolicy.mealMinGapHours * 60;
-  for (let i = 0; i < slots.length; i += 1) {
-    for (let j = i + 1; j < slots.length; j += 1) {
-      if (Math.abs(minutesOf(clocks[slots[i]]) - minutesOf(clocks[slots[j]])) < gap) {
-        return `${SLOT_LABELS[slots[i]]} ${clocks[slots[i]]} và ${SLOT_LABELS[slots[j]].toLowerCase()} ${clocks[slots[j]]} cách nhau chưa đủ ${clubPolicy.mealMinGapHours} giờ (quy định CLB).`;
-      }
-    }
-  }
-  return null;
-}
-
 /**
  * POST /feeding/plan { horse, meals: [{ mealTime, timeOfDay, items }], from?, basis? } — the trainer
  * confirms a horse's meals as the training plan suggests them, all at once.
@@ -251,7 +203,7 @@ const confirmPlanRations = asyncHandler(async (req, res) => {
   const { horse, from, basis } = req.body || {};
   if (!/^[0-9a-f]{24}$/i.test(String(horse || ''))) return fail(res, 'Chọn ngựa.', 400);
   if (!(await canAccessHorse(req.user, horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
-  if (await FeedingCalendarDay.exists({ horse, date: { $gte: dateKey(new Date()) } })) return fail(res, 'Ngựa đã có lịch ăn theo kế hoạch. Hãy sửa bữa trong lịch theo ngày.', 409);
+  if (await followsCalendar(horse)) return fail(res, 'Ngựa đã có lịch ăn theo kế hoạch. Hãy sửa bữa trong lịch theo ngày.', 409);
   const meals = Array.isArray(req.body?.meals) ? req.body.meals.filter(Boolean) : [];
   if (!meals.length) return fail(res, 'Chọn ít nhất một bữa để xác nhận.', 400);
   if (meals.some((m) => !SLOT_MINUTES[m.mealTime]) || new Set(meals.map((m) => m.mealTime)).size !== meals.length) {
@@ -317,7 +269,7 @@ const removeRation = asyncHandler(async (req, res) => {
   const ration = await FeedingSchedule.findById(req.params.id).populate('horse', 'name');
   if (!ration) return fail(res, 'Feeding schedule not found.', 404);
   if (!(await canAccessHorse(req.user, ration.horse._id))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
-  if (await FeedingCalendarDay.exists({ horse: ration.horse._id, date: { $gte: dateKey(new Date()) } })) return fail(res, 'Ngựa đã có lịch ăn theo kế hoạch. Hãy sửa bữa trong lịch theo ngày.', 409);
+  if (await followsCalendar(ration.horse._id)) return fail(res, 'Ngựa đã có lịch ăn theo kế hoạch. Hãy sửa bữa trong lịch theo ngày.', 409);
   await ration.deleteOne();
   const { start } = dayBounds(new Date());
   const open = await DailyTask.find({ horse: ration.horse._id, taskType: 'feeding', mealSlot: ration.mealTime, status: 'pending', makeUpOf: null, scheduledDate: { $gte: start } });

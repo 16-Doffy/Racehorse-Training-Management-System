@@ -213,6 +213,8 @@ const updateTask = asyncHandler(async (req, res) => {
   if (!timing.canChange) return fail(res, `Không sửa được nữa: ${timing.reason}`, 409);
 
   const changes = pick(req.body, TASK_FIELDS);
+  // One day of a long-running job changes with the job (its times, groom, instructions); only calling it off is per day.
+  if (task.routine && Object.keys(changes).length) return fail(res, 'Việc này thuộc việc giao dài hạn — sửa trong việc giao dài hạn, hoặc chọn "Bỏ lần này".', 409);
   const taskType = changes.taskType || task.taskType;
   if (taskType === 'other' && changes.note !== undefined && !String(changes.note || '').trim()) {
     return fail(res, 'Việc "Khác" cần ghi rõ nội dung công việc.', 400);
@@ -277,6 +279,7 @@ const deleteTask = asyncHandler(async (req, res) => {
   if (task.taskType === 'feeding') {
     return fail(res, 'Việc cho ăn không xoá được vì hệ thống sẽ tự tạo lại — hãy chọn "Bỏ bữa".', 409);
   }
+  if (task.routine) return fail(res, 'Việc giao dài hạn được tạo lại mỗi ngày — chọn "Bỏ lần này", hoặc dừng việc giao dài hạn.', 409);
   await task.deleteOne();
   return ok(res, null, 'Daily task deleted.');
 });

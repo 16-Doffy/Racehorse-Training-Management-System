@@ -90,21 +90,20 @@ test('a horse added with its papers shows them on its profile', async ({ page })
   await expect(papers.getByText('VN-2026-777', { exact: true })).toBeVisible();
   await expect(papers.getByText(/500\.000\.000/)).toBeVisible();
 });
-test('the ration form names the groom who feeds and suggests a meal from the training plan', async ({ page }) => {
+test('the ration planner names the groom who feeds and lays out the meals of the training plan', async ({ page }) => {
   await login(page, 'trainer');
   await page.goto('/stable/tasks');
   await page.getByRole('tab', { name: 'Khẩu phần ăn' }).click();
   await expect(page.getByRole('columnheader', { name: 'Người cho ăn' })).toBeVisible();
-  await page.getByRole('button', { name: /Thêm khẩu phần/ }).click();
+  await page.getByRole('button', { name: /Tạo khẩu phần ăn/ }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Ngựa').click();
   await page.getByTitle('TEST Browser Horse', { exact: true }).click();
-  await expect(dialog.getByText('Nhân viên cho ăn:')).toBeVisible();
-  await expect(dialog.getByText('TEST groom', { exact: true })).toBeVisible();
-  await expect(dialog.getByText('Gợi ý bữa sáng theo kế hoạch tập')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Dùng gợi ý cho bữa này' }).click();
+  await expect(dialog.getByText('Người cho ăn', { exact: true })).toBeVisible();
+  await expect(dialog.getByText(/TEST groom · A-01/)).toBeVisible();
+  await expect(dialog.getByText('Nhóm ngày', { exact: true })).toBeVisible();
   await expect(dialog.getByText(/TEST Browser Feed/).first()).toBeVisible();
-  await dialog.getByRole('button', { name: /Hủy|Huỷ|Cancel/ }).click();
+  await dialog.getByRole('button', { name: 'Đóng', exact: true }).last().click();
 });
 test('a notification puts a red count on its menu entry and opens the page it is about', async ({ page }) => {
   await login(page, 'manager');
@@ -635,4 +634,23 @@ test('the trainer sees the horse stall and the stall column, without the Manager
   await page.goto(`/horses/${fixture.horseId}`);
   await expect(page.getByText('Chuồng A-01')).toBeVisible();
   await expect(page.getByText('Đổi chuồng trên sơ đồ')).toHaveCount(0);
+});
+
+test('the trainer hands a groom a care job for many days, then stops it', async ({ page }) => {
+  await login(page, 'trainer');
+  await page.goto(`/stable/tasks?tab=tasks&horse=${fixture.horseId}`);
+  await page.getByRole('button', { name: 'Giao việc chăm sóc' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Giao việc chăm sóc' });
+  await dialog.getByText('Ngâm chân nước đá', { exact: true }).click();
+  await dialog.getByRole('button', { name: '2 tuần' }).click();
+  await expect(dialog.getByText(/sẽ ngâm chân nước đá cho TEST Browser Horse 2 lần mỗi ngày/)).toBeVisible();
+  await expect(dialog.getByText(/tổng 28 lần/)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Giao việc' }).click();
+  await expect(dialog).toBeHidden();
+  const list = page.getByRole('region', { name: 'Việc giao dài hạn' });
+  await expect(list.getByText('Ngâm chân nước đá', { exact: true })).toBeVisible();
+  await expect(list.getByText('2 lần/ngày')).toBeVisible();
+  await list.getByRole('button', { name: /Dừng/ }).click();
+  await page.getByRole('button', { name: 'Dừng việc' }).click();
+  await expect(list.getByText('Ngâm chân nước đá', { exact: true })).toBeHidden();
 });

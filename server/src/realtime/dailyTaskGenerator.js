@@ -4,6 +4,7 @@ const FeedingCalendarDay = require('../models/FeedingCalendarDay');
 const TrainingPlan = require('../models/TrainingPlan');
 const DailyTask = require('../models/DailyTask');
 const { syncAllCareTasks } = require('../modules/health/treatmentCare.service');
+const { syncAllRoutineTasks } = require('../modules/stable/careRoutine.service');
 const { mealWindow } = require('../utils/taskTiming');
 const { warnLowStock } = require('../modules/inventory/stock.service');
 const { closeArchivedLeftovers } = require('../modules/horses/archive.service');
@@ -191,6 +192,8 @@ function startDailyTaskGenerator() {
       await closeArchivedLeftovers();
       // The vet's care orders repeat every day a treatment is ongoing, like meals do.
       await syncAllCareTasks();
+      // So do the jobs the trainer handed out for a stretch of days.
+      await syncAllRoutineTasks();
       // Stock that runs out within days is announced before it stops a meal or a dose.
       await warnLowStock();
     } catch (err) {

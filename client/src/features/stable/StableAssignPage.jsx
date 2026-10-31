@@ -17,7 +17,6 @@ import {
   Popconfirm,
   Segmented,
   InputNumber,
-  Alert,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
 import {
@@ -28,24 +27,23 @@ import {
   DeleteOutlined,
   StopOutlined,
   MedicineBoxOutlined,
-  ProfileOutlined,
   CloseOutlined,
 } from '@ant-design/icons';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { dailyTaskApi, incidentApi, stallApi, stableAssignmentApi } from './stableApi';
-import { breakfastBy } from './rationSuggestion';
+import { careRoutineApi, dailyTaskApi, incidentApi, stallApi, stableAssignmentApi } from './stableApi';
+import CareRoutineList from './CareRoutineList';
+import CareRoutineModal from './CareRoutineModal';
 import { trainingPlanApi } from '../training/trainingApi';
-import { PHASE_LABELS } from '../training/trainingVocab';
 import { horsesApi } from '../horses/horsesApi';
 import { usersApi } from '../admin/usersApi';
 import { feedingApi } from '../feeding/feedingApi';
-import FeedingCalendarPanel from './FeedingCalendarPanel';
 import FeedingTimetable from './FeedingTimetable';
 import CareHorseList from './CareHorseList';
 import RationHorseList from './RationHorseList';
-import { useClubPolicy } from '../training/useClubPolicy';
+import RationPlanner from './RationPlanner';
+import HorseFeedingView from './HorseFeedingView';
 import { inventoryApi } from '../inventory/inventoryApi';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import { ROLES } from '../../constants/roles';
@@ -67,25 +65,6 @@ const STATUS_COLORS = { pending: 'default', completed: 'green', skipped: 'orange
 const SEVERITY_LABELS = { low: 'Nhẹ', medium: 'Trung bình', high: 'Nghiêm trọng' };
 const SEVERITY_COLORS = { low: 'gold', medium: 'orange', high: 'red' };
 const MEAL_LABELS = { morning: 'Bữa sáng', noon: 'Bữa trưa', evening: 'Bữa chiều' };
-const DEFAULT_MEAL_TIMES = { morning: '06:00', noon: '11:30', evening: '17:30' };
-// The suggested ration (server rationRules.js): the work it is set for, and what each meal is for.
-const WORK_LABELS = { rest: 'ngày không tập', light: 'ngày tập nhẹ', moderate: 'ngày tập vừa', high: 'ngày tập nặng' };
-const MEAL_ROLES = {
-  morning: 'Trước giờ tập: chủ yếu cỏ, ít thức ăn tinh để kịp tiêu hóa.',
-  noon: 'Bữa phụ, nhẹ.',
-  evening: 'Bữa chính trong ngày (sau giờ tập, cho cả đêm dài), kèm chất bổ sung.',
-};
-const amountText = (n) => Number(n).toLocaleString('vi-VN');
-
-const FEED_TYPE_OPTIONS = [
-  { value: 'grain', label: 'Cám / ngũ cốc' },
-  { value: 'hay', label: 'Cỏ khô' },
-  { value: 'grass', label: 'Cỏ tươi' },
-  { value: 'vitamin', label: 'Vitamin' },
-  { value: 'electrolyte', label: 'Bù điện giải' },
-  { value: 'supplement', label: 'Thực phẩm bổ sung' },
-];
-const FEED_TYPE_LABELS = Object.fromEntries(FEED_TYPE_OPTIONS.map((o) => [o.value, o.label]));
 
 /* -------------------------------------------------------------------------- */
 /* Worklist                                                                    */
@@ -150,6 +129,10 @@ function TaskList() {
   // Where each horse stands and who looks after that stall: a job for a horse goes to that groom unless
   // the trainer picks someone else (the feeds, care orders and post-session care already do).
   const { data: stallsData } = useQuery({ queryKey: ['stalls'], queryFn: () => stallApi.map() });
+  // Jobs handed out for many days, and the plans that say how long a horse is in training.
+  const { data: routinesData, isLoading: routinesLoading } = useQuery({ queryKey: ['care-routines'], queryFn: () => careRoutineApi.list() });
+  const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
+  const [routineModal, setRoutineModal] = useState({ open: false, routine: null });
   const stallOfHorse = new Map([
     ...(stallsData?.data?.unplaced || []).map((u) => [String(u.horse?._id), { code: u.stableBlock, caretaker: u.caretaker }]),
     ...(stallsData?.data?.stalls || [])
@@ -236,6 +219,12 @@ function TaskList() {
                 <Tag color="magenta" icon={<MedicineBoxOutlined />}>
                   Y lệnh bác sĩ
                 </Tag>
+              </Tooltip>
+            )}
+            {r.routine && (
+              // One time of a job handed out for many days (Giao việc chăm sóc).
+              <Tooltip title="Việc giao dài hạn: tự hiện mỗi ngày theo lịch đã giao">
+                <Tag color="cyan">Việc dài hạn{r.durationMinutes ? ` · ${r.durationMinutes} phút` : ''}</Tag>
               </Tooltip>
             )}
             {r.trainingSession && (
@@ -371,6 +360,22 @@ function TaskList() {
         if (r.timing && !r.timing.canChange) return <Text type="secondary" className="!text-xs">Đã quá hạn</Text>;
         // The vet's orders change through the treatment, not from here (the server refuses too).
         if (r.source === 'vet') return <Text type="secondary" className="!text-xs">Do bác sĩ quản lý</Text>;
+        // A day of a long-running job: it changes with the job; only this one time can be called off.
+        if (r.routine) {
+          return (
+            <Popconfirm
+              title="Bỏ lần làm này?"
+              description="Chỉ bỏ lần này; việc giao dài hạn vẫn tiếp tục các lần sau."
+              onConfirm={() => skipMutation.mutate(r._id)}
+              okText="Bỏ lần này"
+              cancelText="Huỷ"
+            >
+              <Button size="small" icon={<StopOutlined />} loading={skipMutation.isPending && skipMutation.variables === r._id}>
+                Bỏ lần này
+              </Button>
+            </Popconfirm>
+          );
+        }
         const isMeal = r.taskType === 'feeding';
         return (
           <Space>
@@ -407,30 +412,41 @@ function TaskList() {
     },
   ];
 
-  // Meals, post-work care and the vet's orders make themselves; the trainer only adds the odd job.
+  // Meals, post-work care and the vet's orders make themselves; the trainer hands out the rest, for as
+  // many days as it is needed (a care routine), not one day at a time.
   const addJob = (
-    <Tooltip title="Bữa ăn tự tạo theo khẩu phần và lịch ăn đã xác nhận; việc sau buổi tập nặng tự sinh khi kết thúc buổi; y lệnh do bác sĩ chỉ định. Chỉ cần giao thêm việc phát sinh.">
-      <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
-        Giao việc phát sinh
+    <Tooltip title="Giao một việc cho nhân viên chăm sóc làm nhiều ngày: mỗi ngày mấy lần, giờ nào, mỗi lần bao lâu, làm thế nào. Bữa ăn, việc sau buổi tập và y lệnh bác sĩ tự tạo.">
+      <Button type="primary" icon={<PlusOutlined />} onClick={() => setRoutineModal({ open: true, routine: null })}>
+        Giao việc chăm sóc
       </Button>
     </Tooltip>
+  );
+  const routineList = (rows, showHorse) => (
+    <CareRoutineList
+      routines={rows}
+      loading={routinesLoading}
+      showHorse={showHorse}
+      stallOfHorse={stallOfHorse}
+      onEdit={(routine) => setRoutineModal({ open: true, routine })}
+    />
   );
 
   return (
     <div>
       {focus.horse ? (
-        // One horse: its feeding week, meal by meal, then all its jobs.
+        // One horse: its feeding week, meal by meal, then the jobs handed out for it, then all its tasks.
         <div className="flex flex-col gap-4">
           <div>
             <HorseFocusTag focus={focus} rows={[...(data?.data || []), ...(horsesData?.data || []).map((h) => ({ horse: h }))]} />
           </div>
           <FeedingTimetable horseId={focus.horse} />
+          <div className="flex justify-end">{addJob}</div>
+          {routineList(ofHorse(routinesData?.data, focus.horse), false)}
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Text strong className="!text-sm">
                 Các việc của ngựa này
               </Text>
-              {addJob}
             </div>
             <Table
               className="mt-2"
@@ -444,11 +460,27 @@ function TaskList() {
           </div>
         </div>
       ) : (
-        <CareHorseList tasks={data?.data} horses={horsesData?.data || []} stallOfHorse={stallOfHorse} onSelect={focus.select} loading={isLoading} action={addJob} />
+        <div className="flex flex-col gap-6">
+          <CareHorseList tasks={data?.data} horses={horsesData?.data || []} stallOfHorse={stallOfHorse} onSelect={focus.select} loading={isLoading} action={addJob} />
+          {routineList(routinesData?.data || [], true)}
+        </div>
+      )}
+
+      {routineModal.open && (
+        <CareRoutineModal
+          open
+          routine={routineModal.routine}
+          horseId={focus.horse}
+          horses={horsesData?.data || []}
+          grooms={groomsData?.data || []}
+          stallOfHorse={stallOfHorse}
+          planOf={(horse) => (plansData?.data || []).find((p) => p.status === 'active' && String(p.horse?._id || p.horse) === String(horse._id))}
+          onClose={() => setRoutineModal({ open: false, routine: null })}
+        />
       )}
 
       <Modal
-        title={editing ? "Sửa công việc" : "Giao việc phát sinh"}
+        title="Sửa công việc"
         open={open}
         onCancel={() => { setOpen(false); setEditing(null); form.resetFields(); }}
         onOk={() => form.submit()}
@@ -543,55 +575,25 @@ function TaskList() {
 
 function RationList() {
   const focus = useHorseFocus();
-  const policy = useClubPolicy();
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [form] = Form.useForm();
   const queryClient = useQueryClient();
+  // The ration planner: open on a horse (its page, a notification) or on none (the overview).
+  const [planner, setPlanner] = useState({ open: false, horseId: null });
+  const openPlanner = (horseId) => setPlanner({ open: true, horseId: horseId || null });
 
   const { data, isLoading } = useQuery({ queryKey: ['feeding'], queryFn: () => feedingApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   // Ration items come from the Manager's stock list (food only), with what is in stock now.
   const { data: inventoryData } = useQuery({ queryKey: ['inventory'], queryFn: () => inventoryApi.list() });
   const feedItems = (inventoryData?.data || []).filter((i) => i.category === 'feed' && !i.isProposed && i.isActive !== false);
-  const feedById = new Map(feedItems.map((i) => [i._id, i]));
-  // Who feeds each horse (its stall's groom), what happened to each meal today, and the plan the
-  // suggested ration is worked out from.
+  // Who feeds each horse (its stall's groom), what happened to each meal today, and the plan its
+  // meals follow.
   const { data: assignmentsData } = useQuery({ queryKey: ['stable-assignments'], queryFn: () => stableAssignmentApi.list() });
   const { data: tasksData } = useQuery({ queryKey: ['daily-tasks-all'], queryFn: () => dailyTaskApi.list() });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const idOf = (ref) => String(ref?._id || ref || '');
   const assignmentOf = (horse) => (assignmentsData?.data || []).find((a) => idOf(a.horse) === idOf(horse));
   const planOf = (horse) => (plansData?.data || []).find((p) => p.status === 'active' && idOf(p.horse) === idOf(horse));
-  const todayMeal = (ration) => {
-    const meals = (tasksData?.data || []).filter(
-      (t) => t.taskType === 'feeding' && idOf(t.horse) === idOf(ration.horse) && t.mealSlot === ration.mealTime && dayjs(t.scheduledDate).isSame(dayjs(), 'day')
-    );
-    return meals.find((t) => t.status === 'completed') || meals.find((t) => !t.makeUpOf) || null;
-  };
-  const watchedHorse = Form.useWatch('horse', form);
-  const watchedSlot = Form.useWatch('mealTime', form);
-  const formHorse = (horsesData?.data || []).find((h) => h._id === watchedHorse);
-  // A meal has one ration: adding one for a meal the horse already has adds to that ration instead
-  // (the server refuses a second one).
-  const existingRation = !editing && watchedHorse && watchedSlot ? (data?.data || []).find((r) => idOf(r.horse) === watchedHorse && r.mealTime === watchedSlot) : null;
-  const itemsText = (items) => (items || []).map((i) => `${i.amount ?? ''} ${i.unit || ''} ${i.type || i.inventoryItem?.name || ''}`.replace(/\s+/g, ' ').trim()).filter(Boolean).join(', ');
-  const formGroom = watchedHorse ? assignmentOf(watchedHorse) : null;
-  const formPlan = watchedHorse ? planOf(watchedHorse) : null;
-  // Worked out on the server from the plan's phase, the horse's weight and the whole stock.
-  const { data: suggestData } = useQuery({
-    queryKey: ['feeding-suggest', watchedHorse, watchedSlot],
-    queryFn: () => feedingApi.suggest(watchedHorse, watchedSlot),
-    enabled: open && Boolean(formHorse) && Boolean(watchedSlot),
-  });
-  const suggestion = open && formHorse ? suggestData?.data : null;
-  const morningBy = formPlan && watchedSlot === 'morning' ? breakfastBy(formPlan.sessionTime || policy.morningTime, policy.digestMinutes) : null;
-  const applySuggestion = () => {
-    const lines = suggestion.items.map((i) => ({ inventoryItem: i.inventoryItem, amount: i.amount }));
-    if (lines.length) form.setFieldValue('items', lines);
-    const time = form.getFieldValue('timeOfDay');
-    if (morningBy && time && dayjs(time).format('HH:mm') > morningBy) form.setFieldValue('timeOfDay', dayjs(morningBy, 'HH:mm'));
-  };
+
   const [proposeOpen, setProposeOpen] = useState(false);
   const [proposeForm] = Form.useForm();
   const proposeMutation = useMutation({
@@ -605,435 +607,49 @@ function RationList() {
     onError: (err) => message.error(err.message || 'Gửi đề xuất thất bại.'),
   });
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['feeding'] });
-    queryClient.invalidateQueries({ queryKey: ['inventory'] });
-    // A ration changes today's meals on the groom's list too (the "Bữa hôm nay" column).
-    queryClient.invalidateQueries({ queryKey: ['daily-tasks-all'] });
-  };
-
-  const saveMutation = useMutation({
-    mutationFn: ({ id, payload }) => (id ? feedingApi.update(id, payload) : feedingApi.create(payload)),
-    onSuccess: (_res, { payload, added, fedToday }) => {
-      message.success(added ? `Đã thêm món vào khẩu phần ${(MEAL_LABELS[payload.mealTime] || 'bữa này').toLowerCase()} sẵn có.` : editing ? 'Đã cập nhật khẩu phần.' : 'Đã tạo khẩu phần.');
-      // Mirrors utils/taskTiming.js on the server: a meal is recordable until 4h after its time.
-      const at = dayjs(`${dayjs().format('YYYY-MM-DD')} ${payload.timeOfDay || DEFAULT_MEAL_TIMES[payload.mealTime]}`);
-      if (fedToday) {
-        message.info(`Hôm nay ${(MEAL_LABELS[payload.mealTime] || 'bữa này').toLowerCase()} đã cho ăn — khẩu phần mới áp dụng từ bữa này ngày mai.`);
-      } else if (at.add(4, 'hour').isBefore(dayjs())) {
-        message.info('Hôm nay đã qua giờ bữa này — việc cho ăn sẽ bắt đầu từ ngày mai.');
-      }
-      invalidate();
-      setOpen(false);
-      setEditing(null);
-      form.resetFields();
-    },
-    onError: (err) => message.error(err.message || 'Lưu khẩu phần thất bại.'),
-  });
-
-  const deleteRation = useMutation({
-    mutationFn: (id) => feedingApi.remove(id),
-    onSuccess: (res) => {
-      const removed = res?.data?.removedTasks || 0;
-      message.success(removed ? `Đã xoá khẩu phần và ${removed} việc cho ăn chưa làm của bữa đó hôm nay.` : 'Đã xoá khẩu phần.');
-      invalidate();
-    },
-    onError: (err) => message.error(err.message || 'Xoá khẩu phần thất bại.'),
-  });
-
-  const openModal = (record) => {
-    const isEdit = Boolean(record?._id);
-    setEditing(isEdit ? record : null);
-    form.setFieldsValue(
-      record
-        ? {
-            horse: record.horse?._id || record.horse || focus.horse || undefined,
-            mealTime: record.mealTime || 'morning',
-            timeOfDay: dayjs(record.timeOfDay || DEFAULT_MEAL_TIMES[record.mealTime || 'morning'], 'HH:mm'),
-            // Linked items load as stock item + amount; older text items are kept and shown so
-            // the trainer can re-pick them from stock.
-            items: record.items?.length
-              ? record.items.map((i) =>
-                  i.inventoryItem ? { inventoryItem: i.inventoryItem._id || i.inventoryItem, amount: i.amount } : { legacyType: i.type, legacyQuantity: i.quantity }
-                )
-              : [{}],
-          }
-        : { horse: focus.horse || undefined, mealTime: 'morning', timeOfDay: dayjs(DEFAULT_MEAL_TIMES.morning, 'HH:mm'), items: [{}] }
-    );
-    setOpen(true);
-  };
-
-  const columns = [
-    {
-      title: 'Ngựa',
-      dataIndex: ['horse', 'name'],
-      key: 'horse',
-      // The name opens the horse's feeding timetable on this tab; the icon opens its profile.
-      render: (name, r) => (
-        <span className="inline-flex items-center gap-2">
-          <Button type="link" className="!h-auto !p-0" onClick={() => focus.select(horseIdOf(r))}>
-            {name}
-          </Button>
-          <Tooltip title="Hồ sơ ngựa">
-            <Link to={`/horses/${horseIdOf(r)}`} aria-label={`Hồ sơ ${name}`} className="text-gray-400 hover:text-emerald-700">
-              <ProfileOutlined />
-            </Link>
-          </Tooltip>
-        </span>
-      ),
-    },
-    {
-      // The groom who feeds the horse, and what became of this meal today.
-      title: 'Người cho ăn',
-      key: 'groom',
-      render: (_, r) => {
-        const groom = assignmentOf(r.horse)?.assignedCaretaker;
-        const t = todayMeal(r);
-        let today = null;
-        if (t?.status === 'completed') today = { type: 'success', text: `Hôm nay: ${(t.completedBy || t.assignedTo)?.name || 'nhân viên'} cho ăn lúc ${dayjs(t.completedAt).format('HH:mm')}` };
-        else if (t?.status === 'skipped') today = { type: 'danger', text: t.skipReason ? `Hôm nay: không cho ăn được (${t.skipReason})` : 'Hôm nay: HLV cho bỏ bữa' };
-        else if (t?.timing?.state === 'missed') today = { type: 'danger', text: 'Hôm nay: chưa cho ăn, đã quá giờ' };
-        else if (t) today = { type: 'secondary', text: 'Hôm nay: chưa cho ăn' };
-        return (
-          <div className="flex flex-col min-w-[180px] text-sm">
-            {groom?.name ? <span>{groom.name}</span> : <Text type="warning">Chưa có nhân viên chăm sóc</Text>}
-            {today && (
-              <Text type={today.type} className="!text-xs">
-                {today.text}
-              </Text>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      title: 'Bữa',
-      key: 'mealTime',
-      render: (_, r) => (
-        <Space>
-          <Tag>{MEAL_LABELS[r.mealTime] || r.mealTime}</Tag>
-          <Text type="secondary" className="!text-xs">
-            {r.timeOfDay || DEFAULT_MEAL_TIMES[r.mealTime]}
-          </Text>
-        </Space>
-      ),
-    },
-    {
-      title: 'Khẩu phần',
-      key: 'items',
-      render: (_, r) =>
-        r.items?.length ? (
-          <div className="flex flex-col gap-0.5 text-sm">
-            {r.items.map((i, idx) => {
-              const stock = i.inventoryItem;
-              const short = stock && typeof stock.quantity === 'number' && stock.quantity < (i.amount || 0);
-              return (
-                <span key={idx}>
-                  {stock ? `${stock.name} ${i.amount} ${stock.unit}` : `${FEED_TYPE_LABELS[i.type] || i.type} ${i.quantity}`}
-                  {stock && (
-                    <Text type={short ? 'danger' : 'secondary'} className="!text-xs ml-1">
-                      (kho còn {stock.quantity} {stock.unit})
-                    </Text>
-                  )}
-                  {!stock && (
-                    <Text type="warning" className="!text-xs ml-1">
-                      (chưa liên kết kho)
-                    </Text>
-                  )}
-                </span>
-              );
-            })}
-          </div>
-        ) : (
-          <span className="text-gray-400">Chưa có món nào</span>
-        ),
-    },
-    {
-      title: 'Duyệt',
-      key: 'approvedBy',
-      render: (_, r) => {
-        const unlinked = (r.items || []).some((i) => !i.inventoryItem);
-        return (
-          <div className="flex flex-col items-start gap-1">
-            {r.approvedBy && r.items?.length ? (
-              <Tag color="green" className="!m-0">Đã duyệt — {r.approvedBy.name}</Tag>
-            ) : (
-              <Tooltip title="Groom không ghi nhận được bữa này cho tới khi khẩu phần có món và được duyệt. Bấm Sửa rồi Lưu để duyệt.">
-                <Tag color="red" className="!m-0">Chưa duyệt — Groom chưa ghi nhận được</Tag>
-              </Tooltip>
-            )}
-            {unlinked && (
-              <Tooltip title="Món ghi bằng chữ không trừ kho. Bấm Sửa, chọn lại món từ kho rồi Lưu.">
-                <Tag color="orange" className="!m-0">Có món chưa gắn kho</Tag>
-              </Tooltip>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      title: '',
-      key: 'actions',
-      render: (_, r) => (
-        <Space size={4}>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openModal(r)}>
-            Sửa
-          </Button>
-          <Popconfirm
-            title="Xoá khẩu phần này?"
-            description="Việc cho ăn chưa làm của bữa này hôm nay cũng được bỏ; lịch sử giữ nguyên. Ngựa không còn bữa nào thì nhân viên sẽ báo HLV."
-            okText="Xoá"
-            okButtonProps={{ danger: true }}
-            cancelText="Không"
-            onConfirm={() => deleteRation.mutate(r._id)}
-          >
-            <Button size="small" danger icon={<DeleteOutlined />} loading={deleteRation.isPending && deleteRation.variables === r._id} />
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
-
   return (
     <div>
       {focus.horse ? (
-        // One horse picked: its feeding week first, meal by meal, then its plan calendar, then standing rations.
-        <div className="flex flex-col gap-4">
-          <div>
-            <HorseFocusTag focus={focus} rows={[...(data?.data || []), ...(horsesData?.data || []).map((h) => ({ horse: h }))]} />
-          </div>
-          <FeedingTimetable horseId={focus.horse} />
-          <FeedingCalendarPanel plans={plansData?.data || []} horseId={focus.horse} feedItems={feedItems} />
-          <div>
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h3 className="!m-0 !text-[15px] font-semibold">Khẩu phần mẫu của ngựa này</h3>
-                <Typography.Text type="secondary" className="!text-xs">
-                  Cho những ngày không có lịch ăn theo kế hoạch tập.
-                </Typography.Text>
-              </div>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal({ horse: focus.horse })}>
-                Thêm khẩu phần
-              </Button>
-            </div>
-
-            <Table
-              rowKey="_id"
-              columns={columns.filter((c) => !focus.horse || c.key !== 'horse')}
-              dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
-              loading={isLoading}
-              scroll={{ x: 'max-content' }}
-              locale={{ emptyText: 'Ngựa này chưa có khẩu phần mẫu nào.' }}
-            />
-          </div>
-        </div>
+        // One horse: its week meal by meal, then every day of its plan (or its daily ration).
+        <HorseFeedingView
+          horseId={focus.horse}
+          horses={horsesData?.data || []}
+          plans={plansData?.data || []}
+          rations={data?.data || []}
+          assignmentOf={assignmentOf}
+          feedItems={feedItems}
+          onOpenPlanner={openPlanner}
+          onBack={focus.clear}
+        />
       ) : (
-        // Overview of all horses: how many horses, each horse's feed status, standing rations, warnings. Click to open details.
-        <>
-          <RationHorseList
-            action={
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
-                Thêm khẩu phần
-              </Button>
-            }
-            rations={data?.data || []}
-            horses={horsesData?.data || []}
-            tasks={tasksData?.data || []}
-            assignmentOf={assignmentOf}
-            planOf={planOf}
-            onSelect={focus.select}
-            loading={isLoading}
-          />
-        </>
+        // Overview of all horses: who feeds each, today's meals, what needs a look. A click opens the horse.
+        <RationHorseList
+          action={
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openPlanner(null)}>
+              Tạo khẩu phần ăn
+            </Button>
+          }
+          rations={data?.data || []}
+          horses={horsesData?.data || []}
+          tasks={tasksData?.data || []}
+          assignmentOf={assignmentOf}
+          planOf={planOf}
+          onSelect={focus.select}
+          loading={isLoading}
+        />
       )}
 
-      <Modal
-        title={editing ? 'Sửa khẩu phần' : 'Thêm khẩu phần'}
-        open={open}
-        onCancel={() => {
-          setOpen(false);
-          setEditing(null);
-        }}
-        onOk={() => form.submit()}
-        confirmLoading={saveMutation.isPending}
-        destroyOnHidden
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(values) => {
-            const items = (values.items || []).filter((i) => i?.inventoryItem && i?.amount).map((i) => ({ inventoryItem: i.inventoryItem, amount: i.amount }));
-            // Into the ration the meal already has: its items kept, an item picked again takes the new amount.
-            const merged = existingRation
-              ? [
-                  ...(existingRation.items || [])
-                    .filter((i) => i.inventoryItem && !items.some((n) => n.inventoryItem === idOf(i.inventoryItem)))
-                    .map((i) => ({ inventoryItem: idOf(i.inventoryItem), amount: i.amount })),
-                  ...items,
-                ]
-              : items;
-            const target = editing || existingRation;
-            saveMutation.mutate({
-              id: target?._id,
-              added: Boolean(existingRation),
-              fedToday: target ? todayMeal(target)?.status === 'completed' : false,
-              payload: { ...values, timeOfDay: values.timeOfDay ? dayjs(values.timeOfDay).format('HH:mm') : undefined, items: merged },
-            });
-          }}
-        >
-          <Form.Item
-            name="horse"
-            label="Ngựa"
-            rules={[{ required: true }]}
-            extra={
-              watchedHorse &&
-              (formGroom?.assignedCaretaker?.name ? (
-                <span>
-                  Nhân viên cho ăn: <b>{formGroom.assignedCaretaker.name}</b>
-                  {formGroom.stall?.code ? ` · chuồng ${formGroom.stall.code}` : ''}
-                </span>
-              ) : (
-                <Text type="warning">Ngựa chưa có nhân viên chăm sóc: Quản lý cần xếp chuồng thì mới có người cho ăn.</Text>
-              ))
-            }
-          >
-            <Select
-              disabled={Boolean(editing)}
-              options={(horsesData?.data || []).map((h) => ({ value: h._id, label: h.name }))}
-            />
-          </Form.Item>
-          <div className="grid grid-cols-2 gap-3">
-            <Form.Item name="mealTime" label="Bữa" rules={[{ required: true }]}>
-              <Select
-                options={Object.entries(MEAL_LABELS).map(([value, label]) => ({ value, label }))}
-                onChange={(v) => form.setFieldValue('timeOfDay', dayjs(DEFAULT_MEAL_TIMES[v], 'HH:mm'))}
-              />
-            </Form.Item>
-            <Form.Item
-              name="timeOfDay"
-              label="Giờ cho ăn"
-              rules={[{ required: true }]}
-              extra={`Bữa sáng trước 11:00 · bữa trưa 11:00–15:59 · bữa chiều từ 16:00; hai bữa cách nhau ít nhất ${policy.mealMinGapHours} giờ (quy định CLB).`}
-            >
-              <TimePicker format="HH:mm" minuteStep={15} className="w-full" />
-            </Form.Item>
-          </div>
-
-          {existingRation && (
-            <Alert
-              type="warning"
-              showIcon
-              className="!mb-3"
-              title={`${formHorse?.name || 'Ngựa này'} đã có khẩu phần ${(MEAL_LABELS[watchedSlot] || 'bữa này').toLowerCase()}${existingRation.items?.length ? `: ${itemsText(existingRation.items)}` : ''}.`}
-              description={`Bấm Đồng ý sẽ thêm các món dưới đây vào khẩu phần đó (món đã có thì lấy lượng mới) và đặt giờ cho ăn theo ô Giờ cho ăn.${todayMeal(existingRation)?.status === 'completed' ? ' Bữa này hôm nay đã cho ăn — khẩu phần mới áp dụng từ ngày mai.' : ''}`}
-            />
-          )}
-          {suggestion && (
-            <Alert
-              type="info"
-              className="!mb-3"
-              title={`Gợi ý ${(MEAL_LABELS[watchedSlot] || 'bữa này').toLowerCase()} theo kế hoạch tập`}
-              description={
-                <div className="flex flex-col gap-1 text-sm">
-                  <span>
-                    {suggestion.phase ? `Giai đoạn ${PHASE_LABELS[suggestion.phase] || suggestion.phase} · ${WORK_LABELS[suggestion.work]}` : 'Ngựa chưa có kế hoạch tập: khẩu phần duy trì'}
-                    {suggestion.weightKg ? ` · nặng ${suggestion.weightKg} kg` : ''}.
-                  </span>
-                  {suggestion.warning && <Text type="warning">{suggestion.warning}</Text>}
-                  <span>{watchedSlot === 'morning' && suggestion.work === 'rest' ? 'Ngày không tập: thức ăn tinh chia đều hơn giữa các bữa.' : MEAL_ROLES[watchedSlot]}</span>
-                  <span>
-                    Cả ngày khoảng {amountText(suggestion.daily.forage)} kg cỏ và {amountText(suggestion.daily.concentrate)} kg thức ăn tinh. Bữa này:{' '}
-                    <b>{suggestion.items.length ? suggestion.items.map((i) => `${amountText(i.amount)} ${i.unit} ${i.name}`).join(' + ') : 'kho chưa có cỏ hay thức ăn tinh tính theo kg'}</b>.
-                  </span>
-                  {morningBy && (
-                    <span>
-                      Buổi tập sáng {formPlan.sessionTime || policy.morningTime}: cho ăn sáng xong trước {morningBy} để đủ {policy.digestMinutes} phút tiêu hóa.
-                    </span>
-                  )}
-                  <Text type="secondary" className="!text-xs">
-                    Căn cứ: cả ngày 2–2,5% cân nặng; cỏ không dưới 1,5%; thức ăn tinh tăng theo mức tập và không quá 0,5% cân nặng mỗi bữa (NRC
-                    2007). Khoáng mỗi ngày, dầu ở giai đoạn sức mạnh và tốc độ, điện giải ngày tập nặng. Món: món ngựa đang ăn, nếu không thì món đủ
-                    dùng cả tuần, hết hạn sớm nhất trước. Ngày nghỉ ít thức ăn tinh hơn: xem lịch cho ăn theo kế hoạch tập.
-                  </Text>
-                  {suggestion.items.length > 0 && (
-                    <Button size="small" className="!self-start !mt-1" onClick={applySuggestion}>
-                      Dùng gợi ý cho bữa này
-                    </Button>
-                  )}
-                </div>
-              }
-            />
-          )}
-
-          <div className="flex items-center justify-between">
-            <Text strong className="!text-sm">
-              Các món trong khẩu phần
-            </Text>
-            <Button size="small" type="link" onClick={() => setProposeOpen(true)}>
-              Kho chưa có món cần dùng?
-            </Button>
-          </div>
-          <Text type="secondary" className="block !text-xs mb-2">
-            Món lấy từ kho của Quản lý; lượng tính theo đơn vị của mặt hàng. Mỗi bữa nhân viên cho ăn xong, kho tự trừ.
-          </Text>
-          <Form.List name="items">
-            {(fields, { add, remove }) => (
-              <div>
-                {fields.map((field) => (
-                  <Form.Item key={field.key} noStyle shouldUpdate>
-                    {({ getFieldValue }) => {
-                      const row = getFieldValue(['items', field.name]) || {};
-                      const item = feedById.get(row.inventoryItem);
-                      return (
-                        <div className="mb-2">
-                          {row.legacyType && !row.inventoryItem && (
-                            <Text type="warning" className="block !text-xs">
-                              Món cũ: {FEED_TYPE_LABELS[row.legacyType] || row.legacyType} {row.legacyQuantity} — chọn lại từ kho (bắt buộc) hoặc xoá dòng này.
-                            </Text>
-                          )}
-                          <Space align="baseline" className="!flex">
-                            <Form.Item name={[field.name, 'inventoryItem']} className="!mb-0" rules={[{ required: true, message: 'Chọn món trong kho' }]}>
-                              <Select
-                                placeholder="Chọn thức ăn trong kho"
-                                style={{ width: 240 }}
-                                options={feedItems.map((i) => ({
-                                  value: i._id,
-                                  label: `${i.name} — còn ${i.quantity} ${i.unit}`,
-                                }))}
-                              />
-                            </Form.Item>
-                            <Form.Item
-                              name={[field.name, 'amount']}
-                              className="!mb-0"
-                              rules={[{ required: true, message: 'Nhập lượng' }, { type: 'number', min: 0.01, message: 'Lượng phải lớn hơn 0' }]}
-                            >
-                              <InputNumber min={0} step={0.5} placeholder="Lượng" style={{ width: 110 }} />
-                            </Form.Item>
-                            <Text type="secondary">{item?.unit || ''}</Text>
-                            {fields.length > 1 && (
-                              <Button size="small" danger type="text" onClick={() => remove(field.name)}>
-                                Xoá
-                              </Button>
-                            )}
-                          </Space>
-                          {item && item.quantity < (row.amount || 0) && (
-                            <Text type="danger" className="block !text-xs">
-                              Kho chỉ còn {item.quantity} {item.unit} — bữa này sẽ không ghi nhận được cho đến khi bổ sung.
-                            </Text>
-                          )}
-                        </div>
-                      );
-                    }}
-                  </Form.Item>
-                ))}
-                <Button size="small" type="dashed" onClick={() => add()} className="!mt-1">
-                  Thêm món
-                </Button>
-              </div>
-            )}
-          </Form.List>
-        </Form>
-      </Modal>
+      <RationPlanner
+        open={planner.open}
+        horseId={planner.horseId}
+        onClose={() => setPlanner({ open: false, horseId: null })}
+        horses={horsesData?.data || []}
+        plans={plansData?.data || []}
+        rations={data?.data || []}
+        assignmentOf={assignmentOf}
+        feedItems={feedItems}
+        onPropose={() => setProposeOpen(true)}
+      />
 
       <Modal
         title="Đề xuất vật tư mới cho Quản lý"
