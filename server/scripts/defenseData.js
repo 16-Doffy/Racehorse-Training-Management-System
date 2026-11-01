@@ -96,11 +96,6 @@ async function expectStall(F, horse, type, what) {
   const stall = await whereIs(horse);
   log(F, 'manager', what, (stall?.type || 'standard') === type, stall ? `${stall.code} (${stall.type || 'standard'})` : 'không thấy chuồng');
 }
-async function expectWaiting(F, horse, wants) {
-  const { waiting = [] } = await stallsNow();
-  const found = waiting.find((w) => idOf(w.horse) === idOf(horse));
-  log(F, 'manager', `sơ đồ chuồng báo ngựa chờ chuồng ${wants === 'recovery' ? 'hồi phục' : wants}`, found?.wants === wants, found ? `đang ở ${found.now}` : 'không thấy');
-}
 const exam = (F, horse, label, body) => must(F, 'vet', label, 'POST', '/health/records', { horse: horse._id, ...body });
 
 /** A horse new to the club: profile, a free ordinary stall and its groom, an exam, a breakfast, a plan. */
@@ -226,7 +221,7 @@ async function clearHorse(F, horse) {
   const treatments = ((await read('vet', `/health/treatments?horse=${horse._id}`)) || []).filter((t) => idOf(t.horse) === idOf(horse) && t.status === 'ongoing');
   for (const t of treatments) {
     // eslint-disable-next-line no-await-in-loop
-    await must(F, 'vet', 'kết thúc đợt điều trị, mở khóa tập', 'PUT', `/health/treatments/${t._id}`, { status: 'completed', isTrainingLocked: false });
+    await must(F, 'vet', 'kết thúc đợt điều trị, mở khóa tập', 'PUT', `/health/treatments/${t._id}`, { status: 'completed' });
   }
   const markers = ((await read('vet', `/health/injury-markers?horse=${horse._id}`)) || []).filter((m) => idOf(m.horse) === idOf(horse) && m.recoveryStatus !== 'recovered');
   for (const m of markers) {
@@ -422,6 +417,22 @@ async function boardCheck() {
 
 /** Work of a shift other than the horses' cases: before them, then after them. */
 const EXTRAS = {
+  '2026-11-03/morning': {
+    // Pegasus (injured) and the drill horse (locked by the vet, which also counts as injured) both want recovery,
+    // and only one of its stalls is free: whichever came first has it, the other is shown waiting.
+    async after() {
+      const W = 'Chờ chuồng';
+      const { waiting = [] } = await stallsNow();
+      for (const name of [PEGASUS, DRILL]) {
+        // eslint-disable-next-line no-await-in-loop
+        const horse = await horseNamed(name);
+        // eslint-disable-next-line no-await-in-loop
+        const stall = await whereIs(horse);
+        const waits = waiting.find((w) => idOf(w.horse) === idOf(horse));
+        log(W, 'manager', `${name}: ở chuồng hồi phục, hoặc được báo chờ chuồng trống`, stall?.type === 'recovery' || waits?.wants === 'recovery', waits ? `chờ, đang ở ${waits.now}` : stall?.code);
+      }
+    },
+  },
   '2026-11-02/morning': {
     async before() {
       aim(FIRST);
@@ -435,13 +446,6 @@ const EXTRAS = {
     },
   },
   '2026-11-04/noon': {
-    // Recovery is full (Taurus, Pegasus): the next injured horse waits.
-    async before() {
-      const W = 'Chờ chuồng';
-      const { horse } = await setupOf(DRILL);
-      await exam(W, horse, 'kết luận chấn thương khi khu hồi phục đã đầy', FAST_EXAM('Căng cơ đùi sau trái sau buổi bị dừng; cần nghỉ tại chuồng hồi phục.', 'injured', { clearedLevel: 'none' }));
-      await expectWaiting(W, horse, 'recovery');
-    },
     async after(ctx) {
       await restock(ctx);
     },
@@ -455,7 +459,7 @@ const EXTRAS = {
       const ready = await setupOf(READY);
       await clearHorse(W, pegasus);
       await expectStall(W, pegasus, 'standard', 'Pegasus đủ điều kiện: về chuồng cũ được giữ chỗ');
-      await expectStall(W, drill, 'recovery', 'ngựa đang chờ được chuyển ngay vào chuồng vừa trống');
+      await expectStall(W, drill, 'recovery', 'ngựa còn lại ở chuồng hồi phục');
       await clearHorse('Hồi phục', ready.horse);
     },
     async after() {

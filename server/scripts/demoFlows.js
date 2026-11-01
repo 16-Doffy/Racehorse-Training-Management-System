@@ -177,6 +177,15 @@ async function wake() {
 }
 
 /** Waits until `until`, pinging the API every 5 minutes so the free Render instance does not sleep. */
+/** The first thing `find` returns within about half a minute, or nothing. */
+async function soon(find) {
+  for (let i = 0; i < 6; i += 1) {
+    const found = await find();
+    if (found) return found;
+    await sleep(5000);
+  }
+  return find();
+}
 async function waitUntil(until, label) {
   console.log(`${clock()} chờ tới ${hhmm(until)} (${label})`);
   while (Date.now() < until.getTime()) {
@@ -523,9 +532,10 @@ async function flowInjured(ctx, F, setup) {
   if (sim.status === 200) {
     const stopped = await untilEnded(session._id, 3);
     log(F, '-', 'hệ thống tự dừng buổi: nghi chấn thương, gửi yêu cầu khám gấp, giao chườm lạnh', stopped?.status === 'aborted', stopped?.abortReason || `trạng thái ${stopped?.status}`);
-    request = ((await read('vet', `/health/exam-requests?horse=${horse._id}`)) || []).find((q) => String(q.horse?._id || q.horse) === String(horse._id) && q.status === 'pending');
+    // The server stops the run first and files these next, so they may take a moment to appear.
+    request = await soon(async () => ((await read('vet', `/health/exam-requests?horse=${horse._id}`)) || []).find((q) => String(q.horse?._id || q.horse) === String(horse._id) && q.status === 'pending'));
     log(F, 'vet', 'thấy yêu cầu khám gấp do hệ thống gửi', Boolean(request), request?.reason || '');
-    const icing = (await groomTasks(horse)).find((t) => t.taskType === 'icing' && t.status === 'pending');
+    const icing = await soon(async () => (await groomTasks(horse)).find((t) => t.taskType === 'icing' && t.status === 'pending'));
     if (icing) {
       await must(F, 'groom', 'chườm lạnh chân trước trái 15 phút, giữ ngựa trong chuồng', 'PATCH', `/stable/tasks/${icing._id}/complete`, {
         clientOpId: `demo-${icing._id}`, note: 'Chườm đá 15 phút, chân hơi nóng, ngựa đứng yên.',
