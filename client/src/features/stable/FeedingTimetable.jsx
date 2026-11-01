@@ -115,7 +115,7 @@ export default function FeedingTimetable({ horseId }) {
 
   return (
     <section aria-label="Thời khóa biểu cho ăn" className="space-y-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-2.5 bg-[#FAF7F0] p-3 rounded-xl border border-[#E5DEC9]">
+      <div className="st-toolbar justify-between">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-gray-900 text-sm">Thời khóa biểu cho ăn</span>
           {timetable?.caretaker ? (

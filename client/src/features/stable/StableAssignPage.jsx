@@ -17,6 +17,7 @@ import {
   Popconfirm,
   Segmented,
   InputNumber,
+  Card,
 } from 'antd';
 import { message } from '../../lib/antdStatic';
 import {
@@ -99,10 +100,10 @@ function HorseFocusTag({ focus, rows }) {
   if (!focus.horse) return null;
   const name = (rows || []).find((r) => horseIdOf(r) === focus.horse && r.horse?.name)?.horse?.name || 'ngựa được chọn';
   return (
-    <div className="light-surface-box sticky top-0 z-10 mb-3.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl border border-[#D4AF37]/40 bg-[#FAF7F0] px-3.5 py-2 shadow-2xs">
+    <div className="light-surface-box sticky top-0 z-10 mb-3.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl border border-[#D4AF37]/40 border-l-4 border-l-[#D4AF37] bg-[#FAF7F0] px-3.5 py-2.5 shadow-xs">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
-        <span className="text-xs text-gray-500">Đang xem riêng:</span>
-        <span className="text-sm font-semibold text-gray-900">{name}</span>
+        <span className="text-xs font-medium text-gray-500">Đang xem riêng:</span>
+        <span className="text-sm font-bold text-gray-900">{name}</span>
       </div>
       <Button size="small" icon={<CloseOutlined />} onClick={focus.clear}>
         Xem tất cả ngựa
@@ -443,20 +444,21 @@ function TaskList() {
           <div className="flex justify-end">{addJob}</div>
           {routineList(ofHorse(routinesData?.data, focus.horse), false)}
           <div>
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <Text strong className="!text-sm">
                 Các việc của ngựa này
               </Text>
             </div>
-            <Table
-              className="mt-2"
-              rowKey="_id"
-              columns={columns.filter((c) => !focus.horse || c.key !== 'horse')}
-              dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
-              loading={isLoading}
-              scroll={{ x: 'max-content' }}
-              locale={{ emptyText: 'Ngựa này chưa có công việc nào. Bữa ăn tự xuất hiện khi ngựa đã được xếp chuồng và có người chăm sóc.' }}
-            />
+            <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+              <Table
+                rowKey="_id"
+                columns={columns.filter((c) => !focus.horse || c.key !== 'horse')}
+                dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
+                loading={isLoading}
+                scroll={{ x: 'max-content' }}
+                locale={{ emptyText: 'Ngựa này chưa có công việc nào. Bữa ăn tự xuất hiện khi ngựa đã được xếp chuồng và có người chăm sóc.' }}
+              />
+            </Card>
           </div>
         </div>
       ) : (
@@ -769,7 +771,7 @@ function IncidentsList() {
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+      <div className="st-toolbar mb-4 justify-between">
         <Typography.Text type="secondary" className="text-sm max-w-3xl">
           Sự cố nhân viên chăm sóc báo trên các ngựa bạn phụ trách. Bác sĩ tiếp nhận và kết luận; sự cố
           chưa xử lý xong làm cửa y tế của buổi tập chuyển vàng.
@@ -777,14 +779,16 @@ function IncidentsList() {
         <Segmented options={INCIDENT_FILTERS} value={filter} onChange={setFilter} />
       </div>
       <HorseFocusTag focus={focus} rows={data?.data} />
-      <Table
-        rowKey="_id"
-        columns={columns.filter((c) => !focus.horse || c.key !== 'horse')}
-        dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
-        loading={isLoading}
-        scroll={{ x: 'max-content' }}
-        locale={{ emptyText: filter === 'unresolved' ? 'Không có sự cố nào đang chờ xử lý.' : 'Chưa có sự cố nào.' }}
-      />
+      <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+        <Table
+          rowKey="_id"
+          columns={columns.filter((c) => !focus.horse || c.key !== 'horse')}
+          dataSource={newestFirst(ofHorse(data?.data, focus.horse))}
+          loading={isLoading}
+          scroll={{ x: 'max-content' }}
+          locale={{ emptyText: filter === 'unresolved' ? 'Không có sự cố nào đang chờ xử lý.' : 'Chưa có sự cố nào.' }}
+        />
+      </Card>
     </div>
   );
 }

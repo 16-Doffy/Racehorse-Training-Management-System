@@ -249,41 +249,43 @@ export default function FitnessOverviewChart({ sessions }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <DatePicker
-          value={activeDay}
-          format="DD/MM/YYYY"
-          allowClear={false}
-          aria-label="Ngày tập"
-          disabledDate={(d) => !runDays.has(d.format('YYYY-MM-DD'))}
-          onChange={(d) => {
-            setDay(d);
-            setPick({ horse: null, session: null });
-          }}
-        />
-        <Select
-          aria-label="Ngựa"
-          className="min-w-[220px]"
-          value={horseId}
-          onChange={selectHorse}
-          options={horses.map((h) => ({ value: h.id, label: h.name }))}
-        />
-        {horseDayRuns.length > 1 && (
-          <Select
-            aria-label="Buổi tập"
-            className="min-w-[220px]"
-            value={session?._id}
-            onChange={(id) => setPick({ horse: horseId, session: id })}
-            options={horseDayRuns.map((s) => ({ value: s._id, label: `${kindLabel(s)} · ${ranAt(s).format('HH:mm')} · ${VERDICT_TEXT[verdictOf(s)]}` }))}
+      <div className="st-toolbar">
+        <div className="flex flex-wrap items-center gap-2">
+          <DatePicker
+            value={activeDay}
+            format="DD/MM/YYYY"
+            allowClear={false}
+            aria-label="Ngày tập"
+            disabledDate={(d) => !runDays.has(d.format('YYYY-MM-DD'))}
+            onChange={(d) => {
+              setDay(d);
+              setPick({ horse: null, session: null });
+            }}
           />
-        )}
-        <Text type="secondary" className="text-xs">
+          <Select
+            aria-label="Ngựa"
+            className="min-w-[220px]"
+            value={horseId}
+            onChange={selectHorse}
+            options={horses.map((h) => ({ value: h.id, label: h.name }))}
+          />
+          {horseDayRuns.length > 1 && (
+            <Select
+              aria-label="Buổi tập"
+              className="min-w-[220px]"
+              value={session?._id}
+              onChange={(id) => setPick({ horse: horseId, session: id })}
+              options={horseDayRuns.map((s) => ({ value: s._id, label: `${kindLabel(s)} · ${ranAt(s).format('HH:mm')} · ${VERDICT_TEXT[verdictOf(s)]}` }))}
+            />
+          )}
+        </div>
+        <Text type="secondary" className="text-xs font-medium tabular-nums">
           {horses.length} ngựa đã tập ngày {activeDay.format('DD/MM')}
         </Text>
       </div>
 
       {session && (
-        <Card size="small" title={`Kết quả buổi tập · ${session.horse?.name || ''}`}>
+        <Card size="small" className="!rounded-xl !border-[#E5DEC9]" title={`Kết quả buổi tập · ${session.horse?.name || ''}`}>
           <SessionResult session={session} colors={colors} />
         </Card>
       )}

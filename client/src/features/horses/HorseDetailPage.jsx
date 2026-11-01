@@ -134,7 +134,7 @@ export default function HorseDetailPage() {
   return (
     <div className="space-y-4">
       {/* Where it sits, and the way to the next horse without going back to the list (same tab kept). */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="st-toolbar !py-2 !px-3.5">
         <Breadcrumb items={[{ title: <Link to="/horses">Danh sách đàn ngựa</Link> }, { title: horse.name }]} />
         {herd.length > 1 && (
           <div className="flex items-center gap-1.5">
@@ -211,7 +211,7 @@ export default function HorseDetailPage() {
             />
 
             {/* Who looks after the horse: the people the Manager assigns on the horse form, and its stall and groom. */}
-            <div className="mt-4 border-t border-gray-100 pt-3">
+            <div className="st-sub-panel light-surface-box mt-4">
               <div className="mb-2 text-[13px] font-semibold text-gray-900">Người phụ trách</div>
               <Facts
                 items={[

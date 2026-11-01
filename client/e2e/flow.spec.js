@@ -235,10 +235,19 @@ test('trainer home shows the 3D track and the board of the day', async ({ page }
 test('manager home shows the stable, the grooms\' day and the store', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  // A horse waiting for a free stall, as the server would say so.
+  await page.route(/\/api\/v1\/stable\/stalls(\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.waiting = [{ horse: { _id: 'waiting-horse', name: 'TEST Waiting Horse' }, wants: 'recovery', now: 'A-02' }];
+    await route.fulfill({ response, body: JSON.stringify(body) });
+  });
   await login(page, 'manager');
   // The fixture's zone holds the fixture horse, so it is the one shown in 3D.
   const stable = page.locator('.ant-card', { hasText: 'Chuồng trại toàn CLB' }).first();
   await expect(stable.getByRole('button', { name: /Khu A/ })).toBeVisible();
+  await expect(stable.getByText('Chờ chuồng trống')).toBeVisible();
+  await expect(stable.getByText(/đang ở A-02, cần chuồng hồi phục/)).toBeVisible();
   await stable.getByRole('button', { name: /Khu A/ }).click();
   await expect(stable.getByRole('button', { name: /Khu A/ })).toHaveAttribute('aria-pressed', 'true');
   // Each card says so in one line when there is nothing to show.

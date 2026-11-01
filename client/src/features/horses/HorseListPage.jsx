@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Tag, Typography, Button, Modal, Form, Input, Select, Alert, Empty, Tooltip, Popconfirm, Segmented, Grid } from 'antd';
+import { Table, Tag, Typography, Button, Modal, Form, Input, Select, Alert, Empty, Tooltip, Popconfirm, Segmented, Grid, Card } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined, SearchOutlined } from '@ant-design/icons';
 import { downloadFile } from '../../lib/files';
@@ -488,7 +488,7 @@ export default function HorseListPage() {
                 <Button
                   icon={<DownloadOutlined />}
                   onClick={() => downloadFile('/export/horses', `danh-sach-ngua-${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => message.error(e.message || 'Xuất file thất bại.'))}
-                  className="!h-9 !rounded-lg !bg-white/10 hover:!bg-white/15 !border-white/20 !text-white"
+                  className="st-hero-ghost-btn !h-9 !rounded-lg !bg-white/10 hover:!bg-white/15 !border-white/20 !text-white"
                 >
                   Xuất CSV
                 </Button>
@@ -512,7 +512,7 @@ export default function HorseListPage() {
 
       {/* The counts double as filters: a tile narrows the list below to its horses. */}
       {showsNextStep && (
-        <div className="light-surface-box grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-4 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs overflow-hidden">
+        <div className="st-kpi-grid light-surface-box mb-4">
           {tiles.map((t) => {
             const on = focus === t.key && !archived;
             return (
@@ -524,15 +524,15 @@ export default function HorseListPage() {
                   setView('active');
                   setFocus(on && t.key !== 'all' ? 'all' : t.key);
                 }}
-                className={`cursor-pointer border-0 px-4 py-2.5 text-left transition-colors ${on ? 'bg-[#0F5A43]/10 shadow-[inset_0_-3px_0_#0F5A43]' : 'bg-transparent hover:bg-black/[0.03]'}`}
+                className="st-kpi-tile"
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-x-2">
-                  <span className="whitespace-nowrap text-xs font-medium text-slate-600">{t.label}</span>
-                  <span className={`whitespace-nowrap text-lg font-bold tabular-nums ${t.tone}`}>
+                  <span className="whitespace-nowrap text-xs font-semibold text-slate-600">{t.label}</span>
+                  <span className={`whitespace-nowrap text-xl font-bold tabular-nums ${t.tone}`}>
                     {t.value} <span className="text-xs font-normal text-slate-500">ngựa</span>
                   </span>
                 </div>
-                {t.hint && <div className="mt-0.5 text-[11px] text-slate-500">{t.hint}</div>}
+                {t.hint && <div className="mt-1 text-[11px] text-slate-500">{t.hint}</div>}
               </button>
             );
           })}
@@ -568,84 +568,88 @@ export default function HorseListPage() {
         />
       )}
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        {isManager && (
-          <Segmented
-            value={view}
-            onChange={(v) => {
-              setView(v);
-              setFocus('all');
-            }}
-            options={[
-              { value: 'active', label: `Đang quản lý (${horses.length})` },
-              { value: 'archived', label: 'Đã ngừng quản lý' },
-            ]}
+      <div className="st-toolbar mb-3">
+        <div className="flex flex-wrap items-center gap-2 flex-1">
+          {isManager && (
+            <Segmented
+              value={view}
+              onChange={(v) => {
+                setView(v);
+                setFocus('all');
+              }}
+              options={[
+                { value: 'active', label: `Đang quản lý (${horses.length})` },
+                { value: 'archived', label: 'Đã ngừng quản lý' },
+              ]}
+            />
+          )}
+          <Input
+            allowClear
+            prefix={<SearchOutlined className="text-slate-400" />}
+            placeholder="Tìm tên, giống, chủ, HLV, bác sĩ, chuồng…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="!w-full sm:!w-80"
           />
-        )}
-        <Input
-          allowClear
-          prefix={<SearchOutlined className="text-slate-400" />}
-          placeholder="Tìm tên, giống, chủ, HLV, bác sĩ, chuồng…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="!w-full sm:!w-80"
-        />
-        {focus !== 'all' && !archived && (
-          <Tag closable onClose={() => setFocus('all')} className="!m-0 !py-1">
-            Đang lọc: {tiles.find((t) => t.key === focus)?.label}
-          </Tag>
-        )}
-        <Text type="secondary" className="!text-xs sm:ml-auto">
+          {focus !== 'all' && !archived && (
+            <Tag closable onClose={() => setFocus('all')} className="!m-0 !py-1">
+              Đang lọc: {tiles.find((t) => t.key === focus)?.label}
+            </Tag>
+          )}
+        </div>
+        <Text type="secondary" className="!text-xs font-medium tabular-nums sm:ml-auto">
           {rows.length}/{source.length} ngựa
         </Text>
       </div>
 
-      <Table
-        rowKey="_id"
-        size="small"
-        columns={columns}
-        dataSource={rows}
-        loading={archived ? archivedLoading && !archivedData : isLoading && !data}
-        tableLayout="fixed"
-        scroll={{ x: isManager ? 960 : 700 }}
-        pagination={rows.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
-        locale={{
-          emptyText:
-            source.length > 0 ? (
-              <Empty description="Không có ngựa nào khớp tìm kiếm / bộ lọc.">
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setSearch('');
-                    setFocus('all');
-                  }}
-                >
-                  Bỏ lọc
-                </Button>
-              </Empty>
-            ) : isManager ? (
-              <Empty description='Chưa có ngựa nào trong danh mục. Nhấn "Thêm ngựa mới" để bắt đầu.'>
-                {!archived && (
-                  <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openCreate}>
-                    Thêm ngựa mới
+      <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+        <Table
+          rowKey="_id"
+          size="small"
+          columns={columns}
+          dataSource={rows}
+          loading={archived ? archivedLoading && !archivedData : isLoading && !data}
+          tableLayout="fixed"
+          scroll={{ x: isManager ? 960 : 700 }}
+          pagination={rows.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
+          locale={{
+            emptyText:
+              source.length > 0 ? (
+                <Empty description="Không có ngựa nào khớp tìm kiếm / bộ lọc.">
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setSearch('');
+                      setFocus('all');
+                    }}
+                  >
+                    Bỏ lọc
                   </Button>
-                )}
-              </Empty>
-            ) : (
-              <Empty
-                description={
-                  <span>
-                    Bạn chưa được phân công phụ trách con ngựa nào.
-                    <br />
-                    Liên hệ Quản lý Câu lạc bộ để được phân công.
-                  </span>
-                }
-              />
-            ),
-        }}
-        onRow={(record) => ({ onClick: () => navigate(`/horses/${record._id}`) })}
-        rowClassName="cursor-pointer"
-      />
+                </Empty>
+              ) : isManager ? (
+                <Empty description='Chưa có ngựa nào trong danh mục. Nhấn "Thêm ngựa mới" để bắt đầu.'>
+                  {!archived && (
+                    <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openCreate}>
+                      Thêm ngựa mới
+                    </Button>
+                  )}
+                </Empty>
+              ) : (
+                <Empty
+                  description={
+                    <span>
+                      Bạn chưa được phân công phụ trách con ngựa nào.
+                      <br />
+                      Liên hệ Quản lý Câu lạc bộ để được phân công.
+                    </span>
+                  }
+                />
+              ),
+          }}
+          onRow={(record) => ({ onClick: () => navigate(`/horses/${record._id}`) })}
+          rowClassName="cursor-pointer"
+        />
+      </Card>
 
       {isManager && (
         <Modal

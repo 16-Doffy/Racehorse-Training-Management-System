@@ -64,8 +64,12 @@ export default function TrainerFlowBar() {
                 to={step.path}
                 ref={active ? activeRef : undefined}
                 aria-current={active ? 'step' : undefined}
-                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition-colors"
-                style={active ? { background: token.colorPrimary, color: ink } : { color: token.colorText, background: token.colorFillTertiary }}
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium transition-all"
+                style={
+                  active
+                    ? { background: token.colorPrimary, color: ink, borderColor: token.colorPrimary, boxShadow: '0 2px 6px rgba(15, 90, 67, 0.2)' }
+                    : { color: token.colorText, background: token.colorFillTertiary, borderColor: token.colorBorderSecondary }
+                }
               >
                 <span
                   className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold tabular-nums"
@@ -77,7 +81,7 @@ export default function TrainerFlowBar() {
                 <span style={{ color: active ? ink : token.colorText }}>{step.title}</span>
                 {waiting > 0 && (
                   <span
-                    className="rounded-full px-1.5 text-[10px] font-semibold tabular-nums"
+                    className="rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums"
                     style={step.optional ? { background: token.colorFillSecondary, color: token.colorTextSecondary } : { background: token.colorWarningBg, color: token.colorWarningText }}
                   >
                     {waiting}

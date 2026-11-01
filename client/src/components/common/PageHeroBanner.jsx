@@ -85,26 +85,36 @@ export default function PageHeroBanner({
   // heading style outside Tailwind's layer otherwise wins and makes it 40px.
   return (
     <div
-      className={`rounded-xl border border-[#1E4638] border-l-4 border-l-[#D4AF37] bg-[#0B241B] px-4 py-3 sm:px-5 text-white mb-4 shadow-xs ${className}`}
+      className={`st-hero-banner px-4 py-3.5 sm:px-5 mb-4 ${className}`}
     >
       {/* Wraps instead of squeezing: the title keeps 280px, the counts and the actions move to the next line. */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5">
         <div className="min-w-0 flex-[1_1_280px]">
           <h1
-            className="!m-0 !text-xl sm:!text-[22px] !leading-tight font-semibold tracking-tight text-balance text-[#FAF8F5]"
-            style={{ fontFamily: "'Lora', Georgia, serif" }}
+            className="!m-0 !text-xl sm:!text-[22px] !leading-tight font-semibold tracking-tight text-balance"
+            style={{ fontFamily: "'Lora', Georgia, serif", color: 'var(--st-ink)' }}
           >
             {title}
           </h1>
-          {subtitle && <p className="m-0 mt-0.5 hidden max-w-2xl text-xs leading-snug text-[#C3D4CA] sm:block">{subtitle}</p>}
+          {subtitle && (
+            <p className="m-0 mt-0.5 hidden max-w-2xl text-xs leading-snug sm:block" style={{ color: 'var(--st-ink-secondary)' }}>
+              {subtitle}
+            </p>
+          )}
         </div>
 
         {stats.length > 0 && (
-          <dl className="m-0 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-xs">
+          <dl className="m-0 flex flex-wrap items-center gap-2 text-xs">
             {stats.map((stat, idx) => (
-              <div key={idx} className="flex items-baseline gap-1.5">
-                <dt className="text-[#A7C4B5]">{stat.label}</dt>
-                <dd className="m-0 font-semibold tabular-nums text-[#FAF8F5]">{stat.value}</dd>
+              <div
+                key={idx}
+                className="inline-flex items-baseline gap-1.5 rounded-lg border px-2.5 py-1"
+                style={{ background: 'var(--st-sunk)', borderColor: 'var(--st-border)' }}
+              >
+                <dt style={{ color: 'var(--st-ink-secondary)' }}>{stat.label}</dt>
+                <dd className="m-0 font-semibold tabular-nums" style={{ color: 'var(--st-ink)' }}>
+                  {stat.value}
+                </dd>
               </div>
             ))}
           </dl>
@@ -112,7 +122,7 @@ export default function PageHeroBanner({
 
         {(statusBadge || actionButton) && (
           // Wraps on a phone, where the badge and the button do not fit side by side.
-          <div className="ml-auto flex max-w-full flex-wrap items-center gap-3">
+          <div className="ml-auto flex max-w-full flex-wrap items-center gap-2.5">
             {statusBadge}
             {actionButton}
           </div>

@@ -106,23 +106,25 @@ export default function PreCheckModal({ session, open, onClose, onDone, onReques
             onRequestExam={onRequestExam}
           />
           <Form form={form} layout="vertical" onFinish={submit} className="!mt-3">
-            <Row gutter={12}>
-              <Col xs={24} sm={8}>
-                <Form.Item name="bodyTempC" label="Nhiệt độ cơ thể (°C)" extra="Bình thường 37,2–38,3 °C">
-                  <InputNumber min={30} max={45} step={0.1} className="w-full" placeholder="37.8" />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={8}>
-                <Form.Item name="trackCondition" label="Mặt sân">
-                  <Input placeholder="VD: khô, hơi ướt" />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={8}>
-                <Form.Item name="weather" label="Thời tiết">
-                  <Input placeholder="VD: nắng nhẹ" />
-                </Form.Item>
-              </Col>
-            </Row>
+            <div className="light-surface-box rounded-xl border border-[#E5DEC9] bg-[#FAF7F0] p-3 mb-3">
+              <Row gutter={12}>
+                <Col xs={24} sm={8}>
+                  <Form.Item name="bodyTempC" label="Nhiệt độ cơ thể (°C)" extra="Bình thường 37,2–38,3 °C" className="!mb-0">
+                    <InputNumber min={30} max={45} step={0.1} className="w-full" placeholder="37.8" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Form.Item name="trackCondition" label="Mặt sân" className="!mb-0">
+                    <Input placeholder="VD: khô, hơi ướt" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Form.Item name="weather" label="Thời tiết" className="!mb-0">
+                    <Input placeholder="VD: nắng nhẹ" />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </div>
             {bodyTempC >= FEVER_C && (
               <Alert
                 className="!mb-3"

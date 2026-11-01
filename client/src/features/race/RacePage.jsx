@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Modal, Form, Select, DatePicker, InputNumber, Input, Tag, Space, Tooltip, Radio, Alert, Empty } from 'antd';
+import { Table, Button, Typography, Modal, Form, Select, DatePicker, InputNumber, Input, Tag, Space, Tooltip, Radio, Alert, Empty, Card, Segmented } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, FlagOutlined, ScheduleOutlined, WarningOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -205,6 +205,7 @@ function DecisionModal({ entry, horse, onClose, onDone }) {
 // Registration, the trial run that decides whether the horse goes, and the result after the race.
 export default function RacePage() {
   const [open, setOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
   const [resultRace, setResultRace] = useState(null);
   const [decisionRace, setDecisionRace] = useState(null);
   const [form] = Form.useForm();
@@ -216,7 +217,12 @@ export default function RacePage() {
   // A notification about one horse's race (?horse=<id>) shows that horse's entries only.
   const [searchParams, setSearchParams] = useSearchParams();
   const focusHorse = searchParams.get('horse');
-  const shownRaces = focusHorse ? (data?.data || []).filter((r) => String(r.horse?._id || r.horse) === focusHorse) : data?.data;
+  const baseRaces = focusHorse ? (data?.data || []).filter((r) => String(r.horse?._id || r.horse) === focusHorse) : (data?.data || []);
+  const shownRaces = baseRaces.filter((r) => {
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'reviewNeeded') return Boolean(r.reviewNeeded);
+    return r.status === statusFilter;
+  });
   const focusName = focusHorse ? (data?.data || []).find((r) => String(r.horse?._id || r.horse) === focusHorse)?.horse?.name : null;
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
@@ -438,22 +444,41 @@ export default function RacePage() {
           Đang xem riêng {focusName || 'ngựa được chọn'} · bấm × để xem tất cả
         </Tag>
       )}
-      <Table
-        rowKey="_id"
-        columns={columns}
-        dataSource={newestFirst(shownRaces)}
-        loading={isLoading && !data}
-        scroll={{ x: 'max-content' }}
-        locale={{
-          emptyText: (
-            <Empty description='Chưa có giải đua nào được đăng ký. Nhấn "Đăng ký giải mới" để bắt đầu.'>
-              <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-                Đăng ký giải mới
-              </Button>
-            </Empty>
-          ),
-        }}
-      />
+
+      <div className="st-toolbar mb-3">
+        <Segmented
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { value: 'all', label: `Tất cả (${baseRaces.length})` },
+            { value: 'registered', label: `Đã đăng ký (${baseRaces.filter((r) => r.status === 'registered').length})` },
+            { value: 'confirmed', label: `Đã xác nhận (${baseRaces.filter((r) => r.status === 'confirmed').length})` },
+            ...(baseRaces.some((r) => r.reviewNeeded)
+              ? [{ value: 'reviewNeeded', label: `Cần xem lại (${baseRaces.filter((r) => r.reviewNeeded).length})` }]
+              : []),
+            { value: 'completed', label: `Đã thi đấu xong (${baseRaces.filter((r) => r.status === 'completed').length})` },
+          ]}
+        />
+      </div>
+
+      <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+        <Table
+          rowKey="_id"
+          columns={columns}
+          dataSource={newestFirst(shownRaces)}
+          loading={isLoading && !data}
+          scroll={{ x: 'max-content' }}
+          locale={{
+            emptyText: (
+              <Empty description='Chưa có giải đua nào được đăng ký. Nhấn "Đăng ký giải mới" để bắt đầu.'>
+                <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+                  Đăng ký giải mới
+                </Button>
+              </Empty>
+            ),
+          }}
+        />
+      </Card>
 
       <Modal
         title="Đăng ký giải đua"

@@ -104,9 +104,9 @@ export default function StableMapBoard({
       {/* The stable's three parts kept apart: ordinary stalls, isolation, recovery; each with its zones. */}
       <ZonePicker zones={zones} value={zone.key} onChange={changeZone} />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <div className="min-w-0 space-y-2">
+      <div className="min-w-0 space-y-2.5">
         {/* Over the barn: which zone, what it is, and its tools. */}
-        <div className="light-surface-box flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="st-toolbar light-surface-box !py-2.5 !px-3.5">
           <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: kind.color }} aria-hidden />
             <span className="text-sm font-semibold text-gray-900">{zone.name}</span>
@@ -145,8 +145,8 @@ export default function StableMapBoard({
       <aside className="min-w-0 space-y-3">
         <StableMap stalls={stalls} zoneKey={zone.key} selectedCode={selected.code} onSelect={pick} compact />
 
-        <Card size="small" className="!rounded-xl !border-[#E2D9C8]">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+        <Card size="small" className="!rounded-xl !border-[#E2D9C8] shadow-xs">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-2.5">
             <div>
               <div className="text-2xl font-bold leading-none tabular-nums">{selected.code}</div>
               <div className="mt-1 text-xs text-gray-600">

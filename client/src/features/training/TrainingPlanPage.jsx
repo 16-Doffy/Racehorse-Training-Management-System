@@ -55,7 +55,7 @@ function whereNow(plan) {
 function PlanDetail({ plan }) {
   const p = plan.progress || {};
   return (
-    <div className="flex flex-col gap-3 py-1">
+    <div className="st-sub-panel light-surface-box flex flex-col gap-3">
       <PlanTimeline phases={plan.phases} raceDate={plan.targetRace?.raceDate} />
       <div className="text-xs text-gray-600">{plan.goal || 'Chưa nêu mục tiêu huấn luyện'}</div>
       <dl className="m-0 grid grid-cols-2 gap-y-2.5 border-y border-[#E4DFD3] py-2.5 text-xs sm:grid-cols-4">
@@ -402,14 +402,16 @@ export default function TrainingPlanPage() {
           <Title level={5} className="!mt-8 !mb-2">
             Kế hoạch nháp, đã xong hoặc đã hủy
           </Title>
-          <Table
-            rowKey="_id"
-            size="small"
-            columns={historyColumns}
-            dataSource={others}
-            scroll={{ x: 'max-content' }}
-            pagination={{ pageSize: 8, hideOnSinglePage: true }}
-          />
+          <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+            <Table
+              rowKey="_id"
+              size="small"
+              columns={historyColumns}
+              dataSource={others}
+              scroll={{ x: 'max-content' }}
+              pagination={{ pageSize: 8, hideOnSinglePage: true }}
+            />
+          </Card>
         </>
       )}
 

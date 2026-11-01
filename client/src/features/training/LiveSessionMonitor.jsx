@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Card, Dropdown, Progress, Tag, Typography } from 'antd';
+import { Button, Card, Dropdown, Progress, Tag, Typography, theme } from 'antd';
 import { ExperimentOutlined, LineChartOutlined } from '@ant-design/icons';
 import { LineChart, Line, XAxis, YAxis, ReferenceLine, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { useQueryClient } from '@tanstack/react-query';
@@ -109,6 +109,9 @@ const CARD_STYLES = {
 };
 
 function LiveCard({ session, readings, horse, surface }) {
+  const { token } = theme.useToken();
+  const gridColor = token.colorBorderSecondary || GRID;
+  const axisColor = token.colorTextTertiary || AXIS;
   const figures = liveFigures(session, readings);
   const { target, heartRate, speed, distance, targetDistance, over } = figures;
   const data = readings.map((r, i) => ({ i, hr: r.hr, speed: r.speed }));
@@ -141,11 +144,11 @@ function LiveCard({ session, readings, horse, surface }) {
             <div className="mt-2 h-28 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
-                  <CartesianGrid stroke={GRID} vertical={false} />
+                  <CartesianGrid stroke={gridColor} vertical={false} />
                   <XAxis dataKey="i" hide />
                   <YAxis
                     domain={[60, Math.max(target.heartRateMax + 20, ...data.map((d) => d.hr + 5))]}
-                    tick={{ fontSize: 11, fill: AXIS }}
+                    tick={{ fontSize: 11, fill: axisColor }}
                     axisLine={false}
                     tickLine={false}
                     width={44}

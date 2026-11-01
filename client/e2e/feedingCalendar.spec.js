@@ -34,11 +34,15 @@ test('trainer reviews every meal to the end of the plan, changes one and confirm
   await meal.getByRole('button', { name: /^Áp dụng/ }).click();
   await expect(meal).toBeHidden();
   await expect(planner.getByText(/Có thay đổi chưa lưu/)).toBeVisible();
+  // A reload or leaving the page now is asked about too, since nothing is saved yet.
+  const asksBeforeLeaving = () => page.evaluate(() => !window.dispatchEvent(new Event('beforeunload', { cancelable: true })));
+  expect(await asksBeforeLeaving()).toBe(true);
   // Every day, one a row, is still there to read.
   await planner.getByText('Từng ngày', { exact: true }).click();
   await expect(planner.getByText('Ngày · lịch tập', { exact: true })).toBeVisible();
   await planner.getByRole('button', { name: 'Xác nhận lịch ăn 28 ngày' }).click();
   await expect(planner).toBeHidden();
+  expect(await asksBeforeLeaving()).toBe(false);
   await expect(page.getByText(/Lịch ăn đã xác nhận đến/)).toBeVisible();
   // It has its rations now: changed from here, not made again from the list of all horses.
   await expect(page.getByRole('button', { name: 'Sửa khẩu phần ăn' })).toBeVisible();

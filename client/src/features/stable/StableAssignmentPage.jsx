@@ -15,6 +15,7 @@ import ZoneModal, { ZoneEditModal } from './ZoneModal';
 import { CaretakerSelect, StallPicker } from './StallPicker';
 import { stallGroom } from './stallPicking';
 import { newestFirst } from '../../utils/newestFirst';
+import { STALL_TYPE_LABELS } from './stall3d/stallStatus';
 
 /**
  * Manager assigns each horse a stall and the groom responsible for it.
@@ -56,6 +57,8 @@ export default function StableAssignmentPage() {
   const unplaced = stallsData?.data?.unplaced || [];
   // Horses in the wrong part of the stable for their health (server: stable/placement.js).
   const wrongZone = stalls.filter((s) => s.placement && s.occupant?.horse);
+  // Horses whose health asks for another kind of stall and none is free: moved as soon as one is.
+  const waiting = stallsData?.data?.waiting || [];
   const horses = horsesData?.data || [];
   const grooms = (groomsData?.data || []).filter((u) => u.isActive !== false);
 
@@ -339,11 +342,14 @@ export default function StableAssignmentPage() {
         }
       />
 
-      {(unstabled.length > 0 || unplaced.length > 0 || uncared.length > 0 || wrongZone.length > 0) && (
+      {(unstabled.length > 0 || unplaced.length > 0 || uncared.length > 0 || wrongZone.length > 0 || waiting.length > 0) && (
         // What still needs the Manager, on one line: horses without a stall, horses on a hand-written
         // stall, stalls whose horse has nobody to feed it. Each opens its list; a name opens its stall form.
-        <div className="light-surface-box mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm">
-          <span className="mr-1 font-semibold text-amber-900">Cần xử lý</span>
+        <div className="light-surface-box mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/70 px-3.5 py-2.5 text-sm shadow-2xs">
+          <span className="mr-1.5 inline-flex items-center gap-1.5 font-semibold text-amber-900">
+            <span className="h-2 w-2 rounded-full bg-amber-500" />
+            Cần xử lý
+          </span>
           {[
             unstabled.length > 0 && { key: 'unstabled', label: 'Chưa có chuồng', items: unstabled.map((h) => ({ key: h._id, label: h.name, onClick: () => openModal(null, h._id) })) },
             unplaced.length > 0 && {
@@ -361,6 +367,16 @@ export default function StableAssignmentPage() {
                 onClick: () => openModal({ assignment: s.occupant?.assignment, horse: s.occupant?.horse, caretaker: s.occupant?.caretaker }),
               })),
             },
+            waiting.length > 0 && {
+              key: 'waiting',
+              label: 'Chờ chuồng trống',
+              hint: 'Sức khỏe của ngựa cần loại chuồng khác mà chưa có chỗ. Có chỗ là hệ thống tự chuyển; cần gấp thì thêm chuồng hoặc chuyển tay.',
+              items: waiting.map((w) => ({
+                key: w.horse._id,
+                label: `${w.horse.name} (${w.now}): cần chuồng ${(STALL_TYPE_LABELS[w.wants] || w.wants).toLowerCase()}`,
+                onClick: () => openModal(assignments.find((a) => String(a.horse?._id || a.horse) === String(w.horse._id))),
+              })),
+            },
             uncared.length > 0 && {
               key: 'uncared',
               label: 'Chưa có người chăm sóc',
@@ -371,8 +387,8 @@ export default function StableAssignmentPage() {
             .filter(Boolean)
             .map((group) => (
               <Dropdown key={group.key} trigger={['click']} menu={{ items: group.items }}>
-                <Button size="small" title={group.hint}>
-                  {group.label}: <span className="font-semibold tabular-nums">{group.items.length}</span> <DownOutlined className="text-[10px]" />
+                <Button size="small" title={group.hint} className="!rounded-lg">
+                  {group.label}: <span className="font-semibold tabular-nums text-amber-800">{group.items.length}</span> <DownOutlined className="text-[10px]" />
                 </Button>
               </Dropdown>
             ))}
@@ -402,24 +418,26 @@ export default function StableAssignmentPage() {
             key: 'list',
             label: 'Danh sách',
             children: (
-              <Table
-                rowKey="_id"
-                columns={columns}
-                dataSource={newestFirst(assignments)}
-                loading={isLoading && !assignmentsData}
-                scroll={{ x: 'max-content' }}
-                locale={{
-                  emptyText: (
-                    <Empty description="Chưa xếp chuồng cho ngựa nào.">
-                      {unstabled.length > 0 && (
-                        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openModal(null)}>
-                          Xếp chuồng mới
-                        </Button>
-                      )}
-                    </Empty>
-                  ),
-                }}
-              />
+              <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+                <Table
+                  rowKey="_id"
+                  columns={columns}
+                  dataSource={newestFirst(assignments)}
+                  loading={isLoading && !assignmentsData}
+                  scroll={{ x: 'max-content' }}
+                  locale={{
+                    emptyText: (
+                      <Empty description="Chưa xếp chuồng cho ngựa nào.">
+                        {unstabled.length > 0 && (
+                          <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openModal(null)}>
+                            Xếp chuồng mới
+                          </Button>
+                        )}
+                      </Empty>
+                    ),
+                  }}
+                />
+              </Card>
             ),
           },
         ]}

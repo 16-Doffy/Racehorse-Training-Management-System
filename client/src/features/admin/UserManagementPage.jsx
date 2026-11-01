@@ -1,13 +1,30 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Modal, Form, Select, Input, Tag, Switch, Popconfirm, Space, Alert } from 'antd';
+import { Table, Button, Typography, Modal, Form, Select, Input, Tag, Switch, Popconfirm, Space, Alert, Card, Segmented } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { PlusOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, CheckOutlined, CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSelector } from 'react-redux';
 import { usersApi } from './usersApi';
-import { ROLE_LABELS } from '../../constants/roles';
+import { ROLE_LABELS, ROLES } from '../../constants/roles';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import { newestFirst } from '../../utils/newestFirst';
+import { fold } from '../../utils/fold';
+
+const ROLE_COLORS = {
+  [ROLES.MANAGER]: 'gold',
+  [ROLES.HEAD_TRAINER]: 'blue',
+  [ROLES.VETERINARIAN]: 'magenta',
+  [ROLES.GROOM]: 'green',
+  [ROLES.HORSE_OWNER]: 'orange',
+};
+const ROLE_FILTER_OPTIONS = [
+  { value: 'all', label: 'Tất cả' },
+  { value: ROLES.MANAGER, label: 'Quản lý' },
+  { value: ROLES.HEAD_TRAINER, label: 'HLV' },
+  { value: ROLES.VETERINARIAN, label: 'Bác sĩ' },
+  { value: ROLES.GROOM, label: 'NV chăm sóc' },
+  { value: ROLES.HORSE_OWNER, label: 'Chủ ngựa' },
+];
 
 
 export default function UserManagementPage() {
@@ -21,6 +38,8 @@ export default function UserManagementPage() {
   // server asks for a replacement, and the save is sent again with the one picked here.
   const [handover, setHandover] = useState(null);
   const [replacement, setReplacement] = useState();
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
   const queryClient = useQueryClient();
@@ -179,7 +198,7 @@ export default function UserManagementPage() {
       title: 'Vai trò (RBAC)',
       dataIndex: 'role',
       key: 'role',
-      render: (r) => <Tag color="blue">{ROLE_LABELS[r] || r}</Tag>,
+      render: (r) => <Tag color={ROLE_COLORS[r] || 'blue'}>{ROLE_LABELS[r] || r}</Tag>,
     },
     {
       title: 'Trạng thái',
@@ -211,6 +230,12 @@ export default function UserManagementPage() {
   const lockedCount = decidedUsers.filter((u) => u.isActive === false).length;
   const pendingCount = pendingUsers.length;
   const totalCount = allUsers.length;
+  const q = fold(search.trim());
+  const filteredDecidedUsers = decidedUsers.filter((u) => {
+    if (roleFilter !== 'all' && u.role !== roleFilter) return false;
+    if (!q) return true;
+    return [u.name, u.email, u.phone, ROLE_LABELS[u.role]].some((v) => fold(v).includes(q));
+  });
 
   return (
     <div>
@@ -252,18 +277,24 @@ export default function UserManagementPage() {
       )}
 
       {pendingUsers.length > 0 && (
-        <div className="light-surface-box mb-6 rounded-xl border border-amber-200/80 bg-amber-50/30 p-4 shadow-xs">
-          <div className="flex flex-wrap items-center justify-between gap-1 mb-2">
-            <span className="font-semibold text-amber-900 flex items-center gap-2 text-sm">
-              <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              Tài khoản đăng ký chờ bạn duyệt ({pendingUsers.length})
-            </span>
-            <Typography.Text type="secondary" className="!text-xs">
-              Kiểm tra vai trò trước khi duyệt
-            </Typography.Text>
-          </div>
+        <Card
+          size="small"
+          className="light-surface-box !mb-5 !rounded-xl !border-amber-300 !bg-amber-50/30 shadow-xs overflow-hidden"
+          styles={{ body: { padding: 0 } }}
+          title={
+            <div className="flex flex-wrap items-center justify-between gap-2 py-0.5">
+              <span className="font-semibold text-amber-900 flex items-center gap-2 text-sm">
+                <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Tài khoản đăng ký chờ bạn duyệt ({pendingUsers.length})
+              </span>
+              <Typography.Text type="secondary" className="!text-xs font-normal">
+                Kiểm tra vai trò trước khi duyệt
+              </Typography.Text>
+            </div>
+          }
+        >
           <Table
             rowKey="_id"
             columns={pendingColumns}
@@ -273,18 +304,41 @@ export default function UserManagementPage() {
             scroll={{ x: 'max-content' }}
             size="small"
           />
-        </div>
+        </Card>
       )}
 
-      <Table
-        rowKey="_id"
-        title={() => <span className="font-semibold">Nhân sự câu lạc bộ ({decidedUsers.length})</span>}
-        columns={columns}
-        dataSource={newestFirst(decidedUsers)}
-        loading={isLoading && !data}
-        scroll={{ x: 'max-content' }}
-        locale={{ emptyText: 'Chưa có tài khoản nào.' }}
-      />
+      <div className="st-toolbar mb-3">
+        <div className="flex flex-wrap items-center gap-2 flex-1">
+          <Segmented
+            value={roleFilter}
+            onChange={setRoleFilter}
+            options={ROLE_FILTER_OPTIONS}
+          />
+          <Input
+            allowClear
+            prefix={<SearchOutlined className="text-slate-400" />}
+            placeholder="Tìm họ tên, email, điện thoại…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="!w-full sm:!w-72"
+            aria-label="Tìm nhân sự"
+          />
+        </div>
+        <Typography.Text type="secondary" className="!text-xs font-medium tabular-nums">
+          Nhân sự câu lạc bộ ({filteredDecidedUsers.length}/{decidedUsers.length})
+        </Typography.Text>
+      </div>
+
+      <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+        <Table
+          rowKey="_id"
+          columns={columns}
+          dataSource={newestFirst(filteredDecidedUsers)}
+          loading={isLoading && !data}
+          scroll={{ x: 'max-content' }}
+          locale={{ emptyText: decidedUsers.length > 0 ? 'Không có nhân sự nào khớp bộ lọc.' : 'Chưa có tài khoản nào.' }}
+        />
+      </Card>
 
       <Modal
         title="Tạo tài khoản mới"

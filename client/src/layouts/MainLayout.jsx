@@ -22,6 +22,7 @@ import { notificationTarget, menuKeyFor } from '../features/alerts/notificationT
 import { disconnectSocket } from '../lib/socket';
 import { fileHref } from '../lib/files';
 import { FOREST, MENU_SECTION_LABEL, usesForestTheme, usesCanvasPicker, CANVAS_PRESETS, LIGHT_CANVAS, DARK_CANVAS, FULL_DARK_ROLES, BOOTSTRAP_ROLES, canvasOf, getForestTheme } from './forestTheme';
+import '../styles/staff-ui.css';
 
 const { Sider, Content } = Layout;
 
@@ -183,7 +184,7 @@ export default function MainLayout() {
                   Racehorse TMS
                 </span>
                 <span className="text-[11px] font-medium text-[#A7C4B5] truncate mt-0.5">
-                  Quản lý câu lạc bộ
+                  {user?.role === ROLES.HEAD_TRAINER ? 'Huấn luyện viên Trưởng' : 'Quản lý Câu lạc bộ'}
                 </span>
               </div>
             ) : canvas ? (
@@ -236,7 +237,12 @@ export default function MainLayout() {
                     <span className="flex min-w-0 items-center gap-1.5">
                       {/* The trainer's tabs carry the number of their step in the work (menuConfig). */}
                       {m.step && (
-                        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white/15 text-[10px] font-bold tabular-nums" aria-label={`Bước ${m.step}`}>
+                        <span
+                          className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular-nums ${
+                            m.key === selectedKey ? 'border border-[#D4AF37]/75 bg-[#D4AF37]/20 text-[#F6D57A]' : 'bg-white/15'
+                          }`}
+                          aria-label={`Bước ${m.step}`}
+                        >
                           {m.step}
                         </span>
                       )}
@@ -303,7 +309,13 @@ export default function MainLayout() {
 
       {/* MAIN CONTENT AREA */}
       <Layout style={{ ...pageBgStyle, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0 }}>
-        <div className="flex flex-wrap justify-between items-center gap-y-2 px-4 pt-3 md:px-8 md:pt-4 shrink-0 bg-transparent">
+        <div
+          className={
+            isStaff
+              ? 'st-top-bar flex flex-wrap justify-between items-center gap-y-2 px-4 py-2.5 md:px-8 shrink-0'
+              : 'flex flex-wrap justify-between items-center gap-y-2 px-4 pt-3 md:px-8 md:pt-4 shrink-0 bg-transparent'
+          }
+        >
           {canvas ? (
             <Segmented
               size="small"

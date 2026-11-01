@@ -1,0 +1,234 @@
+/* client/src/styles/staff-ui.css */
+.forest-layout.is-canvas,
+body.wdp-dark-portals {
+  --st-bg-page: #F4EFE6;
+  --st-card: #FAF7F0;
+  --st-card-elevated: #FFFDF8;
+  --st-card-header: #F2ECE0;
+  --st-sunk: #EAE3D5;
+  --st-border: #E2D8C5;
+  --st-border-strong: #D2C3A8;
+  --st-border-subtle: #EDE6D8;
+  --st-ink: #16261E;
+  --st-ink-secondary: #43544B;
+  --st-ink-muted: #6E7D75;
+  --st-primary: #0F5A43;
+  --st-primary-hover: #0B4634;
+  --st-primary-soft: rgba(15, 90, 67, 0.09);
+  --st-gold: #D4AF37;
+  --st-gold-bright: #F2C14E;
+  --st-gold-ink: #7A5B0B;
+  --st-gold-soft: rgba(212, 175, 55, 0.14);
+  --st-shadow-card: 0 1px 3px rgba(18, 40, 30, 0.05), 0 6px 16px -6px rgba(18, 40, 30, 0.06);
+  --st-shadow-hover: 0 4px 12px rgba(18, 40, 30, 0.08), 0 10px 24px -8px rgba(18, 40, 30, 0.1);
+
+  /* Semantic Status Tokens */
+  --st-good-ink: #1E6B41;
+  --st-good-bg: #E3F3EA;
+  --st-good-border: #B7DFC7;
+  --st-watch-ink: #8C5800;
+  --st-watch-bg: #FDF0D5;
+  --st-watch-border: #F2D194;
+  --st-bad-ink: #A8201A;
+  --st-bad-bg: #FCE6E4;
+  --st-bad-border: #F2B8B5;
+  --st-info-ink: #1D4E89;
+  --st-info-bg: #E5EFFA;
+  --st-info-border: #B9D4F2;
+}
+
+.forest-layout.is-dark-canvas,
+body.wdp-dark-portals {
+  --st-bg-page: #06130E;
+  --st-card: #0D211A;
+  --st-card-elevated: #122B22;
+  --st-card-header: #132E24;
+  --st-sunk: #081712;
+  --st-border: rgba(212, 175, 55, 0.22);
+  --st-border-strong: rgba(212, 175, 55, 0.42);
+  --st-border-subtle: rgba(255, 255, 255, 0.07);
+  --st-ink: #FAF8F5;
+  --st-ink-secondary: #C6D6CE;
+  --st-ink-muted: #8FA69B;
+  --st-primary: #D4AF37;
+  --st-primary-hover: #E2C058;
+  --st-primary-soft: rgba(212, 175, 55, 0.15);
+  --st-gold: #D4AF37;
+  --st-gold-bright: #F6D57A;
+  --st-gold-ink: #F6D57A;
+  --st-gold-soft: rgba(212, 175, 55, 0.16);
+  --st-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --st-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* Semantic Status Tokens (Dark) */
+  --st-good-ink: #6EE7B7;
+  --st-good-bg: rgba(16, 185, 129, 0.15);
+  --st-good-border: rgba(110, 231, 183, 0.32);
+  --st-watch-ink: #FCD34D;
+  --st-watch-bg: rgba(245, 158, 11, 0.15);
+  --st-watch-border: rgba(252, 211, 77, 0.32);
+  --st-bad-ink: #FDA4AF;
+  --st-bad-bg: rgba(244, 63, 94, 0.16);
+  --st-bad-border: rgba(253, 164, 175, 0.35);
+  --st-info-ink: #93C5FD;
+  --st-info-bg: rgba(59, 130, 246, 0.16);
+  --st-info-border: rgba(147, 197, 253, 0.32);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Utility Classes for Manager & Head Trainer                                 */
+/* -------------------------------------------------------------------------- */
+
+.st-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 16px;
+}
+
+.st-kpi-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.st-kpi-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--st-border);
+  background: var(--st-card-elevated);
+  color: var(--st-ink);
+  box-shadow: var(--st-shadow-card);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+}
+
+button.st-kpi-tile {
+  cursor: pointer;
+}
+
+button.st-kpi-tile:hover {
+  border-color: var(--st-border-strong);
+  box-shadow: var(--st-shadow-hover);
+}
+
+.st-kpi-tile[aria-pressed="true"],
+.st-kpi-tile.is-active {
+  border-color: var(--st-primary);
+  background: var(--st-card);
+  box-shadow: inset 0 -3px 0 var(--st-primary), var(--st-shadow-card);
+}
+
+.st-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--st-border);
+  background: var(--st-card-elevated);
+  box-shadow: var(--st-shadow-card);
+}
+
+.st-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding-bottom: 4px;
+}
+
+.st-section-header__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--st-ink);
+}
+
+.st-section-header__bar {
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--st-gold);
+  flex-shrink: 0;
+}
+
+.st-bento-grid {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+.st-sub-panel {
+  border-radius: 10px;
+  border: 1px solid var(--st-border);
+  background: var(--st-card);
+  padding: 12px 14px;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Top Utility Bar & Adaptive Hero Banner                                     */
+/* -------------------------------------------------------------------------- */
+
+.st-top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  min-height: 56px;
+  border-bottom: 1px solid var(--st-border);
+  background: rgba(244, 239, 230, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.forest-layout.is-dark-canvas .st-top-bar {
+  background: rgba(6, 19, 14, 0.88);
+}
+
+.st-hero-banner {
+  border-radius: 14px;
+  border: 1px solid #DECFA8;
+  border-left: 4px solid #0F5A43;
+  background: linear-gradient(135deg, #FFFDF8 0%, #F4EFE2 100%);
+  color: #16261E;
+  box-shadow: var(--st-shadow-card);
+}
+
+.forest-layout.is-dark-canvas .st-hero-banner {
+  border-color: rgba(212, 175, 55, 0.3);
+  border-left-color: #D4AF37;
+  background: linear-gradient(135deg, #0D241C 0%, #132E24 100%);
+  color: #FAF8F5;
+}
+
+/* High-contrast stat values inside PageHeroBanner on Light Canvas */
+.forest-layout.is-canvas:not(.is-dark-canvas) .st-hero-banner .text-emerald-300 {
+  color: var(--st-good-ink) !important;
+}
+.forest-layout.is-canvas:not(.is-dark-canvas) .st-hero-banner .text-amber-300 {
+  color: var(--st-watch-ink) !important;
+}
+.forest-layout.is-canvas:not(.is-dark-canvas) .st-hero-banner .text-rose-300 {
+  color: var(--st-bad-ink) !important;
+}
+.forest-layout.is-canvas:not(.is-dark-canvas) .st-hero-banner .st-hero-ghost-btn {
+  background: rgba(15, 90, 67, 0.08) !important;
+  border-color: rgba(15, 90, 67, 0.25) !important;
+  color: #0F5A43 !important;
+}
+.forest-layout.is-canvas:not(.is-dark-canvas) .st-hero-banner .st-hero-ghost-btn:hover {
+  background: rgba(15, 90, 67, 0.14) !important;
+  border-color: #0F5A43 !important;
+}
+

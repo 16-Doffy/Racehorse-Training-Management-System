@@ -59,9 +59,12 @@ export default function DashboardPage() {
 
   // The safety and medical side of the day: its heading, and the horses the vet has restricted.
   const safetyHeader = (
-    <div className="light-surface-box flex items-center justify-between pb-1 px-1">
-      <span className="guardrail-title text-xs font-semibold text-[#0F5A43]">An toàn tập luyện &amp; y tế</span>
-      <span className="text-xs px-2 py-0.5 rounded bg-[#EAE1D2] text-slate-700 font-medium tabular-nums">
+    <div className="st-section-header light-surface-box px-1">
+      <span className="st-section-header__title guardrail-title">
+        <span className="st-section-header__bar" />
+        An toàn tập luyện &amp; y tế
+      </span>
+      <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#EAE1D2] text-slate-700 font-semibold tabular-nums">
         {restrictedHorses.length > 0 ? `${restrictedHorses.length} ngựa hạn chế` : 'Không có khóa tập'}
       </span>
     </div>
@@ -112,16 +115,19 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="st-page">
       <PageHeroBanner
         eyebrow="Tổng quan vận hành"
         roleLabel={ROLE_LABELS[user?.role]}
         title={`Xin chào, ${user?.name}`}
         statusBadge={
-          <div className="px-3.5 py-2 rounded-lg bg-white/5 border border-white/10 text-xs">
+          <div
+            className="px-3 py-1.5 rounded-lg border text-xs"
+            style={{ background: 'var(--st-sunk)', borderColor: 'var(--st-border)' }}
+          >
             {/* The vet's side only (healthy, examined, no restriction): a session still has its own checks. */}
-            <div className="text-[#A7C4B5] text-[11px] font-medium">Bác sĩ cho tập</div>
-            <div className="text-[#FAF8F5] font-semibold tabular-nums mt-0.5">
+            <div className="text-[11px] font-medium" style={{ color: 'var(--st-ink-secondary)' }}>Bác sĩ cho tập</div>
+            <div className="font-semibold tabular-nums mt-0.5" style={{ color: 'var(--st-ink)' }}>
               {eligible}/{horses.length} ngựa
             </div>
           </div>
@@ -139,17 +145,18 @@ export default function DashboardPage() {
         }
       />
 
-      {/* KPI Metric Strip: Unified, dense, tabular, no floating template boxes */}
-      <div className="light-surface-box bg-[#FAF7F0] rounded-xl border border-[#E5DEC9] shadow-xs divide-y sm:divide-y-0 sm:divide-x divide-[#EFE8DA] grid grid-cols-2 md:grid-cols-4 overflow-hidden">
+      {/* KPI Metric Strip: Unified, dense, tabular */}
+      <div className="st-kpi-grid light-surface-box">
         <button
           type="button"
           onClick={() => navigate('/horses')}
-          style={{ border: 'none' }}
-          className="bg-transparent border-0 font-inherit appearance-none m-0 text-left px-4 py-3 hover:bg-[#F2ECE0] transition-colors cursor-pointer group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:z-10"
+          className="st-kpi-tile group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-700"
         >
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-            <span className="font-medium group-hover:text-emerald-900 transition-colors">Tổng số ngựa</span>
-            <AppstoreOutlined className="text-gray-400 group-hover:text-emerald-700" />
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+            <span className="font-semibold text-gray-700 group-hover:text-emerald-900 transition-colors">Tổng số ngựa</span>
+            <span className="w-8 h-8 rounded-lg bg-[#EAE3D5] flex items-center justify-center text-gray-700">
+              <AppstoreOutlined />
+            </span>
           </div>
           <div className="text-2xl font-bold tracking-tight text-gray-900 tabular-nums">
             {horses.length}
@@ -160,16 +167,17 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => navigate('/horses')}
-          style={{ border: 'none' }}
-          className="bg-transparent border-0 font-inherit appearance-none m-0 text-left px-4 py-3 hover:bg-emerald-50/50 transition-colors cursor-pointer group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:z-10"
+          className="st-kpi-tile group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-700"
         >
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
             <Tooltip title="Ngựa khỏe, đã có hồ sơ khám của bác sĩ và không bị hạn chế tập. Ngựa mới chưa khám không được tính.">
-              <span className="font-medium text-emerald-800 flex items-center gap-1">
+              <span className="font-semibold text-emerald-800 flex items-center gap-1">
                 Đủ điều kiện tập <InfoCircleOutlined className="text-[10px]" />
               </span>
             </Tooltip>
-            <CheckCircleOutlined className="text-emerald-600" />
+            <span className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200/70 flex items-center justify-center text-emerald-700">
+              <CheckCircleOutlined />
+            </span>
           </div>
           <div className="text-2xl font-bold tracking-tight text-emerald-700 tabular-nums">
             {eligible}
@@ -180,12 +188,13 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => navigate('/horses')}
-          style={{ border: 'none' }}
-          className="bg-transparent border-0 font-inherit appearance-none m-0 text-left px-4 py-3 hover:bg-amber-50/50 transition-colors cursor-pointer group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:z-10"
+          className="st-kpi-tile group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-700"
         >
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-            <span className="font-medium text-amber-800 group-hover:text-amber-900">Cần theo dõi</span>
-            <EyeOutlined className="text-amber-600" />
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+            <span className="font-semibold text-amber-800 group-hover:text-amber-900">Cần theo dõi</span>
+            <span className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200/70 flex items-center justify-center text-amber-700">
+              <EyeOutlined />
+            </span>
           </div>
           <div className="text-2xl font-bold tracking-tight text-amber-700 tabular-nums">
             {monitoring}
@@ -196,12 +205,13 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => navigate('/horses')}
-          style={{ border: 'none' }}
-          className="bg-transparent border-0 font-inherit appearance-none m-0 text-left px-4 py-3 hover:bg-rose-50/40 transition-colors cursor-pointer group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-rose-700 focus-visible:z-10"
+          className="st-kpi-tile group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-rose-700"
         >
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-            <span className="font-medium text-rose-800 group-hover:text-rose-900">Chấn thương</span>
-            <MedicineBoxOutlined className="text-rose-600" />
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+            <span className="font-semibold text-rose-800 group-hover:text-rose-900">Chấn thương</span>
+            <span className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200/70 flex items-center justify-center text-rose-700">
+              <MedicineBoxOutlined />
+            </span>
           </div>
           <div className="text-2xl font-bold tracking-tight text-rose-700 tabular-nums">
             {injured}
@@ -213,13 +223,12 @@ export default function DashboardPage() {
       {isHeadTrainer ? (
         <>
           {/* The Head Trainer's day: the track today in 3D (the horses out running, today's others by the
-              finish post), the board of the day, then the safety and medical cards in columns that pack
-              tight whatever their heights. */}
+              finish post), the board of the day, then the safety and medical cards in a structured grid. */}
           <TrainingTrackCard sessions={sessionsData?.data || []} horses={horses} />
           <TodayBoard horses={horses} sessions={sessionsData?.data || []} />
           <section className="space-y-3">
             {safetyHeader}
-            <div className="columns-1 gap-5 md:columns-2 2xl:columns-3 [&>*]:!mb-5 [&>*]:break-inside-avoid">
+            <div className="st-bento-grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
               {restrictedCard}
               <MissedMealsCard />
               <ExamRequestsCard />
@@ -230,18 +239,18 @@ export default function DashboardPage() {
         </>
       ) : (
         <>
-          {/* The Manager's club today: the stable in 3D with every zone, what waits on them, the grooms'
-              day and the store, then the safety and medical cards, all in columns that pack tight;
-              each horse's next step last. */}
-          <StableOverviewCard />
-          <div className="columns-1 gap-5 md:columns-2 [&>*]:!mb-5 [&>*]:break-inside-avoid">
+          {/* The Manager's club today: the decision queue & daily operations at the top in 3 balanced columns,
+              the 3D stable overview across the full width, then the safety and medical cards in a structured grid,
+              and each horse's next step last. */}
+          <div className="st-bento-grid grid-cols-1 lg:grid-cols-3 gap-5">
             {isManager && <ManagerQueueCard />}
             <StaffTodayCard />
             <StockWatchCard />
           </div>
+          <StableOverviewCard />
           <section className="space-y-3">
             {safetyHeader}
-            <div className="columns-1 gap-5 md:columns-2 2xl:columns-3 [&>*]:!mb-5 [&>*]:break-inside-avoid">
+            <div className="st-bento-grid grid-cols-1 md:grid-cols-2 gap-5">
               {restrictedCard}
               <MissedMealsCard />
               <OpenIncidentsCard />

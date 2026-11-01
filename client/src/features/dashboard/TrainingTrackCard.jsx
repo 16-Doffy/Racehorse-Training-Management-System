@@ -121,20 +121,29 @@ export default function TrainingTrackCard({ sessions = [], horses = [] }) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Track3D runners={runners} focus={focus} label={label} height="clamp(260px, 27vw, 380px)" className="lg:col-span-2" />
 
-        <div className="min-w-0 space-y-4 text-sm">
+        <div className="light-surface-box min-w-0 space-y-4 rounded-xl border border-[#E5DEC9] bg-[#FAF7F0] p-3 text-sm">
           {rows.length > 0 && (
             <section>
-              <div className="mb-1 text-xs font-semibold text-gray-500">Đang chạy</div>
+              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+                <span className={`inline-block h-2 w-2 rounded-full animate-pulse ${rows.some((r) => r.over) ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                <span>Đang chạy</span>
+              </div>
               <ul className="m-0 list-none divide-y divide-gray-100 p-0">
                 {rows.map((x) => (
-                  <li key={x.s._id} className="py-1.5" onMouseEnter={() => setFocus(x.id)} onMouseLeave={() => setFocus(null)}>
+                  <li key={x.s._id} className="py-2" onMouseEnter={() => setFocus(x.id)} onMouseLeave={() => setFocus(null)}>
                     <div className="flex items-baseline justify-between gap-2">
                       <Link to={`/training/sessions?horse=${x.id}`} className="truncate font-semibold" onFocus={() => setFocus(x.id)} onBlur={() => setFocus(null)}>
                         {x.s.horse?.name}
                       </Link>
                       <span className="shrink-0 text-xs text-gray-500">{kindOf(x.s)}</span>
                     </div>
-                    <div className="mt-0.5 flex flex-wrap justify-between gap-x-3 text-xs tabular-nums text-gray-600">
+                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                      <div
+                        className={`h-full rounded-full transition-all ${x.over ? 'bg-rose-500' : 'bg-[#0F5A43]'}`}
+                        style={{ width: `${Math.round(x.share * 100)}%` }}
+                      />
+                    </div>
+                    <div className="mt-1 flex flex-wrap justify-between gap-x-3 text-xs tabular-nums text-gray-600">
                       <span>
                         {Math.round(x.distance).toLocaleString('vi-VN')} / {Math.round(x.course).toLocaleString('vi-VN')} m
                       </span>
@@ -148,12 +157,14 @@ export default function TrainingTrackCard({ sessions = [], horses = [] }) {
           )}
 
           <section>
-            <div className="mb-1 text-xs font-semibold text-gray-500">Còn lại hôm nay</div>
+            <div className="mb-1.5 text-xs font-semibold text-gray-700">Còn lại hôm nay</div>
             {waiting.length ? (
               <ul className="m-0 list-none divide-y divide-gray-100 p-0">
                 {nextShown.map((s) => (
                   <li key={s._id} className="flex items-center gap-2 py-1.5" onMouseEnter={() => setFocus(horseId(s))} onMouseLeave={() => setFocus(null)}>
-                    <span className="w-11 shrink-0 tabular-nums text-gray-500">{hhmm(s.scheduledAt)}</span>
+                    <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-xs font-semibold tabular-nums text-gray-700 border border-[#E5DEC9]">
+                      {hhmm(s.scheduledAt)}
+                    </span>
                     <Link to={`/training/sessions?horse=${horseId(s)}`} className="min-w-0 flex-1 truncate font-medium" onFocus={() => setFocus(horseId(s))} onBlur={() => setFocus(null)}>
                       {s.horse?.name}
                     </Link>

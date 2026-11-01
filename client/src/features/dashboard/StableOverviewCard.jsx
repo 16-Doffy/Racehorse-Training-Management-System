@@ -5,7 +5,7 @@ import { WarningOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { stallApi } from '../stable/stableApi';
 import Stall3D from '../stable/stall3d/Stall3D';
-import { groupZones } from '../stable/stall3d/stallStatus';
+import { STALL_TYPE_LABELS, groupZones } from '../stable/stall3d/stallStatus';
 
 const KIND = { isolation: { label: 'Cách ly', color: 'red' }, recovery: { label: 'Hồi phục', color: 'blue' } };
 const kindOf = (zone) => (zone.stalls.every((s) => s.type === 'isolation') ? 'isolation' : zone.stalls.every((s) => s.type === 'recovery') ? 'recovery' : null);
@@ -30,6 +30,9 @@ export default function StableOverviewCard() {
     wrong: z.stalls.filter((s) => s.placement && s.occupant?.horse),
   }));
   const wrong = zones.flatMap((z) => z.wrong);
+  // Moved by the system as soon as a stall of the kind comes free (server: healthPlacement.service.js).
+  const waiting = data?.data?.waiting || [];
+  const reserved = stalls.filter((s) => s.reservedFor).length;
   const used = zones.reduce((n, z) => n + z.used, 0);
   const zone = zones.find((z) => z.key === picked) || zones.find((z) => z.wrong.length) || [...zones].sort((a, b) => b.used - a.used)[0];
   // The whole zone in view, unless a stall was picked or a horse stands in the wrong zone here.
@@ -44,7 +47,7 @@ export default function StableOverviewCard() {
         <div className="py-1">
           <span className="font-semibold text-gray-900 text-[15px]">Chuồng trại toàn CLB</span>
           <p className="m-0 mt-0.5 text-xs font-normal text-gray-600 tabular-nums">
-            {stalls.length ? `${used}/${stalls.length} chuồng có ngựa, ${zones.length} khu` : 'Chưa có khu chuồng nào'}
+            {stalls.length ? `${used}/${stalls.length} chuồng có ngựa, ${zones.length} khu${reserved ? `, ${reserved} chuồng giữ chỗ` : ''}` : 'Chưa có khu chuồng nào'}
           </p>
         </div>
       }
@@ -116,6 +119,23 @@ export default function StableOverviewCard() {
                 <Link to="/admin/stables" className="mt-1 inline-block text-xs">
                   Xếp lại chuồng
                 </Link>
+              </section>
+            )}
+            {waiting.length > 0 && (
+              <section>
+                <div className="mb-1 text-xs font-semibold text-amber-700">Chờ chuồng trống</div>
+                <ul className="m-0 list-none space-y-1.5 p-0">
+                  {waiting.map((w) => (
+                    <li key={w.horse._id} className="text-xs">
+                      <span className="font-semibold text-gray-900">{w.horse.name}</span>
+                      <span className="text-gray-600">
+                        {' '}
+                        đang ở {w.now}, cần chuồng {(STALL_TYPE_LABELS[w.wants] || w.wants).toLowerCase()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="m-0 mt-1 text-xs text-gray-500">Có chỗ là hệ thống tự chuyển; cần gấp thì thêm chuồng hoặc chuyển tay.</p>
               </section>
             )}
             {!screens.md && (

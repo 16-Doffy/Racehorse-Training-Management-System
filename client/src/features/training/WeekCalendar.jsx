@@ -262,12 +262,12 @@ export default function WeekCalendar({
   return (
     <div>
       {/* One row: the page's own switches (`toolbar`), the horse search, the week. */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div className="st-toolbar mb-3 justify-between">
         <div className="flex flex-wrap items-center gap-3">
           {toolbar}
           <Input allowClear prefix={<SearchOutlined className="text-gray-400" />} placeholder="Tìm ngựa" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-44" aria-label="Tìm ngựa trong lịch tuần" />
         </div>
-        <div className="light-surface-box flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Button size="small" icon={<LeftOutlined />} aria-label="Tuần trước" onClick={() => onWeekChange(weekStart.subtract(7, 'day'))} />
           <Text strong className="px-1 text-sm tabular-nums text-gray-800">
             {weekStart.format('DD/MM')} – {weekStart.add(6, 'day').format('DD/MM/YYYY')}

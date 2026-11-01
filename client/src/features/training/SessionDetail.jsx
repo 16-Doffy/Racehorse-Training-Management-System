@@ -67,28 +67,28 @@ function plannedFacts(p = {}) {
 /** Each target against what was measured; ticks only once the run has been closed normally. */
 function ResultTable({ rows, judged }) {
   return (
-    <div className="overflow-hidden rounded-md border border-black/5">
+    <div className="overflow-hidden rounded-lg border border-[#E5DEC9]">
       <table className="w-full border-collapse text-[13px]">
         <thead>
-          <tr className="bg-black/[0.02] text-[11px] text-gray-500">
-            <th className="px-2 py-1 text-left font-medium">Chỉ số</th>
-            <th className="px-2 py-1 text-right font-medium">Mục tiêu</th>
-            <th className="px-2 py-1 text-right font-medium">Thực tế</th>
+          <tr className="bg-[#FAF7F0] text-[11px] text-gray-500">
+            <th className="px-2.5 py-1.5 text-left font-medium">Chỉ số</th>
+            <th className="px-2.5 py-1.5 text-right font-medium">Mục tiêu</th>
+            <th className="px-2.5 py-1.5 text-right font-medium">Thực tế</th>
             {judged && <th className="w-5" aria-label="Kết quả" />}
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.key} className="border-t border-black/5">
-              <td className="whitespace-nowrap px-2 py-1 text-gray-600">{ROW_LABELS[r.key] || r.label}</td>
-              <td className="whitespace-nowrap px-2 py-1 text-right tabular-nums text-gray-500">
+              <td className="whitespace-nowrap px-2.5 py-1.5 text-gray-600">{ROW_LABELS[r.key] || r.label}</td>
+              <td className="whitespace-nowrap px-2.5 py-1.5 text-right tabular-nums text-gray-500">
                 {r.target != null ? `${r.atLeast ? '' : '≤ '}${num(r.target, r.digits)} ${r.unit}` : '–'}
               </td>
-              <td className={`whitespace-nowrap px-2 py-1 text-right font-medium tabular-nums ${judged && r.met === false ? 'text-red-600' : 'text-gray-900'}`}>
+              <td className={`whitespace-nowrap px-2.5 py-1.5 text-right font-semibold tabular-nums ${judged && r.met === false ? 'text-red-600' : 'text-gray-900'}`}>
                 {r.actual != null ? `${num(r.actual, r.digits)} ${r.unit}` : '–'}
               </td>
               {judged && (
-                <td className="pr-2 text-center">
+                <td className="pr-2.5 text-center">
                   {r.met === true && <CheckOutlined className="text-green-600" aria-label="Đạt" />}
                   {r.met === false && <CloseOutlined className="text-red-600" aria-label="Chưa đạt" />}
                 </td>

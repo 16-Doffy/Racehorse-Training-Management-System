@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Typography, Row, Col, DatePicker, Empty, Segmented, Tag, Table, Alert, Button } from 'antd';
+import { Card, Typography, Row, Col, DatePicker, Empty, Segmented, Tag, Table, Alert, Button, theme } from 'antd';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, ResponsiveContainer, Legend } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -60,6 +60,9 @@ const formatVndCompact = (n) => {
 
 /** Money in and out per month of one year — the club's cash flow at a glance. */
 function CashFlowChart() {
+  const { token } = theme.useToken();
+  const gridColor = token.colorBorderSecondary || GRID_COLOR;
+  const axisColor = token.colorTextTertiary || AXIS_COLOR;
   const [year, setYear] = useState(dayjs().year());
   const { data, isLoading } = useQuery({
     queryKey: ['reports-finance-chart', year],
@@ -83,13 +86,13 @@ function CashFlowChart() {
           <div className="flex flex-wrap gap-x-6 gap-y-1 mb-3 text-sm">
             <span>Thu: <strong>{formatVnd(chart.totals.revenue)}</strong></span>
             <span>Chi: <strong>{formatVnd(chart.totals.cost)}</strong></span>
-            <span>Lãi/lỗ: <strong className={chart.totals.net >= 0 ? 'text-green-700' : 'text-red-700'}>{formatVnd(chart.totals.net)}</strong></span>
+            <span>Lãi/lỗ: <strong className={chart.totals.net >= 0 ? 'text-green-700 staff-revenue-text' : 'text-red-700 staff-cost-text'}>{formatVnd(chart.totals.net)}</strong></span>
           </div>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={rows} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="month" tickLine={false} />
-              <YAxis tickFormatter={formatVndCompact} width={56} tickLine={false} axisLine={false} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+              <XAxis dataKey="month" tickLine={false} stroke={axisColor} />
+              <YAxis tickFormatter={formatVndCompact} width={56} tickLine={false} axisLine={false} stroke={axisColor} />
               <Tooltip formatter={(value, name) => [formatVnd(value), name]} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
               <Legend />
               {/* The page's own two hues for money in and out (see HUE_REVENUE): green against red is the
@@ -106,6 +109,11 @@ function CashFlowChart() {
 
 /** Horizontal magnitude bars for one money breakdown. One series → the card title names it, no legend. */
 function CategoryBreakdownChart({ title, rows, hue, total }) {
+  const { token } = theme.useToken();
+  const gridColor = token.colorBorderSecondary || GRID_COLOR;
+  const axisColor = token.colorTextTertiary || AXIS_COLOR;
+  const labelColor = token.colorTextSecondary || INK_SECONDARY;
+
   if (!rows || rows.length === 0) {
     return (
       <Card title={title} className="h-full">
@@ -128,21 +136,21 @@ function CategoryBreakdownChart({ title, rows, hue, total }) {
       </div>
       <ResponsiveContainer width="100%" height={Math.max(sorted.length * 44, 120)}>
         <BarChart data={sorted} layout="vertical" margin={{ top: 4, right: 56, bottom: 4, left: 4 }}>
-          <CartesianGrid horizontal={false} stroke={GRID_COLOR} />
+          <CartesianGrid horizontal={false} stroke={gridColor} />
           <XAxis
             type="number"
-            stroke={AXIS_COLOR}
+            stroke={axisColor}
             tick={{ fontSize: 12 }}
-            axisLine={{ stroke: GRID_COLOR }}
+            axisLine={{ stroke: gridColor }}
             tickLine={false}
             tickFormatter={formatVndCompact}
           />
           <YAxis
             type="category"
             dataKey="category"
-            stroke={AXIS_COLOR}
+            stroke={axisColor}
             tick={{ fontSize: 12 }}
-            axisLine={{ stroke: GRID_COLOR }}
+            axisLine={{ stroke: gridColor }}
             tickLine={false}
             width={110}
           />
@@ -152,7 +160,7 @@ function CategoryBreakdownChart({ title, rows, hue, total }) {
               dataKey="total"
               position="right"
               formatter={formatVndCompact}
-              style={{ fontSize: 12, fill: INK_SECONDARY }}
+              style={{ fontSize: 12, fill: labelColor }}
             />
           </Bar>
         </BarChart>
@@ -220,7 +228,7 @@ export default function ReportsOverviewPage() {
       />
 
       {/* Filters in one row above the charts. */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+      <div className="st-toolbar mb-4">
         <Segmented
           value={preset}
           onChange={(v) => {
@@ -252,30 +260,35 @@ export default function ReportsOverviewPage() {
         />
       )}
 
-      <div className="light-surface-box grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-[#E4DFD3] mb-5 rounded-xl bg-[#FAF7F0] border border-[#E5DEC9] shadow-xs">
-        <div className="p-3.5 sm:p-4 min-w-0">
-          <div className="text-xs font-medium text-slate-600">Tổng buổi tập</div>
-          <div className="text-base sm:text-lg xl:text-xl font-bold text-[#0F5A43] tabular-nums mt-1">{training?.totalSessions ?? 0} <span className="text-xs font-normal text-slate-500">buổi</span></div>
+      <div className="st-kpi-grid mb-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))' }}>
+        <div className="st-kpi-tile">
+          <div className="st-kpi-label">Tổng buổi tập</div>
+          <div className="st-kpi-value text-[#0F5A43] tabular-nums">{training?.totalSessions ?? 0}</div>
+          <div className="st-kpi-sub">buổi trong kỳ</div>
         </div>
-        <div className="p-3.5 sm:p-4 min-w-0">
-          <div className="text-xs font-medium text-slate-600">Điểm phong độ TB</div>
-          <div className="text-base sm:text-lg xl:text-xl font-bold text-slate-800 tabular-nums mt-1">
-            {training?.avgPerformanceRating ?? '—'} <span className="text-xs font-normal text-slate-500">{training?.avgPerformanceRating != null ? '/ 10' : ''}</span>
+        <div className="st-kpi-tile">
+          <div className="st-kpi-label">Điểm phong độ TB</div>
+          <div className="st-kpi-value tabular-nums">
+            {training?.avgPerformanceRating ?? '—'}
           </div>
+          <div className="st-kpi-sub">{training?.avgPerformanceRating != null ? 'thang 10 điểm' : 'chưa có đánh giá'}</div>
         </div>
-        <div className="p-3.5 sm:p-4 min-w-0">
-          <div className="text-xs font-medium text-slate-600">Đạt mục tiêu</div>
-          <div className="text-base sm:text-lg xl:text-xl font-bold text-emerald-700 tabular-nums mt-1">
-            {training?.targetsMet ?? 0} <span className="text-xs font-normal text-slate-500">/ {(training?.targetsMet ?? 0) + (training?.targetsMissed ?? 0)}</span>
+        <div className="st-kpi-tile">
+          <div className="st-kpi-label">Đạt mục tiêu</div>
+          <div className="st-kpi-value text-emerald-700 staff-revenue-text tabular-nums">
+            {training?.targetsMet ?? 0} / {(training?.targetsMet ?? 0) + (training?.targetsMissed ?? 0)}
           </div>
+          <div className="st-kpi-sub">buổi đạt chuẩn</div>
         </div>
-        <div className="p-3.5 sm:p-4 min-w-0">
-          <div className="text-xs font-medium text-slate-600">Chi phí vận hành</div>
-          <div className="text-base sm:text-lg xl:text-xl font-bold text-slate-800 tabular-nums mt-1 break-words leading-snug">{formatVnd(cost?.total)}</div>
+        <div className="st-kpi-tile">
+          <div className="st-kpi-label">Chi phí vận hành</div>
+          <div className="st-kpi-value text-base sm:text-lg xl:text-xl tabular-nums break-words leading-snug">{formatVnd(cost?.total)}</div>
+          <div className="st-kpi-sub">chi phí trong kỳ</div>
         </div>
-        <div className="p-3.5 sm:p-4 min-w-0 sm:col-span-2 xl:col-span-1">
-          <div className="text-xs font-medium text-slate-600">Lợi nhuận ròng</div>
-          <div className={`text-base sm:text-lg xl:text-xl font-bold tabular-nums mt-1 break-words leading-snug ${profit >= 0 ? 'text-[#0F5A43]' : 'text-rose-600'}`}>{formatVnd(profit)}</div>
+        <div className={`st-kpi-tile ${profit < 0 ? 'is-danger' : ''}`}>
+          <div className="st-kpi-label">Lợi nhuận ròng</div>
+          <div className={`st-kpi-value text-base sm:text-lg xl:text-xl tabular-nums break-words leading-snug ${profit >= 0 ? 'text-[#0F5A43] staff-revenue-text' : 'text-rose-600 staff-cost-text'}`}>{formatVnd(profit)}</div>
+          <div className="st-kpi-sub">cân đối thu − chi</div>
         </div>
       </div>
 

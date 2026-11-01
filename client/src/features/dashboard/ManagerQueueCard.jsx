@@ -139,7 +139,9 @@ export default function ManagerQueueCard() {
             <Link
               key={r.key}
               to={r.to}
-              className={`flex items-center justify-between p-4 transition-colors hover:bg-emerald-50/40 group ${hasPending ? 'bg-amber-50/20' : ''}`}
+              className={`flex items-center justify-between p-4 transition-colors hover:bg-emerald-50/40 group ${
+                hasPending ? 'border-l-[3px] border-l-amber-500 bg-amber-50/20' : ''
+              }`}
             >
               <div className="flex items-center gap-3.5 min-w-0 pr-4">
                 <span
@@ -149,12 +151,12 @@ export default function ManagerQueueCard() {
                   {r.icon}
                 </span>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-900 group-hover:text-emerald-900 transition-colors">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-900 group-hover:text-emerald-900 transition-colors">
                       {r.label}
                     </span>
                     {hasPending && (
-                      <span className="text-[11px] font-semibold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300/70">
                         {r.action}
                       </span>
                     )}

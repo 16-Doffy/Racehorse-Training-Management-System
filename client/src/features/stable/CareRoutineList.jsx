@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Popconfirm, Segmented, Table, Tag, Tooltip, Typography } from 'antd';
+import { Button, Card, Popconfirm, Segmented, Table, Tag, Tooltip, Typography } from 'antd';
 import { EditOutlined, StopOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -165,16 +165,18 @@ export default function CareRoutineList({ routines = [], loading, showHorse = tr
         </div>
         {action}
       </div>
-      <Table
-        rowKey="_id"
-        size="small"
-        columns={columns}
-        dataSource={shown}
-        loading={loading}
-        pagination={shown.length > 10 ? { pageSize: 10, showSizeChanger: false } : false}
-        scroll={{ x: 'max-content' }}
-        locale={{ emptyText: show === 'running' ? 'Chưa có việc nào đang giao dài hạn. Bấm "Giao việc chăm sóc" để giao một việc làm nhiều ngày.' : 'Chưa giao việc dài hạn nào.' }}
-      />
+      <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+        <Table
+          rowKey="_id"
+          size="small"
+          columns={columns}
+          dataSource={shown}
+          loading={loading}
+          pagination={shown.length > 10 ? { pageSize: 10, showSizeChanger: false } : false}
+          scroll={{ x: 'max-content' }}
+          locale={{ emptyText: show === 'running' ? 'Chưa có việc nào đang giao dài hạn. Bấm "Giao việc chăm sóc" để giao một việc làm nhiều ngày.' : 'Chưa giao việc dài hạn nào.' }}
+        />
+      </Card>
     </section>
   );
 }

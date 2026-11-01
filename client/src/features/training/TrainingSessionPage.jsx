@@ -835,7 +835,7 @@ export default function TrainingSessionPage() {
       )}
       <LiveSessionMonitor sessions={sessionsData?.data || []} horses={horsesData?.data || []} plans={plansData?.data || []} onSessionCompleted={offerEvaluation} />
 
-      {view === 'list' && <div className="mb-4 flex flex-wrap items-center gap-3">{toolbar}</div>}
+      {view === 'list' && <div className="st-toolbar mb-4">{toolbar}</div>}
 
       {view === 'week' && (
         <WeekCalendar

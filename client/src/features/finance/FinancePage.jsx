@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Tag, Button, Modal, Form, Select, InputNumber, Input, Empty, Alert, Card } from 'antd';
+import { Table, Tag, Button, Modal, Form, Select, InputNumber, Input, Empty, Alert, Card, Segmented } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, DownloadOutlined } from '@ant-design/icons';
 import { downloadFile } from '../../lib/files';
@@ -46,6 +46,8 @@ const columns = [
 // (features/owner/OwnerFinance.jsx).
 export default function FinancePage() {
   const [open, setOpen] = useState(false);
+  const [filterType, setFilterType] = useState('all');
+  const [filterHorse, setFilterHorse] = useState(null);
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
 
@@ -53,6 +55,11 @@ export default function FinancePage() {
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const entryType = Form.useWatch('type', form);
   const records = data?.data || [];
+  const filteredRecords = records.filter((r) => {
+    if (filterType !== 'all' && r.type !== filterType) return false;
+    if (filterHorse && (r.horse?._id || r.horse) !== filterHorse) return false;
+    return true;
+  });
   const revenue = records.filter((r) => r.type === 'revenue').reduce((acc, r) => acc + (r.amount || 0), 0);
   const cost = records.filter((r) => r.type === 'cost').reduce((acc, r) => acc + (r.amount || 0), 0);
   const net = revenue - cost;
@@ -85,7 +92,7 @@ export default function FinancePage() {
               <Button
                 icon={<DownloadOutlined />}
                 onClick={() => downloadFile('/export/finance', `tai-chinh-${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => message.error(e.message || 'Xuất file thất bại.'))}
-                className="!h-9 !rounded-lg !bg-white/10 hover:!bg-white/15 !border-white/20 !text-white"
+                className="st-hero-ghost-btn !h-9 !rounded-lg !bg-white/10 hover:!bg-white/15 !border-white/20 !text-white"
               >
                 Xuất CSV
               </Button>
@@ -116,11 +123,58 @@ export default function FinancePage() {
         />
       )}
 
-      <Card className="!rounded-xl !border-[#E2D9C8]" styles={{ body: { padding: 0 } }}>
+      <div className="st-kpi-grid mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+        <div className="st-kpi-tile">
+          <div className="st-kpi-label">Tổng Doanh thu</div>
+          <div className="st-kpi-value text-emerald-700 staff-revenue-text">+{revenue.toLocaleString('vi-VN')} đ</div>
+          <div className="st-kpi-sub">{records.filter((r) => r.type === 'revenue').length} khoản thu</div>
+        </div>
+        <div className="st-kpi-tile">
+          <div className="st-kpi-label">Tổng Chi phí</div>
+          <div className="st-kpi-value text-rose-700 staff-cost-text">−{cost.toLocaleString('vi-VN')} đ</div>
+          <div className="st-kpi-sub">{records.filter((r) => r.type === 'cost').length} khoản chi</div>
+        </div>
+        <div className={`st-kpi-tile ${net < 0 ? 'is-danger' : ''}`}>
+          <div className="st-kpi-label">Lợi nhuận ròng</div>
+          <div className={`st-kpi-value ${net >= 0 ? 'text-emerald-700 staff-revenue-text' : 'text-rose-700 staff-cost-text'}`}>
+            {net >= 0 ? '+' : ''}{net.toLocaleString('vi-VN')} đ
+          </div>
+          <div className="st-kpi-sub">{records.length} giao dịch ghi nhận</div>
+        </div>
+      </div>
+
+      <div className="st-toolbar mb-3">
+        <Segmented
+          value={filterType}
+          onChange={setFilterType}
+          options={[
+            { value: 'all', label: `Tất cả (${records.length})` },
+            { value: 'revenue', label: `Doanh thu (${records.filter((r) => r.type === 'revenue').length})` },
+            { value: 'cost', label: `Chi phí (${records.filter((r) => r.type === 'cost').length})` },
+          ]}
+        />
+        <Select
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          placeholder="Lọc theo ngựa"
+          value={filterHorse}
+          onChange={(v) => setFilterHorse(v || null)}
+          className="!w-full sm:!w-56"
+          options={(horsesData?.data || []).map((h) => ({ value: h._id, label: h.name }))}
+        />
+        {(filterType !== 'all' || filterHorse) && (
+          <Button size="small" onClick={() => { setFilterType('all'); setFilterHorse(null); }}>
+            Bỏ lọc
+          </Button>
+        )}
+      </div>
+
+      <Card className="!rounded-xl !border-[#E2D9C8] overflow-hidden" styles={{ body: { padding: 0 } }}>
         <Table
           rowKey="_id"
           columns={columns}
-          dataSource={newestFirst(data?.data)}
+          dataSource={newestFirst(filteredRecords)}
           loading={isLoading && !data}
           scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 10, hideOnSinglePage: true }}

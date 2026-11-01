@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Typography, Tag, Select, DatePicker, Button, Tooltip, Space, Alert } from 'antd';
+import { Table, Typography, Tag, Select, DatePicker, Button, Tooltip, Space, Alert, Card } from 'antd';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -93,7 +93,7 @@ function MetadataCell({ value }) {
     .join(' · ');
   return (
     <Tooltip title={<pre className="!m-0 whitespace-pre-wrap text-xs">{JSON.stringify(value, null, 2)}</pre>}>
-      <span className="block max-w-[320px] truncate text-xs text-gray-600">{line}</span>
+      <span className="inline-block max-w-[340px] truncate rounded bg-slate-100/80 px-2 py-0.5 font-mono text-xs text-slate-600">{line}</span>
     </Tooltip>
   );
 }
@@ -194,7 +194,7 @@ export default function AuditLogPage() {
         ]}
       />
 
-      <div className="light-surface-box bg-white p-3.5 rounded-xl border border-[#E4DFD3] shadow-xs mb-4">
+      <div className="st-toolbar mb-4">
         <Space wrap className="w-full">
           <Select
             allowClear
@@ -254,15 +254,17 @@ export default function AuditLogPage() {
         />
       )}
 
-      <Table
-        rowKey="_id"
-        columns={columns}
-        dataSource={items}
-        loading={isLoading && !data}
-        scroll={{ x: 'max-content' }}
-        pagination={{ current: page, pageSize: PAGE_SIZE, total, showSizeChanger: false, onChange: setPage, showTotal: (t) => `${t} thao tác` }}
-        locale={{ emptyText: anyFilter ? 'Không có thao tác nào khớp bộ lọc.' : 'Chưa có thao tác nào.' }}
-      />
+      <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+        <Table
+          rowKey="_id"
+          columns={columns}
+          dataSource={items}
+          loading={isLoading && !data}
+          scroll={{ x: 'max-content' }}
+          pagination={{ current: page, pageSize: PAGE_SIZE, total, showSizeChanger: false, onChange: setPage, showTotal: (t) => `${t} thao tác` }}
+          locale={{ emptyText: anyFilter ? 'Không có thao tác nào khớp bộ lọc.' : 'Chưa có thao tác nào.' }}
+        />
+      </Card>
     </div>
   );
 }

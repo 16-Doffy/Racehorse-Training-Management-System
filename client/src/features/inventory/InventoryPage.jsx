@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Table, Typography, Tag, Button, Popconfirm, Modal, Form, Input, InputNumber, Select, Tooltip, AutoComplete, DatePicker, Switch, Segmented, Alert, Empty } from 'antd';
+import { Table, Typography, Tag, Button, Popconfirm, Modal, Form, Input, InputNumber, Select, Tooltip, AutoComplete, DatePicker, Switch, Segmented, Alert, Empty, Card } from 'antd';
 import { message } from '../../lib/antdStatic';
 import {
   CheckOutlined,
@@ -746,7 +746,7 @@ export default function InventoryPage() {
         </section>
       )}
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="st-toolbar mb-3">
         <Segmented
           value={tab}
           onChange={setTab}
@@ -790,40 +790,42 @@ export default function InventoryPage() {
         </Text>
       )}
 
-      <Table
-        rowKey="_id"
-        size="middle"
-        columns={columns}
-        dataSource={rows}
-        loading={isLoading && !data}
-        tableLayout="fixed"
-        scroll={{ x: 1000 }}
-        pagination={rows.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
-        rowClassName={(r) => [r.isActive === false ? 'opacity-60' : '', focusItem && !focusRequests && r._id === focusItem ? 'row-focus' : ''].join(' ').trim()}
-        onRow={(r) => (focusItem && !focusRequests && r._id === focusItem ? { 'data-focus': 'item' } : {})}
-        locale={{
-          emptyText:
-            stock.length && (q || status !== 'all') ? (
-              <Empty description="Không có vật tư nào khớp tìm kiếm / bộ lọc.">
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setSearch('');
-                    setStatus('all');
-                  }}
-                >
-                  Bỏ lọc
-                </Button>
-              </Empty>
-            ) : (
-              <Empty description={`Chưa có ${kind ? kind.label.toLowerCase() : 'vật tư'} nào trong kho.`}>
-                <Button type="primary" size="small" icon={<PlusOutlined />} onClick={addHere}>
-                  Thêm vào kho
-                </Button>
-              </Empty>
-            ),
-        }}
-      />
+      <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+        <Table
+          rowKey="_id"
+          size="middle"
+          columns={columns}
+          dataSource={rows}
+          loading={isLoading && !data}
+          tableLayout="fixed"
+          scroll={{ x: 1000 }}
+          pagination={rows.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
+          rowClassName={(r) => [r.isActive === false ? 'opacity-60' : '', focusItem && !focusRequests && r._id === focusItem ? 'row-focus' : ''].join(' ').trim()}
+          onRow={(r) => (focusItem && !focusRequests && r._id === focusItem ? { 'data-focus': 'item' } : {})}
+          locale={{
+            emptyText:
+              stock.length && (q || status !== 'all') ? (
+                <Empty description="Không có vật tư nào khớp tìm kiếm / bộ lọc.">
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setSearch('');
+                      setStatus('all');
+                    }}
+                  >
+                    Bỏ lọc
+                  </Button>
+                </Empty>
+              ) : (
+                <Empty description={`Chưa có ${kind ? kind.label.toLowerCase() : 'vật tư'} nào trong kho.`}>
+                  <Button type="primary" size="small" icon={<PlusOutlined />} onClick={addHere}>
+                    Thêm vào kho
+                  </Button>
+                </Empty>
+              ),
+          }}
+        />
+      </Card>
 
       <ItemModal item={editing?._id ? editing : null} category={editing?.__category || editing?.category || (tab === 'all' ? 'feed' : tab)} open={editing !== null} onClose={() => setEditing(null)} />
       <ReceiveModal

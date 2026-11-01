@@ -327,7 +327,7 @@ function PlanCalendarEditor({ plan, feedItems, policy, onDone, setDirty, onPropo
         <MealEditModal target={editing} days={draft} feedItems={feedItems} gapHours={policy.mealMinGapHours} onApply={applyMeal} onClose={() => setEditing(null)} onPropose={onPropose} />
       )}
 
-      <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-white px-1 pt-2.5 pb-0.5">
+      <div className="light-surface-box sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-[#E5DEC9] bg-[#FAF7F0] px-3 py-2.5 rounded-b-xl">
         <div className="min-w-0 text-xs">
           {timeProblem ? (
             <Text type="danger">
@@ -511,7 +511,7 @@ function DailyRationEditor({ horse, rations, feedItems, policy, onDone, setDirty
           <StockNeedList rows={totals} />
         </div>
       )}
-      <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-white px-1 pt-3 pb-1">
+      <div className="light-surface-box sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-[#E5DEC9] bg-[#FAF7F0] px-3 py-2.5 rounded-b-xl">
         <div className="min-w-0 text-xs">{problem ? <Text type="danger">{problem}</Text> : <Text type="secondary">Lưu xong, bữa hôm nay của nhân viên cập nhật ngay (bữa đã cho ăn giữ nguyên).</Text>}</div>
         <div className="flex gap-2">
           <Button onClick={() => (touched ? askToDrop(onDone) : onDone())}>Đóng</Button>
@@ -551,6 +551,16 @@ export default function RationPlanner({ open, horseId, onClose, horses = [], pla
   }
   // Whether the editor below holds changes not yet confirmed (asked before closing or switching horse).
   const [dirty, setDirty] = useState(false);
+  // Asked before a reload or leaving the page too: the browser's own question, as nothing here is saved yet.
+  useEffect(() => {
+    if (!open || !dirty) return undefined;
+    const keep = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', keep);
+    return () => window.removeEventListener('beforeunload', keep);
+  }, [open, dirty]);
   const horse = horses.find((h) => String(h._id) === String(picked));
   const plan = horse ? plans.find((p) => p.status === 'active' && idOf(p.horse) === String(horse._id)) : null;
   const assignment = horse ? assignmentOf(horse) : null;
@@ -616,7 +626,7 @@ export default function RationPlanner({ open, horseId, onClose, horses = [], pla
             />
           </label>
           {horse && (
-            <div className="grid flex-1 grid-cols-2 gap-x-6 gap-y-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 md:grid-cols-4">
+            <div className="light-surface-box grid flex-1 grid-cols-2 gap-x-6 gap-y-2 rounded-xl border border-[#E5DEC9] bg-[#FAF7F0] px-4 py-2.5 md:grid-cols-4">
               <Fact label="Cân nặng">{horse.weightKg ? `${amountText(horse.weightKg)} kg` : <Text type="warning">Chưa nhập</Text>}</Fact>
               <Fact label="Người cho ăn">
                 {assignment?.assignedCaretaker?.name ? (
