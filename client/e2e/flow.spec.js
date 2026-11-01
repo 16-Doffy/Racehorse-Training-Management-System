@@ -359,6 +359,38 @@ test('owner health tab shows routine care on the same 3D horse as the injuries, 
   await expect(body.locator('button.vet-hs[aria-label^="Móng trước phải"]')).toHaveCount(0);
   await expect(body.getByRole('radio', { name: /Ngoài da/ })).toBeVisible();
 });
+test('owner plays back a finished run of their horse: the button, the 3D horse and the sensor readings', async ({ page }) => {
+  await login(page, 'owner');
+  // The fixture's run was typed in (no sensor reported), so it has nothing to play back: the list gets the
+  // sensor's last speed, and the readings endpoint a short run, as the sensors would have left them.
+  await page.route(/\/api\/v1\/training\/sessions(\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data = body.data.map((s) => (['completed', 'evaluated'].includes(s.status) ? { ...s, metrics: { ...s.metrics, lastSpeed: 11 } } : s));
+    await route.fulfill({ response, json: body });
+  });
+  await page.route(/\/api\/v1\/training\/sessions\/[^/]+\/readings$/, (route) =>
+    route.fulfill({
+      json: { success: true, message: 'ok', data: Array.from({ length: 12 }, (_, i) => ({ hr: 100 + i, speed: 11, distance: i * 300, at: new Date(Date.now() - (12 - i) * 5000).toISOString() })) },
+    }),
+  );
+  await page.goto(`/horses/${fixture.horseId}?tab=training`);
+  const replay = page.getByRole('button', { name: /Xem lại buổi chạy/ });
+  await expect(replay.first()).toBeVisible();
+  await replay.first().click();
+  const modal = page.locator('.ant-modal');
+  await expect(modal.getByText(/Xem lại buổi chạy: TEST Browser Horse/)).toBeVisible();
+  await expect(modal.getByText('Lần đo', { exact: false }).first()).toBeVisible();
+  await expect(modal.getByText('Nhịp tim', { exact: true })).toBeVisible();
+  await expect(modal.locator('canvas[aria-label^="Ngựa 3D"]')).toHaveCount(1);
+});
+test('a run typed in by hand has no sensor readings, so the owner is offered no replay', async ({ page }) => {
+  await login(page, 'owner');
+  await page.goto(`/horses/${fixture.horseId}?tab=training`);
+  // The fixture's finished walk is listed under "Đã tập" (4000 m), without a replay button.
+  await expect(page.locator('.own-row', { hasText: '4000 m' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /Xem lại buổi chạy/ })).toHaveCount(0);
+});
 test('owner horse page shows the horse moving as its health allows', async ({ page }) => {
   await login(page, 'owner');
   await page.goto(`/horses/${fixture.horseId}`);
