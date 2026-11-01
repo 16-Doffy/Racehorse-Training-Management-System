@@ -2,12 +2,13 @@ name: Auto operate (live)
 # Keeps the day going on the REAL horses with nobody at the screen (server/scripts/autoOperate.js): meals
 # and care recorded in their time, the sessions booked now checked and started, the finished ones
 # evaluated, each marked "Tự vận hành". It creates no horse and books no session, and goes past no block.
-# A run lasts 25 minutes and one starts every 30, from 05:00 to 19:59 Vietnam time.
-# For now it only reads and reports (OPERATE_CONFIRM below). The script stops by itself after OPERATE_UNTIL.
+# A run lasts 25 minutes and one starts every 30, from 05:00 to 23:59 Vietnam time.
+# The script stops by itself after OPERATE_UNTIL. The four horses of defense-data work (defenseData.js) need
+# their breakfasts left for it, so they are left alone until OPERATE_SKIP_UNTIL.
 on:
   schedule:
     - cron: '*/30 22-23 * 10,11 *' # 05:00–06:59 Vietnam time
-    - cron: '*/30 0-12 * 11 *' # 07:00–19:59 Vietnam time
+    - cron: '*/30 0-16 * 11 *' # 07:00–23:59 Vietnam time
   workflow_dispatch:
 concurrency:
   group: auto-operate
@@ -30,6 +31,8 @@ jobs:
         run: node server/scripts/autoOperate.js
         env:
           DEMO_ACCOUNTS: ${{ secrets.DEMO_ACCOUNTS }}
-          OPERATE_CONFIRM: 'read'
+          OPERATE_CONFIRM: 'write'
           OPERATE_UNTIL: '2026-11-13'
           OPERATE_RUN_MIN: '25'
+          OPERATE_SKIP: 'Orion,Pegasus,Demo · Sẵn sàng tập,Demo · Diễn tập chấn thương'
+          OPERATE_SKIP_UNTIL: '2026-11-12'

@@ -52,6 +52,11 @@ const TRIAL_GAP = Number(process.env.DEMO_TRIAL_GAP_MIN ?? 30);
 // nor the supplements also filed under feed (electrolytes, vitamins, oil, salt).
 const GRAIN = /(yến mạch|oats|cám|grain|viên|pellet|ngô|corn|lúa mạch|barley)/i;
 const FORAGE = /(cỏ|hay|rơm|alfalfa|timothy|chaff|straw)/i;
+// The meal a flow starts from. The demo is a morning; defenseData.js also runs at noon and in the evening.
+const MEAL_SLOT = process.env.DEMO_MEAL_SLOT || 'morning';
+const MEAL_WORD = { morning: 'bữa sáng', noon: 'bữa trưa', evening: 'bữa tối' }[MEAL_SLOT];
+// The latest a run may begin (the morning's own limit: breakfast before 11:00, the canter before the afternoon).
+const LATEST_START = process.env.DEMO_LATEST_START || '10:00';
 const ROLE_OF = { manager: 'manager', trainer: 'head_trainer', vet: 'veterinarian', groom: 'groom', owner: 'owner' };
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -88,7 +93,7 @@ function raceDay() {
   d.setHours(15, 0, 0, 0);
   return d;
 }
-const raceName = (d) => `TEST Cúp Demo ${ddmm(d)}`;
+const raceName = (d) => process.env.DEMO_RACE_NAME || `TEST Cúp Demo ${ddmm(d)}`;
 
 const steps = [];
 let failed = false;
@@ -210,10 +215,10 @@ async function preflight(accounts) {
   // Breakfast must sit before 11:00, and the canter ~digest+15 minutes later must end before the afternoon.
   // Every check runs, so one preflight shows every problem at once.
   const now = new Date();
-  const earlyEnough = now >= atClock('01:00') && now <= atClock('10:00');
+  const earlyEnough = now >= atClock('01:00') && now <= atClock(LATEST_START);
   log(P, '-', 'giờ chạy', earlyEnough, earlyEnough
-    ? `${hhmm(now)} — buổi sáng, đủ thời gian`
-    : `${hhmm(now)}: phải chạy từ 01:00 đến 10:00 (bữa sáng trước 11:00, buổi phi chậm xong trước buổi chiều).`);
+    ? `${hhmm(now)}: đủ thời gian`
+    : `${hhmm(now)}: phải chạy từ 01:00 đến ${LATEST_START} (bữa sáng trước 11:00, buổi phi chậm xong trước buổi chiều).`);
 
   const stock = (await call('manager', 'GET', '/inventory')).data || [];
   const feed = stock
@@ -320,8 +325,8 @@ async function firstReadings(id) {
 }
 const groomTasks = async (horse) => (await read('groom', `/stable/tasks?horse=${horse._id}`)) || [];
 async function pendingBreakfast(F, horse) {
-  const breakfast = (await groomTasks(horse)).find((t) => t.taskType === 'feeding' && t.mealSlot === 'morning' && !t.makeUpOf && t.status === 'pending');
-  log(F, 'groom', 'thấy việc cho ăn bữa sáng trong danh sách', Boolean(breakfast));
+  const breakfast = (await groomTasks(horse)).find((t) => t.taskType === 'feeding' && t.mealSlot === MEAL_SLOT && !t.makeUpOf && t.status === 'pending' && t.timing?.state !== 'missed');
+  log(F, 'groom', `thấy việc cho ăn ${MEAL_WORD} trong danh sách`, Boolean(breakfast));
   return breakfast;
 }
 
@@ -389,20 +394,21 @@ async function reportIncident(F, taskId, what, body) {
 }
 
 /** A trial over the race distance after the canter, then the race decision taken on it. */
-async function trialThenDecide(F, { horse, plan }, entry) {
+async function trialThenDecide(F, { horse, plan, overrideReason }, entry) {
+  const past = overrideReason ? { overrideReason } : {};
   const at = slotAfter(new Date(), TRIAL_GAP);
   log(F, 'trainer', `xem bảng sẵn sàng cho buổi chạy thử ${hhmm(at)} (bài nặng)`, true, gateLine(await readinessAt(horse, at, 'high')));
   const trial = await must(F, 'trainer', `lên lịch chạy thử ${RACE.distance} m cho giải lúc ${hhmm(at)}: tốc độ ≥ 60 km/h, nhịp tim ≤ 225`, 'POST', '/training/sessions', {
-    horse: horse._id, trainingPlan: plan._id, ...TRIAL, raceEntry: entry._id, scheduledAt: at.toISOString(),
+    horse: horse._id, trainingPlan: plan._id, ...TRIAL, raceEntry: entry._id, scheduledAt: at.toISOString(), ...past,
     coachNote: 'Khởi động 15 phút, chạy thử đủ cự ly giải ở tốc độ thi đấu; ghi nhận tốc độ tối đa và nhịp tim.',
   }, 201);
   await waitUntil(new Date(at.getTime() - minutes(2)), `${F}: kiểm tra sẵn sàng trước chạy thử`);
   await wake();
   await must(F, 'trainer', 'kiểm tra sẵn sàng chạy thử: 37,6 °C, sân cát đã bừa', 'POST', `/training/sessions/${trial._id}/pre-check`, {
-    confirmed: true, bodyTempC: 37.6, trackCondition: 'Sân cát đã bừa, mặt sân tốt', weather: 'Nắng nhẹ, 28 °C',
+    confirmed: true, bodyTempC: 37.6, trackCondition: 'Sân cát đã bừa, mặt sân tốt', weather: 'Nắng nhẹ, 28 °C', ...past,
   });
   await waitUntil(at, `${F}: giờ chạy thử`);
-  await must(F, 'trainer', 'bắt đầu chạy thử', 'POST', `/training/sessions/${trial._id}/start`, {});
+  await must(F, 'trainer', 'bắt đầu chạy thử', 'POST', `/training/sessions/${trial._id}/start`, { ...past });
   const done = await untilFinished(trial._id);
   log(F, 'trainer', 'chạy thử xong (cảm biến chạy hết cự ly)', Boolean(done), done ? metricsLine(done) : 'sau 10 phút vẫn chưa kết thúc');
   if (!done) return 'chạy thử lỗi';
@@ -426,7 +432,7 @@ async function flowPass(ctx, F, setup, withRace) {
   const entry = withRace ? await registerRace(F, horse) : null;
   const breakfast = await pendingBreakfast(F, horse);
   if (!breakfast) return 'lỗi';
-  const session = await feedThenRun(F, ctx, setup, breakfast._id, 'cho ăn bữa sáng');
+  const session = await feedThenRun(F, ctx, setup, breakfast._id, `cho ăn ${MEAL_WORD}`);
   const final = await evaluateWhenDone(F, session, 8, 'Ngựa phi đều, nhịp tim luôn dưới ngưỡng, hồi sức nhanh sau buổi. Tuần sau tăng cự ly lên 2800 m.');
   if (!final) return 'lỗi';
   const met = final.outcome?.met === true;
@@ -451,7 +457,7 @@ async function flowPass(ctx, F, setup, withRace) {
 /** Breakfast time has passed unfed: the canter is refused, also with the trainer's reason. Returns the refused gate. */
 async function refusedWhenUnfed(ctx, F, { horse, plan }) {
   const at = slotAfter(new Date(), 30);
-  log(F, 'groom', 'không cho ăn: giờ bữa sáng đã qua, chưa ghi nhận', true, `bữa sáng ${hhmm(ctx.missedBreakfastAt)}`);
+  log(F, 'groom', `không cho ăn: giờ ${MEAL_WORD} đã qua, chưa ghi nhận`, true, `${MEAL_WORD} ${hhmm(ctx.missedBreakfastAt)}`);
   const nutrition = ((await readinessAt(horse, at))?.gates || []).find((g) => g.key === 'nutrition');
   log(F, 'trainer', `bảng sẵn sàng cho buổi phi chậm ${hhmm(at)}: Dinh dưỡng đỏ`, nutrition?.status === 'blocked', nutrition?.detail);
   const body = { horse: horse._id, trainingPlan: plan._id, ...CANTER, scheduledAt: at.toISOString(), coachNote: 'Phi chậm 2400 m.' };
@@ -466,7 +472,7 @@ async function flowFail(ctx, F, setup) {
   if (!gate?.taskId) return 'lỗi';
   // Within 4 hours of its time the groom can still record the meal itself (a make-up is only for a
   // meal that can no longer be recorded), so the horse is fed late and the digestion wait restarts.
-  const session = await feedThenRun(F, ctx, setup, gate.taskId, 'cho ăn muộn bữa sáng (quá giờ)');
+  const session = await feedThenRun(F, ctx, setup, gate.taskId, `cho ăn muộn ${MEAL_WORD} (quá giờ)`);
 
   // The horse struggles: the trainer stops it after the first sensor readings, well short of the distance.
   const s = await firstReadings(session._id);
@@ -508,7 +514,7 @@ async function flowInjured(ctx, F, setup) {
   const entry = await registerRace(F, horse);
   const breakfast = await pendingBreakfast(F, horse);
   if (!breakfast) return 'lỗi';
-  const session = await feedThenRun(F, ctx, setup, breakfast._id, 'cho ăn bữa sáng');
+  const session = await feedThenRun(F, ctx, setup, breakfast._id, `cho ăn ${MEAL_WORD}`);
   await firstReadings(session._id);
   // The trainer plays out the horse going lame on its left foreleg; the sensor feed stops the run itself.
   const sim = await call('trainer', 'POST', `/training/sessions/${session._id}/simulate`, { scenario: 'injury', leg: 'fore_left' });
@@ -585,7 +591,7 @@ async function flowInjured(ctx, F, setup) {
 async function flowTired(ctx, F, setup) {
   const breakfast = await pendingBreakfast(F, setup.horse);
   if (!breakfast) return 'lỗi';
-  const session = await feedThenRun(F, ctx, setup, breakfast._id, 'cho ăn bữa sáng', PACED_CANTER_WORK);
+  const session = await feedThenRun(F, ctx, setup, breakfast._id, `cho ăn ${MEAL_WORD}`, PACED_CANTER_WORK);
   const sim = await call('trainer', 'POST', `/training/sessions/${session._id}/simulate`, { scenario: 'tired' });
   log(F, 'trainer', 'mô phỏng sự cố: ngựa mệt (tốc độ giảm, nhịp tim tăng)', sim.status === 200, sim.status === 200 ? '' : `HTTP ${sim.status}: ${sim.message}`);
   const final = await evaluateWhenDone(F, session, 5, 'Ngựa xuống sức từ nửa sau, không giữ được 35 km/h, nhịp tim cao. Giảm tải 2 ngày, bổ sung điện giải.');
@@ -600,7 +606,7 @@ async function flowLightOnly(ctx, F, setup) {
   const { horse, plan } = setup;
   const breakfast = await pendingBreakfast(F, horse);
   if (!breakfast) return 'lỗi';
-  const at = slotAfter(await feed(F, breakfast._id, 'cho ăn bữa sáng'), ctx.digest + MARGIN);
+  const at = slotAfter(await feed(F, breakfast._id, `cho ăn ${MEAL_WORD}`), ctx.digest + MARGIN);
   const medical = ((await readinessAt(horse, at))?.gates || []).find((g) => g.key === 'medical');
   log(F, 'trainer', `bảng sẵn sàng cho buổi phi chậm ${hhmm(at)}: Y tế chặn (chỉ tập nhẹ)`, medical?.status === 'blocked', medical?.detail);
   await refused(F, 'trainer', 'lên lịch phi chậm (cường độ vừa) → hệ thống từ chối: bác sĩ chỉ cho tập nhẹ', 'POST', '/training/sessions', {
@@ -616,7 +622,7 @@ async function flowVetLock(ctx, F, setup) {
   const { horse } = setup;
   const breakfast = await pendingBreakfast(F, horse);
   if (!breakfast) return 'lỗi';
-  const session = await feedThenRun(F, ctx, setup, breakfast._id, 'cho ăn bữa sáng');
+  const session = await feedThenRun(F, ctx, setup, breakfast._id, `cho ăn ${MEAL_WORD}`);
   await firstReadings(session._id);
   const record = await must(F, 'vet', 'kết quả xét nghiệm máu: men cơ CK tăng cao — nghi viêm cơ', 'POST', '/health/records', {
     horse: horse._id,
@@ -642,7 +648,7 @@ async function flowVetLock(ctx, F, setup) {
 async function flowWeather(ctx, F, setup) {
   const breakfast = await pendingBreakfast(F, setup.horse);
   if (!breakfast) return 'lỗi';
-  const session = await feedThenRun(F, ctx, setup, breakfast._id, 'cho ăn bữa sáng');
+  const session = await feedThenRun(F, ctx, setup, breakfast._id, `cho ăn ${MEAL_WORD}`);
   await firstReadings(session._id);
   await must(F, 'trainer', 'mưa giông bất chợt, sân trơn — HLV dừng buổi (thời tiết)', 'POST', `/training/sessions/${session._id}/abort`, {
     category: 'weather', reason: 'Mưa giông bất chợt, sân trơn — dừng để an toàn cho ngựa.',
@@ -662,12 +668,12 @@ async function flowMakeUp(ctx, F, setup) {
   });
   const at = slotAfter(new Date(), 30);
   const nutrition = ((await readinessAt(horse, at))?.gates || []).find((g) => g.key === 'nutrition');
-  log(F, 'trainer', `bảng sẵn sàng cho buổi phi chậm ${hhmm(at)}: Dinh dưỡng (bữa sáng bị bỏ)`, true, `${nutrition?.status}: ${nutrition?.detail || ''}`);
-  await must(F, 'trainer', 'báo nhân viên cho ăn bù bữa sáng', 'POST', `/stable/tasks/${breakfast._id}/make-up`, {});
+  log(F, 'trainer', `bảng sẵn sàng cho buổi phi chậm ${hhmm(at)}: Dinh dưỡng (${MEAL_WORD} bị bỏ)`, true, `${nutrition?.status}: ${nutrition?.detail || ''}`);
+  await must(F, 'trainer', `báo nhân viên cho ăn bù ${MEAL_WORD}`, 'POST', `/stable/tasks/${breakfast._id}/make-up`, {});
   const makeUp = (await groomTasks(horse)).find((t) => String(t.makeUpOf?._id || t.makeUpOf) === String(breakfast._id) && t.status === 'pending');
   log(F, 'groom', 'thấy việc cho ăn bù trong danh sách', Boolean(makeUp));
   if (!makeUp) return 'lỗi';
-  const session = await feedThenRun(F, ctx, setup, makeUp._id, 'cho ăn bù bữa sáng (lần này ăn hết)');
+  const session = await feedThenRun(F, ctx, setup, makeUp._id, `cho ăn bù ${MEAL_WORD} (lần này ăn hết)`);
   const final = await evaluateWhenDone(F, session, 8, 'Ăn bù xong, chờ đủ thời gian tiêu hóa rồi mới tập. Ngựa phi đều, hồi sức tốt.');
   return final ? 'Bỏ bữa → ăn bù → phi chậm xong' : 'lỗi';
 }
@@ -677,7 +683,7 @@ async function flowMissed(ctx, F, setup) {
   const { horse, plan } = setup;
   const breakfast = await pendingBreakfast(F, horse);
   if (!breakfast) return 'lỗi';
-  const at = slotAfter(await feed(F, breakfast._id, 'cho ăn bữa sáng'), ctx.digest + MARGIN);
+  const at = slotAfter(await feed(F, breakfast._id, `cho ăn ${MEAL_WORD}`), ctx.digest + MARGIN);
   const session = await must(F, 'trainer', `lên lịch buổi phi chậm 2400 m lúc ${hhmm(at)}`, 'POST', '/training/sessions', {
     horse: horse._id, trainingPlan: plan._id, ...CANTER, scheduledAt: at.toISOString(), coachNote: CANTER_WORK.coachNote,
   }, 201);
@@ -962,15 +968,24 @@ async function main() {
   await Promise.allSettled(starts.map((at, i) => round({ ...ctx }, i + 1, at)));
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    failed = true;
-  })
-  .finally(() => {
-    if (results.length) {
-      results.sort((a, b) => a.r - b.r);
-      summary(`\n### Tổng kết ${failed ? '— CÓ BƯỚC LỖI' : '— mọi bước đạt'}\n\n| Lượt | Bắt đầu | Từng ngựa |\n|---|---|---|\n${results.map((o) => `| ${o.r} | ${o.start} | ${o.cases.map(([l, v]) => `**${l}**: ${v}`).join('<br>')} |`).join('\n')}`);
-    }
-    if (failed) process.exitCode = 1;
-  });
+// Run directly, this is the demo; defenseData.js takes the flows from here.
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      console.error(error);
+      failed = true;
+    })
+    .finally(() => {
+      if (results.length) {
+        results.sort((a, b) => a.r - b.r);
+        summary(`\n### Tổng kết ${failed ? '— CÓ BƯỚC LỖI' : '— mọi bước đạt'}\n\n| Lượt | Bắt đầu | Từng ngựa |\n|---|---|---|\n${results.map((o) => `| ${o.r} | ${o.start} | ${o.cases.map(([l, v]) => `**${l}**: ${v}`).join('<br>')} |`).join('\n')}`);
+      }
+      if (failed) process.exitCode = 1;
+    });
+}
+
+module.exports = {
+  RACE, TRIAL, INTAKE_EXAM, RECOVERING_EXAM, ids, steps, table, summary, log, call, must, refused, read, wake, waitUntil, login, preflight, slotAfter, minutes, ddmm, hhmm, vnd,
+  groomTasks, feed, registerRace, reportIncident, ownerSees, trialThenDecide, flowPass, flowFail, flowInjured, flowTired, flowLightOnly, flowVetLock, flowWeather, flowMakeUp, flowMissed, flowRestock,
+  hasFailed: () => failed,
+};

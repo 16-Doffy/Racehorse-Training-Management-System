@@ -52,6 +52,10 @@ test('the automatic day does what is due on the horses already there, and nothin
   assert.equal((await meal()).status, 'pending');
   assert.equal((await sessionNow()).status, 'scheduled');
 
+  // Left alone only until the given day.
+  const over = await operate({ OPERATE_SKIP: 'test auto horse', OPERATE_SKIP_UNTIL: '2001-01-01' });
+  assert.match(over.output, /Sẽ ghi nhận: TEST Auto Horse, cho ăn/);
+
   // Told to write: the groom records the meal, the trainer checks and starts the session, saying who it was.
   const run = await operate({ OPERATE_CONFIRM: 'write' });
   assert.equal(run.code, 0, run.output);

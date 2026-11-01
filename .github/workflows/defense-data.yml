@@ -1,0 +1,38 @@
+name: Defense data (live)
+# The council's data on the REAL site, 02/11 to 12/11, three shifts a day (server/scripts/defenseData.js): new
+# horses Orion and Pegasus and the two "Demo ·" horses take the cases, the real horses race. The script reads
+# the clock to know its shift, stays until the shift ends, and does nothing if the shift has begun, so
+# each shift has a second trigger in case GitHub drops the first. Read each run's Summary for its report.
+on:
+  schedule:
+    - cron: '5 22 1-11 11 *' # 05:05 Vietnam time, morning shift
+    - cron: '35 22 1-11 11 *'
+    - cron: '10 4 2-12 11 *' # 11:10, noon shift
+    - cron: '40 4 2-12 11 *'
+    - cron: '10 9 2-12 11 *' # 16:10, evening shift
+    - cron: '40 9 2-12 11 *'
+    - cron: '30 16 2-12 11 *' # 23:30, the day's report
+    - cron: '7 0 13 11 *' # 07:07 on 13/11, the whole campaign's report
+  workflow_dispatch:
+concurrency:
+  group: defense-data
+  cancel-in-progress: false
+jobs:
+  shift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      TZ: Asia/Ho_Chi_Minh
+    steps:
+      # The script comes from NDuy (only Claude pushes there), so a push to main cannot change what runs.
+      - uses: actions/checkout@v4
+        with:
+          ref: NDuy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run this shift on the live API
+        run: node server/scripts/defenseData.js
+        env:
+          DEMO_ACCOUNTS: ${{ secrets.DEMO_ACCOUNTS }}
+          DEFENSE_CONFIRM: 'write'

@@ -10,7 +10,8 @@
 //
 // Reads only, and says what it would do, unless OPERATE_CONFIRM=write. Stops by itself after OPERATE_UNTIL.
 // Environment: DEMO_ACCOUNTS (the same secret as demoFlows.js), LIVE_API_URL, OPERATE_RUN_MIN (how long to
-// keep going, 0 = one pass), OPERATE_SKIP (horse names, comma separated), OPERATE_REPORT (also write here).
+// keep going, 0 = one pass), OPERATE_SKIP (horse names, comma separated, left alone until OPERATE_SKIP_UNTIL
+// if set), OPERATE_REPORT (also write here).
 const fs = require('node:fs');
 
 const BASE = (process.env.LIVE_API_URL || 'https://racehorse-tms-server.onrender.com/api/v1').replace(/\/$/, '');
@@ -33,7 +34,8 @@ const clock = (date = new Date()) => inZone(date, { hour: '2-digit', minute: '2-
 const dayKey = (date = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 const idOf = (x) => String(x?._id || x || '');
 const horseName = (x) => x.horse?.name || 'Ngựa';
-const skipped = (x) => SKIP.has(horseName(x).toLowerCase());
+const SKIP_UNTIL = process.env.OPERATE_SKIP_UNTIL || '';
+const skipped = (x) => SKIP.has(horseName(x).toLowerCase()) && (!SKIP_UNTIL || dayKey() <= SKIP_UNTIL);
 
 const lines = [];
 const said = new Set();
@@ -203,6 +205,8 @@ async function main() {
   const overview = `Buổi hôm nay: ${sessions.length}; đang chạy ${count('in_progress')}, đã đánh giá ${count('evaluated')}, bị chặn ${count('blocked')}, lỡ giờ ${count('missed')}.`;
   console.log(overview);
   report(`### ${head}\n\n${overview}\n\n${lines.length ? lines.map((l) => `- ${l}`).join('\n') : 'Lượt này không có việc tới giờ.'}\n`);
+  // Annotations: the public API shows them without a token, so the end-of-day diagnosis can read them.
+  if (process.env.GITHUB_ACTIONS && WRITE) for (const l of lines.filter((x) => /Không chạy|Chưa ghi nhận|Chưa đánh giá/.test(x)).slice(0, 10)) console.log(`::warning::${l}`);
 }
 
 main().catch((error) => {
