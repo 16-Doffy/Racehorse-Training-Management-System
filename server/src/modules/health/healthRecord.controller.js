@@ -133,6 +133,7 @@ const createRecord = asyncHandler(async (req, res) => {
   if (record.resultStatus && record.resultStatus !== 'eligible') {
     await flagConfirmedEntries(record.horse, `bác sĩ kết luận "${CONCLUSION_LABELS[record.resultStatus] || record.resultStatus}"${record.diagnosis ? ` — ${record.diagnosis}` : ''}`);
   }
+  const statusBefore = (await Horse.findById(record.horse).select('healthStatus').lean())?.healthStatus;
   // A back-dated entry for an old exam must not overwrite the conclusion of a newer one.
   if (await isLatestRecord(record)) {
     await Horse.findByIdAndUpdate(record.horse, { healthStatus: record.resultStatus });
@@ -149,10 +150,12 @@ const createRecord = asyncHandler(async (req, res) => {
   await logAction({ actorId: req.user._id, action: 'healthRecord.create', targetModel: 'HealthRecord', targetId: record._id });
   if (record.clearedLevel) await applyReturnAssessment(record, req.user);
   await closeRequestsWithRecord(record, req.user);
-  // The horse moves with the conclusion: isolation, recovery, or back to its own stall when fit
-  // (stable/healthPlacement.service.js). A quarantined horse that could not be moved: the Manager is told.
-  const { followHealth } = require('../stable/healthPlacement.service');
-  const placed = await followHealth(record.horse, { reason: 'exam', actor: req.user._id });
+  // The horse moves when the conclusion changes: isolation, recovery, or back to its own stall when fit
+  // (stable/healthPlacement.service.js). A follow-up with the same conclusion leaves it where it is, which
+  // may be where the Manager chose to put it. A quarantined horse that could not be moved: the Manager is told.
+  const { followHealthSafely } = require('../stable/healthPlacement.service');
+  const statusNow = (await Horse.findById(record.horse).select('healthStatus').lean())?.healthStatus;
+  const placed = statusNow !== statusBefore ? await followHealthSafely(record.horse, { reason: 'exam', actor: req.user._id }) : null;
   if (record.resultStatus === 'quarantined' && !placed) await askToIsolate(record.horse);
   // The meals follow too: the sick diet while injured or isolated, the usual ones once fit.
   await require('../feeding/feedingCalendar.service').followHealthDiet(record.horse);

@@ -26,6 +26,14 @@ const schema = new mongoose.Schema({
   meals: { type: [mealSchema], required: true },
   // The meals the trainer chose not to give that day, so confirming the plan again does not bring them back.
   removedSlots: { type: [{ type: String, enum: ['morning', 'noon', 'evening'] }], default: [] },
+  // On the sick diet: the day as it stood before the horse fell ill, the trainer's changes with it, for when it is fit.
+  healthy: {
+    type: new mongoose.Schema({
+      meals: { type: [mealSchema], default: [] },
+      removedSlots: { type: [String], default: [] },
+    }, { _id: false }),
+    default: null,
+  },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   approvedPlanUpdatedAt: { type: Date, required: true },
 }, { timestamps: true });

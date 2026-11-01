@@ -47,11 +47,9 @@ test('a horse moves with its health: recovery or isolation when the vet says so,
   assert.deepEqual(await where(first), { stall: 'Q-01', home: 'A-01', pending: 'recovery' });
   assert.ok(await models.Notification.exists({ horse: first._id, recipientRole: 'manager', message: /chưa có chuồng hồi phục trống/ }));
 
-  // The second is fit: back to its own stall; the hourly run then moves the first into the freed recovery stall.
+  // The second is fit: back to its own stall, and the first moves into the freed recovery stall at once.
   await exam(second, 'eligible');
   assert.deepEqual(await where(second), { stall: 'A-02', home: null, pending: null });
-  const { retryWaitingMoves } = require('../../src/modules/stable/healthPlacement.service');
-  assert.equal(await retryWaitingMoves(), 1);
   assert.deepEqual(await where(first), { stall: 'R-01', home: 'A-01', pending: null });
 
   // Fit again: home to A-01, nothing kept any more; under monitoring a horse stays where it is.

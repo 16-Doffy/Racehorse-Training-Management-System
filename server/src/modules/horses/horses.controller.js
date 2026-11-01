@@ -331,6 +331,8 @@ const archiveHorse = asyncHandler(async (req, res) => {
   // its transaction (stableAssignment.controller claimHorse): one still running holds up the save above
   // and its stall goes here; one starting later finds the horse archived and is refused.
   await StableAssignment.deleteMany({ horse: horse._id });
+  // The stall it left may be the one another horse is waiting for.
+  await require('../stable/healthPlacement.service').moveWaitingHorses();
   const closed = await closeLeftoversFor(horse, reason);
 
   await logAction({

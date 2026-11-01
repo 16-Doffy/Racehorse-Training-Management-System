@@ -105,7 +105,14 @@ const listStalls = asyncHandler(async (req, res) => {
       reservedFor: occupant ? null : keptFor.get(String(s._id)) || null,
     };
   };
-  return ok(res, { stalls: stalls.map(withPlacement), unplaced }, 'Stalls fetched.');
+  // Horses whose health asks for another kind of stall, waiting for a free one (healthPlacement.service.js).
+  const pending = await StableAssignment.find({ pendingMove: { $ne: null } })
+    .populate('horse', 'name breed color healthStatus isArchived')
+    .populate('stall', 'code');
+  const waiting = pending
+    .filter((a) => a.horse && !a.horse.isArchived && isHorseInScope(scoped, a.horse._id))
+    .map((a) => ({ horse: horseCard(a.horse), wants: a.pendingMove, now: a.stall?.code || a.stableBlock }));
+  return ok(res, { stalls: stalls.map(withPlacement), unplaced, waiting }, 'Stalls fetched.');
 });
 
 /** GET /stable/stalls/by-horse/:horseId — the horse's stall and caretaker, for its detail page (any role that may see the horse). */
@@ -165,6 +172,7 @@ const createStall = asyncHandler(async (req, res) => {
   if (values.order === undefined) values.order = await Stall.countDocuments({ zone: values.zone });
   const stall = await Stall.create(values);
   await logAction({ actorId: req.user._id, action: 'stall.create', targetModel: 'Stall', targetId: stall._id, metadata: { code: stall.code } });
+  await require('./healthPlacement.service').moveWaitingHorses();
   return created(res, stallJson(stall), 'Stall created.');
 });
 
@@ -195,6 +203,7 @@ const generateZone = asyncHandler(async (req, res) => {
   }
   const back = retired.length ? await Stall.find({ code: { $in: retired } }) : [];
   await logAction({ actorId: req.user._id, action: 'stall.generate', targetModel: 'Stall', metadata: { zone, created: made.length, reopened: back.length, skipped: existing.size } });
+  await require('./healthPlacement.service').moveWaitingHorses();
   return created(res, { created: [...made, ...back].map((s) => stallJson(s)), skipped: [...existing] }, `${made.length + back.length} stalls created.`);
 });
 
@@ -219,6 +228,8 @@ const updateStall = asyncHandler(async (req, res) => {
     return current;
   });
   await logAction({ actorId: req.user._id, action: 'stall.update', targetModel: 'Stall', targetId: stall._id, metadata: { code: stall.code, ...values } });
+  // Back from maintenance, or of another kind now: a horse may have been waiting for it.
+  await require('./healthPlacement.service').moveWaitingHorses();
   const { byStall } = await occupants(req.user, [stall._id]);
   return ok(res, stallJson(stall, byStall.get(String(stall._id))), 'Stall updated.');
 });
@@ -378,6 +389,7 @@ const editZone = asyncHandler(async (req, res) => {
   });
 
   await logAction({ actorId: req.user._id, action: 'stall.zoneEdit', targetModel: 'Stall', metadata: { zone, ...names, ...result } });
+  await require('./healthPlacement.service').moveWaitingHorses();
   const ids = (await Stall.find({ zone, isActive: true }).select('_id')).map((s) => s._id);
   return ok(res, { zone, ...result, stalls: await stallsAsMap(req.user, ids) }, 'Zone updated.');
 });

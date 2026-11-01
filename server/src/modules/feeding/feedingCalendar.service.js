@@ -8,11 +8,13 @@ const DailyTask = require('../../models/DailyTask');
 const clubPolicy = require('../../config/clubPolicy');
 const { dayBounds, taskTiming } = require('../../utils/taskTiming');
 const { ensureFeedingTasks, DEFAULT_MEAL_TIMES } = require('../../realtime/dailyTaskGenerator');
-const { notifyCaretaker, notifyHorseStaff } = require('../alerts/notification.service');
+const Notification = require('../../models/Notification');
+const { ROLES } = require('../../constants/roles');
+const { notifyCaretaker, notifyHorseStaff, pushNotification } = require('../alerts/notification.service');
 const { logAction } = require('../audit/audit.service');
 const { SLOT_LABELS, stockFor, readItemsWith, mealSetProblem } = require('./mealInput');
 
-const { SLOTS, dietOf, weightWarning, trainingDayWork, workOf, pickFeed, pickSupplements, dayMeals, weekNeed } = require('./rationRules');
+const { SLOTS, SICK_STATUSES, dietOf, weightWarning, trainingDayWork, workOf, pickFeed, pickSupplements, dayMeals, weekNeed } = require('./rationRules');
 const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const atDay = (key) => new Date(`${key}T00:00:00`);
 const clockOf = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -115,13 +117,22 @@ async function lockedToday(horseId) {
  * - else the rules' day, keeping the meals the trainer edited and left out on an earlier confirmation of
  *   this plan (`fresh` drops those: everything back to the rules);
  * - today, a meal already given, skipped or missed stays as it happened.
- * Each day: { date, phase, work, sessions, meals, removedSlots, suggested }, `suggested` being the rules' meals.
+ * A horse that falls ill has the day as it stood kept aside (`healthy`), and takes it back once fit: what the
+ * trainer changed for it is not lost to an illness. `fresh` drops that too.
+ * Each day: { date, phase, work, sessions, meals, removedSlots, healthy, suggested }, `suggested` being the rules' meals.
  */
 function mergeDays({ preview, saved, plan, times = {}, overrides = new Map(), fresh = false, locked = new Map() }) {
   const todayKey = dateKey(new Date());
   const withTime = (m) => (times[m.slot] ? { ...m, time: times[m.slot] } : m);
   return preview.days.filter((d) => !d.past).map((day) => {
-    const old = fresh ? null : saved.get(day.date);
+    const stored = saved.get(day.date);
+    // Fit again: the day as it was before the horse fell ill, read as an earlier confirmation of this plan.
+    const beforeIllness = day.diet === 'normal' && stored?.diet === 'sick' && stored.healthy
+      ? { ...stored, meals: stored.healthy.meals, removedSlots: stored.healthy.removedSlots, diet: 'normal', approvedPlanUpdatedAt: new Date(0) }
+      : null;
+    const old = fresh ? null : beforeIllness || stored;
+    const fellIll = day.diet === 'sick' && stored && (stored.diet || 'normal') !== 'sick';
+    const healthy = fresh || day.diet !== 'sick' ? null : fellIll ? { meals: stored.meals.map(plainMeal), removedSlots: stored.removedSlots || [] } : stored?.healthy || null;
     const samePlan = Boolean(old) && String(old.plan) === String(plan._id);
     const sameDiet = (old?.diet || 'normal') === day.diet;
     const current = samePlan && sameDiet && new Date(old.approvedPlanUpdatedAt) >= new Date(plan.updatedAt);
@@ -147,7 +158,7 @@ function mergeDays({ preview, saved, plan, times = {}, overrides = new Map(), fr
     }
     if (day.date === todayKey) {
       for (const [slot, { task }] of locked) {
-        const kept = (old || saved.get(day.date))?.meals.find((o) => o.slot === slot);
+        const kept = stored?.meals.find((o) => o.slot === slot);
         const meal = kept
           ? plainMeal(kept)
           : { slot, time: clockOf(task.scheduledDate), items: (task.supplies || []).map((i) => ({ inventoryItem: i.inventoryItem, name: i.name, amount: i.amount, unit: i.unit })), edited: false };
@@ -155,7 +166,7 @@ function mergeDays({ preview, saved, plan, times = {}, overrides = new Map(), fr
         removedSlots = removedSlots.filter((s) => s !== slot);
       }
     }
-    return { date: day.date, phase: day.phase, work: day.work, diet: day.diet, sessions: day.sessions, meals: meals.sort(bySlotOrder), removedSlots, suggested: day.meals };
+    return { date: day.date, phase: day.phase, work: day.work, diet: day.diet, sessions: day.sessions, meals: meals.sort(bySlotOrder), removedSlots, healthy, suggested: day.meals };
   });
 }
 
@@ -176,7 +187,7 @@ function stockWarnings(days, stock) {
 async function calendarView(plan) {
   const preview = await buildCalendar(plan);
   const [saved, locked] = await Promise.all([
-    FeedingCalendarDay.find({ horse: plan.horse }).select('plan date meals removedSlots diet approvedPlanUpdatedAt').lean(),
+    FeedingCalendarDay.find({ horse: plan.horse }).select('plan date meals removedSlots diet healthy approvedPlanUpdatedAt').lean(),
     lockedToday(plan.horse),
   ]);
   const savedByDate = new Map(saved.map((d) => [d.date, d]));
@@ -292,7 +303,7 @@ async function saveDays({ plan, preview, actor, times, overrides = new Map(), fr
   const ops = effective.map((day) => ({
     updateOne: {
       filter: { horse: plan.horse, date: day.date },
-      update: { $set: { plan: plan._id, phase: day.phase, work: day.work, diet: day.diet, meals: saveable(day.meals), removedSlots: day.removedSlots, approvedBy: actor._id, approvedPlanUpdatedAt: plan.updatedAt } },
+      update: { $set: { plan: plan._id, phase: day.phase, work: day.work, diet: day.diet, meals: saveable(day.meals), removedSlots: day.removedSlots, healthy: day.healthy, approvedBy: actor._id, approvedPlanUpdatedAt: plan.updatedAt } },
       upsert: true,
     },
   }));
@@ -339,8 +350,50 @@ async function followTodayRations(horseId, rations) {
  * written again for it, or its daily rations take the sick meals and keep their healthy items aside.
  * Found fit again, the calendar goes back to the plan's meals and the daily rations get their items
  * back. Under monitoring nothing changes. The trainer and the groom are told. Returns { diet } or null.
+ * When the meals cannot change yet (no forage in the store, …) the trainer and the Manager hear why and
+ * the hourly run tries again. It never fails the caller, whose own work is done (the vet's exam is saved).
  */
 async function followHealthDiet(horseId) {
+  try {
+    return await applyHealthDiet(horseId);
+  } catch (err) {
+    console.error(`[health-diet] failed for ${horseId}:`, err.message);
+    try {
+      const horse = await Horse.findById(horseId).select('name healthStatus');
+      if (horse) await tellDietStuck(horse, dietOf(horse.healthStatus), 'lỗi hệ thống khi đổi khẩu phần.');
+    } catch (noted) {
+      console.error(`[health-diet] could not tell about ${horseId}:`, noted.message);
+    }
+    return null;
+  }
+}
+
+/** The meals should change and cannot yet: the trainer and the Manager hear why, once a day at most. */
+async function tellDietStuck(horse, diet, why) {
+  const since = new Date(Date.now() - 24 * 3600 * 1000);
+  if (await Notification.exists({ horse: horse._id, type: 'ration_review', createdAt: { $gte: since }, message: { $regex: 'chưa đổi được khẩu phần' } })) return;
+  const reason = why.trim().replace(/\.?$/, '.');
+  const message = diet === 'sick'
+    ? `⚠️ ${horse.name} đang ${horse.healthStatus === 'quarantined' ? 'cách ly' : 'chấn thương'} nhưng chưa đổi được khẩu phần sang chế độ ăn khi bệnh: ${reason} Bữa ăn vẫn như cũ; hệ thống tự đổi khi xử lý xong.`
+    : `⚠️ ${horse.name} đã đủ điều kiện nhưng chưa đổi được khẩu phần về như cũ: ${reason} Hệ thống tự đổi khi xử lý xong.`;
+  await notifyHorseStaff({ staff: 'trainer', horse: horse._id, type: 'ration_review', severity: 'warning', message });
+  await pushNotification({ recipientRole: ROLES.MANAGER, horse: horse._id, type: 'ration_review', severity: 'warning', message });
+}
+
+/** Hourly: the horses whose meals may still have to follow their health are tried again. */
+async function retryHealthDiets() {
+  const [sick, onSickDays, onSickRations] = await Promise.all([
+    Horse.distinct('_id', { healthStatus: { $in: SICK_STATUSES }, isArchived: { $ne: true } }),
+    FeedingCalendarDay.distinct('horse', { diet: 'sick', date: { $gte: dateKey(new Date()) } }),
+    FeedingSchedule.distinct('horse', { 'healthyItems.0': { $exists: true } }),
+  ]);
+  for (const id of new Set([...sick, ...onSickDays, ...onSickRations].map(String))) {
+    // eslint-disable-next-line no-await-in-loop
+    await followHealthDiet(id);
+  }
+}
+
+async function applyHealthDiet(horseId) {
   const horse = await Horse.findById(horseId).select('name healthStatus isArchived');
   if (!horse || horse.isArchived) return null;
   const plan = await TrainingPlan.findOne({ horse: horseId, status: 'active' });
@@ -350,18 +403,31 @@ async function followHealthDiet(horseId) {
   if (ahead.length) {
     if (ahead.every((d) => (d.diet || 'normal') === diet)) return null;
     const preview = await buildCalendar(plan);
-    if (preview.problems.length) return null;
+    if (preview.problems.length) {
+      await tellDietStuck(horse, diet, preview.problems.join(' '));
+      return null;
+    }
     const notice = diet === 'sick'
       ? `🍽️ ${horse.name} đang ${horse.healthStatus === 'quarantined' ? 'cách ly' : 'chấn thương'}: từ hôm nay khẩu phần chuyển sang chế độ ăn khi bệnh (nhiều cỏ, ít thức ăn tinh, không điện giải hay dầu). Xem bữa hôm nay trong mục Cho ăn.`
       : `🍽️ ${horse.name} đã đủ điều kiện: khẩu phần về lại theo kế hoạch tập từ hôm nay. Xem bữa hôm nay trong mục Cho ăn.`;
-    const saved = await saveDays({ plan, preview, actor: { _id: ahead[0].approvedBy }, fresh: true, system: true, notice });
-    if (saved.error) return null;
+    const saved = await saveDays({ plan, preview, actor: { _id: ahead[0].approvedBy }, system: true, notice });
+    if (saved.error) {
+      await tellDietStuck(horse, diet, saved.error);
+      return null;
+    }
   } else {
     if (!rations.length) return null;
     const onSick = rations.some((r) => r.healthyItems?.length);
-    if (diet === 'sick' && !onSick) {
-      const { meals } = await suggestMeal({ horseId });
-      for (const r of rations) {
+    if (diet === 'sick') {
+      const toChange = rations.filter((r) => r.items?.length && !r.healthyItems?.length);
+      if (!toChange.length) return null;
+      const { meals, daily } = await suggestMeal({ horseId });
+      // The sick diet is forage first: without any, the horse keeps the meals it has for now.
+      if (!daily.forage) {
+        await tellDietStuck(horse, diet, 'Kho chưa có cỏ đang sử dụng, đơn vị kg.');
+        return null;
+      }
+      for (const r of toChange) {
         const meal = meals.find((m) => m.slot === r.mealTime);
         if (!meal?.items.length) continue;
         r.healthyItems = r.items;
@@ -434,4 +500,4 @@ async function suggestMeal({ horseId, slot }) {
   };
 }
 
-module.exports = { calendarView, confirmCalendar, suggestMeal, followHealthDiet, dateKey };
+module.exports = { calendarView, confirmCalendar, suggestMeal, followHealthDiet, retryHealthDiets, dateKey };

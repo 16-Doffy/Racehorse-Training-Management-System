@@ -58,28 +58,42 @@ async function moveInto({ horseId, target, homeStall }) {
   });
 }
 
-/** Once a day at most: the Manager is told a move is waiting for a free stall. */
-async function tellWaiting(horse, kind, where) {
+/** Once a day at most: the Manager is told a move is waiting (for a free stall, or `failed`: the move went wrong). */
+async function tellWaiting(horse, kind, where, { failed = false } = {}) {
   const since = new Date(Date.now() - RETRY_NOTICE_HOURS * 3600 * 1000);
-  if (await Notification.exists({ recipientRole: ROLES.MANAGER, horse: horse._id, type: 'horse_assigned', createdAt: { $gte: since }, message: { $regex: 'chưa có .* trống' } })) return;
+  if (await Notification.exists({ recipientRole: ROLES.MANAGER, horse: horse._id, type: 'horse_assigned', createdAt: { $gte: since }, message: { $regex: 'chưa có .* trống|chưa chuyển được' } })) return;
   await pushNotification({
     recipientRole: ROLES.MANAGER,
     horse: horse._id,
     type: 'horse_assigned',
     severity: 'warning',
-    message: `⚠️ ${horse.name} cần sang ${KIND_LABELS[kind]} (${where}) nhưng chưa có ${KIND_LABELS[kind]} trống — thêm chuồng hoặc chuyển tay; hệ thống sẽ tự chuyển khi có chỗ.`,
+    message: failed
+      ? `⚠️ ${horse.name} cần sang ${KIND_LABELS[kind]} (${where}) nhưng hệ thống chưa chuyển được — sẽ tự thử lại mỗi giờ; cần gấp thì chuyển tay.`
+      : `⚠️ ${horse.name} cần sang ${KIND_LABELS[kind]} (${where}) nhưng chưa có ${KIND_LABELS[kind]} trống — thêm chuồng hoặc chuyển tay; hệ thống sẽ tự chuyển khi có chỗ.`,
   });
+}
+
+/** The move waits: kept for the next try, and the Manager told. */
+async function waitForStall(assignment, horse, kind, where, options) {
+  if (assignment.pendingMove !== kind) await StableAssignment.updateOne({ _id: assignment._id }, { $set: { pendingMove: kind } });
+  await tellWaiting(horse, kind, where, options);
+  return { waiting: kind };
 }
 
 /**
  * Puts the horse where its health says, if it is not there. Returns what happened:
  * { moved: { from, to } } | { waiting: kind } | null (nothing to do).
+ * `retrying`: called for a horse already waiting, so the stall it leaves is not offered round again here.
  */
-async function followHealth(horseId, { reason = 'health', actor = null } = {}) {
+async function followHealth(horseId, { reason = 'health', actor = null, retrying = false } = {}) {
   if (!horseId) return null;
   const horse = await Horse.findById(horseId).select('name healthStatus isArchived');
   const kind = horse && !horse.isArchived ? WANTED[horse.healthStatus] : null;
-  if (!kind) return null;
+  if (!kind) {
+    // Under monitoring it stays where it is, so it no longer waits for anything.
+    await StableAssignment.updateOne({ horse: horseId, pendingMove: { $ne: null } }, { $set: { pendingMove: null } });
+    return null;
+  }
   const assignment = await StableAssignment.findOne({ horse: horseId }).populate('stall', 'code zone type').populate('homeStall', 'code zone type isActive status');
   // A horse with no stall on the map (none, or a free-text one) is placed by the Manager.
   if (!assignment?.stall) return null;
@@ -108,13 +122,10 @@ async function followHealth(horseId, { reason = 'health', actor = null } = {}) {
     if (here === 'standard') keep = assignment.stall._id;
   }
   const from = assignment.stall.code;
-  if (!target) {
-    if (assignment.pendingMove !== kind) await StableAssignment.updateOne({ _id: assignment._id }, { $set: { pendingMove: kind } });
-    await tellWaiting(horse, kind, `đang ở ${from}`);
-    return { waiting: kind };
-  }
+  if (!target) return waitForStall(assignment, horse, kind, `đang ở ${from}`);
   const moved = await moveInto({ horseId, target, homeStall: keep });
-  if (!moved) return null;
+  // Another horse took the stall at the last moment: this one waits like any other.
+  if (!moved) return waitForStall(assignment, horse, kind, `đang ở ${from}`);
 
   const to = moved.stall.code;
   const why = kind === 'standard' ? 'đã đủ điều kiện' : kind === 'isolation' ? 'cần cách ly' : 'đang chấn thương';
@@ -140,19 +151,57 @@ async function followHealth(horseId, { reason = 'health', actor = null } = {}) {
   await ensureFeedingTasks({ horseIds: [horse._id] });
   for (const t of await Treatment.find({ horse: horse._id, status: 'ongoing' })) await syncCareTasks(t); // eslint-disable-line no-await-in-loop
   for (const r of await CareRoutine.find({ horse: horse._id, status: 'active' })) await syncRoutineTasks(r); // eslint-disable-line no-await-in-loop
-  if (actor) await logAction({ actorId: actor, action: 'stableAssignment.follow_health', targetModel: 'StableAssignment', targetId: assignment._id, metadata: { horse: horse._id, from, to, kind, reason } });
+  // Every move is on the record; no actor means the system did it by itself (an injury marker, a retry).
+  await logAction({ actorId: actor, action: 'stableAssignment.follow_health', targetModel: 'StableAssignment', targetId: assignment._id, metadata: { horse: horse._id, from, to, kind, reason, bySystem: !actor } });
+  // The stall it left may be the one another horse is waiting for.
+  if (!retrying) await moveWaitingHorses();
   return { moved: { from, to } };
 }
 
-/** Hourly: the moves that waited for a free stall are tried again. */
+/** Hourly: the moves that waited are tried again. One that fails does not stop the others. */
 async function retryWaitingMoves() {
   const waiting = await StableAssignment.find({ pendingMove: { $ne: null } }).select('horse');
   let moved = 0;
   for (const a of waiting) {
-    // eslint-disable-next-line no-await-in-loop
-    if ((await followHealth(a.horse, { reason: 'retry' }))?.moved) moved += 1;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      if ((await followHealth(a.horse, { reason: 'retry', retrying: true }))?.moved) moved += 1;
+    } catch (err) {
+      console.error(`[health-placement] retry failed for ${a.horse}:`, err.message);
+    }
   }
   return moved;
 }
 
-module.exports = { followHealth, retryWaitingMoves, freeStalls };
+/** A stall may have come free (a horse left it, one was added or back in use): those waiting go now. Never fails the caller. */
+async function moveWaitingHorses() {
+  try {
+    return await retryWaitingMoves();
+  } catch (err) {
+    console.error('[health-placement] moving the waiting horses failed:', err.message);
+    return 0;
+  }
+}
+
+/**
+ * followHealth for a caller whose own work is already done (the vet's exam is saved): a move that goes
+ * wrong must not fail it. The move then waits for the hourly run and the Manager is told.
+ */
+async function followHealthSafely(horseId, options) {
+  try {
+    return await followHealth(horseId, options);
+  } catch (err) {
+    console.error(`[health-placement] move failed for ${horseId}:`, err.message);
+    try {
+      const horse = await Horse.findById(horseId).select('name healthStatus');
+      const kind = WANTED[horse?.healthStatus];
+      const assignment = kind ? await StableAssignment.findOne({ horse: horseId }).populate('stall', 'code') : null;
+      if (assignment) return await waitForStall(assignment, horse, kind, `đang ở ${assignment.stall?.code || assignment.stableBlock}`, { failed: true });
+    } catch (noted) {
+      console.error(`[health-placement] could not note the failed move of ${horseId}:`, noted.message);
+    }
+    return null;
+  }
+}
+
+module.exports = { followHealth, followHealthSafely, retryWaitingMoves, moveWaitingHorses, freeStalls };

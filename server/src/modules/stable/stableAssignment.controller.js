@@ -147,6 +147,8 @@ const upsertAssignment = asyncHandler(async (req, res) => {
     targetId: assignment._id,
     metadata: { stableBlock: block, stall: stall ? stall.code : null, caretakerChanged: changedCaretaker },
   });
+  // The stall this horse left may be the one another horse is waiting for.
+  await require('./healthPlacement.service').moveWaitingHorses();
   return created(res, assignment, 'Stable assignment saved.');
 });
 
@@ -154,6 +156,7 @@ const deleteAssignment = asyncHandler(async (req, res) => {
   const assignment = await StableAssignment.findByIdAndDelete(req.params.id);
   if (!assignment) return fail(res, 'Assignment not found.', 404);
   await logAction({ actorId: req.user._id, action: 'stableAssignment.delete', targetModel: 'StableAssignment', targetId: assignment._id });
+  await require('./healthPlacement.service').moveWaitingHorses();
   return ok(res, null, 'Stable assignment removed.');
 });
 

@@ -60,8 +60,8 @@ async function syncHorseHealthStatus(horseId) {
     horse.healthStatus = target;
     await horse.save();
     // The horse moves with its health: to a recovery stall when injured, back to its own stall when fit.
-    const { followHealth } = require('../stable/healthPlacement.service');
-    await followHealth(horseId, { reason: 'injuries' });
+    const { followHealthSafely } = require('../stable/healthPlacement.service');
+    await followHealthSafely(horseId, { reason: 'injuries' });
     // And its meals: the sick diet while injured, the usual ones once fit.
     await require('../feeding/feedingCalendar.service').followHealthDiet(horseId);
   }
