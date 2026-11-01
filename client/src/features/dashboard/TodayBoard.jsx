@@ -73,7 +73,7 @@ function MealDots({ meals }) {
 
 /** A horse's sessions today: time, kind, and how it went once run; each opens its sessions page. */
 function Sessions({ list, horseId }) {
-  if (!list.length) return <span className="text-xs text-gray-400">Chưa có buổi hôm nay</span>;
+  if (!list.length) return <span className="block text-xs text-gray-400">Chưa có buổi hôm nay</span>;
   return (
     <div className="space-y-0.5">
       {list.map((s) => (
@@ -106,6 +106,7 @@ function HorseName({ row }) {
       <Link to={`/horses/${row.id}`} className="truncate font-semibold" title={row.name}>
         {row.name}
       </Link>
+      {row.held && <Tag color="volcano" className="!m-0 shrink-0 !text-[11px]">Chờ bác sĩ khám</Tag>}
       {row.health !== 'eligible' && HEALTH_LABELS[row.health] && (
         <Tag color={HEALTH_COLORS[row.health]} className="!m-0 shrink-0 !text-[11px]">
           {HEALTH_LABELS[row.health]}
@@ -121,8 +122,9 @@ function HorseName({ row }) {
  * that need something — held back, a meal missed, a session blocked, missed or stopped, a step still to
  * do — come first, and "Cần xử lý" shows only them.
  */
-export default function TodayBoard({ horses = [], sessions = [] }) {
+export default function TodayBoard({ horses = [], sessions = [], compact = false }) {
   const screens = Grid.useBreakpoint();
+  const tableView = screens.lg;
   const [filter, setFilter] = useState('all');
   const today = dayjs().format('YYYY-MM-DD');
   const { data: checklistData } = useQuery({ queryKey: ['horses', 'checklist'], queryFn: () => horsesApi.checklists() });
@@ -155,6 +157,7 @@ export default function TodayBoard({ horses = [], sessions = [] }) {
       id,
       name: h.name,
       health: h.healthStatus,
+      held: Boolean(h.examHold),
       coat: coatFor({ breed: h.breed, color: h.color }),
       sessions: own,
       first: own[0] ? new Date(own[0].scheduledAt).getTime() : Infinity,
@@ -166,7 +169,7 @@ export default function TodayBoard({ horses = [], sessions = [] }) {
   allRows.sort((a, b) => Number(b.needs) - Number(a.needs) || a.first - b.first || a.name.localeCompare(b.name, 'vi'));
   const needCount = allRows.filter((r) => r.needs).length;
   const rows = filter === 'needs' ? allRows.filter((r) => r.needs) : allRows;
-  const [shown, more] = useFirst(rows, 8);
+  const [shown, more] = useFirst(rows, compact ? 4 : 8);
   const weekday = WEEK_DAYS.find((w) => w.day === dayjs().day())?.short;
   const filterSwitch = horses.length > 0 && (
     <Segmented
@@ -189,8 +192,8 @@ export default function TodayBoard({ horses = [], sessions = [] }) {
 
   return (
     <Card
-      className="shadow-xs border-[#E5DEC9] rounded-xl overflow-hidden"
-      styles={{ title: { whiteSpace: 'normal' }, header: { height: 'auto', paddingBlock: 10 }, body: { padding: screens.lg ? 0 : '4px 12px 8px' } }}
+      className="st-today-board shadow-xs border-[#E5DEC9] rounded-xl overflow-hidden"
+      styles={{ title: { whiteSpace: 'normal' }, header: { height: 'auto', paddingBlock: 10 }, body: { padding: tableView ? 0 : '4px 16px 12px' } }}
       title={
         <div>
           <span className="font-semibold text-gray-900 text-[15px]">Bảng việc hôm nay</span>
@@ -199,18 +202,32 @@ export default function TodayBoard({ horses = [], sessions = [] }) {
           </p>
         </div>
       }
-      extra={screens.md && filterSwitch}
+      extra={!compact && screens.md && filterSwitch}
     >
       {/* On a phone the switch goes under the title, which would otherwise be squeezed to a word a line. */}
-      {!screens.md && filterSwitch && <div className="pb-1 pt-2">{filterSwitch}</div>}
+      {(compact || !screens.md) && filterSwitch && <div className="pb-2 pt-2">{filterSwitch}</div>}
       {!horses.length ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có ngựa nào giao cho bạn." className="!py-6" />
       ) : !rows.length ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không ngựa nào cần xử lý lúc này." className="!py-6" />
-      ) : screens.lg ? (
-        <Table rowKey="id" size="small" columns={columns} dataSource={shown} pagination={false} scroll={{ x: 'max-content' }} />
+      ) : tableView ? (
+        <Table
+          rowKey="id"
+          size="small"
+          columns={compact ? [{ key: 'work', title: 'Việc hôm nay', render: (_, r) => (
+            <div className="st-day-card space-y-2">
+              <div className="flex items-center justify-between gap-2"><HorseName row={r} /><MealDots meals={r.meals} /></div>
+              <Sessions list={r.sessions} horseId={r.id} />
+              <HorseNextStep checklist={r.checklist} />
+            </div>
+          ) }] : columns}
+          showHeader={!compact}
+          dataSource={shown}
+          pagination={false}
+          scroll={compact ? undefined : { x: 'max-content' }}
+        />
       ) : (
-        <ul className="m-0 list-none divide-y divide-gray-100 p-0">
+        <ul className={`m-0 list-none p-0 ${compact ? 'st-day-worklist' : 'divide-y divide-gray-100'}`}>
           {shown.map((r) => (
             <li key={r.id} className="space-y-1.5 py-2.5">
               <div className="flex items-center justify-between gap-2">
@@ -224,7 +241,7 @@ export default function TodayBoard({ horses = [], sessions = [] }) {
         </ul>
       )}
       {(more || horses.length > 0) && (
-        <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-gray-500 ${screens.lg ? 'px-4 py-2' : 'pt-1'}`}>
+        <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-gray-500 ${tableView ? 'px-4 py-2' : 'pt-2'}`}>
           <span>{more}</span>
           <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
             {LEGEND.map((k) => (

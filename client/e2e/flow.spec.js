@@ -193,8 +193,16 @@ for (const role of ['manager', 'trainer', 'vet', 'owner', 'groom']) {
     expect(errors).toEqual([]);
   });
 }
-test('the light/dark switch changes the canvas, stays after a reload and takes the popups along', async ({ page }) => {
+test('the Head Trainer starts on the dark canvas until they choose, and their choice stays', async ({ page }) => {
   await login(page, 'trainer');
+  await expect(page.locator('.is-dark-canvas.staff-dark')).toHaveCount(1);
+  await page.locator('.ant-segmented').getByText('Sáng', { exact: true }).click();
+  await expect(page.locator('.is-dark-canvas')).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.is-dark-canvas')).toHaveCount(0);
+});
+test('the light/dark switch changes the canvas, stays after a reload and takes the popups along', async ({ page }) => {
+  await login(page, 'manager');
   await expect(page.locator('.is-dark-canvas')).toHaveCount(0);
   await page.locator('.ant-segmented').getByText('Tối', { exact: true }).click();
   await expect(page.locator('.is-dark-canvas.staff-dark')).toHaveCount(1);

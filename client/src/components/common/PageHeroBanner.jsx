@@ -1,7 +1,18 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 import loginBg from '../../assets/login-bg.jpg';
 import { ROLES } from '../../constants/roles';
+import { getMenuByRole } from '../../layouts/menuConfig';
+
+// What each step of the trainer's work is for, when the page says nothing itself.
+const STEP_NOTES = {
+  1: 'Rà soát ngựa được giao, kiểm tra tình trạng khám của bác sĩ và mục tiêu thi đấu.',
+  2: 'Thiết lập dinh dưỡng từng bữa theo giai đoạn tập và giao việc chăm sóc dài hạn cho nhân viên.',
+  3: 'Lấy kết quả chạy thử làm bằng chứng để quyết định tham gia hoặc rút lui an toàn.',
+  4: 'Phân kỳ 4 giai đoạn: sức bền, sức mạnh, tốc độ, tinh chỉnh; tự sinh lịch tập tuần.',
+  5: 'Vận hành lịch tuần, kiểm tra sẵn sàng 4 cổng, theo dõi trực tiếp và chấm điểm phong độ.',
+};
 
 /**
  * Reusable Hero Banner for Team 8 WDP301.
@@ -17,10 +28,15 @@ export default function PageHeroBanner({
   statusBadge,
   actionButton,
   stats = [],
+  kicker,
+  kickerNote,
   className = '',
 }) {
   const userRole = useSelector((state) => state.auth?.user?.role);
   const isStaff = userRole === ROLES.MANAGER || userRole === ROLES.HEAD_TRAINER;
+  const { pathname } = useLocation();
+  // The trainer's pages are steps of one job (menuConfig): the header carries the step's number.
+  const step = isStaff ? getMenuByRole(userRole).find((m) => m.step && m.path === pathname)?.step : null;
 
   if (!isStaff) {
     return (
@@ -86,19 +102,28 @@ export default function PageHeroBanner({
   return (
     <div
       className={`st-hero-banner px-4 py-3.5 sm:px-5 mb-4 ${className}`}
+      data-step={step || undefined}
     >
       {/* Wraps instead of squeezing: the title keeps 280px, the counts and the actions move to the next line. */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5">
+        {step && <span className="st-hero-step" aria-label={`Bước ${step}`}>{step}</span>}
         <div className="min-w-0 flex-[1_1_280px]">
+          {step && <span className="st-hero-steplabel">Bước {step}</span>}
+          {kicker && (
+            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+              <span className="st-hero-kicker">{kicker}</span>
+              {kickerNote && <span className="text-xs" style={{ color: 'var(--st-ink-secondary)' }}>{kickerNote}</span>}
+            </div>
+          )}
           <h1
-            className="!m-0 !text-xl sm:!text-[22px] !leading-tight font-semibold tracking-tight text-balance"
-            style={{ fontFamily: "'Lora', Georgia, serif", color: 'var(--st-ink)' }}
+            className={`!m-0 !leading-tight !font-extrabold tracking-tight text-balance ${kicker ? '!text-2xl lg:!text-3xl' : '!text-xl sm:!text-[22px]'}`}
+            style={{ fontFamily: 'inherit', color: 'var(--st-ink)' }}
           >
             {title}
           </h1>
-          {subtitle && (
+          {(subtitle || STEP_NOTES[step]) && (
             <p className="m-0 mt-0.5 hidden max-w-2xl text-xs leading-snug sm:block" style={{ color: 'var(--st-ink-secondary)' }}>
-              {subtitle}
+              {subtitle || STEP_NOTES[step]}
             </p>
           )}
         </div>

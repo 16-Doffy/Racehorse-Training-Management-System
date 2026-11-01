@@ -1,0 +1,520 @@
+/* Scoped to the two staff workspaces; no global reset or prototype dependencies. */
+.forest-layout.staff-workspace.is-canvas {
+  --st-bg-page: #F8FAFC;
+  --st-card: #FFFFFF;
+  --st-card-elevated: #FFFFFF;
+  --st-card-header: #F8FAFC;
+  --st-sunk: #F1F5F9;
+  --st-border: #E2E8F0;
+  --st-border-strong: #CBD5E1;
+  --st-border-subtle: #E2E8F0;
+  --st-ink: #0F172A;
+  --st-ink-secondary: #475569;
+  --st-ink-muted: #64748B;
+  --st-primary: #047857;
+  --st-primary-hover: #065F46;
+  --st-primary-soft: #ECFDF5;
+  --st-shadow-card: 0 1px 3px rgb(15 23 42 / 4%);
+  --st-shadow-hover: 0 3px 10px rgb(15 23 42 / 7%);
+  background: var(--st-bg-page) !important;
+  color: var(--st-ink);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas,
+body.wdp-staff-workspace.wdp-dark-portals {
+  --st-bg-page: #0B0F19;
+  --st-card: #0F172A;
+  --st-card-elevated: #0F172A;
+  --st-card-header: #162033;
+  --st-sunk: #162033;
+  --st-border: #334155;
+  --st-border-strong: #475569;
+  --st-border-subtle: #334155;
+  --st-ink: #F1F5F9;
+  --st-ink-secondary: #CBD5E1;
+  --st-ink-muted: #94A3B8;
+  --st-primary: #6EE7B7;
+  --st-primary-hover: #A7F3D0;
+  --st-primary-soft: #113B32;
+  --st-shadow-card: 0 1px 3px rgb(0 0 0 / 12%);
+}
+
+.forest-layout.staff-workspace.is-canvas > .ant-layout {
+  background: var(--st-bg-page) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas .st-top-bar {
+  background: var(--st-card) !important;
+  border-color: var(--st-border);
+  backdrop-filter: none;
+}
+
+.forest-layout.staff-workspace.is-canvas .st-hero-banner {
+  background: var(--st-card);
+  border-color: var(--st-border);
+  border-left-color: var(--st-primary);
+  border-radius: 12px;
+  margin-bottom: 0;
+}
+
+/* The legacy canvas rules are embedded after the stylesheets and use !important.
+   Add the role scope and canvas state so the new surfaces win only in this workspace. */
+.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) :is(.ant-card, .ant-card-body, .ant-table) {
+  background-color: var(--st-card) !important;
+  border-color: var(--st-border) !important;
+  box-shadow: none !important;
+}
+.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) :is(.ant-card-head, .ant-table-thead > tr > th) {
+  background-color: var(--st-card-header) !important;
+  border-color: var(--st-border) !important;
+  color: var(--st-ink) !important;
+}
+.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table-container {
+  border-color: var(--st-border) !important;
+}
+.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table-tbody > tr:hover > td {
+  background-color: var(--st-sunk) !important;
+}
+.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .st-kpi-grid { background: transparent !important; }
+
+/* Important Tailwind button utilities live in a layer; keep these in that same layer
+   so staff theme colors also override older !bg-gold utilities on individual pages. */
+@layer utilities {
+  .forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous) {
+    background-color: var(--st-primary) !important;
+    border-color: var(--st-primary) !important;
+    color: #FFFFFF !important;
+  }
+  .forest-layout.staff-workspace.is-canvas.is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous) {
+    color: #052E24 !important;
+  }
+  .forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous):hover {
+    background-color: var(--st-primary-hover) !important;
+    border-color: var(--st-primary-hover) !important;
+  }
+  .forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous) > span {
+    color: inherit !important;
+    background-color: transparent !important;
+  }
+}
+
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box [class~="bg-[#EAE3D5]"] {
+  background-color: var(--st-sunk) !important;
+  color: var(--st-ink-secondary) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas :is(h1, h2.ant-typography, h3.ant-typography) {
+  font-family: inherit;
+}
+
+.forest-layout.staff-workspace.is-canvas .st-section-header__title {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.forest-layout.staff-workspace.is-canvas .ant-card {
+  background: var(--st-card);
+  border-color: var(--st-border) !important;
+  box-shadow: var(--st-shadow-card);
+}
+
+.forest-layout.staff-workspace.is-canvas .ant-card-head {
+  background: var(--st-card-header);
+  border-color: var(--st-border);
+}
+
+.forest-layout.staff-workspace.is-canvas:not(.is-dark-canvas) :is([class~="bg-[#FAF7F0]"], [class~="bg-[#FFFDF8]"], [class~="bg-[#F4EFE6]"]) {
+  background-color: var(--st-card) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas:not(.is-dark-canvas) :is([class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"], [class~="bg-[#EAE3D5]"]) {
+  background-color: var(--st-sunk) !important;
+}
+
+/* Win over the existing warm-canvas compatibility rules without changing other roles. */
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is(.ant-card, .ant-card-body, .ant-table, .ant-table-tbody > tr > td) {
+  background-color: var(--st-card) !important;
+  border-color: var(--st-border) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is(.ant-card-head, .ant-table-thead > tr > th, .wc-sticky.wc-sticky) {
+  background-color: var(--st-card-header) !important;
+  border-color: var(--st-border) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box a:not(.ant-btn) {
+  color: var(--st-primary) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box .ant-btn:not(.ant-btn-primary):not(.ant-btn-dangerous) {
+  background-color: var(--st-card) !important;
+  color: var(--st-ink) !important;
+  border-color: var(--st-border-strong) !important;
+}
+
+.st-manager-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.st-manager-overview > *, .st-stable-overview-body > * { min-width: 0; }
+.st-stable-overview-body { display: grid; gap: 16px; }
+
+.st-trainer-overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+.st-trainer-overview > * { min-width: 0; }
+.st-day-worklist { display: grid; gap: 10px; }
+.st-day-worklist > li { padding: 12px; border: 1px solid var(--st-border); background: var(--st-sunk); border-radius: 10px; }
+.st-day-worklist a { white-space: normal; }
+
+.st-plan-focus { padding: 20px; margin-bottom: 20px; background: var(--st-card); border: 1px solid var(--st-border); border-radius: 12px; }
+.st-plan-focus-region { scroll-margin-top: 80px; }
+.st-plan-focus-header { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.st-focus-action { display: inline-flex; flex-shrink: 0; padding: 8px 12px; border: 1px solid var(--st-border-strong); border-radius: 8px; color: var(--st-primary); font-size: 13px; font-weight: 600; }
+.st-phase-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; list-style: none; margin: 0; padding: 0; }
+.st-phase-card { padding: 14px; border: 1px solid var(--st-border); border-radius: 10px; background: var(--st-sunk); min-width: 0; }
+.st-phase-card.is-current { border-color: var(--st-primary); box-shadow: inset 0 3px var(--st-primary); }
+.st-phase-state { display: block; min-height: 20px; margin-bottom: 8px; font-size: 11px; color: var(--st-ink-secondary); }
+.st-phase-card.is-current .st-phase-state { color: var(--st-primary); font-weight: 600; }
+.st-week-scroll { max-width: 100%; overflow-x: auto; border-radius: 10px; }
+.st-week-template { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); gap: 8px; }
+.st-week-day { padding: 12px; border: 1px solid var(--st-border); border-radius: 8px; background: var(--st-sunk); }
+.st-week-day-label { font-size: 12px; font-weight: 600; color: var(--st-ink-secondary); }
+.st-care-nav { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--st-border); padding-bottom: 12px; }
+.st-care-nav a { padding: 7px 12px; border-radius: 7px; background: var(--st-sunk); color: var(--st-primary); font-size: 13px; font-weight: 600; }
+.st-care-section { scroll-margin-top: 140px; }
+
+.st-live-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+
+.st-live-figures > div { min-width: 0; }
+.st-live-figures dt { color: var(--st-ink-secondary); font-size: 11px; }
+.st-live-figures dd {
+  margin: 2px 0 0;
+  color: var(--st-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+.st-live-figures small { display: block; font-size: 11px; font-weight: 400; color: var(--st-ink-secondary); }
+.st-live-figures .st-live-warning dd { color: var(--st-bad-ink); }
+.st-live-warning-note { color: var(--st-bad-ink); font-size: 12px; font-weight: 600; margin: 6px 0 0; }
+
+@media (min-width: 1280px) {
+  .st-manager-overview { grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); }
+  .st-trainer-overview { grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr); }
+  .st-phase-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1600px) {
+  .st-manager-overview .st-stable-overview-body { grid-template-columns: minmax(0, 1.5fr) minmax(200px, 1fr); }
+}
+
+@media (max-width: 639px) {
+  .staff-workspace .st-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .staff-workspace .st-kpi-tile { padding: 12px; }
+  .staff-workspace .st-kpi-tile > div:first-child > span:last-child { display: none; }
+  /* Keep the narrow 3D preview visible; full instructions remain in Cách điều khiển. */
+  .staff-workspace .st-stable-overview-body button.absolute.left-3 { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .staff-workspace :is(.animate-pulse, .st-kpi-tile, .st-live-figures) { animation: none; transition: none; }
+}
+@media (max-width: 639px) {
+  .staff-workspace .st-care-tabs > .ant-tabs-nav .ant-tabs-nav-list { width: 100%; }
+  .staff-workspace .st-care-tabs > .ant-tabs-nav .ant-tabs-tab {
+    flex: 1;
+    margin: 0;
+    padding: 12px 8px;
+    justify-content: center;
+  }
+  .staff-workspace .st-care-tabs > .ant-tabs-nav .ant-tabs-tab-btn {
+    white-space: normal;
+    text-align: center;
+    max-width: 104px;
+    line-height: 1.5;
+  }
+}
+
+/* The 2026 redesign of the two workspaces: slate and emerald, Plus Jakarta Sans, JetBrains Mono for figures.
+   These come last on purpose: same selectors as above, later wins. */
+.forest-layout.staff-workspace.is-canvas {
+  --st-bg-page: #F4F7FB;
+  --st-card-header: #FFFFFF;
+  --st-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', monospace;
+  font-family: 'Plus Jakarta Sans', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas,
+body.wdp-staff-workspace.wdp-dark-portals {
+  --st-bg-page: #0B0F19;
+  --st-card-header: #0F172A;
+  --st-border: #243044;
+  --st-border-subtle: #243044;
+}
+
+/* Sidebar */
+.forest-layout.staff-workspace.is-canvas .canvas-sider {
+  background: #0B0F19 !important;
+  border-right: 1px solid #1E293B !important;
+}
+.forest-layout.staff-workspace.is-canvas .canvas-sider .border-t,
+.forest-layout.staff-workspace.is-canvas .canvas-sider .border-b { border-color: #1E293B !important; }
+.forest-layout.staff-workspace.is-canvas .canvas-sider .ant-avatar { background-color: #059669 !important; color: #FFFFFF !important; }
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu > div:first-child { color: #94A3B8 !important; }
+.st-brand-mark {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 10px;
+  background: #059669; color: #FFFFFF; font-size: 18px;
+}
+.st-brand-name { color: #F8FAFC; font-size: 14px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.2; }
+.st-brand-role { color: #94A3B8; font-size: 11px; font-weight: 500; margin-top: 2px; }
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item { color: #CBD5E1; }
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item:hover:not(.ant-menu-item-selected) {
+  background: rgb(148 163 184 / 12%) !important;
+  border-color: transparent !important;
+  color: #F8FAFC !important;
+}
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected {
+  background: #047857 !important;
+  border: 1px solid #047857 !important;
+  border-left: 1px solid #047857 !important;
+}
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected span,
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected .anticon { color: #FFFFFF !important; }
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected [aria-label^="Bước"] {
+  background: rgb(255 255 255 / 22%) !important;
+  border-color: transparent !important;
+}
+
+/* Page header */
+.forest-layout.staff-workspace.is-canvas .st-hero-banner {
+  --st-ink: #F8FAFC;
+  --st-ink-secondary: #CBD5E1;
+  --st-sunk: rgb(255 255 255 / 8%);
+  --st-border: rgb(255 255 255 / 16%);
+  background: linear-gradient(100deg, #0F172A 0%, #1E293B 58%, #064E3B 100%);
+  border: 1px solid rgb(148 163 184 / 18%);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px -14px rgb(15 23 42 / 45%);
+  color: #F8FAFC;
+  padding: 20px 24px;
+  margin-bottom: 4px;
+}
+.forest-layout.staff-workspace.is-canvas .st-hero-banner .ant-btn-default {
+  background: rgb(255 255 255 / 8%) !important;
+  border-color: rgb(255 255 255 / 28%) !important;
+  color: #F8FAFC !important;
+}
+.st-hero-step {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 38px; height: 38px; border-radius: 10px;
+  background: #10B981; color: #04231A;
+  font-family: var(--st-mono); font-size: 16px; font-weight: 700;
+}
+.st-hero-kicker {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 10px; border-radius: 999px;
+  background: rgb(16 185 129 / 18%); border: 1px solid rgb(110 231 183 / 30%);
+  color: #6EE7B7; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.st-hero-kicker::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #34D399; }
+
+/* Cards, tiles, tables */
+.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-card {
+  border-radius: 16px !important;
+  box-shadow: 0 10px 30px -14px rgb(15 23 42 / 10%), 0 1px 3px rgb(15 23 42 / 4%) !important;
+}
+.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table-thead > tr > th {
+  background-color: var(--st-sunk) !important;
+  font-weight: 700 !important;
+  font-size: 12px;
+}
+.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table-container { border-radius: 12px !important; }
+.forest-layout.staff-workspace.is-canvas .ant-card-head-title { font-weight: 700; }
+.forest-layout.staff-workspace.is-canvas .ant-tag { border-radius: 999px; font-weight: 600; }
+.forest-layout.staff-workspace.is-canvas .st-kpi-tile { border-radius: 16px; padding: 16px 18px; }
+.forest-layout.staff-workspace.is-canvas .st-kpi-tile :is(.tabular-nums, .text-2xl) { font-family: var(--st-mono); }
+.forest-layout.staff-workspace.is-canvas .st-kpi-tile .text-2xl { font-size: 30px; line-height: 36px; }
+.forest-layout.staff-workspace.is-canvas .st-kpi-tile:is([aria-pressed="true"], .is-active) { background: #ECFDF5; box-shadow: none; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas .st-kpi-tile:is([aria-pressed="true"], .is-active) { background: rgb(16 185 129 / 12%); }
+.forest-layout.staff-workspace.is-canvas .ant-table-cell .tabular-nums { font-family: var(--st-mono); }
+
+/* The Manager's queue: each waiting job its own card with its action */
+.st-queue-list { display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+.forest-layout .st-queue-row {
+  --queue-ink: var(--st-ink);
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--st-border);
+  background: var(--st-card);
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+}
+.forest-layout .st-queue-row:hover { border-color: var(--st-border-strong); }
+.st-queue-row__icon { flex: none; color: var(--queue-ink); font-size: 16px; }
+.st-queue-row__text { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
+.st-queue-row__title { color: var(--queue-ink); font-size: 13.5px; font-weight: 700; }
+.st-queue-row__desc { color: var(--st-ink-secondary); font-size: 12px; margin-top: 2px; }
+.st-queue-row__figure { display: flex; flex: none; flex-direction: column; align-items: flex-end; }
+.st-queue-row__count { color: var(--queue-ink); font-family: var(--st-mono); font-size: 18px; font-weight: 700; line-height: 1.1; }
+.st-queue-row__note { color: var(--st-ink-secondary); font-size: 11px; }
+.st-queue-row__action {
+  flex: none; padding: 6px 12px; border-radius: 8px;
+  background: var(--queue-ink); color: #FFFFFF;
+  font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.forest-layout .st-queue-row.is-amber { --queue-ink: #B45309; background: #FFFBEB; border-color: #FDE68A; }
+.forest-layout .st-queue-row.is-rose { --queue-ink: #BE123C; background: #FFF1F2; border-color: #FECDD3; }
+.forest-layout .st-queue-row.is-blue { --queue-ink: #1D4ED8; background: #EFF6FF; border-color: #BFDBFE; }
+.forest-layout.is-dark-canvas .st-queue-row.is-amber { --queue-ink: #FBBF24; background: rgb(245 158 11 / 10%); border-color: rgb(245 158 11 / 35%); }
+.forest-layout.is-dark-canvas .st-queue-row.is-rose { --queue-ink: #FB7185; background: rgb(244 63 94 / 10%); border-color: rgb(244 63 94 / 35%); }
+.forest-layout.is-dark-canvas .st-queue-row.is-blue { --queue-ink: #60A5FA; background: rgb(59 130 246 / 10%); border-color: rgb(59 130 246 / 35%); }
+.forest-layout.is-dark-canvas .st-queue-row:is(.is-amber, .is-rose, .is-blue) .st-queue-row__action { color: #0B0F19; }
+@media (max-width: 480px) {
+  .st-queue-row__desc { display: none; }
+}
+
+/* Live figures on the track: a dark panel in both looks, large coloured figures */
+.forest-layout.staff-workspace.is-canvas .st-live-section.st-live-section {
+  background: #0B0F19; border: 1px solid #1E293B; border-radius: 14px; padding: 12px 14px; color: #E2E8F0;
+}
+.forest-layout.staff-workspace.is-canvas .st-live-section.st-live-section :is(.text-gray-700, .text-gray-500) { color: #94A3B8 !important; }
+.forest-layout.staff-workspace.is-canvas .st-live-section.st-live-section a:not(.ant-btn) { color: #F8FAFC !important; }
+.forest-layout.staff-workspace.is-canvas .st-live-section.st-live-section li { border-color: #1E293B; }
+.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures dt { color: #94A3B8; }
+.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures dd { font-family: var(--st-mono); font-size: 26px; line-height: 1.15; }
+.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures small { color: #94A3B8; font-family: inherit; }
+.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures > div:nth-child(1) dd { color: #22D3EE; }
+.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures > div:nth-child(2) dd { color: #FB7185; }
+.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures > div:nth-child(3) dd { color: #34D399; }
+.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-warning-note { color: #FDA4AF; }
+
+/* Dark look: slate edges and emerald links, no trace of the old gold */
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark a:not(.ant-btn) { color: #6EE7B7 !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is(.ant-table-wrapper, .ant-table, .ant-table-container),
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is(.ant-table-wrapper, .ant-table, .ant-table-container) {
+  border-color: var(--st-border) !important;
+}
+@layer utilities {
+  .forest-layout.staff-workspace.is-canvas.is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous) {
+    background-color: #10B981 !important;
+    border-color: #10B981 !important;
+    color: #04231A !important;
+  }
+  .forest-layout.staff-workspace.is-canvas.is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous):hover {
+    background-color: #34D399 !important;
+    border-color: #34D399 !important;
+  }
+}
+
+/* The trainer's steps in the top bar */
+.forest-layout.staff-workspace.is-canvas .st-top-bar nav a:not([aria-current]) {
+  background: var(--st-sunk) !important;
+  border-color: var(--st-border) !important;
+}
+.forest-layout.staff-workspace.is-canvas .st-top-bar nav a:not([aria-current]) > span:first-child {
+  background: rgb(148 163 184 / 22%) !important;
+  color: var(--st-ink) !important;
+}
+
+/* Pages still carry !border-[#E5DEC9] and !rounded-xl: an important utility in a layer beats any unlayered rule. */
+@layer utilities {
+  .forest-layout.staff-workspace.is-canvas .ant-card {
+    border-color: var(--st-border) !important;
+    border-radius: 16px !important;
+  }
+}
+
+/* Table cells: the old forest green stops here */
+.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table-tbody > tr > td {
+  background-color: var(--st-card) !important;
+  border-bottom-color: var(--st-border) !important;
+}
+.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table-tbody > tr:hover > td {
+  background-color: var(--st-sunk) !important;
+}
+
+/* What the dark canvas still painted in forest and gold (MainLayout's staff-dark rules), in slate and emerald here. */
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box {
+  background-color: var(--st-card) !important;
+  border-color: var(--st-border) !important;
+  color: #E2E8F0 !important;
+}
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-gray-300"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-[#E2D9C8]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="divide-[#EFE8DA]"], [class~="divide-[#E4DFD3]"], [class~="divide-gray-100"]) { border-color: var(--st-border) !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is([class~="divide-[#E4DFD3]"], [class~="divide-[#EFE8DA]"], [class~="divide-gray-100"]) > * { border-color: var(--st-border) !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box .wc-sticky.wc-sticky { background-color: var(--st-card) !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box th.wc-sticky.wc-sticky { background-color: var(--st-sunk) !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box th.wc-sticky.wc-sticky[class~="bg-[#DCEFE3]"] { background-color: #0F3D33 !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box .ant-btn:not(.ant-btn-primary):not(.ant-btn-dangerous) {
+  background-color: rgb(148 163 184 / 10%) !important;
+  border-color: var(--st-border-strong) !important;
+  color: #E2E8F0 !important;
+}
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is(.ant-card-head-title, h1.ant-typography, h2.ant-typography, h3.ant-typography, h4.ant-typography) { color: #F1F5F9 !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark code { color: #6EE7B7 !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-emerald-50/70"], [class~="bg-[#DCEFE3]"]) { background-color: rgb(16 185 129 / 14%) !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-amber-50/70"]) { background-color: rgb(245 158 11 / 14%) !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-slate-100/80"], [class~="bg-gray-200"], [class~="bg-[#F2EDE2]"]) { background-color: rgb(148 163 184 / 14%) !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-pink-50"]) { background-color: rgb(236 72 153 / 14%) !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is([class~="border-pink-200"], [class~="border-rose-200"], [class~="border-rose-200/70"], [class~="border-blue-200"], [class~="border-amber-300"], [class~="border-amber-200/70"], [class~="border-emerald-200/70"], [class~="border-orange-200/60"]) { border-color: rgb(148 163 184 / 28%) !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-pink-600"], [class~="text-pink-700"]) { color: #F9A8D4 !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-orange-800"]) { color: #FCD34D !important; }
+
+/* Popups on the dark look */
+body.wdp-staff-workspace.wdp-dark-portals .ant-popover :is(.ant-popover-inner, .ant-popover-arrow::before) { border-color: var(--st-border); }
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-white"], [class~="!bg-white"], [class~="bg-gray-100"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-50/80"], [class~="bg-slate-50"], [class~="bg-slate-50/80"], [class~="bg-[#FFFDF8]"], [class~="bg-[#FAF7F0]"], [class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"]) { background-color: #162033 !important; }
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-gray-300"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-[#E2D9C8]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="divide-[#EFE8DA]"], [class~="divide-[#E4DFD3]"], [class~="divide-gray-100"]) { border-color: var(--st-border) !important; }
+
+/* The light look: slate edges where the pages still ask for cream. In the layer, because those are important utilities. */
+@layer utilities {
+  .forest-layout.staff-workspace.is-canvas:not(.is-dark-canvas) :is([class~="!border-[#E5DEC9]"], [class~="border-[#E5DEC9]"], [class~="border-[#E4DFD3]"], [class~="border-[#EFE8DA]"], [class~="border-[#E2D9C8]"], [class~="!border-[#E2D9C8]"]) { border-color: var(--st-border) !important; }
+  .forest-layout.staff-workspace.is-canvas:not(.is-dark-canvas) :is([class~="divide-[#EFE8DA]"], [class~="divide-[#E4DFD3]"]) > * { border-color: var(--st-border) !important; }
+}
+
+/* Each part of the stable has its colour (ZONE_KINDS): --zone and --zone-soft come from the element. */
+.forest-layout .st-zone-tab {
+  background-color: var(--zone-soft);
+  border-color: transparent;
+  box-shadow: inset 4px 0 0 var(--zone);
+  padding-left: 14px;
+}
+.forest-layout .st-zone-tab:hover:not(:disabled) { border-color: var(--zone); }
+.forest-layout .st-zone-tab[aria-selected="true"] {
+  border-color: var(--zone);
+  box-shadow: inset 4px 0 0 var(--zone), inset 0 -3px 0 var(--zone);
+}
+.forest-layout .st-zone-chip { background-color: var(--zone-soft); border-color: var(--zone); }
+.forest-layout .st-zone-chip[aria-pressed="true"] { background-color: var(--zone); }
+.forest-layout .st-zone-band { border-left: 4px solid var(--zone) !important; }
+.forest-layout.staff-workspace.is-canvas .st-zone-band.st-zone-band { background-color: var(--zone-soft); }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .st-zone-band.st-zone-band.light-surface-box { background-color: var(--zone-soft) !important; }
+.st-zone-frame > * { border-top: 3px solid var(--zone) !important; }
+
+/* Each step of the trainer's work has its colour */
+.forest-layout.staff-workspace.is-canvas .st-hero-banner[data-step] {
+  --step: #10B981;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--step) 26%, #0F172A) 0%, #0F172A 44%, #111A2E 100%);
+}
+.forest-layout.staff-workspace.is-canvas .st-hero-banner[data-step="2"] { --step: #F59E0B; }
+.forest-layout.staff-workspace.is-canvas .st-hero-banner[data-step="3"] { --step: #06B6D4; }
+.forest-layout.staff-workspace.is-canvas .st-hero-banner[data-step="4"] { --step: #8B5CF6; }
+.forest-layout.staff-workspace.is-canvas .st-hero-banner[data-step="5"] { --step: #3B82F6; }
+.forest-layout.staff-workspace.is-canvas .st-hero-banner[data-step] .st-hero-step { background: var(--step); color: #04131C; }
+.st-hero-steplabel {
+  display: block; margin-bottom: 2px;
+  color: var(--step, #6EE7B7); font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+}
+@layer utilities {
+  .forest-layout.staff-workspace.is-canvas .st-hero-banner[data-step] .ant-btn-primary:not(.ant-btn-dangerous) {
+    background-color: var(--step) !important;
+    border-color: var(--step) !important;
+    color: #04131C !important;
+  }
+}

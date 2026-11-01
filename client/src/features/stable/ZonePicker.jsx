@@ -49,10 +49,8 @@ export default function ZonePicker({ zones, value, onChange }) {
               aria-selected={on}
               disabled={!ofKind.length}
               onClick={() => onChange(ofKind[0].key)}
-              className={`min-w-0 rounded-lg border px-2.5 py-1.5 text-left transition-colors ${
-                on ? 'bg-gray-50' : 'border-transparent bg-transparent hover:bg-gray-50'
-              } ${ofKind.length ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
-              style={on ? { borderColor: k.color, boxShadow: `inset 0 -2px 0 ${k.color}` } : undefined}
+              className={`st-zone-tab min-w-0 rounded-lg border px-2.5 py-1.5 text-left transition-colors ${ofKind.length ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+              style={{ '--zone': k.color, '--zone-soft': k.soft }}
             >
               <div className="flex items-center gap-1.5">
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: k.color }} aria-hidden />
@@ -93,10 +91,10 @@ export default function ZonePicker({ zones, value, onChange }) {
               type="button"
               onClick={() => onChange(z.key)}
               aria-pressed={on}
-              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
-                on ? 'font-semibold text-white' : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-50'
+              className={`st-zone-chip inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
+                on ? 'font-semibold text-white' : 'text-gray-800'
               }`}
-              style={on ? { background: meta.color, borderColor: meta.color } : undefined}
+              style={{ '--zone': meta.color, '--zone-soft': meta.soft }}
             >
               <span className="max-w-[140px] truncate">{z.name}</span>
               <span className={`tabular-nums ${on ? 'text-white/85' : 'text-gray-500'}`}>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Table, Button, Typography, Tag, Card, Select, Empty, Dropdown, Modal, Space, Alert, Input } from 'antd';
 import {
   PlusOutlined,
@@ -16,6 +16,7 @@ import { horsesApi } from '../horses/horsesApi';
 import { raceApi } from '../race/raceApi';
 import { useLockedHorseIds } from './useLockedHorses';
 import PlanTimeline from './PlanTimeline';
+import PlanFocusPanel from './PlanFocusPanel';
 import PlanWizard from './PlanWizard';
 import { RaceFormBlock, RaceFormDot, RaceFormTag } from './RaceForm';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
@@ -184,7 +185,10 @@ export default function TrainingPlanPage() {
   };
 
   const [search, setSearch] = useState('');
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
+  const planFocusRef = useRef(null);
   const shownActive = active.filter((p) => !search.trim() || fold(p.horse?.name).includes(fold(search.trim())));
+  const selectedPlan = shownActive.find(p => p._id === selectedPlanId) || shownActive[0];
   // One line per horse in four columns, so it fits a laptop screen: the horse (its race form a dot),
   // where it is in its cycle and how the phase is going, what comes next, and the actions.
   const activeColumns = [
@@ -260,6 +264,12 @@ export default function TrainingPlanPage() {
         ];
         return (
           <Space size={4}>
+            <Button size="small" type={selectedPlan?._id === r._id ? 'primary' : 'default'} aria-pressed={selectedPlan?._id === r._id} onClick={() => {
+              setSelectedPlanId(r._id);
+              planFocusRef.current?.scrollIntoView({ block: 'start' });
+            }}>
+              Xem lộ trình
+            </Button>
             <Button size="small" icon={<CalendarOutlined />} onClick={() => navigate(`/training/sessions?plan=${r._id}`)}>
               Lịch tập
             </Button>
@@ -379,6 +389,8 @@ export default function TrainingPlanPage() {
           </Empty>
         </Card>
       ) : (
+        <>
+        {selectedPlan && <div ref={planFocusRef} className="st-plan-focus-region"><PlanFocusPanel plan={selectedPlan} /></div>}
         <Card className="!rounded-xl !border-[#E2D9C8]" styles={{ body: { padding: 0 } }}>
           <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
             <span className="text-[15px] font-semibold text-gray-900">Đang áp dụng</span>
@@ -395,6 +407,7 @@ export default function TrainingPlanPage() {
             locale={{ emptyText: `Không có ngựa nào tên “${search}”.` }}
           />
         </Card>
+        </>
       )}
 
       {others.length > 0 && (

@@ -20,7 +20,7 @@ const horseId = (s) => String(s.horse?._id || s.horse);
  * horses booked today and not out wait by the finish post. Beside it, the running horses' figures, the
  * sessions still to come today and how the day has gone. The full monitor is on the sessions page.
  */
-export default function TrainingTrackCard({ sessions = [], horses = [] }) {
+export default function TrainingTrackCard({ sessions = [], horses = [], compact = false }) {
   const queryClient = useQueryClient();
   const screens = Grid.useBreakpoint();
   // The latest reading per session from the feed: { distance, targetDistance, speed, hr }.
@@ -99,7 +99,7 @@ export default function TrainingTrackCard({ sessions = [], horses = [] }) {
 
   return (
     <Card
-      className="shadow-xs border-[#E5DEC9] rounded-xl"
+      className="light-surface-box shadow-xs border-[#E5DEC9] rounded-xl"
       styles={{ title: { whiteSpace: 'normal' }, body: { padding: 12 } }}
       title={
         <div className="py-1">
@@ -118,12 +118,12 @@ export default function TrainingTrackCard({ sessions = [], horses = [] }) {
         )
       }
     >
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Track3D runners={runners} focus={focus} label={label} height="clamp(260px, 27vw, 380px)" className="lg:col-span-2" />
+      <div className={compact ? 'grid min-w-0 grid-cols-1 gap-3' : 'grid grid-cols-1 gap-4 lg:grid-cols-3'}>
+        <Track3D runners={runners} focus={focus} label={label} height={compact ? 'clamp(260px, 23vw, 340px)' : 'clamp(260px, 27vw, 380px)'} className={compact ? '' : 'lg:col-span-2'} />
 
-        <div className="light-surface-box min-w-0 space-y-4 rounded-xl border border-[#E5DEC9] bg-[#FAF7F0] p-3 text-sm">
+        {(rows.length > 0 || !compact || done.length > 0 || missed > 0 || !screens.md) && <div className="light-surface-box min-w-0 space-y-4 rounded-xl border border-[#E5DEC9] bg-[#FAF7F0] p-3 text-sm">
           {rows.length > 0 && (
-            <section>
+            <section className="st-live-section">
               <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
                 <span className={`inline-block h-2 w-2 rounded-full animate-pulse ${rows.some((r) => r.over) ? 'bg-rose-500' : 'bg-emerald-500'}`} />
                 <span>Đang chạy</span>
@@ -137,26 +137,25 @@ export default function TrainingTrackCard({ sessions = [], horses = [] }) {
                       </Link>
                       <span className="shrink-0 text-xs text-gray-500">{kindOf(x.s)}</span>
                     </div>
-                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label={`Cự ly đã chạy của ${x.s.horse?.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(x.share * 100)}>
                       <div
                         className={`h-full rounded-full transition-all ${x.over ? 'bg-rose-500' : 'bg-[#0F5A43]'}`}
                         style={{ width: `${Math.round(x.share * 100)}%` }}
                       />
                     </div>
-                    <div className="mt-1 flex flex-wrap justify-between gap-x-3 text-xs tabular-nums text-gray-600">
-                      <span>
-                        {Math.round(x.distance).toLocaleString('vi-VN')} / {Math.round(x.course).toLocaleString('vi-VN')} m
-                      </span>
-                      <span>{x.speed != null ? `${x.speed} km/h` : 'chờ cảm biến'}</span>
-                      <span className={x.over ? 'font-semibold text-rose-700' : ''}>{x.hr != null ? `${x.hr} bpm` : ''}</span>
-                    </div>
+                    <dl className="st-live-figures">
+                      <div><dt>Tốc độ</dt><dd>{x.speed != null ? x.speed : '—'}<small>km/h</small></dd></div>
+                      <div className={x.over ? 'st-live-warning' : undefined}><dt>Nhịp tim</dt><dd>{x.hr != null ? x.hr : '—'}<small>bpm</small></dd></div>
+                      <div><dt>Cự ly</dt><dd>{Math.round(x.distance).toLocaleString('vi-VN')}<small>/ {Math.round(x.course).toLocaleString('vi-VN')} m</small></dd></div>
+                    </dl>
+                    {x.over && <p className="st-live-warning-note">Nhịp tim vượt ngưỡng bài tập</p>}
                   </li>
                 ))}
               </ul>
             </section>
           )}
 
-          <section>
+          {!compact && <section>
             <div className="mb-1.5 text-xs font-semibold text-gray-700">Còn lại hôm nay</div>
             {waiting.length ? (
               <ul className="m-0 list-none divide-y divide-gray-100 p-0">
@@ -192,7 +191,7 @@ export default function TrainingTrackCard({ sessions = [], horses = [] }) {
                 )}
               </p>
             )}
-          </section>
+          </section>}
 
           {(done.length > 0 || missed > 0) && (
             <p className="m-0 border-t border-gray-100 pt-2 text-xs tabular-nums text-gray-600">
@@ -204,7 +203,7 @@ export default function TrainingTrackCard({ sessions = [], horses = [] }) {
               Theo dõi chi tiết các buổi đang chạy
             </Link>
           )}
-        </div>
+        </div>}
       </div>
     </Card>
   );

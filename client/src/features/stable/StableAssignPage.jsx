@@ -112,7 +112,7 @@ function HorseFocusTag({ focus, rows }) {
   );
 }
 
-function TaskList() {
+function TaskList({ embedded = false }) {
   const focus = useHorseFocus();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -437,13 +437,13 @@ function TaskList() {
       {focus.horse ? (
         // One horse: its feeding week, meal by meal, then the jobs handed out for it, then all its tasks.
         <div className="flex flex-col gap-4">
-          <div>
+          {!embedded && <div>
             <HorseFocusTag focus={focus} rows={[...(data?.data || []), ...(horsesData?.data || []).map((h) => ({ horse: h }))]} />
-          </div>
-          <FeedingTimetable horseId={focus.horse} />
+          </div>}
+          {!embedded && <FeedingTimetable horseId={focus.horse} />}
           <div className="flex justify-end">{addJob}</div>
           {routineList(ofHorse(routinesData?.data, focus.horse), false)}
-          <div>
+          {!embedded && <div>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <Text strong className="!text-sm">
                 Các việc của ngựa này
@@ -459,7 +459,7 @@ function TaskList() {
                 locale={{ emptyText: 'Ngựa này chưa có công việc nào. Bữa ăn tự xuất hiện khi ngựa đã được xếp chuồng và có người chăm sóc.' }}
               />
             </Card>
-          </div>
+          </div>}
         </div>
       ) : (
         <div className="flex flex-col gap-6">
@@ -625,6 +625,7 @@ function RationList() {
           feedItems={feedItems}
           onOpenPlanner={openPlanner}
           onBack={focus.clear}
+          careContent={<TaskList embedded />}
         />
       ) : (
         // Overview of all horses: who feeds each, today's meals, what needs a look. A click opens the horse.
@@ -807,8 +808,13 @@ export default function StableAssignPage() {
       />
 
       <Tabs
+        className="st-care-tabs"
         activeKey={tab}
-        onChange={(key) => setParams({ tab: key }, { replace: true })}
+        onChange={(key) => setParams((current) => {
+          const next = new URLSearchParams(current);
+          next.set('tab', key);
+          return next;
+        }, { replace: true })}
         destroyOnHidden
         items={[
           { key: 'tasks', label: 'Công việc chăm sóc', children: <TaskList /> },

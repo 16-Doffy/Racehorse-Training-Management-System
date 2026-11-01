@@ -85,11 +85,13 @@ export const DARK_CANVAS = 'peak_equestrian_dark';
 export const canvasOf = (key) => (key === DARK_CANVAS || key === 'midnight_cockpit' ? DARK_CANVAS : LIGHT_CANVAS);
 
 /** Colour and tint per status, for figures that carry a state (dashboard counters). */
+// Through the canvas's own colours (styles/staff-ui.css), so a status keeps its meaning on the dark canvas
+// instead of a pale pill; the second value is for pages outside a canvas.
 export const STATUS_TONES = {
-  neutral: { color: FOREST.ink, bg: '#E3ECE6' },
-  good: { color: '#2E7D4F', bg: '#E1F0E5' },
-  watch: { color: '#9A6B00', bg: '#F8EDCF' },
-  bad: { color: '#B3261E', bg: '#F7E1DD' },
+  neutral: { color: `var(--st-ink, ${FOREST.ink})`, bg: 'var(--st-sunk, #E3ECE6)' },
+  good: { color: 'var(--st-good-ink, #2E7D4F)', bg: 'var(--st-good-bg, #E1F0E5)' },
+  watch: { color: 'var(--st-watch-ink, #9A6B00)', bg: 'var(--st-watch-bg, #F8EDCF)' },
+  bad: { color: 'var(--st-bad-ink, #B3261E)', bg: 'var(--st-bad-bg, #F7E1DD)' },
 };
 
 export function getForestTheme(presetKey = 'sand_bone') {

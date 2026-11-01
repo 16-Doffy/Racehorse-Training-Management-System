@@ -6,7 +6,6 @@ import dayjs from 'dayjs';
 import { usersApi } from '../admin/usersApi';
 import { inventoryApi } from '../inventory/inventoryApi';
 import { horsesApi } from '../horses/horsesApi';
-import { STATUS_TONES } from '../../layouts/forestTheme';
 
 const { Text } = Typography;
 const ASSIGNMENT_KEYS = ['owner', 'trainer', 'vet', 'stall'];
@@ -41,6 +40,7 @@ export default function ManagerQueueCard() {
       source: users,
       icon: <UserAddOutlined />,
       label: 'Tài khoản đăng ký chờ duyệt',
+      tone: 'amber',
       count: (users.data?.data || []).filter((u) => u.approvalStatus === 'pending').length,
       to: '/admin/users',
       action: 'Duyệt tài khoản',
@@ -51,6 +51,7 @@ export default function ManagerQueueCard() {
       source: inventory,
       icon: <ShoppingCartOutlined />,
       label: 'Đề xuất vật tư chờ duyệt',
+      tone: 'rose',
       count: requests.filter((r) => r.status === 'pending').length,
       to: '/inventory',
       action: 'Xem đề xuất',
@@ -61,6 +62,7 @@ export default function ManagerQueueCard() {
       source: inventory,
       icon: <InboxOutlined />,
       label: 'Hàng đã duyệt, chờ nhận',
+      tone: 'blue',
       count: requests.filter((r) => r.status === 'approved' && r.awaitingDelivery && !r.receivedAt).length,
       to: '/inventory',
       action: 'Nhận hàng',
@@ -71,6 +73,7 @@ export default function ManagerQueueCard() {
       source: checklists,
       icon: <ApartmentOutlined />,
       label: 'Ngựa thiếu phân công',
+      tone: 'amber',
       count: (checklists.data?.data || []).filter((r) => r.items.some((i) => ASSIGNMENT_KEYS.includes(i.key) && !i.done)).length,
       to: '/horses',
       action: 'Phân công ngay',
@@ -122,12 +125,11 @@ export default function ManagerQueueCard() {
         </div>
       }
     >
-      <div className="divide-y divide-[#EFE8DA]">
+      <div className="st-queue-list">
         {rows.map((r) => {
           // A list that did not load has no count: "—" and "chưa tải được", never 0 and "hoàn tất".
           const unknown = r.state === 'error';
           const hasPending = !unknown && r.count > 0;
-          const tone = STATUS_TONES[hasPending ? 'watch' : 'neutral'];
           const note = unknown
             ? 'chưa tải được'
             : r.state === 'stale'
@@ -139,39 +141,18 @@ export default function ManagerQueueCard() {
             <Link
               key={r.key}
               to={r.to}
-              className={`flex items-center justify-between p-4 transition-colors hover:bg-emerald-50/40 group ${
-                hasPending ? 'border-l-[3px] border-l-amber-500 bg-amber-50/20' : ''
-              }`}
+              className={`st-queue-row${hasPending ? ` is-${r.tone}` : ''}`}
             >
-              <div className="flex items-center gap-3.5 min-w-0 pr-4">
-                <span
-                  className="w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0"
-                  style={{ background: tone.bg, color: tone.color }}
-                >
-                  {r.icon}
-                </span>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-900 group-hover:text-emerald-900 transition-colors">
-                      {r.label}
-                    </span>
-                    {hasPending && (
-                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300/70">
-                        {r.action}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-xs text-gray-500 block truncate mt-0.5">{r.desc}</span>
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                <span
-                  className={`text-xl font-bold tabular-nums block ${hasPending ? 'text-amber-600' : 'text-slate-600'}`}
-                >
-                  {loading || unknown ? '–' : r.count}
-                </span>
-                <span className="text-[11px] text-slate-600 font-medium block">{note}</span>
-              </div>
+              <span className="st-queue-row__icon">{r.icon}</span>
+              <span className="st-queue-row__text">
+                <span className="st-queue-row__title">{r.label}</span>
+                <span className="st-queue-row__desc">{r.desc}</span>
+              </span>
+              <span className="st-queue-row__figure">
+                <span className="st-queue-row__count">{loading || unknown ? '–' : r.count}</span>
+                <span className="st-queue-row__note">{note}</span>
+              </span>
+              {hasPending && <span className="st-queue-row__action">{r.action}</span>}
             </Link>
           );
         })}

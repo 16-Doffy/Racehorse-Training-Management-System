@@ -5,6 +5,7 @@ import {
   UserOutlined, 
   LogoutOutlined, 
   AppstoreFilled,
+  CrownOutlined,
   EllipsisOutlined,
   SunOutlined,
   MoonOutlined,
@@ -23,6 +24,8 @@ import { disconnectSocket } from '../lib/socket';
 import { fileHref } from '../lib/files';
 import { FOREST, MENU_SECTION_LABEL, usesForestTheme, usesCanvasPicker, CANVAS_PRESETS, LIGHT_CANVAS, DARK_CANVAS, FULL_DARK_ROLES, BOOTSTRAP_ROLES, canvasOf, getForestTheme } from './forestTheme';
 import '../styles/staff-ui.css';
+import '../styles/staff-workspace.css';
+import { staffWorkspaceTheme } from './staffWorkspaceTheme';
 
 const { Sider, Content } = Layout;
 
@@ -91,17 +94,23 @@ export default function MainLayout() {
   // Every role gets the forest sidebar and chooses a light or dark canvas (forestTheme.js).
   const forest = usesForestTheme(user?.role);
   const canvas = usesCanvasPicker(user?.role);
+  // Until someone chooses, the Head Trainer starts on the dark trackside look and everyone else on the light one.
+  const firstCanvas = user?.role === ROLES.HEAD_TRAINER ? DARK_CANVAS : LIGHT_CANVAS;
   const [canvasTheme, setCanvasTheme] = useState(() => {
     try {
-      return localStorage.getItem('wdp301_canvas_theme') || 'sand_bone';
+      const saved = localStorage.getItem('wdp301_canvas_theme');
+      if (user?.role === ROLES.HEAD_TRAINER && saved === LIGHT_CANVAS && !localStorage.getItem('wdp301_canvas_chosen')) return DARK_CANVAS;
+      return saved || firstCanvas;
     } catch {
-      return 'sand_bone';
+      return firstCanvas;
     }
   });
   // A canvas saved in this browser by a Manager must not follow the next person who signs in here.
   const canvasKey = canvas ? canvasOf(canvasTheme) : 'parchment_old';
   const activePreset = CANVAS_PRESETS[canvasKey] || CANVAS_PRESETS.sand_bone;
-  const currentTheme = getForestTheme(canvasKey);
+  const isWorkspace = user?.role === ROLES.MANAGER || user?.role === ROLES.HEAD_TRAINER;
+  const baseTheme = getForestTheme(canvasKey);
+  const currentTheme = isWorkspace ? staffWorkspaceTheme(baseTheme, canvasKey === DARK_CANVAS) : baseTheme;
   const isDarkCanvas = canvas && canvasKey === DARK_CANVAS;
   const isStaff = FULL_DARK_ROLES.includes(user?.role);
   // Every role's pages go fully dark on the dark canvas.
@@ -115,6 +124,10 @@ export default function MainLayout() {
     document.body.classList.toggle('wdp-dark-portals', isDarkCanvas);
     return () => document.body.classList.remove('wdp-dark-portals');
   }, [isDarkCanvas]);
+  useEffect(() => {
+    document.body.classList.toggle('wdp-staff-workspace', isWorkspace);
+    return () => document.body.classList.remove('wdp-staff-workspace');
+  }, [isWorkspace]);
   useEffect(() => {
     if (bootstrapDark) document.body.setAttribute('data-bs-theme', 'dark');
     else document.body.removeAttribute('data-bs-theme');
@@ -130,6 +143,7 @@ export default function MainLayout() {
     setCanvasTheme(key);
     try {
       localStorage.setItem('wdp301_canvas_theme', key);
+      localStorage.setItem('wdp301_canvas_chosen', '1');
     } catch {}
   };
 
@@ -149,7 +163,7 @@ export default function MainLayout() {
   };
 
   const layout = (
-    <Layout className={forest ? `forest-layout${canvas ? ' is-canvas' : ''}${isDarkCanvas ? ' is-dark-canvas' : ''}${staffDark ? ' staff-dark' : ''}` : undefined} style={{ height: '100vh', overflow: 'hidden', ...pageBgStyle }}>
+    <Layout className={forest ? `forest-layout${isWorkspace ? ' staff-workspace' : ''}${canvas ? ' is-canvas' : ''}${isDarkCanvas ? ' is-dark-canvas' : ''}${staffDark ? ' staff-dark' : ''}` : undefined} style={{ height: '100vh', overflow: 'hidden', ...pageBgStyle }}>
       {/* SIDEBAR */}
       <Sider
         theme={forest ? 'dark' : 'light'}
@@ -164,7 +178,9 @@ export default function MainLayout() {
       >
         {/* Logo Area: Team 8 WDP301 for Canvas (Manager/Head Trainer); Horseshoe for Veterinarian; Appstore for others */}
         <div className={`${isStaff ? 'h-16' : 'h-20 pt-3'} flex items-center px-4 shrink-0 ${forest ? 'border-b border-white/10' : 'border-b border-gray-100'}`}>
-          {isStaff ? (
+          {isWorkspace ? (
+            <div className="st-brand-mark mr-3 shrink-0"><CrownOutlined aria-hidden="true" /></div>
+          ) : isStaff ? (
             <div className="w-9 h-9 rounded-lg bg-[#0B291E] border border-[#D4AF37]/35 flex items-center justify-center mr-3 shrink-0">
               <Team8LogoCrest />
             </div>
@@ -178,7 +194,14 @@ export default function MainLayout() {
             <AppstoreFilled className="text-xl mr-2 text-gray-800" />
           )}
           {!siderCollapsed && (
-            isStaff ? (
+            isWorkspace ? (
+              <div className="flex flex-col min-w-0">
+                <span className="st-brand-name truncate">RACEHORSE TMS</span>
+                <span className="st-brand-role truncate">
+                  {user?.role === ROLES.HEAD_TRAINER ? 'Huấn luyện viên Trưởng' : 'Quản lý Câu lạc bộ'}
+                </span>
+              </div>
+            ) : isStaff ? (
               <div className="flex flex-col min-w-0">
                 <span className="font-semibold text-[15px] tracking-tight text-[#FAF8F5] leading-tight truncate" style={{ fontFamily: "'Lora', Georgia, serif" }}>
                   Racehorse TMS

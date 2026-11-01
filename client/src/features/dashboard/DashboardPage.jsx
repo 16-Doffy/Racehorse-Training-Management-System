@@ -53,8 +53,8 @@ export default function DashboardPage() {
 
   // A new horse is "eligible" by default before any vet has seen it, so the count also needs the
   // exam and no restriction from the vet — the same things the pre-check looks at.
-  const eligible = horses.filter((h) => h.healthStatus === 'eligible' && itemDone(h, 'health') && itemDone(h, 'clearance')).length;
-  const monitoring = horses.filter((h) => h.healthStatus === 'monitoring').length;
+  const eligible = horses.filter((h) => h.healthStatus === 'eligible' && !h.examHold && itemDone(h, 'health') && itemDone(h, 'clearance')).length;
+  const monitoring = horses.filter((h) => h.healthStatus === 'monitoring' || (h.examHold && h.healthStatus === 'eligible')).length;
   const injured = horses.filter((h) => h.healthStatus === 'injured').length;
 
   // The safety and medical side of the day: its heading, and the horses the vet has restricted.
@@ -120,6 +120,9 @@ export default function DashboardPage() {
         eyebrow="Tổng quan vận hành"
         roleLabel={ROLE_LABELS[user?.role]}
         title={`Xin chào, ${user?.name}`}
+        kicker={isHeadTrainer ? 'Điều hành sân tập' : 'Trung tâm điều hành'}
+        kickerNote={`Hôm nay: ${new Date().toLocaleDateString('vi-VN')}`}
+        subtitle={isHeadTrainer ? 'Giám sát sân tập, số đo trực tiếp và bảng việc hôm nay của từng ngựa.' : `Theo dõi ${horses.length} ngựa, duyệt đề xuất vật tư và công suất chuồng trại.`}
         statusBadge={
           <div
             className="px-3 py-1.5 rounded-lg border text-xs"
@@ -140,6 +143,10 @@ export default function DashboardPage() {
               className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold flex items-center gap-2 cursor-pointer"
             >
               + Lập buổi tập mới
+            </Button>
+          ) : isManager ? (
+            <Button type="primary" onClick={() => navigate('/horses?new=1')} className="!h-9 !px-4 !rounded-lg font-semibold">
+              + Thêm ngựa mới
             </Button>
           ) : null
         }
@@ -224,8 +231,10 @@ export default function DashboardPage() {
         <>
           {/* The Head Trainer's day: the track today in 3D (the horses out running, today's others by the
               finish post), the board of the day, then the safety and medical cards in a structured grid. */}
-          <TrainingTrackCard sessions={sessionsData?.data || []} horses={horses} />
-          <TodayBoard horses={horses} sessions={sessionsData?.data || []} />
+          <div className="st-trainer-overview">
+            <TrainingTrackCard compact sessions={sessionsData?.data || []} horses={horses} />
+            <TodayBoard compact horses={horses} sessions={sessionsData?.data || []} />
+          </div>
           <section className="space-y-3">
             {safetyHeader}
             <div className="st-bento-grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
@@ -239,15 +248,16 @@ export default function DashboardPage() {
         </>
       ) : (
         <>
-          {/* The Manager's club today: the decision queue & daily operations at the top in 3 balanced columns,
-              the 3D stable overview across the full width, then the safety and medical cards in a structured grid,
-              and each horse's next step last. */}
-          <div className="st-bento-grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Stable and decision queue share the first row; daily staff and stock follow together.
+              On narrow screens they retain the same reading order in a single column. */}
+          <div className="st-manager-overview">
+            <StableOverviewCard />
             {isManager && <ManagerQueueCard />}
+          </div>
+          <div className="st-bento-grid grid-cols-1 lg:grid-cols-2 gap-5">
             <StaffTodayCard />
             <StockWatchCard />
           </div>
-          <StableOverviewCard />
           <section className="space-y-3">
             {safetyHeader}
             <div className="st-bento-grid grid-cols-1 md:grid-cols-2 gap-5">

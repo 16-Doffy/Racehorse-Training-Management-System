@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Table, Tag, Typography, Button, Modal, Form, Input, Select, Alert, Empty, Tooltip, Popconfirm, Segmented, Grid, Card } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined, SearchOutlined } from '@ant-design/icons';
 import { downloadFile } from '../../lib/files';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import dayjs from 'dayjs';
 import { newestFirst } from '../../utils/newestFirst';
@@ -52,6 +52,14 @@ function Person({ label, name, gap }) {
   );
 }
 
+// What each count on the list means, when it has nothing more pressing to say.
+const TILE_NOTES = (isManager) => ({
+  all: isManager ? 'Toàn câu lạc bộ' : 'Ngựa bạn phụ trách',
+  ready: 'Đã khám, không bị khóa',
+  watch: 'Hạn chế mức tập vừa hoặc nhẹ',
+  gap: isManager ? 'Thiếu chuồng, HLV hoặc bác sĩ' : 'Cần lập kế hoạch chu kỳ',
+});
+
 export default function HorseListPage() {
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
@@ -65,12 +73,18 @@ export default function HorseListPage() {
   // A wide screen gets more of each horse on its line (age and weight, then owner and vet) rather than
   // an empty middle; a laptop keeps only the columns that fit it.
   const screens = Grid.useBreakpoint();
-  const showAge = isManager ? screens.xxl : screens.xl;
+  // The trainer reads the age beside the breed, and has the plan's column instead.
+  const showAge = isManager && screens.xxl;
   const showPeople = !isManager && screens.xxl;
   // The trainer's plan for each horse: where it is in its cycle and its next session.
   const showPlan = user?.role === ROLES.HEAD_TRAINER && screens.xxl;
 
-  const [formOpen, setFormOpen] = useState(false);
+  // ?new=1: asked for from elsewhere (the Manager's home page); the form opens at once and the address is tidied.
+  const [params, setParams] = useSearchParams();
+  const [formOpen, setFormOpen] = useState(() => params.get('new') === '1');
+  useEffect(() => {
+    if (params.get('new')) setParams({}, { replace: true });
+  }, [params, setParams]);
   const [editTarget, setEditTarget] = useState(null);
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
@@ -150,8 +164,8 @@ export default function HorseListPage() {
   // has seen it, so "ready" also needs an exam on file and no medical restriction; an unexamined horse
   // is counted on its own rather than as healthy.
   const checkItem = (h, key) => checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === key)?.done;
-  const isReady = (h) => h.healthStatus === 'eligible' && checkItem(h, 'health') && checkItem(h, 'clearance');
-  const needsWatch = (h) => ['monitoring', 'injured', 'quarantined'].includes(h.healthStatus) || h.trainingClearance?.restricted;
+  const isReady = (h) => !h.examHold && h.healthStatus === 'eligible' && checkItem(h, 'health') && checkItem(h, 'clearance');
+  const needsWatch = (h) => Boolean(h.examHold) || ['monitoring', 'injured', 'quarantined'].includes(h.healthStatus) || h.trainingClearance?.restricted;
   // The Manager closes staffing gaps; the trainer closes planning gaps.
   const isGap = (h) => (isManager ? hasGap(h) : checkItem(h, 'plan') === false);
   const readyCount = horses.filter(isReady).length;
@@ -292,7 +306,7 @@ export default function HorseListPage() {
             {h.name}
           </div>
           <Text type="secondary" className="block truncate !text-xs" title={[h.breed, HORSE_SEX_LABELS[h.sex], h.color].filter(Boolean).join(' · ')}>
-            {[h.breed, HORSE_SEX_LABELS[h.sex], h.color].filter(Boolean).join(' · ') || 'Chưa có lý lịch'}
+            {[h.breed, HORSE_SEX_LABELS[h.sex], isManager ? h.color : ageOf(h.dob)].filter(Boolean).join(' · ') || 'Chưa có lý lịch'}
           </Text>
           {/* Roles other than the Manager only see their own horses: the owner is all they need here, on a small line. */}
           {!isManager && !showPeople && <Text type="secondary" className="block truncate !text-xs">Chủ: {h.owner?.name || 'CLB sở hữu'}</Text>}
@@ -339,7 +353,11 @@ export default function HorseListPage() {
       return (
         <div className="flex flex-wrap items-start gap-1">
           {/* A horse nobody has examined yet starts as "eligible" in the record; say what is true instead. */}
-          {examined(h) === false ? (
+          {h.examHold ? (
+            <Tooltip title={h.examHold.reason}>
+              <Tag className="!m-0" color="volcano">Chờ bác sĩ khám</Tag>
+            </Tooltip>
+          ) : examined(h) === false ? (
             <Tooltip title="Bác sĩ chưa khám tiếp nhận ngựa này — bài nặng và chạy thử cần giấy khám.">
               <Tag className="!m-0">Chưa khám</Tag>
             </Tooltip>
@@ -404,6 +422,14 @@ export default function HorseListPage() {
   }
   if (showsNextStep && !archived) {
     columns.push({ title: 'Bước tiếp theo', key: 'nextStep', render: (_, h) => <HorseNextStep checklist={checklistByHorse.get(String(h._id))} /> });
+  }
+  if (!isManager && showsNextStep && !archived) {
+    columns.push({
+      title: 'Thao tác',
+      key: 'open',
+      width: 104,
+      render: (_, h) => <Link to={`/training/sessions?horse=${h._id}`} onClick={(e) => e.stopPropagation()} className="text-xs font-semibold">Xem lịch tập</Link>,
+    });
   }
   if (isManager && archived) {
     columns.push({
@@ -501,7 +527,11 @@ export default function HorseListPage() {
                   Thêm ngựa mới
                 </Button>
               </div>
-            ) : null
+            ) : (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/training/sessions?new=1')} className="!h-9 !px-4 !rounded-lg font-semibold">
+                Lập buổi tập cho ngựa
+              </Button>
+            )
           }
         />
       ) : (
@@ -526,13 +556,11 @@ export default function HorseListPage() {
                 }}
                 className="st-kpi-tile"
               >
-                <div className="flex flex-wrap items-baseline justify-between gap-x-2">
-                  <span className="whitespace-nowrap text-xs font-semibold text-slate-600">{t.label}</span>
-                  <span className={`whitespace-nowrap text-xl font-bold tabular-nums ${t.tone}`}>
-                    {t.value} <span className="text-xs font-normal text-slate-500">ngựa</span>
-                  </span>
-                </div>
-                {t.hint && <div className="mt-1 text-[11px] text-slate-500">{t.hint}</div>}
+                <span className="block whitespace-nowrap text-xs font-semibold text-slate-600">{t.label}</span>
+                <span className={`mt-1.5 block whitespace-nowrap text-2xl font-bold tabular-nums ${t.tone}`}>
+                  {t.value} <span className="text-xs font-normal text-slate-500">ngựa</span>
+                </span>
+                <div className="mt-1 text-[11px] text-slate-500">{t.hint || TILE_NOTES(isManager)[t.key]}</div>
               </button>
             );
           })}
@@ -610,7 +638,7 @@ export default function HorseListPage() {
           dataSource={rows}
           loading={archived ? archivedLoading && !archivedData : isLoading && !data}
           tableLayout="fixed"
-          scroll={{ x: isManager ? 960 : 700 }}
+          scroll={{ x: isManager ? 960 : 860 }}
           pagination={rows.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
           locale={{
             emptyText:

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
+  Card,
   Table,
   Button,
   Typography,
@@ -100,6 +101,19 @@ function describePrescription(p) {
   if (p.targetSpeedKmh) parts.push(`mục tiêu ${p.targetSpeedKmh} km/h`);
   if (p.targetHeartRateMax) parts.push(`nhịp tim ≤ ${p.targetHeartRateMax} bpm`);
   return parts.length ? parts.join(' · ') : null;
+}
+
+/** Under the week: the club's four checks for the next session booked today, as they stand now. */
+function NextReadiness({ sessions }) {
+  const next = sessions
+    .filter((s) => ['scheduled', 'ready'].includes(s.status) && dayjs(s.scheduledAt).isAfter(dayjs()) && dayjs(s.scheduledAt).isSame(dayjs(), 'day'))
+    .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))[0];
+  if (!next) return null;
+  return (
+    <Card size="small" className="!mt-4" title={`Kiểm tra sẵn sàng buổi kế tiếp: ${next.horse?.name || 'Ngựa'}, ${dayjs(next.scheduledAt).format('HH:mm')}`}>
+      <ReadinessPanel horse={next.horse?._id || next.horse} scheduledAt={next.scheduledAt} intensity={next.intensity} sessionType={next.sessionType} objective={next.objective} />
+    </Card>
+  );
 }
 
 export default function TrainingSessionPage() {
@@ -859,6 +873,7 @@ export default function TrainingSessionPage() {
           schedulingId={scheduleMutation.isPending ? scheduleMutation.variables?.session._id : null}
         />
       )}
+      {view === 'week' && <NextReadiness sessions={sessionsData?.data || []} />}
 
       <Table
         className={view === 'week' ? 'hidden' : ''}

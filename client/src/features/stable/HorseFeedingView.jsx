@@ -192,7 +192,7 @@ function DailyRations({ rations }) {
  * meal, then what it eats every day from today to the plan's end (or its daily ration without a plan),
  * with the way into the ration planner.
  */
-export default function HorseFeedingView({ horseId, horses, plans, rations, assignmentOf, feedItems, onOpenPlanner, onBack }) {
+export default function HorseFeedingView({ horseId, horses, plans, rations, assignmentOf, feedItems, onOpenPlanner, onBack, careContent }) {
   const horse = horses.find((h) => String(h._id) === String(horseId));
   const plan = plans.find((p) => p.status === 'active' && idOf(p.horse) === String(horseId));
   const assignment = horse ? assignmentOf(horse) : null;
@@ -271,9 +271,17 @@ export default function HorseFeedingView({ horseId, horses, plans, rations, assi
         </div>
       </div>
 
-      <FeedingTimetable horseId={horseId} />
+      <nav className="st-care-nav" aria-label="Nội dung chăm sóc ngựa">
+        <a href="#horse-feeding-week">Lịch ăn tuần</a>
+        {careContent && <a href="#horse-care-work">Việc chăm sóc</a>}
+        <a href="#horse-ration-plan">Khẩu phần theo kế hoạch</a>
+      </nav>
 
-      {plan ? (
+      <div id="horse-feeding-week" className="st-care-section"><FeedingTimetable horseId={horseId} /></div>
+
+      {careContent && <section id="horse-care-work" className="st-care-section" aria-label="Việc chăm sóc của ngựa đang xem">{careContent}</section>}
+
+      <div id="horse-ration-plan" className="st-care-section">{plan ? (
         <Section
           label="Lịch ăn theo kế hoạch huấn luyện"
           title="Lịch ăn từ hôm nay đến hết kế hoạch tập"
@@ -303,7 +311,7 @@ export default function HorseFeedingView({ horseId, horses, plans, rations, assi
         >
           <DailyRations rations={mine} />
         </Section>
-      )}
+      )}</div>
     </div>
   );
 }

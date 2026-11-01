@@ -164,8 +164,8 @@ export default function HorseDetailPage() {
         title={horse.name}
         subtitle={`${breedLabel(horse.breed)} · ${HORSE_SEX_LABELS[horse.sex] || '—'} · ${calcAge(horse.dob) || 'Chưa rõ tuổi'}`}
         stats={[
-          { label: 'Sức khỏe', value: HEALTH_LABELS[horse.healthStatus] || horse.healthStatus },
-          { label: 'Mức cho phép tập', value: TRAINING_LEVEL_META[clearanceLevel]?.label || clearanceLevel },
+          { label: 'Sức khỏe', value: horse.examHold ? 'Chờ bác sĩ khám' : HEALTH_LABELS[horse.healthStatus] || horse.healthStatus },
+          { label: 'Mức cho phép tập', value: horse.examHold ? 'Tạm dừng tập' : TRAINING_LEVEL_META[clearanceLevel]?.label || clearanceLevel },
         ]}
         actionButton={
           canRequestExam ? (
@@ -180,6 +180,7 @@ export default function HorseDetailPage() {
           ) : null
         }
       />
+      {horse.examHold && <Alert className="!mb-4" type="error" showIcon title="Tạm dừng tập, chờ bác sĩ khám" description={horse.examHold.reason} />}
 
       <Row gutter={[16, 16]}>
         {/* The horse in 3D, in the breed and coat the Manager set, doing what its health allows. */}

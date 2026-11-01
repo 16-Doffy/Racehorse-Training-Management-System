@@ -106,7 +106,7 @@ export default function StableMapBoard({
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="min-w-0 space-y-2.5">
         {/* Over the barn: which zone, what it is, and its tools. */}
-        <div className="st-toolbar light-surface-box !py-2.5 !px-3.5">
+        <div className="st-toolbar st-zone-band light-surface-box !py-2.5 !px-3.5" style={{ '--zone': kind.color, '--zone-soft': kind.soft }}>
           <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: kind.color }} aria-hidden />
             <span className="text-sm font-semibold text-gray-900">{zone.name}</span>
@@ -143,7 +143,9 @@ export default function StableMapBoard({
       </div>
 
       <aside className="min-w-0 space-y-3">
-        <StableMap stalls={stalls} zoneKey={zone.key} selectedCode={selected.code} onSelect={pick} compact />
+        <div className="st-zone-frame" style={{ '--zone': kind.color }}>
+          <StableMap stalls={stalls} zoneKey={zone.key} selectedCode={selected.code} onSelect={pick} compact />
+        </div>
 
         <Card size="small" className="!rounded-xl !border-[#E2D9C8] shadow-xs">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-2.5">
@@ -155,7 +157,7 @@ export default function StableMapBoard({
               </div>
             </div>
             <Space size={4} wrap>
-              {selected.type !== 'standard' && <Tag color={selected.type === 'isolation' ? 'red' : 'blue'}>{STALL_TYPE_LABELS[selected.type]}</Tag>}
+              <Tag color={(ZONE_KINDS[selected.type] || ZONE_KINDS.standard).color}>{STALL_TYPE_LABELS[selected.type] || STALL_TYPE_LABELS.standard}</Tag>
               <Tag color={STALL_STATES[key].tag}>{STALL_STATES[key].label}</Tag>
             </Space>
           </div>

@@ -32,9 +32,9 @@ export function stallState(stall) {
 // The three parts of the stable, kept apart on the map: ordinary stalls, isolation (a horse that may
 // carry an illness, kept away from the others) and recovery (a horse coming back from an injury).
 export const ZONE_KINDS = {
-  standard: { label: 'Khu chuồng thường', short: 'Thường', hint: 'Ngựa khỏe, đang tập', color: '#2E7D4F' },
-  isolation: { label: 'Khu cách ly', short: 'Cách ly', hint: 'Ngựa nghi bệnh, tách riêng khỏi đàn', color: '#B3261E' },
-  recovery: { label: 'Khu hồi phục', short: 'Hồi phục', hint: 'Ngựa sau chấn thương, đang điều trị', color: '#2F6FA3' },
+  standard: { label: 'Khu chuồng thường', short: 'Thường', hint: 'Ngựa khỏe, đang tập', color: '#047857', soft: 'rgb(4 120 87 / 10%)' },
+  isolation: { label: 'Khu cách ly', short: 'Cách ly', hint: 'Ngựa nghi bệnh, tách riêng khỏi đàn', color: '#DC2626', soft: 'rgb(220 38 38 / 10%)' },
+  recovery: { label: 'Khu hồi phục', short: 'Hồi phục', hint: 'Ngựa sau chấn thương, đang điều trị', color: '#7C3AED', soft: 'rgb(124 58 237 / 10%)' },
 };
 
 /** The part of the stable a zone belongs to: the type all its stalls are; a mixed zone counts as ordinary. */

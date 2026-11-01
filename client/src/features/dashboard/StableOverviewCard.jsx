@@ -5,9 +5,9 @@ import { WarningOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { stallApi } from '../stable/stableApi';
 import Stall3D from '../stable/stall3d/Stall3D';
-import { STALL_TYPE_LABELS, groupZones } from '../stable/stall3d/stallStatus';
+import { STALL_TYPE_LABELS, ZONE_KINDS, groupZones } from '../stable/stall3d/stallStatus';
 
-const KIND = { isolation: { label: 'Cách ly', color: 'red' }, recovery: { label: 'Hồi phục', color: 'blue' } };
+const KIND = { isolation: { label: 'Cách ly', color: ZONE_KINDS.isolation.color }, recovery: { label: 'Hồi phục', color: ZONE_KINDS.recovery.color } };
 const kindOf = (zone) => (zone.stalls.every((s) => s.type === 'isolation') ? 'isolation' : zone.stalls.every((s) => s.type === 'recovery') ? 'recovery' : null);
 
 /**
@@ -66,9 +66,9 @@ export default function StableOverviewCard() {
           </Link>
         </Empty>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="min-w-0 lg:col-span-2">
-            <Stall3D stalls={zone.stalls} focusCode={focusCode} onSelect={setFocus} height="clamp(300px, 30vw, 420px)" />
+        <div className="st-stable-overview-body">
+          <div className="min-w-0">
+            <Stall3D stalls={zone.stalls} focusCode={focusCode} onSelect={setFocus} height="clamp(260px, 22vw, 340px)" />
           </div>
 
           <div className="min-w-0 space-y-4 text-sm">
