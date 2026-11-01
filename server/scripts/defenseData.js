@@ -13,10 +13,14 @@
 // morning of 13/11 the last one adds up the whole campaign.
 //
 // Reads only unless DEFENSE_CONFIRM=write. DEFENSE_DAY (YYYY-MM-DD) and DEFENSE_SHIFT (morning, noon,
-// evening, report, final) replace what the clock says. A shift that has begun does not begin again, so a
-// second trigger is harmless (GitHub may drop or delay the first).
+// evening, report, final) replace what the clock says. A shift that has begun does not begin again, so any
+// number of triggers is harmless. GitHub runs this repo's schedules 2 to 3.5 hours late, so the workflow
+// starts asking hours ahead: before 05:00 the script does nothing, and a report delayed past midnight is
+// still the day before's.
 if (process.env.DEMO_TZ) process.env.TZ = process.env.DEMO_TZ;
 const shiftByClock = (hour) => {
+  if (hour < 3) return 'report';
+  if (hour < 5) return 'early';
   if (hour < 11) return 'morning';
   if (hour < 16) return 'noon';
   return hour < 22 ? 'evening' : 'report';
@@ -25,6 +29,7 @@ const TODAY = new Date().toLocaleDateString('sv-SE');
 // The day of the rota to run: today, or another for a rehearsal.
 const ROTA_DAY = process.env.DEFENSE_DAY || TODAY;
 const FINAL_DAY = '2026-11-13';
+const REPORT_DAY = new Date().getHours() < 3 ? new Date(Date.now() - 24 * 3600000).toLocaleDateString('sv-SE') : TODAY;
 const SHIFT = process.env.DEFENSE_SHIFT || (TODAY === FINAL_DAY ? 'final' : shiftByClock(new Date().getHours()));
 if (['morning', 'noon', 'evening'].includes(SHIFT)) process.env.DEMO_MEAL_SLOT = SHIFT;
 process.env.DEMO_LATEST_START = process.env.DEMO_LATEST_START || '23:30';
@@ -33,7 +38,7 @@ const demo = require('./demoFlows');
 const { ids, must, refused, read, log, minutes, hhmm } = demo;
 const WRITE = process.env.DEFENSE_CONFIRM === 'write';
 const SLEEP_MIN = Number(process.env.DEFENSE_TIDY_MIN ?? 5);
-const SHIFT_ENDS = { morning: '10:50', noon: '15:50', evening: '21:55' };
+const SHIFT_ENDS = { morning: '10:50', noon: '15:50', evening: '21:50' };
 const SHIFT_WORDS = { morning: 'Ca sáng', noon: 'Ca trưa', evening: 'Ca tối' };
 const HAY_CLOCK = process.env.DEFENSE_HAY_CLOCK || '20:10';
 const ORION = 'Orion';
@@ -669,6 +674,10 @@ async function finalReport() {
 
 let reportText = '';
 async function main() {
+  if (SHIFT === 'early') {
+    console.log(`${hhmm(new Date())}: chưa tới 05:00, không có việc.`);
+    return;
+  }
   const accounts = JSON.parse(process.env.DEFENSE_ACCOUNTS || process.env.DEMO_ACCOUNTS || '{}');
   if (SHIFT === 'report' || SHIFT === 'final') {
     if (!(await demo.wake())) throw new Error('API không trả lời.');
@@ -676,7 +685,7 @@ async function main() {
       // eslint-disable-next-line no-await-in-loop
       if (!(await demo.login('Kiểm tra trước', accounts, role))) return;
     }
-    reportText = SHIFT === 'final' ? await finalReport() : `${await dayReport(TODAY)}\n${await raceReport()}`;
+    reportText = SHIFT === 'final' ? await finalReport() : `${await dayReport(REPORT_DAY)}\n${await raceReport()}`;
     return;
   }
   const ctx = await demo.preflight(accounts);
@@ -704,6 +713,7 @@ main()
     log('Lỗi', '-', 'kịch bản dừng', false, error.message);
   })
   .finally(() => {
+    if (SHIFT === 'early') return;
     const head = `### Dữ liệu cho hội đồng · ${TODAY} · ${SHIFT_WORDS[SHIFT] || 'Báo cáo'} (${hhmm(new Date())})`;
     const caseTable = cases.length ? `${mdTable(['Ngựa', 'Case', 'Kết quả'], cases.map((c) => [c.horse, c.label, c.result]))}\n\n` : '';
     demo.summary(`${head}\n\n${reportText}${caseTable}${demo.steps.length ? demo.table(demo.steps) : ''}`);

@@ -1,17 +1,30 @@
 name: Defense data (live)
 # The council's data on the REAL site, 02/11 to 12/11, three shifts a day (server/scripts/defenseData.js): new
 # horses Orion and Pegasus and the two "Demo ·" horses take the cases, the real horses race. The script reads
-# the clock to know its shift, stays until the shift ends, and does nothing if the shift has begun, so
-# each shift has a second trigger in case GitHub drops the first. Read each run's Summary for its report.
+# the clock to know its shift, stays until the shift ends, and does nothing if the shift has begun or before
+# 05:00. GitHub runs this repo's schedules 2 to 3.5 hours late (Test 06:45 runs near 09:30, the 05:00 demo ran at
+# 08:22), so each shift is asked for from hours ahead, and whichever lands first in its time starts it.
+# A run shown as cancelled with no steps was only replaced in the queue. Read each run's Summary for its report.
 on:
   schedule:
-    - cron: '5 22 1-11 11 *' # 05:05 Vietnam time, morning shift
+    - cron: '5 19 1-11 11 *' # 02:05 Vietnam time, asking for the morning shift (05:00)
+    - cron: '35 19 1-11 11 *'
+    - cron: '5 20 1-11 11 *'
+    - cron: '35 20 1-11 11 *'
+    - cron: '5 21 1-11 11 *'
+    - cron: '35 21 1-11 11 *'
+    - cron: '5 22 1-11 11 *'
     - cron: '35 22 1-11 11 *'
-    - cron: '10 4 2-12 11 *' # 11:10, noon shift
-    - cron: '40 4 2-12 11 *'
-    - cron: '10 9 2-12 11 *' # 16:10, evening shift
-    - cron: '40 9 2-12 11 *'
-    - cron: '30 16 2-12 11 *' # 23:30, the day's report
+    - cron: '10 1 2-12 11 *' # 08:10, asking for the noon shift (11:00)
+    - cron: '10 2 2-12 11 *'
+    - cron: '10 3 2-12 11 *'
+    - cron: '10 4 2-12 11 *'
+    - cron: '10 6 2-12 11 *' # 13:10, asking for the evening shift (16:00)
+    - cron: '10 7 2-12 11 *'
+    - cron: '10 8 2-12 11 *'
+    - cron: '10 9 2-12 11 *'
+    - cron: '40 15 2-12 11 *' # 22:40, the day's report
+    - cron: '30 16 2-12 11 *'
     - cron: '7 0 13 11 *' # 07:07 on 13/11, the whole campaign's report
   workflow_dispatch:
 concurrency:
