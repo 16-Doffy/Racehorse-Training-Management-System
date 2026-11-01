@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { coatFor } from '../../horses/horse3d/horseBreeds';
-import { STALL_STATES, stallState, plateName } from './stallStatus';
+import { STALL_STATES, stallState, plateName, zoneKind } from './stallStatus';
 
 /**
  * A zone of the club's stable in 3D, as a barn on the farm: two rows of wooden box stalls on a brick
@@ -202,6 +202,32 @@ export function createStallScene(canvas, { onSelect, onHover, onInteract } = {})
       g.fillRect(rand(0, w), rand(0, h), rand(1, 3), rand(2, 6));
     }
   }, [16, 16]));
+  // Isolation: light washable tiles for the floor, red and white stripes for "keep out".
+  const tileTex = keep(canvasTexture(256, 256, (g, w, h) => {
+    g.fillStyle = '#c9d0d0';
+    g.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 64) {
+      for (let y = 0; y < h; y += 64) {
+        g.fillStyle = `hsl(180, 6%, ${rand(80, 86)}%)`;
+        g.fillRect(x + 2, y + 2, 60, 60);
+      }
+    }
+  }, [3, 3]));
+  const hazardTex = keep(canvasTexture(256, 64, (g, w, h) => {
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#c62828';
+    for (let x = -h; x < w + h; x += 48) {
+      g.beginPath(); g.moveTo(x, h); g.lineTo(x + 24, h); g.lineTo(x + 24 + h, 0); g.lineTo(x + h, 0); g.closePath(); g.fill();
+    }
+  }));
+  // Recovery: a ribbed rubber mat under the deep bedding.
+  const rubberTex = keep(canvasTexture(256, 256, (g, w, h) => {
+    g.fillStyle = '#2d2f30';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#3a3d3e';
+    for (let y = 0; y < h; y += 16) g.fillRect(0, y, w, 6);
+  }, [2, 2]));
   const mats = {
     wood: new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.8 }),
     timber: new THREE.MeshStandardMaterial({ color: COLORS.timber, roughness: 0.85 }),
@@ -215,7 +241,33 @@ export function createStallScene(canvas, { onSelect, onHover, onInteract } = {})
     tape: new THREE.MeshStandardMaterial({ color: 0xf2c230, roughness: 0.6, side: THREE.DoubleSide }),
     leaf: new THREE.MeshStandardMaterial({ color: 0x3f6b35, roughness: 0.9 }),
     lantern: new THREE.MeshStandardMaterial({ color: 0xffd28a, emissive: 0xffb54d, emissiveIntensity: 2 }),
+    // Isolation stalls: smooth white panels, red trim, glass above the door, tiles, a disinfectant footbath.
+    clinic: new THREE.MeshStandardMaterial({ color: 0xedf1ef, roughness: 0.45 }),
+    clinicPost: new THREE.MeshStandardMaterial({ color: 0xc4cbc8, roughness: 0.4, metalness: 0.2 }),
+    alarm: new THREE.MeshStandardMaterial({ color: 0xd32f2f, emissive: 0xe53935, emissiveIntensity: 1.6 }),
+    red: new THREE.MeshStandardMaterial({ color: 0xb3261e, roughness: 0.5 }),
+    hazard: new THREE.MeshStandardMaterial({ map: hazardTex, roughness: 0.5 }),
+    glass: new THREE.MeshStandardMaterial({ color: 0xcfe9f2, transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.1, depthWrite: false }),
+    tile: new THREE.MeshStandardMaterial({ map: tileTex, roughness: 0.35 }),
+    steel: new THREE.MeshStandardMaterial({ color: 0xb9c2c6, metalness: 0.7, roughness: 0.3 }),
+    tray: new THREE.MeshStandardMaterial({ color: 0x23323a, roughness: 0.6 }),
+    disinfectant: new THREE.MeshStandardMaterial({ color: 0x3f9bc4, roughness: 0.08, metalness: 0.15 }),
+    // Recovery stalls: blue padding on the walls, a rubber mat, deep straw, a heat lamp.
+    pad: new THREE.MeshStandardMaterial({ color: 0x2f6fa3, roughness: 0.85 }),
+    padSeam: new THREE.MeshStandardMaterial({ color: 0x24577f, roughness: 0.85 }),
+    rubber: new THREE.MeshStandardMaterial({ map: rubberTex, roughness: 0.95 }),
+    heat: new THREE.MeshStandardMaterial({ color: 0xffb070, emissive: 0xff6a1f, emissiveIntensity: 2.4 }),
+    glow: new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.2, depthWrite: false }),
+    white: new THREE.MeshStandardMaterial({ color: 0xf7f7f5, roughness: 0.4 }),
+    bag: new THREE.MeshStandardMaterial({ color: 0xe3f1f7, transparent: true, opacity: 0.85, roughness: 0.2 }),
   };
+  // The look of each kind of stall: its frame colour on the door and the zone's sign.
+  const KIND_STYLE = {
+    standard: { sign: '#1f4a38', border: '#c9a24a', text: '#e6c873' },
+    isolation: { sign: '#9e1c16', border: '#ffffff', text: '#ffffff' },
+    recovery: { sign: '#1f4f78', border: '#9fd0f0', text: '#ffffff' },
+  };
+  const kindOf = (stall) => (stall?.type === 'isolation' || stall?.type === 'recovery' ? stall.type : 'standard');
   const grass = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 }));
   grass.rotation.x = -Math.PI / 2;
   grass.receiveShadow = true;
@@ -232,64 +284,165 @@ export function createStallScene(canvas, { onSelect, onHover, onInteract } = {})
   };
   const board = (parent, w, h, d, x, y, z, mat, opts) => add(parent, new THREE.BoxGeometry(w, h, d), mat, x, y, z, opts);
 
-  // A braced panel: a frame in forest green with an X of boards, the barn-door look.
-  function bracedPanel(parent, width, x, z) {
+  // A braced panel: a frame (forest green, or the stall kind's colour) with an X of boards, the barn-door look.
+  function bracedPanel(parent, width, x, z, frame = mats.forest) {
     const h = WALL;
     board(parent, width, h, T, x, h / 2, z, mats.wood);
     const f = 0.07;
-    board(parent, width, f, T + 0.02, x, h - f / 2, z, mats.forest);
-    board(parent, width, f, T + 0.02, x, f / 2, z, mats.forest);
-    board(parent, f, h, T + 0.02, x - width / 2 + f / 2, h / 2, z, mats.forest);
-    board(parent, f, h, T + 0.02, x + width / 2 - f / 2, h / 2, z, mats.forest);
+    board(parent, width, f, T + 0.02, x, h - f / 2, z, frame);
+    board(parent, width, f, T + 0.02, x, f / 2, z, frame);
+    board(parent, f, h, T + 0.02, x - width / 2 + f / 2, h / 2, z, frame);
+    board(parent, f, h, T + 0.02, x + width / 2 - f / 2, h / 2, z, frame);
     const diag = Math.hypot(width - 2 * f, h - 2 * f);
     const angle = Math.atan2(h - 2 * f, width - 2 * f);
-    board(parent, diag, f, T + 0.03, x, h / 2, z, mats.forest, { rz: angle });
-    board(parent, diag, f, T + 0.03, x, h / 2, z, mats.forest, { rz: -angle });
+    board(parent, diag, f, T + 0.03, x, h / 2, z, frame, { rz: angle });
+    board(parent, diag, f, T + 0.03, x, h / 2, z, frame, { rz: -angle });
   }
 
-  // One box stall at the origin, its door facing +z. Partitions between stalls are drawn by the zone.
-  function makeStall(stall) {
-    const g = new THREE.Group();
-    g.userData.code = stall.code;
-    const bed = add(g, new THREE.PlaneGeometry(S - T, S - T), mats.straw, 0, 0.015, 0, { rx: -Math.PI / 2, shadow: false });
-    bed.receiveShadow = true;
-    board(g, S, TOP, T, 0, TOP / 2, -S / 2, mats.wood); // back wall
-    const front = S / 2;
-    // Front: a braced fixed panel on the left, the Dutch door on the right with its upper half open.
-    bracedPanel(g, S / 2, -S / 4, front);
-    bracedPanel(g, S / 2 - 0.06, S / 4, front + 0.02);
+  // The Dutch door's upper half, open and folded back against the front past its hinge.
+  function openUpperDoor(g, front, frame) {
     const upper = new THREE.Group();
     upper.position.set(S / 2 - 0.05, WALL, front + 0.07);
-    upper.rotation.y = -0.18; // folded back against the front, past the hinge
+    upper.rotation.y = -0.18;
     board(upper, S / 2 - 0.1, TOP - WALL - 0.08, 0.06, (S / 2 - 0.1) / 2, (TOP - WALL) / 2, 0, mats.wood);
-    board(upper, S / 2 - 0.1, 0.06, 0.08, (S / 2 - 0.1) / 2, TOP - WALL - 0.08, 0, mats.forest);
+    board(upper, S / 2 - 0.1, 0.06, 0.08, (S / 2 - 0.1) / 2, TOP - WALL - 0.08, 0, frame);
     g.add(upper);
     const latch = add(g, new THREE.CylinderGeometry(0.02, 0.02, 0.22, 8), mats.iron, 0.18, 1.05, front + 0.1, { rz: Math.PI / 2 });
     latch.castShadow = false;
+  }
+
+  // A sign across the top of the stall front: what the stall is for, seen down the aisle.
+  function headerSign(g, front, { text, bg, fg, mark }) {
+    board(g, S, 0.4, T, 0, TOP + 0.2, front, mats.white);
+    const tex = keep(canvasTexture(512, 128, (c) => {
+      c.fillStyle = bg;
+      c.fillRect(0, 0, 512, 128);
+      c.fillStyle = fg;
+      // The mark: a cross on a white disc.
+      c.beginPath(); c.arc(70, 64, 42, 0, Math.PI * 2); c.fill();
+      c.fillStyle = mark;
+      c.fillRect(58, 34, 24, 60);
+      c.fillRect(40, 52, 60, 24);
+      c.fillStyle = fg;
+      c.font = '800 64px Inter, Arial, sans-serif';
+      c.textAlign = 'left';
+      c.fillText(text, 130, 86);
+    }));
+    add(g, new THREE.PlaneGeometry(1.5, 0.375), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 }), 0, TOP + 0.2, front + T / 2 + 0.01, { shadow: false });
+  }
+
+  // An ordinary box stall: straw, wooden walls, the braced Dutch door, a hay rack and a bucket.
+  function standardStall(g, front) {
+    const bed = add(g, new THREE.PlaneGeometry(S - T, S - T), mats.straw, 0, 0.015, 0, { rx: -Math.PI / 2, shadow: false });
+    bed.receiveShadow = true;
+    board(g, S, TOP, T, 0, TOP / 2, -S / 2, mats.wood); // back wall
+    // Front: a braced fixed panel on the left, the Dutch door on the right with its upper half open.
+    bracedPanel(g, S / 2, -S / 4, front);
+    bracedPanel(g, S / 2 - 0.06, S / 4, front + 0.02);
+    openUpperDoor(g, front, mats.forest);
     // Hay rack and bucket on the back wall.
     board(g, 0.9, 0.42, 0.42, -1.05, 1.5, -S / 2 + 0.26, mats.straw);
     board(g, 0.94, 0.05, 0.46, -1.05, 1.27, -S / 2 + 0.26, mats.timber);
     add(g, new THREE.CylinderGeometry(0.19, 0.15, 0.32, 20), mats.bucket, 1.2, 0.95, -S / 2 + 0.24);
     add(g, new THREE.CircleGeometry(0.17, 20), mats.water, 1.2, 1.1, -S / 2 + 0.24, { rx: -Math.PI / 2, shadow: false });
-    // Brass nameplate and the state lamp on the fixed panel, facing the aisle.
+  }
+
+  // An isolation stall: closed to the top so no horse touches noses with another, white washable
+  // panels on tiles, glass above the door to watch the horse, red and white stripes, a red light and
+  // a "CÁCH LY" sign, a disinfectant footbath and a hand sanitizer at the door.
+  function isolationStall(g, front) {
+    const floor = add(g, new THREE.PlaneGeometry(S - T, S - T), mats.tile, 0, 0.015, 0, { rx: -Math.PI / 2, shadow: false });
+    floor.receiveShadow = true;
+    board(g, S, TOP, T, 0, TOP / 2, -S / 2, mats.clinic); // back wall
+    // Front: solid white below, a red rail on top, stripes across; glass in a white frame above.
+    board(g, S, WALL, T, 0, WALL / 2, front, mats.clinic);
+    board(g, S, 0.06, T + 0.03, 0, WALL - 0.03, front, mats.red);
+    add(g, new THREE.PlaneGeometry(S - 0.1, 0.2), mats.hazard, 0, 0.32, front + T / 2 + 0.006, { shadow: false });
+    add(g, new THREE.PlaneGeometry(S - 0.12, TOP - WALL - 0.06), mats.glass, 0, (TOP + WALL) / 2, front, { shadow: false });
+    for (const x of [-S / 2 + 0.04, 0, S / 2 - 0.04]) board(g, 0.06, TOP - WALL, T + 0.02, x, (TOP + WALL) / 2, front, mats.clinic);
+    board(g, S, 0.06, T + 0.02, 0, TOP - 0.03, front, mats.clinic);
+    // The door's handle and a red light over the front.
+    add(g, new THREE.CylinderGeometry(0.02, 0.02, 0.3, 8), mats.steel, 0.2, 1.0, front + 0.08, { shadow: false });
+    board(g, S * 0.55, 0.05, 0.05, 0, TOP + 0.03, front + 0.08, mats.alarm, { shadow: false });
+    headerSign(g, front, { text: 'CÁCH LY', bg: '#b3261e', fg: '#ffffff', mark: '#b3261e' });
+    // Steel feeder and water bowl on the back wall.
+    board(g, 0.8, 0.3, 0.36, -1.05, 1.05, -S / 2 + 0.22, mats.steel);
+    add(g, new THREE.CylinderGeometry(0.17, 0.13, 0.2, 20), mats.steel, 1.15, 0.95, -S / 2 + 0.22);
+    add(g, new THREE.CircleGeometry(0.15, 20), mats.water, 1.15, 1.06, -S / 2 + 0.22, { rx: -Math.PI / 2, shadow: false });
+    // Footbath of disinfectant in front of the door, and the sanitizer on the front.
+    board(g, 1.3, 0.08, 0.62, S / 4, 0.04, front + 0.5, mats.tray);
+    add(g, new THREE.PlaneGeometry(1.18, 0.5), mats.disinfectant, S / 4, 0.085, front + 0.5, { rx: -Math.PI / 2, shadow: false });
+    board(g, 0.16, 0.24, 0.08, -S / 2 + 0.25, 1.3, front + 0.08, mats.white);
+    board(g, 0.16, 0.05, 0.085, -S / 2 + 0.25, 1.36, front + 0.08, mats.red);
+  }
+
+  // A recovery stall: blue padding on the walls, a rubber mat under deep straw, a heat lamp over the
+  // horse, a camera watching it, a drip stand by the door, and a "HỒI PHỤC" sign.
+  function recoveryStall(g, front) {
+    const mat = add(g, new THREE.PlaneGeometry(S - T, S - T), mats.rubber, 0, 0.012, 0, { rx: -Math.PI / 2, shadow: false });
+    mat.receiveShadow = true;
+    board(g, S - 0.5, 0.14, S - 0.6, 0, 0.07, -0.1, mats.straw, { shadow: false }); // deep bedding
+    board(g, S, TOP, T, 0, TOP / 2, -S / 2, mats.wood); // back wall
+    // Padding on the back wall, in three panels.
+    for (const x of [-S / 3, 0, S / 3]) {
+      board(g, S / 3 - 0.06, WALL - 0.2, 0.08, x, WALL / 2 + 0.05, -S / 2 + 0.08, mats.pad);
+      board(g, 0.03, WALL - 0.2, 0.085, x + S / 6 - 0.015, WALL / 2 + 0.05, -S / 2 + 0.08, mats.padSeam);
+    }
+    // Front: the Dutch door framed in blue, its upper half open so the horse can look out.
+    bracedPanel(g, S / 2, -S / 4, front, mats.pad);
+    bracedPanel(g, S / 2 - 0.06, S / 4, front + 0.02, mats.pad);
+    openUpperDoor(g, front, mats.pad);
+    headerSign(g, front, { text: 'HỒI PHỤC', bg: '#1f4f78', fg: '#ffffff', mark: '#2e9d5b' });
+    // Heat lamp hanging over the horse, and its warm light on the straw.
+    add(g, new THREE.CylinderGeometry(0.01, 0.01, 0.55, 6), mats.iron, 0, TOP - 0.27, -0.2, { shadow: false });
+    add(g, new THREE.ConeGeometry(0.2, 0.22, 20, 1, true), mats.iron, 0, TOP - 0.62, -0.2, { shadow: false });
+    add(g, new THREE.SphereGeometry(0.09, 16, 12), mats.heat, 0, TOP - 0.72, -0.2, { shadow: false });
+    add(g, new THREE.CircleGeometry(1.0, 32), mats.glow, 0, 0.16, -0.2, { rx: -Math.PI / 2, shadow: false });
+    // A camera in the back corner, looking at the horse.
+    board(g, 0.16, 0.12, 0.2, -S / 2 + 0.2, TOP - 0.15, -S / 2 + 0.2, mats.white, { shadow: false });
+    add(g, new THREE.CylinderGeometry(0.04, 0.04, 0.06, 12), mats.iron, -S / 2 + 0.2, TOP - 0.15, -S / 2 + 0.33, { rx: Math.PI / 2, shadow: false });
+    // Drip stand by the door: a pole on a base, a bag on its hook.
+    add(g, new THREE.CylinderGeometry(0.02, 0.02, 1.9, 8), mats.steel, -S / 2 + 0.35, 0.95, front - 0.35);
+    add(g, new THREE.CylinderGeometry(0.22, 0.22, 0.03, 16), mats.steel, -S / 2 + 0.35, 0.02, front - 0.35);
+    board(g, 0.16, 0.24, 0.05, -S / 2 + 0.35, 1.72, front - 0.35, mats.bag);
+    // Bucket in white, hay at the horse's height (a net, not a high rack).
+    add(g, new THREE.CylinderGeometry(0.19, 0.15, 0.32, 20), mats.white, 1.2, 0.95, -S / 2 + 0.3);
+    add(g, new THREE.CircleGeometry(0.17, 20), mats.water, 1.2, 1.1, -S / 2 + 0.3, { rx: -Math.PI / 2, shadow: false });
+    add(g, new THREE.SphereGeometry(0.3, 14, 10), mats.straw, -1.05, 1.0, -S / 2 + 0.42);
+  }
+
+  // One box stall at the origin, its door facing +z, built after its kind. Partitions between stalls are drawn by the zone.
+  function makeStall(stall) {
+    const g = new THREE.Group();
+    g.userData.code = stall.code;
+    const front = S / 2;
+    const kind = kindOf(stall);
+    if (kind === 'isolation') isolationStall(g, front);
+    else if (kind === 'recovery') recoveryStall(g, front);
+    else standardStall(g, front);
+    // The nameplate (brass; white with a red or blue edge on an isolation or recovery stall) and the
+    // state lamp, on the front facing the aisle.
     const plateTex = keep(canvasTexture(512, 240, (pg) => {
-      const grad = pg.createLinearGradient(0, 0, 512, 240);
-      grad.addColorStop(0, '#b8902f'); grad.addColorStop(0.5, '#ecd27e'); grad.addColorStop(1, '#a8801f');
-      pg.fillStyle = grad;
+      if (kind === 'standard') {
+        const grad = pg.createLinearGradient(0, 0, 512, 240);
+        grad.addColorStop(0, '#b8902f'); grad.addColorStop(0.5, '#ecd27e'); grad.addColorStop(1, '#a8801f');
+        pg.fillStyle = grad;
+      } else pg.fillStyle = '#ffffff';
       pg.fillRect(0, 0, 512, 240);
-      pg.strokeStyle = '#6e5310';
-      pg.lineWidth = 10;
+      pg.strokeStyle = kind === 'isolation' ? '#b3261e' : kind === 'recovery' ? '#1f4f78' : '#6e5310';
+      pg.lineWidth = 14;
       pg.strokeRect(10, 10, 492, 220);
-      pg.fillStyle = '#3d2c06';
+      pg.fillStyle = kind === 'standard' ? '#3d2c06' : '#1d2a30';
       pg.textAlign = 'center';
       pg.font = '700 108px Lora, Georgia, serif';
       pg.fillText(stall.code, 256, 126);
       pg.font = '600 40px Inter, Arial, sans-serif';
       pg.fillText(plateName(stall).slice(0, 22), 256, 190);
     }));
-    add(g, new THREE.PlaneGeometry(0.62, 0.29), new THREE.MeshStandardMaterial({ map: plateTex, metalness: 0.5, roughness: 0.35 }), -S / 4, 1.0, front + T / 2 + 0.03, { shadow: false });
+    const plateZ = front + T / 2 + 0.03;
+    add(g, new THREE.PlaneGeometry(0.62, 0.29), new THREE.MeshStandardMaterial({ map: plateTex, metalness: kind === 'standard' ? 0.5 : 0.1, roughness: 0.35 }), -S / 4, 1.0, plateZ, { shadow: false });
     const color = STALL_STATES[stallState(stall)].lamp;
-    add(g, new THREE.SphereGeometry(0.04, 16, 12), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.8 }), -S / 4 + 0.42, 1.0, front + T / 2 + 0.05, { shadow: false });
+    add(g, new THREE.SphereGeometry(0.04, 16, 12), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.8 }), -S / 4 + 0.42, 1.0, plateZ + 0.02, { shadow: false });
     if (stall.status === 'maintenance') {
       board(g, S / 2 + 0.3, 0.1, 0.02, S / 4, 1.7, front + 0.12, mats.tape, { rz: -0.12 });
       board(g, S / 2 + 0.3, 0.1, 0.02, S / 4, 1.95, front + 0.12, mats.tape, { rz: 0.1 });
@@ -297,21 +450,33 @@ export function createStallScene(canvas, { onSelect, onHover, onInteract } = {})
     return g;
   }
 
-  // The partitions of a row: solid wood below, three horizontal rails above (no bars).
-  function partitions(parent, xs, zCenter) {
-    for (const x of xs) {
+  // The partitions of a row, each after the stalls either side of it (`kinds[i]`): solid wood below and
+  // three rails above between ordinary stalls; a closed white wall to the top beside an isolation stall;
+  // padding on both faces beside a recovery stall.
+  function partitions(parent, xs, zCenter, kinds) {
+    xs.forEach((x, i) => {
+      const kind = kinds[i] || 'standard';
+      if (kind === 'isolation') {
+        board(parent, T, TOP, S, x, TOP / 2, zCenter, mats.clinic);
+        board(parent, 0.14, TOP, 0.14, x, TOP / 2, zCenter + S / 2, mats.clinicPost);
+        board(parent, 0.14, TOP, 0.14, x, TOP / 2, zCenter - S / 2, mats.clinicPost);
+        return;
+      }
       board(parent, T, WALL, S, x, WALL / 2, zCenter, mats.wood);
+      if (kind === 'recovery') for (const side of [-1, 1]) board(parent, 0.08, WALL - 0.2, S - 0.3, x + side * 0.08, WALL / 2 + 0.05, zCenter, mats.pad);
       for (const y of [1.72, 2.02, 2.32]) board(parent, 0.06, 0.12, S, x, y, zCenter, mats.wood);
       board(parent, 0.14, TOP, 0.14, x, TOP / 2, zCenter + S / 2, mats.timber); // post on the aisle
       board(parent, 0.14, TOP, 0.14, x, TOP / 2, zCenter - S / 2, mats.timber);
-    }
+    });
   }
 
-  // The barn floor and fittings: brick aisle, lanterns on the aisle posts, hay bales, a sign at the entrance.
-  function barn(parent, { rows, length, zoneLabel }) {
+  // The barn floor and fittings: brick aisle (tiles in an isolation zone, with a stripe across its
+  // entrance), lanterns on the aisle posts, hay bales, a sign at the entrance in the zone kind's colours.
+  function barn(parent, { rows, length, zoneLabel, kind = 'standard' }) {
     const half = length / 2;
     const depth = rows === 2 ? 2 * S + AISLE : S + AISLE;
-    add(parent, new THREE.PlaneGeometry(length + 3, AISLE), mats.brick, 0, 0.01, 0, { rx: -Math.PI / 2, shadow: false });
+    add(parent, new THREE.PlaneGeometry(length + 3, AISLE), kind === 'isolation' ? mats.tile : mats.brick, 0, 0.01, 0, { rx: -Math.PI / 2, shadow: false });
+    if (kind === 'isolation') add(parent, new THREE.PlaneGeometry(0.3, AISLE), mats.hazard, half + 1.1, 0.02, 0, { rx: -Math.PI / 2, shadow: false });
     // A lantern on every other post along the aisle; two warm lights for the whole zone.
     for (let i = 0; i <= length / S; i += 2) {
       const x = -half + i * S;
@@ -327,14 +492,15 @@ export function createStallScene(canvas, { onSelect, onHover, onInteract } = {})
     }
     // Hay bales stacked at the far end of the aisle.
     for (const [dx, dy, dz] of [[0, 0.25, -0.6], [0, 0.25, 0.6], [0, 0.75, 0]]) board(parent, 1.0, 0.5, 1.1, -half - 0.9 + dx, dy, dz, mats.straw);
-    // The zone's sign at the entrance: forest green board, brass letters.
+    // The zone's sign at the entrance: forest green with brass letters; red for isolation, blue for recovery.
+    const style = KIND_STYLE[kind] || KIND_STYLE.standard;
     const signTex = keep(canvasTexture(768, 256, (sg) => {
-      sg.fillStyle = '#1f4a38';
+      sg.fillStyle = style.sign;
       sg.fillRect(0, 0, 768, 256);
-      sg.strokeStyle = '#c9a24a';
+      sg.strokeStyle = style.border;
       sg.lineWidth = 12;
       sg.strokeRect(14, 14, 740, 228);
-      sg.fillStyle = '#e6c873';
+      sg.fillStyle = style.text;
       sg.textAlign = 'center';
       sg.font = '700 96px Lora, Georgia, serif';
       sg.fillText(zoneLabel.title, 384, 122);
@@ -554,11 +720,17 @@ export function createStallScene(canvas, { onSelect, onHover, onInteract } = {})
       busy.push({ x, z, busy: stall.occupied && stall.status !== 'maintenance' });
     }
     const xs = Array.from({ length: perRow + 1 }, (_, i) => -length / 2 + i * S);
-    partitions(zone, xs, -(AISLE / 2 + S / 2));
-    if (rows === 2) partitions(zone, xs, AISLE / 2 + S / 2);
+    // Each partition takes the stricter kind of the stalls either side: isolation, then recovery.
+    const rowKinds = (row) => xs.map((_, i) => {
+      const sides = [places.find((p) => p.z * (row ? 1 : -1) > 0 && Math.abs(p.x - (xs[i] - S / 2)) < 0.01), places.find((p) => p.z * (row ? 1 : -1) > 0 && Math.abs(p.x - (xs[i] + S / 2)) < 0.01)]
+        .filter(Boolean).map((p) => kindOf(p.stall));
+      return sides.includes('isolation') ? 'isolation' : sides.includes('recovery') ? 'recovery' : 'standard';
+    });
+    partitions(zone, xs, -(AISLE / 2 + S / 2), rowKinds(0));
+    if (rows === 2) partitions(zone, xs, AISLE / 2 + S / 2, rowKinds(1));
     const first = stalls[0];
     const label = first ? { title: (first.zoneName || `Khu ${first.zone}`).toUpperCase(), subtitle: first.zonePurpose || 'Câu lạc bộ đua ngựa' } : { title: 'CHUỒNG', subtitle: '' };
-    const size = barn(zone, { rows, length, zoneLabel: label });
+    const size = barn(zone, { rows, length, zoneLabel: label, kind: zoneKind({ stalls }) });
     farm(zone, size);
     banner(zone, size.half, size.depth);
     staffRounds(zone, busy, rows);
@@ -782,7 +954,7 @@ export function createStallScene(canvas, { onSelect, onHover, onInteract } = {})
     horseReady,
     /** The stalls to show (one zone, or a single stall), and the one to look at. */
     setStalls(next, focusCode) {
-      const sig = JSON.stringify(next.map((s) => [s.code, stallState(s), plateName(s), s.occupant?.horse?.breed, s.occupant?.horse?.color, s.zoneName, s.zonePurpose]));
+      const sig = JSON.stringify(next.map((s) => [s.code, stallState(s), plateName(s), s.occupant?.horse?.breed, s.occupant?.horse?.color, s.zoneName, s.zonePurpose, s.type]));
       if (sig !== signature) { stalls = next; signature = sig; build(); }
       focused = focusCode || null;
       if (focusCode && centers.has(focusCode)) focus(focusCode); else overview();

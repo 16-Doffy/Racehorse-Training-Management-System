@@ -3,11 +3,11 @@ import { STALL_STATES, stallState, groupZones } from './stall3d/stallStatus';
 
 const tileLabel = (s) => {
   if (s.status === 'maintenance') return 'Đang bảo trì';
-  if (!s.occupied) return 'Trống';
+  if (!s.occupied) return s.reservedFor ? `Giữ chỗ${s.reservedFor.horse ? `: ${s.reservedFor.horse.name}` : ''}` : 'Trống';
   return s.occupant?.horse?.name || 'Có ngựa';
 };
 
-const LEGEND = ['ok', 'watch', 'bad', 'taken', 'empty', 'maint'];
+const LEGEND = ['ok', 'watch', 'bad', 'taken', 'empty', 'reserved', 'maint'];
 
 /**
  * The stable map: one zone at a time (tabs), its stalls in two rows facing the aisle as in the barn.

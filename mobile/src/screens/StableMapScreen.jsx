@@ -5,10 +5,12 @@ import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
 import { EmptyState, IconButton, LoadError, Loading, ProgressBar, Row, SearchInput, Sheet } from '../components/ui';
 import { useRefreshAll, useStableOverview, useStalls, useTasks, useTreatments } from '../hooks/useGroomData';
-import { HEALTH_STATUS, TRAINING_LEVEL, getUpcomingCare, isSameDay, matchesSearch, refId, stallState, taskState } from '../utils/groom';
+import { HEALTH_STATUS, STALL_KINDS, TRAINING_LEVEL, getUpcomingCare, isSameDay, matchesSearch, refId, stallKind, stallState, taskState } from '../utils/groom';
 import { colors, font, radius, spacing } from '../theme';
 
 const LOOSE_ZONE = '~';
+// Ordinary zones first, then recovery, isolation last: the sick horses are seen to after the others.
+const KIND_ORDER = ['standard', 'recovery', 'isolation'];
 
 /**
  * The groom's stalls (GET /stable/stalls), as the Manager laid them out, made to hold a working day of
@@ -18,6 +20,8 @@ const LOOSE_ZONE = '~';
  * their titles (only the first starts open), the search finds a horse or a stall, and "Cần chú ý"
  * keeps only the horses to watch. "Cả khu" on a zone shows every stall of it in the map's order —
  * colleagues' and empty ones faded — so the groom knows who stands next door, without a second map.
+ * Isolation and recovery zones are marked in their colours, come after the ordinary ones, and say
+ * what the groom does differently there; a stall kept for a horse away in one of them says so.
  * Only the Manager places horses and gives stalls; this screen only shows.
  */
 export default function StableMapScreen({ navigation }) {
@@ -79,8 +83,8 @@ export default function StableMapScreen({ navigation }) {
       return facts;
     };
     return [
-      ...myStalls.map((s) => ({ key: s._id, stall: s, horse: s.occupant?.horse || null, zone: s.zone, zoneName: s.zoneName || `Khu ${s.zone}`, code: s.code })),
-      ...myUnplaced.map((u) => ({ key: u.assignment || refId(u.horse), stall: null, horse: u.horse, zone: LOOSE_ZONE, zoneName: 'Chuồng ghi tay', code: null, written: u.stableBlock })),
+      ...myStalls.map((s) => ({ key: s._id, stall: s, horse: s.occupant?.horse || null, zone: s.zone, zoneName: s.zoneName || `Khu ${s.zone}`, code: s.code, kind: stallKind(s) })),
+      ...myUnplaced.map((u) => ({ key: u.assignment || refId(u.horse), stall: null, horse: u.horse, zone: LOOSE_ZONE, zoneName: 'Chuồng ghi tay', code: null, written: u.stableBlock, kind: STALL_KINDS.standard })),
     ].map((e) => ({ ...e, facts: factsOf(e.horse) }));
   }, [myStalls, myUnplaced, horseById, lockedHorseIds, treatmentByHorse, todayByHorse]);
 
@@ -90,15 +94,18 @@ export default function StableMapScreen({ navigation }) {
   const entryByStall = new Map(entries.filter((e) => e.stall).map((e) => [e.stall._id, e]));
   const mapZoneByKey = new Map(zones.map((z) => [z.key, z]));
 
-  // My zones, in the map's order, each with how many horses and how many to watch.
+  // My zones, ordinary ones first in the map's order, then recovery and isolation; each with how many
+  // horses and how many to watch.
   const myZones = [];
   for (const e of entries) {
     let z = myZones.find((x) => x.key === e.zone);
-    if (!z) myZones.push((z = { key: e.zone, name: e.zoneName, all: [], horses: 0, watch: 0 }));
+    if (!z) myZones.push((z = { key: e.zone, name: e.zoneName, kind: mapZoneByKey.get(e.zone)?.kind || e.kind, all: [], horses: 0, watch: 0 }));
     z.all.push(e);
     if (e.horse) z.horses += 1;
     if (e.facts?.watch) z.watch += 1;
   }
+  myZones.sort((a, b) => KIND_ORDER.indexOf(a.kind.key) - KIND_ORDER.indexOf(b.kind.key));
+  const kindsShown = Object.values(STALL_KINDS).filter((k) => k.key !== 'standard' && myZones.some((z) => z.kind.key === k.key));
   const pickedZone = zone === 'all' ? null : myZones.find((z) => z.key === zone) || null;
   const q = search.trim();
   const filtering = !!q || attentionOnly;
@@ -179,6 +186,9 @@ export default function StableMapScreen({ navigation }) {
           <Legend icon="medication" color={colors.purple} label="Đang điều trị" />
           <Legend icon="lock" color={colors.orange} label="Hạn chế tập" />
           <Legend icon="clock" color={colors.red} label="Quá hạn chăm sóc" />
+          {kindsShown.map((k) => (
+            <Legend key={k.key} icon={k.icon} color={k.color} label={k.label} />
+          ))}
         </Row>
       </View>
 
@@ -215,15 +225,25 @@ export default function StableMapScreen({ navigation }) {
               const others = z.map ? z.map.stalls.filter((s) => !entryByStall.has(s._id)).length : 0;
               const showWhole = !filtering && whole.has(z.key) && !!z.map;
               const tiles = showWhole ? z.map.stalls.map((s) => entryByStall.get(s._id) || { key: s._id, other: s }) : z.items;
+              const special = z.kind.key !== 'standard';
               return (
-                <View key={z.key} style={styles.zone}>
-                  <View style={[styles.zoneHead, closed && styles.zoneHeadClosed]}>
+                <View key={z.key} style={[styles.zone, special && { borderLeftWidth: 3, borderLeftColor: z.kind.color, paddingLeft: spacing.sm }]}>
+                  <View style={[styles.zoneHead, closed && styles.zoneHeadClosed, closed && special && { borderColor: z.kind.color, backgroundColor: z.kind.bg }]}>
                     <Pressable accessibilityRole="button" accessibilityState={{ expanded: !closed }} onPress={() => fold(z.key)} style={styles.zoneTitle} hitSlop={4}>
                       <Icon name={closed ? 'chevronRight' : 'chevronDown'} size={16} color={colors.forestLight} />
-                      <Text style={styles.zoneName} numberOfLines={1}>
+                      <Text style={[styles.zoneName, special && { color: z.kind.color }]} numberOfLines={1}>
                         {z.name}
                       </Text>
-                      <Text style={font.small}>{z.horses} ngựa</Text>
+                      {/* The kind, unless the zone's name already says it ("Khu cách ly"). */}
+                      {special && !z.name.toLowerCase().includes(z.kind.short.toLowerCase()) ? (
+                        <View style={[styles.kindPill, { backgroundColor: z.kind.bg, borderColor: z.kind.color }]}>
+                          <Icon name={z.kind.icon} size={11} color={z.kind.color} />
+                          <Text style={[styles.kindPillText, { color: z.kind.color }]}>{z.kind.short}</Text>
+                        </View>
+                      ) : null}
+                      <Text style={font.small} numberOfLines={1}>
+                        {z.horses} ngựa
+                      </Text>
                       {z.watch ? (
                         <View style={styles.zoneWatch}>
                           <Text style={styles.zoneWatchText}>{z.watch} cần chú ý</Text>
@@ -244,6 +264,7 @@ export default function StableMapScreen({ navigation }) {
                       </Pressable>
                     ) : null}
                   </View>
+                  {special && !closed ? <KindRules kind={z.kind} /> : null}
                   {z.key === LOOSE_ZONE && !closed ? (
                     <Text style={[font.small, { paddingHorizontal: 2 }]}>Chuồng ghi tay từ trước khi có sơ đồ — Quản lý CLB sẽ xếp lại vào chuồng có mã.</Text>
                   ) : null}
@@ -308,10 +329,27 @@ function ZonePicker({ visible, zones, total, value, onClose, onPick }) {
       ) : null}
       <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: 6 }} keyboardShouldPersistTaps="handled">
         {!query ? row('all', 'Mọi khu', `${zones.length} khu · ${total} ngựa`, zones.reduce((n, z) => n + z.watch, 0)) : null}
-        {shown.map((z) => row(z.key, z.name, `${z.horses} ngựa · ${z.all.length} chuồng`, z.watch))}
+        {shown.map((z) => row(z.key, z.name, `${z.kind.key !== 'standard' ? `${z.kind.short} · ` : ''}${z.horses} ngựa · ${z.all.length} chuồng`, z.watch))}
         {shown.length === 0 ? <EmptyState icon="search" text="Không có khu nào khớp" /> : null}
       </ScrollView>
     </Sheet>
+  );
+}
+
+/** What the groom does differently in an isolation or recovery zone, under its title. */
+function KindRules({ kind }) {
+  return (
+    <View style={[styles.rules, { backgroundColor: kind.bg, borderColor: kind.color }]} accessibilityLabel={`Lưu ý ${kind.label}`}>
+      <Row style={{ gap: 6 }}>
+        <Icon name={kind.icon} size={15} color={kind.color} />
+        <Text style={[styles.rulesTitle, { color: kind.color }]}>Lưu ý khi chăm sóc ở {kind.label.toLowerCase()}</Text>
+      </Row>
+      {kind.rules.map((r) => (
+        <Text key={r} style={styles.rule}>
+          • {r}
+        </Text>
+      ))}
+    </View>
   );
 }
 
@@ -329,7 +367,8 @@ function Legend({ icon, color, label }) {
  * health (also the colour down its edge), and today's work. Everything else is on the horse's page.
  */
 function MiniTile({ entry, onPress }) {
-  const { horse, code, written, facts } = entry;
+  const { horse, code, written, facts, kind } = entry;
+  const special = kind && kind.key !== 'standard';
   const status = HEALTH_STATUS[horse.healthStatus] || HEALTH_STATUS.eligible;
   const { treatment, restricted, locked, care, work } = facts;
   const overdue = care && care.daysLeft <= 0;
@@ -337,9 +376,9 @@ function MiniTile({ entry, onPress }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${horse.name}, chuồng ${code || written || 'chưa có'}, ${status.label}${work?.total ? `, ${work.done} trên ${work.total} việc` : ''}`}
+      accessibilityLabel={`${horse.name}, chuồng ${code || written || 'chưa có'}${special ? ` (${kind.short.toLowerCase()})` : ''}, ${status.label}${work?.total ? `, ${work.done} trên ${work.total} việc` : ''}`}
       onPress={onPress}
-      style={({ pressed }) => [styles.mini, facts.watch && styles.miniWatch, pressed && { opacity: 0.8 }]}
+      style={({ pressed }) => [styles.mini, facts.watch && styles.miniWatch, special && { backgroundColor: kind.bg, borderColor: kind.color }, pressed && { opacity: 0.8 }]}
     >
       <View style={[styles.miniEdge, { backgroundColor: status.color }]} />
       <Row style={{ justifyContent: 'space-between', gap: 2 }}>
@@ -347,6 +386,7 @@ function MiniTile({ entry, onPress }) {
           {code || 'Ghi tay'}
         </Text>
         <Row style={{ gap: 2 }}>
+          {special ? <Icon name={kind.icon} size={12} color={kind.color} /> : null}
           {treatment ? <Icon name="medication" size={12} color={colors.purple} /> : null}
           {restricted || locked ? <Icon name="lock" size={12} color={restricted?.color || colors.red} /> : null}
           {overdue ? <Icon name="clock" size={12} color={colors.red} /> : null}
@@ -368,17 +408,26 @@ function MiniTile({ entry, onPress }) {
   );
 }
 
-/** A stall of mine with no horse yet, or under maintenance: in its place in the zone, faded. */
+/** A stall of mine with no horse yet, under maintenance, or kept for a horse away: in its place in the zone, faded. */
 function EmptyMini({ stall }) {
   const maintenance = stall?.status === 'maintenance';
+  const kept = stall?.reservedFor;
   return (
-    <View style={[styles.mini, styles.miniEmpty]} accessibilityLabel={`Chuồng ${stall?.code || ''} của tôi ${maintenance ? 'đang bảo trì' : 'trống'}`}>
+    <View
+      style={[styles.mini, styles.miniEmpty, kept && styles.miniKept]}
+      accessibilityLabel={`Chuồng ${stall?.code || ''} của tôi ${maintenance ? 'đang bảo trì' : kept ? `giữ chỗ cho ${kept.horse?.name || 'ngựa đang điều trị'}` : 'trống'}`}
+    >
       <Text style={[styles.miniCode, { color: colors.textMuted }]} numberOfLines={1}>
         {stall?.code || '—'}
       </Text>
       <Text style={[styles.miniName, { color: colors.textFaint }]} numberOfLines={1}>
-        {maintenance ? 'Bảo trì' : 'Trống'}
+        {maintenance ? 'Bảo trì' : kept ? 'Giữ chỗ' : 'Trống'}
       </Text>
+      {kept ? (
+        <Text style={styles.miniKeptFor} numberOfLines={2}>
+          {kept.horse?.name ? `${kept.horse.name} · đang ở ${kept.now}` : 'Ngựa đang điều trị'}
+        </Text>
+      ) : null}
       <Text style={styles.miniOwner}>Của tôi</Text>
     </View>
   );
@@ -402,7 +451,7 @@ function OtherMini({ stall, onPress }) {
         {stall.code}
       </Text>
       <Text style={[styles.miniName, { color: horse ? colors.textMuted : colors.textFaint, fontWeight: horse ? '700' : '600' }]} numberOfLines={1}>
-        {horse?.name || (stall.occupied ? 'Có ngựa' : maintenance ? 'Bảo trì' : 'Trống')}
+        {horse?.name || (stall.occupied ? 'Có ngựa' : maintenance ? 'Bảo trì' : stall.reservedFor ? `Giữ chỗ${stall.reservedFor.horse?.name ? `: ${stall.reservedFor.horse.name}` : ''}` : 'Trống')}
       </Text>
       <Text style={styles.miniOwner} numberOfLines={1}>
         {stall.caretaker?.name ? stall.caretaker.name : horse || stall.occupied ? 'Người khác' : 'Chưa giao'}
@@ -463,4 +512,11 @@ const styles = StyleSheet.create({
   pickRowOn: { borderColor: colors.forest, backgroundColor: colors.forestSoft },
   pickTitle: { fontSize: 15, fontWeight: '800', color: colors.text },
   legendText: { fontSize: 11.5, color: colors.textMuted },
+  kindPill: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.pill, borderWidth: 1 },
+  kindPillText: { fontSize: 11, fontWeight: '800' },
+  rules: { gap: 3, padding: spacing.md, borderRadius: radius.md, borderWidth: 1 },
+  rulesTitle: { fontSize: 13, fontWeight: '800' },
+  rule: { fontSize: 12.5, color: colors.text, lineHeight: 18 },
+  miniKept: { borderColor: '#93c5fd', backgroundColor: '#eff6ff' },
+  miniKeptFor: { fontSize: 10.5, color: '#2f6fa3', fontWeight: '600' },
 });

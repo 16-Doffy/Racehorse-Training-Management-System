@@ -39,6 +39,7 @@ import {
   refId,
   restockRequestFor,
   stallCodeOf,
+  stallKind,
   taskState,
 } from '../utils/groom';
 import { coatFor } from '../three/horseBreeds';
@@ -119,6 +120,8 @@ export default function HorseDetailScreen({ route }) {
   const mealCount = todayTasks.filter((t) => t.taskType === 'feeding').length;
   const doseCount = todayTasks.filter((t) => ['medication', 'monitoring'].includes(t.taskType)).length;
   const stall = stallCodeOf(assignment);
+  // An isolation or recovery stall: said beside its code, with what the groom does differently there.
+  const kind = assignment?.stall?.type && assignment.stall.type !== 'standard' ? stallKind(assignment.stall) : null;
 
   // The horse's day in one ordered list: meals from the ration, training, the vet's visit and the care tasks.
   const routine = useMemo(
@@ -245,6 +248,12 @@ export default function HorseDetailScreen({ route }) {
                   <Text style={styles.stallText}>{stall}</Text>
                 </View>
               ) : null}
+              {kind ? (
+                <View style={[styles.kindTag, { backgroundColor: kind.bg, borderColor: kind.color }]}>
+                  <Icon name={kind.icon} size={12} color={kind.color} />
+                  <Text style={[styles.kindTagText, { color: kind.color }]}>{kind.short}</Text>
+                </View>
+              ) : null}
             </Row>
             <Row style={{ gap: spacing.sm }}>
               <Stat icon="tasks" label="xong" value={`${doneCount}/${todayTasks.length}`} tint={colors.forest} />
@@ -253,6 +262,23 @@ export default function HorseDetailScreen({ route }) {
             </Row>
             {clearance?.reason ? <Text style={styles.clearanceNote}>{clearance.reason}</Text> : null}
           </View>
+
+          {kind ? (
+            <View style={[styles.kindNote, { backgroundColor: kind.bg, borderColor: kind.color }]}>
+              <Row style={{ gap: 6 }}>
+                <Icon name={kind.icon} size={16} color={kind.color} />
+                <Text style={[styles.kindNoteTitle, { color: kind.color }]}>
+                  Ngựa đang ở {kind.label.toLowerCase()}
+                </Text>
+              </Row>
+              {kind.rules.map((r) => (
+                <Text key={r} style={styles.kindNoteRule}>
+                  • {r}
+                </Text>
+              ))}
+              <Text style={font.small}>Ngựa tự về chuồng cũ khi bác sĩ kết luận đủ điều kiện.</Text>
+            </View>
+          ) : null}
 
           {shortages.length > 0 ? (
             <Banner tone="danger" style={{ paddingVertical: spacing.sm }}>
@@ -586,6 +612,11 @@ const styles = StyleSheet.create({
   stripText: { flex: 1, fontSize: 13.5, fontWeight: '700', color: colors.text },
   stall: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.forest },
   stallText: { fontSize: 12, fontWeight: '800', color: colors.gold, letterSpacing: 0.3 },
+  kindTag: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
+  kindTagText: { fontSize: 11.5, fontWeight: '800' },
+  kindNote: { gap: 3, padding: spacing.md, borderRadius: radius.md, borderWidth: 1 },
+  kindNoteTitle: { fontSize: 13.5, fontWeight: '800' },
+  kindNoteRule: { fontSize: 12.5, color: colors.text, lineHeight: 18 },
   stat: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 6, borderRadius: radius.sm, backgroundColor: colors.cream },
   statValue: { fontSize: 15, fontWeight: '800' },
   statLabel: { flexShrink: 1, fontSize: 11, color: colors.textMuted, fontWeight: '600' },

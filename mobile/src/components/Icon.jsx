@@ -85,6 +85,8 @@ const ICONS = {
   filter: ['ion', 'options-outline'],
   refresh: ['ion', 'refresh'],
   stall: ['mci', 'home-variant-outline'],
+  isolation: ['mci', 'shield-alert-outline'],
+  recovery: ['mci', 'hospital-box-outline'],
   weight: ['mci', 'weight-kilogram'],
   syringe: ['mci', 'needle'],
   farrier: ['mci', 'horseshoe'],

@@ -643,7 +643,55 @@ const STALL_STATES = {
   maintenance: { key: 'maintenance', label: 'Bảo trì', color: '#b45309', bg: '#fef3c7' },
   empty: { key: 'empty', label: 'Trống', color: '#9ca3af', bg: '#f3f4f6' },
   taken: { key: 'taken', label: 'Có ngựa', color: '#6b7280', bg: '#f3f4f6' },
+  // Kept for its horse while the horse is in an isolation or recovery stall: empty, not free.
+  reserved: { key: 'reserved', label: 'Giữ chỗ', color: '#2f6fa3', bg: '#eff6ff' },
 };
+
+/**
+ * The three parts of the stable (Stall.type), the same colours as the web map: ordinary stalls,
+ * isolation (a horse that may carry an illness, kept away from the others) and recovery (after an
+ * injury). Isolation and recovery each come with what the groom does differently there.
+ */
+export const STALL_KINDS = {
+  standard: { key: 'standard', label: 'Chuồng thường', short: 'Thường', color: '#2e7d4f', bg: '#ecfdf5', icon: 'stall', rules: [] },
+  isolation: {
+    key: 'isolation',
+    label: 'Khu cách ly',
+    short: 'Cách ly',
+    color: '#b3261e',
+    bg: '#fef2f2',
+    icon: 'isolation',
+    rules: [
+      'Chăm ngựa cách ly sau cùng, khi đã xong các ngựa khác.',
+      'Dùng xô, bàn chải, dụng cụ riêng của chuồng; không mang sang chuồng khác.',
+      'Nhúng ủng vào khay khử trùng và sát khuẩn tay mỗi lần ra vào.',
+      'Đo nhiệt độ mỗi lần vào; sốt, ho hay chảy mũi thì báo bác sĩ ngay.',
+    ],
+  },
+  recovery: {
+    key: 'recovery',
+    label: 'Khu hồi phục',
+    short: 'Hồi phục',
+    color: '#2f6fa3',
+    bg: '#eff6ff',
+    icon: 'recovery',
+    rules: [
+      'Giữ nền rơm dày và khô, dọn phân thường xuyên để ngựa nằm nghỉ.',
+      'Bật đèn sưởi khi trời lạnh; xem camera trong chuồng còn hoạt động.',
+      'Làm đúng y lệnh (thuốc, chườm, băng) và ghi nhận ngay trên app.',
+      'Chỉ dắt ngựa ra khi bác sĩ cho phép; thấy đau, sưng, khập khiễng thì báo.',
+    ],
+  },
+};
+
+/** The kind of a stall (its `type`), ordinary when it has none. */
+export const stallKind = (stall) => STALL_KINDS[stall?.type] || STALL_KINDS.standard;
+
+/** The kind of a zone: the kind all its stalls are; a zone of mixed stalls counts as ordinary. */
+export function zoneKind(stalls = []) {
+  const types = new Set(stalls.map((s) => s.type || 'standard'));
+  return types.size === 1 ? stallKind({ type: [...types][0] }) : STALL_KINDS.standard;
+}
 
 /**
  * How a stall on the map stands: under maintenance, empty, or the health of the horse in it — the
@@ -652,7 +700,7 @@ const STALL_STATES = {
  */
 export function stallState(stall) {
   if (!stall || stall.status === 'maintenance') return stall ? STALL_STATES.maintenance : STALL_STATES.empty;
-  if (!stall.occupied || !stall.occupant) return STALL_STATES.empty;
+  if (!stall.occupied || !stall.occupant) return stall.reservedFor ? STALL_STATES.reserved : STALL_STATES.empty;
   const health = stall.occupant.horse?.healthStatus;
   if (stall.occupant.hidden || !stall.occupant.horse) return STALL_STATES.taken;
   return { key: health || 'eligible', ...(HEALTH_STATUS[health] || HEALTH_STATUS.eligible) };
@@ -667,7 +715,7 @@ export function groupZones(stalls = []) {
     }
     zones.get(stall.zone).stalls.push(stall);
   }
-  return [...zones.values()];
+  return [...zones.values()].map((z) => ({ ...z, kind: zoneKind(z.stalls) }));
 }
 
 /**

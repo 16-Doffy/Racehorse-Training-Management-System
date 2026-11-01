@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Alert, Button, Card, Popconfirm, Segmented, Select, Space, Tag, Tooltip } from 'antd';
+import { Alert, Button, Card, Popconfirm, Select, Space, Tag, Tooltip } from 'antd';
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import Stall3D from './stall3d/Stall3D';
 import StableMap from './StableMap';
-import { STALL_STATES, STALL_TYPE_LABELS, stallState, groupZones } from './stall3d/stallStatus';
+import { STALL_STATES, STALL_TYPE_LABELS, ZONE_KINDS, stallState, groupZones, zoneKind } from './stall3d/stallStatus';
+import ZonePicker from './ZonePicker';
 import { HEALTH_LABELS, HEALTH_COLORS } from '../../constants/health';
 import { modal } from '../../lib/antdStatic';
 
@@ -96,26 +97,21 @@ export default function StableMapBoard({
       onOk: () => onRetireZone(zone),
     });
 
+  const kind = ZONE_KINDS[zoneKind(zone)];
+
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+    <div className="space-y-3">
+      {/* The stable's three parts kept apart: ordinary stalls, isolation, recovery; each with its zones. */}
+      <ZonePicker zones={zones} value={zone.key} onChange={changeZone} />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="min-w-0 space-y-2">
         {/* Over the barn: which zone, what it is, and its tools. */}
         <div className="light-surface-box flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1">
-            <Segmented
-              value={zone.key}
-              onChange={changeZone}
-              // A zone of isolation or recovery stalls says so, and a zone holding a horse in the wrong
-              // part of the stable for its health is marked (placement on the stall, from the server).
-              options={zones.map((z) => {
-                const kind = z.stalls.every((s) => s.type === 'isolation') ? ' · cách ly' : z.stalls.every((s) => s.type === 'recovery') ? ' · hồi phục' : '';
-                const wrong = z.stalls.some((s) => s.placement) ? ' ⚠' : '';
-                return { value: z.key, label: `${z.name}${kind} · ${z.stalls.filter((s) => s.occupied).length}/${z.stalls.length}${wrong}` };
-              })}
-              className="max-w-full overflow-x-auto"
-            />
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: kind.color }} aria-hidden />
+            <span className="text-sm font-semibold text-gray-900">{zone.name}</span>
             <span className="text-xs text-gray-600">
-              {zone.purpose ? `${zone.purpose}, ` : ''}
+              {kind.label} · {zone.purpose ? `${zone.purpose}, ` : ''}
               {zone.stalls.length} chuồng, {zoneHorses.length} có ngựa
             </span>
           </div>
@@ -164,11 +160,21 @@ export default function StableMapBoard({
             </Space>
           </div>
           {selected.placement && <Alert className="!mt-3" type="warning" showIcon title={selected.placement.message} />}
+          {selected.reservedFor && (
+            // Kept for its horse while the horse is in isolation or recovery: it comes back here when fit.
+            <Alert
+              className="!mt-3"
+              type="info"
+              showIcon
+              title={selected.reservedFor.horse ? `Đang giữ chỗ cho ${selected.reservedFor.horse.name} (hiện ở ${selected.reservedFor.now}).` : 'Đang giữ chỗ cho một ngựa đang điều trị.'}
+              description="Ngựa tự về chuồng này khi bác sĩ kết luận đủ điều kiện; trong lúc đó không xếp ngựa khác vào."
+            />
+          )}
 
           <div className="mt-3 grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-4 gap-y-2 text-sm">
             <span className="text-gray-600">Ngựa</span>
             <span className="min-w-0">
-              {horse ? <Link to={`/horses/${horse._id}`}>{horse.name}</Link> : selected.occupied ? 'Có ngựa (không xem được)' : '—'}
+              {horse ? <Link to={`/horses/${horse._id}`}>{horse.name}</Link> : selected.occupied ? 'Có ngựa (không xem được)' : selected.reservedFor ? 'Giữ chỗ' : '—'}
               {horse?.healthStatus && (
                 <Tag color={HEALTH_COLORS[horse.healthStatus]} className="!ml-2">
                   {HEALTH_LABELS[horse.healthStatus]}
@@ -216,7 +222,7 @@ export default function StableMapBoard({
                   Mở lại chuồng
                 </Button>
               )}
-              {selected.status !== 'maintenance' && !selected.occupied && (
+              {selected.status !== 'maintenance' && !selected.occupied && !selected.reservedFor && (
                 <>
                   <Button size="small" type="primary" onClick={() => onAssign(selected)}>
                     Xếp ngựa vào chuồng này
@@ -276,6 +282,7 @@ export default function StableMapBoard({
           )}
         </Card>
       </aside>
+      </div>
     </div>
   );
 }

@@ -11,12 +11,15 @@ import {
   lateRecordTimes,
   doseSlots,
   getStockLevel,
+  groupZones,
   hasApprovedRation,
   isOpenRequest,
   needsAction,
   primaryAction,
   rationLine,
   restockState,
+  stallKind,
+  stallState,
   summarizeTasks,
   taskBlockers,
   taskState,
@@ -337,4 +340,16 @@ test('a missed meal still needs the groom until it is reported; a recorded one d
   assert.equal(needsAction(task({ status: 'completed' })), false);
   assert.equal(needsAction(task({ status: 'skipped', skippedBy: GROOM, skipReason: 'x' })), false);
   assert.equal(needsAction(task({ timing: { state: 'upcoming', canComplete: false } })), true);
+});
+
+test('isolation and recovery zones are told apart, and a stall kept for a horse away is not "empty"', () => {
+  const stall = (zone, type, extra = {}) => ({ zone, type, code: `${zone}-01`, occupied: false, status: 'active', ...extra });
+  assert.equal(stallKind(stall('Q', 'isolation')).short, 'Cách ly');
+  assert.equal(stallKind(stall('R', 'recovery')).short, 'Hồi phục');
+  assert.equal(stallKind({}).key, 'standard');
+  assert.ok(stallKind(stall('Q', 'isolation')).rules.length > 0, 'what the groom does differently there');
+  const zones = groupZones([stall('A', 'standard'), stall('Q', 'isolation'), stall('R', 'recovery'), stall('M', 'standard'), { ...stall('M', 'recovery'), code: 'M-02' }]);
+  assert.deepEqual(zones.map((z) => `${z.key}:${z.kind.key}`), ['A:standard', 'Q:isolation', 'R:recovery', 'M:standard']);
+  assert.equal(stallState(stall('A', 'standard')).key, 'empty');
+  assert.equal(stallState(stall('A', 'standard', { reservedFor: { horse: { name: 'Dembele' }, now: 'R-02' } })).key, 'reserved');
 });
