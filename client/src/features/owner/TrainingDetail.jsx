@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Segmented } from 'antd';
-import { AimOutlined, CalendarOutlined, CommentOutlined, HistoryOutlined, LineChartOutlined, PlayCircleOutlined, ScheduleOutlined } from '@ant-design/icons';
+import { AimOutlined, CalendarOutlined, CaretRightOutlined, CommentOutlined, HistoryOutlined, LineChartOutlined, PlayCircleOutlined, ScheduleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { PLAN_STATUS_LABELS } from '../training/trainingVocab';
+import { PLAN_STATUS_LABELS, canReplay } from '../training/trainingVocab';
+import SessionReplay from '../training/SessionReplay';
 import { trainingChartRows, trainingChartTotals } from '../horses/trainingChart';
 import { Card, DateChip, EmptyNote, HorseAvatar, MoreButton, Pill, Row, Stats, Tiles } from './kit';
 import { RatingLine, TrainingBars } from './charts';
@@ -48,6 +49,8 @@ export default function TrainingDetail({ horses, horseId = null }) {
   const [view, setView] = useTabParam(VIEWS, 'view');
   const [pastShown, setPastShown] = useState(8);
   const [reviewsShown, setReviewsShown] = useState(8);
+  // The finished run being played back (the 3D horse, its heart rate and speed): the sensors' readings of the owner's own horse.
+  const [replay, setReplay] = useState(null);
   const { chart } = useTrainingChart({ months: 6, horse: horseId || undefined });
 
   const horsesById = useMemo(() => new Map(horses.map((h) => [idOf(h), h])), [horses]);
@@ -212,6 +215,11 @@ export default function TrainingDetail({ horses, horseId = null }) {
                             </>
                           }
                         >
+                          {canReplay(s) && (
+                            <button type="button" className="own-link-btn mt-0.5 inline-flex items-center gap-1" onClick={() => setReplay(s)}>
+                              <CaretRightOutlined /> Xem lại buổi chạy
+                            </button>
+                          )}
                           {s.videoUrl && (
                             <a href={s.videoUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold inline-flex items-center gap-1 mt-0.5">
                               <PlayCircleOutlined /> Xem video
@@ -298,6 +306,12 @@ export default function TrainingDetail({ horses, horseId = null }) {
           </Card>
         </>
       )}
+      <SessionReplay
+        session={replay}
+        horse={replay && horsesById.get(idOf(replay.horse))}
+        plan={replay && plans.find((p) => idOf(p) === idOf(replay.trainingPlan))}
+        onClose={() => setReplay(null)}
+      />
     </div>
   );
 }
