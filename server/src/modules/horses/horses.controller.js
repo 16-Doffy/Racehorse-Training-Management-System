@@ -35,7 +35,7 @@ async function withClearance(horses) {
   const ids = horses.map((h) => h._id);
   const [map, holds] = await Promise.all([
     clearanceMap(ids),
-    ExamRequest.find({ horse: { $in: ids }, status: 'pending', holdTraining: true }).select('horse reason createdAt').lean(),
+    ExamRequest.find({ horse: { $in: ids }, status: 'pending', holdTraining: true }).select('horse reason createdAt'),
   ]);
   const holdOf = new Map(holds.map((q) => [String(q.horse), { reason: q.reason, since: q.createdAt }]));
   return horses.map((h) => ({ ...h.toObject(), trainingClearance: map.get(String(h._id)), examHold: holdOf.get(String(h._id)) || null }));

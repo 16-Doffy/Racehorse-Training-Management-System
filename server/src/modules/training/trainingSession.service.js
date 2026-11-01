@@ -325,9 +325,9 @@ async function onAborted(session, actor) {
   }
   if (ABORT_NEEDS_EXAM.includes(session.abortCategory) && actor?._id) {
     // Until a vet has seen it the horse does not train again (readiness medicalGate), whoever stopped the run.
-    const open = await ExamRequest.findOne({ horse: horse._id, status: 'pending' });
-    if (open && !open.holdTraining) await ExamRequest.updateOne({ _id: open._id }, { $set: { holdTraining: true } });
-    if (!open) {
+    if (await ExamRequest.exists({ horse: horse._id, status: 'pending' })) {
+      await ExamRequest.updateMany({ horse: horse._id, status: 'pending' }, { $set: { holdTraining: true } });
+    } else {
       await openExamRequest({
         horse,
         requestedBy: actor,
