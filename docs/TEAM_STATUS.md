@@ -1,4 +1,4 @@
-# Racehorse TMS: web đang có gì và chạy theo luồng nào (26/10/2026)
+# Racehorse TMS: web đang có gì và chạy theo luồng nào (01/11/2026)
 
 Duy cập nhật (Claude soạn). Đọc mục 1–3 để hiểu hệ thống, mục 4 cho phần mới hôm nay, mục 5 trước khi
 code. Chi tiết API: Swagger tại `/api-docs` của server; chuồng: [STALL_API.md](STALL_API.md).
@@ -56,7 +56,7 @@ Thông báo: mỗi việc liên quan tới vai trò nào thì menu của vai tr�
 **Ăn uống và chăm sóc (HLV)**
 
 - **Lịch ăn cả kỳ:** `GET /feeding/calendar/:planId` xem; `POST .../confirm` xác nhận một lần; `PATCH .../day/:date/:slot` sửa một bữa.
-- **Gợi ý một bữa:** `GET /feeding/suggest?horse=&slot=`; form "Thêm khẩu phần" hiện gợi ý này.
+- **Gợi ý một bữa:** `GET /feeding/suggest?horse=&slot=`; form lập khẩu phần cho ngựa chưa có kế hoạch hiện gợi ý này.
 - **Thời khóa biểu cho ăn theo tuần của một ngựa:** `GET /feeding/timetable?horse=&week=`, cho biết mỗi bữa đã cho ăn chưa, ai cho, lúc nào.
 - **Tab Công việc chăm sóc và tab Khẩu phần ăn** nhóm theo ngựa. Bấm một con thì ra thời khóa biểu cho ăn và các việc của nó.
 
@@ -153,6 +153,14 @@ Thông báo: mỗi việc liên quan tới vai trò nào thì menu của vai tr�
     - tạo Khu cách ly (CL, 3 chuồng) và Khu hồi phục (HP, 2 chuồng); Taurus đang chấn thương chuyển sang HP-01; ngựa "demo" mới tiếp nhận ở C-01.
     - Còn 7 ngựa, không còn mục "Cần xử lý".
 - **CI:** giới hạn job nâng từ 15 lên 30 phút. Đã có 2 lần CI bị hủy đúng mốc 15 phút; một lần riêng bước cài trình duyệt mất 9 phút.
+
+## 4c. Mới 31/10 đến 01/11
+
+- **Lập khẩu phần theo kế hoạch tập:** "Tạo khẩu phần ăn" bày sẵn mọi bữa từ hôm nay đến hết kế hoạch, ngày ăn giống nhau gộp nhóm; thay form "Thêm khẩu phần". Ngựa đã có khẩu phần thì chỉ sửa.
+- **Giao việc chăm sóc nhiều ngày:** từ ngày đến ngày, thứ trong tuần, số lần mỗi ngày. Giao trùng bị từ chối.
+- **Sơ đồ chuồng 3 phần** (thường, cách ly, hồi phục), mỗi loại chuồng có mô hình 3D riêng; app Groom cũng hiện các khu này. App Groom lên Expo SDK 58.
+- **Ngựa và bữa ăn tự đi theo sức khỏe:** chấn thương sang chuồng hồi phục, cách ly sang chuồng cách ly, khỏi thì về chuồng cũ được giữ chỗ; khi bệnh ăn chế độ riêng, khỏi thì về khẩu phần cũ kể cả phần HLV đã sửa. Xem [CURRENT_FLOW.md](CURRENT_FLOW.md), mục 5.
+- **Tự động không còn im lặng:** không chuyển được chuồng hay không đổi được bữa thì Quản lý và HLV được báo lý do, hệ thống tự thử lại; phiếu khám của bác sĩ không bao giờ lỗi vì các việc này. Ngựa chờ chuồng được chuyển ngay khi có chỗ. `GET /stable/stalls` trả thêm `waiting`. Mọi lần tự chuyển có trong Nhật ký Hệ thống.
 
 ## 5. Cho dev: cách làm, test, deploy
 

@@ -44,15 +44,14 @@ module.exports = [
   {
     id: 'ration',
     title: 'Khẩu phần ăn',
-    where: 'HLV · /stable/tasks → tab "Khẩu phần ăn" → "Thêm khẩu phần"',
-    note: 'Làm trước buổi tập. Ngựa mới chưa có bữa nào thì kiểm tra sẵn sàng sẽ cảnh báo dinh dưỡng (phải ghi lý do).',
+    where: 'HLV · /stable/tasks → tab "Khẩu phần ăn" → chọn ngựa → "Tạo khẩu phần ăn" (ngựa đã có thì "Sửa khẩu phần ăn")',
+    note: 'Làm trước buổi tập. Ngựa mới chưa có bữa nào thì kiểm tra sẵn sàng sẽ cảnh báo dinh dưỡng (phải ghi lý do). Ngựa có kế hoạch tập: lịch bày sẵn từ hôm nay đến hết kế hoạch, ngày ăn giống nhau gộp nhóm. Ngựa chưa có kế hoạch: nhập từng bữa.',
     rows: [
-      ['Ngựa', 'TEST Sao Mai', 'Mỗi ngựa, mỗi bữa chỉ 1 khẩu phần', 'Tạo bữa trưa lần hai cho cùng ngựa'],
-      ['Bữa', 'Bữa trưa', 'Bữa sáng · Bữa trưa · Bữa tối', ''],
-      ['Giờ cho ăn', 'Khoảng 2 giờ trước giờ tập định chạy (đúng buổi: sáng trước 11:00, trưa 11:00–15:59, chiều từ 16:00)', 'Đúng buổi của bữa; cách bữa khác của ngựa ≥ 3 giờ. Groom tick được từ 60 phút trước đến 4 giờ sau giờ cho ăn', 'Bữa trưa 23:00, hoặc hai bữa cách nhau 30 phút'],
-      ['Nút Xoá (thùng rác)', 'Xoá một khẩu phần thử', 'HLV/Manager xoá được; việc cho ăn chưa làm của bữa đó hôm nay bị bỏ theo, lịch sử giữ nguyên', ''],
-      ['Thức ăn + lượng', 'Cỏ khô Timothy 2 kg, Cám 1.5 kg', 'Mỗi dòng phải chọn món trong kho và nhập lượng > 0; ít nhất 1 món. Bữa chỉ có cỏ khô: chỉ cảnh báo. Bữa có cám hoặc ngũ cốc: bài nặng trong 60 phút bị chặn, 60–90 phút cảnh báo', 'Bấm Lưu khi chưa chọn món (báo "Chọn món trong kho")'],
-      ['Cột Duyệt trong bảng', 'Đã duyệt — tên HLV', 'Lưu khẩu phần là duyệt. "Chưa duyệt" hoặc "Có món chưa gắn kho": Groom không ghi nhận được bữa (hoặc kho không trừ) — bấm Sửa rồi Lưu', ''],
+      ['Ngựa', 'TEST Sao Mai', 'Danh sách chỉ cho chọn ngựa chưa có khẩu phần; ngựa đã có hiện "đã có khẩu phần" và sửa trong trang của ngựa đó', 'Chọn ngựa đã có khẩu phần'],
+      ['Giờ các bữa', 'Khoảng 2 giờ trước giờ tập định chạy (đúng buổi: sáng trước 11:00, trưa 11:00–15:59, chiều từ 16:00)', 'Đúng buổi của bữa; cách bữa khác của ngựa ≥ 3 giờ. Groom tick được từ 60 phút trước đến 4 giờ sau giờ cho ăn', 'Bữa trưa 23:00, hoặc hai bữa cách nhau 30 phút'],
+      ['Sửa bữa này', 'Đổi lượng cỏ thành 4 kg, áp dụng cho cả nhóm ngày', 'Áp dụng cho một ngày hoặc nhiều ngày; bữa đã bỏ thì "Thêm lại". Hiện "Có thay đổi chưa lưu" tới khi xác nhận; bấm Đóng lúc này sẽ được hỏi', 'Bấm Đóng khi chưa lưu'],
+      ['Thức ăn + lượng', 'Cỏ khô Timothy 2 kg, Cám 1.5 kg', 'Mỗi dòng phải chọn món trong kho và nhập lượng > 0; ít nhất 1 món. Bữa chỉ có cỏ khô: chỉ cảnh báo. Bữa có cám hoặc ngũ cốc: bài nặng trong 60 phút bị chặn, 60–90 phút cảnh báo', 'Bấm Áp dụng khi chưa chọn món (báo "Mỗi dòng cần chọn món trong kho")'],
+      ['Xác nhận lịch ăn', 'Bấm "Xác nhận lịch ăn N ngày" một lần', 'Xác nhận là duyệt. Trang của ngựa hiện "Lịch ăn đã xác nhận đến…"; còn "khẩu phần gợi ý, chưa xác nhận" thì nhân viên chưa nhận lịch', ''],
     ],
   },
   {

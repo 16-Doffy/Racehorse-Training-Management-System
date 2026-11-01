@@ -59,6 +59,9 @@ Mỗi chuồng có một nhân viên chăm sóc (`caretaker`), kể cả chuồn
   - `{ "hidden": true }`: chuồng có ngựa nhưng người gọi không được xem con ngựa đó. Cứ hiện là "có ngựa", không ghi tên.
 - Màu trạng thái gợi ý: `healthStatus` `eligible` xanh, `monitoring` vàng, `injured`/`quarantined` đỏ; chuồng trống xám; bảo trì gạch chéo.
 - `GET /stable/stalls` trả thêm `unplaced`: các ngựa (người gọi xem được) vẫn đang ở chuồng chữ tự do. Manager kéo chúng vào sơ đồ.
+- `GET /stable/stalls` trả thêm `waiting`: các ngựa (người gọi xem được) cần sang loại chuồng khác theo sức khỏe nhưng chưa chuyển được: `[{ "horse": { … }, "wants": "recovery", "now": "A-03" }]`. `wants` là `recovery`, `isolation` hoặc `standard`.
+- Mỗi chuồng có `reservedFor`: chuồng trống đang giữ chỗ cho ngựa đi cách ly hoặc hồi phục: `{ "horse": { "_id": "…", "name": "…" }, "now": "R-01" }`, hoặc `{ "hidden": true }` nếu người gọi không được xem ngựa đó. Không xếp ngựa khác vào được (409).
+- Ngựa tự chuyển chuồng khi kết luận sức khỏe đổi: xem [CURRENT_FLOW.md](CURRENT_FLOW.md), mục 5.
 
 ## Mỗi vai trò thấy gì, làm được gì
 
@@ -81,7 +84,7 @@ Chỉ Quản lý xếp và đổi chuồng (kèm người chăm sóc): đó là 
 |---|---|---|
 | Manager: sơ đồ khu, xếp/đổi chuồng, bảo trì; chi tiết ngựa có chuồng 3D | Claude | xong (`/admin/stables`, chi tiết ngựa) |
 | HLV: chuồng 3D trong chi tiết ngựa, cột Chuồng ở danh sách ngựa | Claude | xong |
-| Bác sĩ: ngựa chấn thương nổi đỏ trên sơ đồ; đề nghị Quản lý chuyển ngựa sang khu cách ly (chuồng `type: "isolation"`) | trunghieu | gọi `GET /stable/stalls` |
+| Bác sĩ: ngựa chấn thương nổi đỏ trên sơ đồ; ngựa tự sang chuồng hồi phục hoặc cách ly theo kết luận khám | trunghieu | gọi `GET /stable/stalls` |
 | Chủ ngựa: chuồng của ngựa mình, có 3D | Quân | gọi `GET /stable/stalls/by-horse/:horseId`, dùng component chung khi có |
 | NV chăm sóc (app): mã chuồng trên từng việc, danh sách chuồng mình phụ trách | Tien | xong: lọc `GET /stable/stalls` theo `caretaker._id` (cả chuồng trống) |
 

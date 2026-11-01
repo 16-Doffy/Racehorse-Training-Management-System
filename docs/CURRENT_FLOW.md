@@ -70,14 +70,21 @@ theo chuyển về bác sĩ. API: `GET /horses/:id/checklist`.
 
 **HLV — Chuồng trại & Chăm sóc (`/stable/tasks`), tab Khẩu phần ăn.**
 
-1. Lập khẩu phần từng bữa: giờ, mặt hàng thức ăn, lượng mỗi bữa.
-2. Chọn mặt hàng kho để việc cho ăn có dữ liệu trừ tồn. Khẩu phần cũ chỉ có chữ
-   mô tả, không liên kết mặt hàng, không đủ dữ liệu để tự trừ kho.
-3. Mỗi ngựa có một khẩu phần cho mỗi loại bữa; sửa khẩu phần đã có thay vì tạo trùng.
+1. Chọn ngựa rồi bấm **Tạo khẩu phần ăn**. Ngựa có kế hoạch tập: hệ thống bày sẵn từng bữa
+   từ hôm nay đến hết kế hoạch theo ngày tập và ngày nghỉ, ngày ăn giống nhau gộp thành một
+   nhóm. Ngựa chưa có kế hoạch: nhập từng bữa.
+2. Đổi món, lượng hoặc bỏ bữa cho một ngày, một nhóm, một giai đoạn hay cả kế hoạch, rồi
+   **Xác nhận lịch ăn** một lần. Món phải chọn trong kho để việc cho ăn trừ được tồn. Khẩu
+   phần cũ chỉ có chữ mô tả thì không tự trừ kho.
+3. Ngựa đã có khẩu phần không tạo lại từ danh sách: mở trang của ngựa và bấm **Sửa khẩu phần ăn**.
 
 Server tự tạo việc cho ăn từ khẩu phần và phân công chăm sóc. Sửa giờ/menu đồng
 bộ việc còn mở hôm nay; việc đã qua khung giờ giữ như lịch sử. HLV có thể giao
 việc thủ công kèm giờ; loại **Khác** cần nội dung.
+
+**Giao việc chăm sóc** giao một việc cho nhiều ngày: từ ngày đến ngày, các thứ trong tuần,
+số lần mỗi ngày, số phút mỗi lần. Mỗi ngày việc này thành các việc trong danh sách của nhân
+viên chăm sóc. Cùng việc, cùng ngựa, trùng ngày thì bị từ chối và form chỉ ra việc đã có.
 
 **Groom — Cho ăn / Việc / Thêm → Thuốc & y lệnh.**
 
@@ -136,6 +143,24 @@ Khóa/hạ mức tập có thể hủy booking vượt mức; buổi đang chạ
 hạn chế y tế sẽ dừng giữa chừng, giữ số đo. Buổi bị chặn cần kiểm tra lại khi điều
 kiện thay đổi. Không tự khôi phục booking đã hủy: HLV xem lại lịch, sinh/tạo buổi
 mới. Giải đã xác nhận có thể bị đánh dấu cần xem lại.
+
+### Chuồng và bữa ăn tự đi theo kết luận
+
+Khi kết luận sức khỏe đổi, hệ thống tự làm, Quản lý và HLV không phải đặt tay:
+
+- **Chấn thương:** sang chuồng hồi phục trống. **Cách ly:** sang chuồng cách ly trống. Chuồng
+  thường đang ở được giữ chỗ cho ngựa. **Đủ điều kiện:** về chuồng cũ. **Theo dõi:** ở nguyên.
+- Người chăm sóc của chuồng mới nhận ngựa và việc còn mở. CLB chưa có chuồng hồi phục nào thì
+  ngựa chấn thương ở nguyên.
+- **Bữa ăn:** chấn thương hoặc cách ly thì ăn chế độ khi bệnh (nhiều cỏ, ít thức ăn tinh, không
+  điện giải hay dầu). Đủ điều kiện thì khẩu phần về như trước khi bệnh, giữ cả phần HLV đã sửa.
+- Phiếu khám mới có cùng kết luận không chuyển ngựa, nên ngựa Quản lý đã xếp tay vẫn ở đó.
+- **Không làm được thì phải báo:** hết chuồng trống, chuồng vừa bị ngựa khác lấy hoặc lỗi hệ
+  thống thì ngựa chờ và Quản lý được báo. Ngựa chờ được chuyển ngay khi có chỗ, và thử lại mỗi
+  giờ. Kho hết cỏ thì giữ bữa cũ, HLV và Quản lý được báo lý do, thử lại mỗi giờ. Phiếu khám
+  của bác sĩ không bao giờ thất bại vì các việc này.
+- Mọi lần tự chuyển đều có trong Nhật ký Hệ thống. Lần không gắn với phiếu khám không có người
+  thực hiện.
 
 API: `/health/records`, `/health/treatments`, `/health/exam-requests`, `/health/clearances`,
 `/health/injury-markers`, `/health/prescription-templates`.
