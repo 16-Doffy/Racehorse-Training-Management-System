@@ -97,6 +97,8 @@ test('the ration planner names the groom who feeds and lays out the meals of the
   await expect(page.getByRole('columnheader', { name: 'Người cho ăn' })).toBeVisible();
   // From the horse's own rations: made ("Tạo") or, once it has them, changed ("Sửa").
   await page.locator('.ant-table-row', { hasText: 'TEST Browser Horse' }).first().click();
+  // The horse's own page first: until it shows, the same button on the list of all horses opens the planner with no horse.
+  await expect(page.getByText('Đang xem riêng:')).toBeVisible();
   await page.getByRole('button', { name: /(Tạo|Sửa) khẩu phần ăn/ }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText('Người cho ăn', { exact: true })).toBeVisible();
