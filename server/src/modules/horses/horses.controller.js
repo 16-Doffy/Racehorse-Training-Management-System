@@ -4,13 +4,13 @@ const TrainingPlan = require('../../models/TrainingPlan');
 const TrainingSession = require('../../models/TrainingSession');
 const HealthRecord = require('../../models/HealthRecord');
 const Treatment = require('../../models/Treatment');
+const ExamRequest = require('../../models/ExamRequest');
 const RaceEntry = require('../../models/RaceEntry');
 const StableAssignment = require('../../models/StableAssignment');
 const FeedingSchedule = require('../../models/FeedingSchedule');
 const DailyTask = require('../../models/DailyTask');
 const FinancialRecord = require('../../models/FinancialRecord');
 const CareEvent = require('../../models/CareEvent');
-const ExamRequest = require('../../models/ExamRequest');
 const asyncHandler = require('../../utils/asyncHandler');
 const pick = require('../../utils/pick');
 const { ok, created, fail } = require('../../utils/apiResponse');
@@ -27,10 +27,18 @@ const { STAFF_FIELDS } = require('../stable/caretaker');
 const { ownerSummary, ownerOverview } = require('./ownerSummary.service');
 const { setCareDue } = require('./careEvent.controller');
 
-/** Adds the vet's current training level (lock / recovery / clear) to each horse. */
+/**
+ * Adds the vet's current training level (lock / recovery / clear) to each horse, and `examHold` when its
+ * training is stopped until a vet has seen it: its health status stays the vet's to change.
+ */
 async function withClearance(horses) {
-  const map = await clearanceMap(horses.map((h) => h._id));
-  return horses.map((h) => ({ ...h.toObject(), trainingClearance: map.get(String(h._id)) }));
+  const ids = horses.map((h) => h._id);
+  const [map, holds] = await Promise.all([
+    clearanceMap(ids),
+    ExamRequest.find({ horse: { $in: ids }, status: 'pending', holdTraining: true }).select('horse reason createdAt').lean(),
+  ]);
+  const holdOf = new Map(holds.map((q) => [String(q.horse), { reason: q.reason, since: q.createdAt }]));
+  return horses.map((h) => ({ ...h.toObject(), trainingClearance: map.get(String(h._id)), examHold: holdOf.get(String(h._id)) || null }));
 }
 
 const populatePedigree = [

@@ -324,10 +324,14 @@ async function onAborted(session, actor) {
     await flagConfirmedEntries(horse._id, `dừng buổi tập giữa chừng — ${why}`);
   }
   if (ABORT_NEEDS_EXAM.includes(session.abortCategory) && actor?._id) {
-    if (!(await ExamRequest.exists({ horse: horse._id, status: 'pending' }))) {
+    // Until a vet has seen it the horse does not train again (readiness medicalGate), whoever stopped the run.
+    const open = await ExamRequest.findOne({ horse: horse._id, status: 'pending' });
+    if (open && !open.holdTraining) await ExamRequest.updateOne({ _id: open._id }, { $set: { holdTraining: true } });
+    if (!open) {
       await openExamRequest({
         horse,
         requestedBy: actor,
+        holdTraining: true,
         reason: `Dừng buổi ${what} giữa chừng — ${why}.`,
         priority: 'high',
         observedAt: new Date(),

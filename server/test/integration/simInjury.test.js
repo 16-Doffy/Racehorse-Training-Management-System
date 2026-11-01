@@ -47,6 +47,14 @@ test('simulated sensors: a horse that goes lame mid-run is stopped and everyone 
     const exam = await models.ExamRequest.findOne({ horse: horse._id, status: 'pending' });
     assert.equal(exam?.priority, 'high');
     assert.deepEqual(exam.bodyAreas, ['hind_left'], 'the vet sees which leg');
+    // From this moment the trainer sees it and the horse does not train, before any vet has answered.
+    assert.equal(exam.holdTraining, true);
+    const seen = await api('trainer', 'GET', `/horses/${horse._id}`);
+    assert.match(seen.examHold?.reason || '', /Nghi chấn thương|nghi/i);
+    assert.equal(seen.healthStatus, 'eligible', 'the conclusion stays the vet\'s');
+    const at = new Date(Date.now() + 3 * 3600000).toISOString();
+    const gates = await api('trainer', 'GET', `/training/sessions/readiness?horse=${horse._id}&scheduledAt=${at}&intensity=moderate`);
+    assert.equal(gates.gates.find((g) => g.key === 'medical').status, 'blocked');
     const care = await models.DailyTask.findOne({ trainingSession: session._id, taskType: 'icing' });
     assert.equal(String(care?.assignedTo), String(users.groom.id));
     assert.match(care.note, /chườm lạnh chân sau trái/);
