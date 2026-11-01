@@ -194,6 +194,9 @@ function startDailyTaskGenerator() {
       await syncAllCareTasks();
       // So do the jobs the trainer handed out for a stretch of days.
       await syncAllRoutineTasks();
+      // A horse whose health asked for another kind of stall when none was free: tried again.
+      // Required here: healthPlacement.service loads the stable services that load this file.
+      await require('../modules/stable/healthPlacement.service').retryWaitingMoves();
       // Stock that runs out within days is announced before it stops a meal or a dose.
       await warnLowStock();
     } catch (err) {

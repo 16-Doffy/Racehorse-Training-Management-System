@@ -7,6 +7,11 @@ const stableAssignmentSchema = new mongoose.Schema(
     // The stall on the stable map. Older assignments have only the free-text `stableBlock`.
     stall: { type: mongoose.Schema.Types.ObjectId, ref: 'Stall', default: null },
     assignedCaretaker: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    // The horse's own ordinary stall, kept for it while it is in an isolation or recovery stall: nobody
+    // else is placed there, and the horse goes back to it once fit (stable/healthPlacement.service.js).
+    homeStall: { type: mongoose.Schema.Types.ObjectId, ref: 'Stall', default: null },
+    // The kind of stall the horse's health asks for when none was free: tried again every hour.
+    pendingMove: { type: String, enum: ['isolation', 'recovery', 'standard', null], default: null },
   },
   { timestamps: true }
 );

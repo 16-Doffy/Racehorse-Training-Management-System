@@ -9,8 +9,12 @@ export const DEFAULT_MEAL_TIMES = { morning: '06:00', noon: '11:30', evening: '1
 // Mirrors mealInput.js: breakfast before 11:00, lunch 11:00–15:59, the evening meal from 16:00.
 export const SLOT_MINUTES = { morning: [0, 11 * 60], noon: [11 * 60, 16 * 60], evening: [16 * 60, 24 * 60] };
 export const SLOT_RANGE_TEXT = { morning: 'trước 11:00', noon: 'từ 11:00 đến 15:59', evening: 'từ 16:00 trở đi' };
-export const WORK_LABELS = { rest: 'Nghỉ tập', light: 'Tập nhẹ', moderate: 'Tập vừa', high: 'Tập nặng' };
-export const WORK_COLORS = { rest: 'default', light: 'green', moderate: 'gold', high: 'red' };
+// 'sick': a day of the sick diet — the horse is injured or isolated and not worked, whatever its plan says.
+export const WORK_LABELS = { rest: 'Nghỉ tập', light: 'Tập nhẹ', moderate: 'Tập vừa', high: 'Tập nặng', sick: 'Ăn khi bệnh' };
+export const WORK_COLORS = { rest: 'default', light: 'green', moderate: 'gold', high: 'red', sick: 'volcano' };
+/** What a day of the calendar is, for its label: its plan's work, or the sick diet. */
+export const dayWork = (day) => (day?.diet === 'sick' ? 'sick' : day?.work);
+export const SICK_DIET_TEXT = 'nhiều cỏ, ít thức ăn tinh (không có ở bữa trưa), không điện giải hay dầu, giữ khoáng';
 // What each meal is for (rationRules.js), said once in the planner.
 export const MEAL_ROLES = {
   morning: 'Trước giờ tập: chủ yếu cỏ, ít thức ăn tinh để kịp tiêu hóa.',

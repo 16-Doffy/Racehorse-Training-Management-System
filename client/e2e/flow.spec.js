@@ -95,10 +95,10 @@ test('the ration planner names the groom who feeds and lays out the meals of the
   await page.goto('/stable/tasks');
   await page.getByRole('tab', { name: 'Khẩu phần ăn' }).click();
   await expect(page.getByRole('columnheader', { name: 'Người cho ăn' })).toBeVisible();
-  await page.getByRole('button', { name: /Tạo khẩu phần ăn/ }).click();
+  // From the horse's own rations: made ("Tạo") or, once it has them, changed ("Sửa").
+  await page.locator('.ant-table-row', { hasText: 'TEST Browser Horse' }).first().click();
+  await page.getByRole('button', { name: /(Tạo|Sửa) khẩu phần ăn/ }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Ngựa').click();
-  await page.getByTitle('TEST Browser Horse', { exact: true }).click();
   await expect(dialog.getByText('Người cho ăn', { exact: true })).toBeVisible();
   await expect(dialog.getByText(/TEST groom · A-01/)).toBeVisible();
   await expect(dialog.getByText('Nhóm ngày', { exact: true })).toBeVisible();
@@ -647,6 +647,12 @@ test('the trainer hands a groom a care job for many days, then stops it', async 
   await expect(dialog.getByText(/tổng 28 lần/)).toBeVisible();
   await dialog.getByRole('button', { name: 'Giao việc' }).click();
   await expect(dialog).toBeHidden();
+  // The same job again for days the horse already has it: said, and not handed out twice.
+  await page.getByRole('button', { name: 'Giao việc chăm sóc' }).click();
+  await dialog.getByText('Ngâm chân nước đá', { exact: true }).click();
+  await expect(dialog.getByText(/TEST Browser Horse đã được giao ngâm chân nước đá/)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Giao việc' })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Huỷ' }).click();
   const list = page.getByRole('region', { name: 'Việc giao dài hạn' });
   await expect(list.getByText('Ngâm chân nước đá', { exact: true })).toBeVisible();
   await expect(list.getByText('2 lần/ngày')).toBeVisible();

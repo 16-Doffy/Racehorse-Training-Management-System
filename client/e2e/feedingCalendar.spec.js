@@ -40,6 +40,16 @@ test('trainer reviews every meal to the end of the plan, changes one and confirm
   await planner.getByRole('button', { name: 'Xác nhận lịch ăn 28 ngày' }).click();
   await expect(planner).toBeHidden();
   await expect(page.getByText(/Lịch ăn đã xác nhận đến/)).toBeVisible();
+  // It has its rations now: changed from here, not made again from the list of all horses.
+  await expect(page.getByRole('button', { name: 'Sửa khẩu phần ăn' })).toBeVisible();
+  await page.getByRole('button', { name: /Xem tất cả ngựa/ }).click();
+  await page.getByRole('button', { name: 'Tạo khẩu phần ăn' }).click();
+  await page.getByRole('dialog').getByLabel('Ngựa').click();
+  await expect(page.locator('.ant-select-item-option-disabled', { hasText: 'TEST Browser Horse' })).toContainText('đã có khẩu phần');
+  await page.keyboard.press('Escape');
+  await page.locator('.ant-modal-close').click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await page.locator('.ant-table-row', { hasText: 'TEST Browser Horse' }).first().click();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(section.getByRole('heading', { name: 'Lịch ăn từ hôm nay đến hết kế hoạch tập' })).toBeVisible();

@@ -3,12 +3,12 @@ import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { PHASE_COLORS, PHASE_LABELS, SESSION_KINDS } from '../training/trainingVocab';
 import { MEAL_STATUS_META } from '../../constants/care';
-import { SLOTS, SLOT_LABELS, WORK_LABELS, amountText, dayTotals, weekDayOf } from './feedingPlan';
+import { SLOTS, SLOT_LABELS, WORK_LABELS, amountText, dayTotals, dayWork, weekDayOf } from './feedingPlan';
 
 const ddmm = (date) => dayjs(date).format('DD/MM');
 // "Cỏ khô Timothy (Timothy Hay)" → "Cỏ khô Timothy": the stock name's bracketed part only lengthens the row.
 const shortName = (name) => String(name || '').replace(/\s*\([^)]*\)\s*$/, '') || name;
-const WORK_DOT = { rest: 'bg-gray-300', light: 'bg-emerald-500', moderate: 'bg-amber-500', high: 'bg-rose-500' };
+const WORK_DOT = { rest: 'bg-gray-300', light: 'bg-emerald-500', moderate: 'bg-amber-500', high: 'bg-rose-500', sick: 'bg-rose-700' };
 
 export function MealCell({ meal, removed, locked, edited, onEdit }) {
   const clickable = Boolean(onEdit) && !locked;
@@ -113,7 +113,9 @@ export default function FeedingDaysTable({ days, phases = [], onEditMeal, edited
               </tr>
               {g.days.map((d) => {
                 const isToday = d.date === today;
-                const sessions = (d.sessions || []).map((s) => `${SESSION_KINDS[s.kind]?.short || s.kind}${s.slot === 'afternoon' ? ' (chiều)' : ''}`);
+                const work = dayWork(d);
+                // On the sick diet the horse is not worked: its plan's sessions are not said.
+                const sessions = work === 'sick' ? ['tạm nghỉ tập'] : (d.sessions || []).map((s) => `${SESSION_KINDS[s.kind]?.short || s.kind}${s.slot === 'afternoon' ? ' (chiều)' : ''}`);
                 return (
                   <tr key={d.date} className={`border-b border-gray-100 align-top ${isToday ? 'bg-emerald-50' : ''}`}>
                     <td className="px-3 py-1.5">
@@ -123,9 +125,9 @@ export default function FeedingDaysTable({ days, phases = [], onEditMeal, edited
                         {isToday && <span className="rounded bg-[#0F5A43] px-1 text-[10px] font-semibold text-white">Hôm nay</span>}
                       </div>
                       <div className="mt-0.5 flex items-start gap-1.5 text-[11px] leading-4 text-gray-600">
-                        <span className={`mt-1 inline-block h-2 w-2 shrink-0 rounded-full ${WORK_DOT[d.work] || 'bg-gray-300'}`} aria-hidden />
+                        <span className={`mt-1 inline-block h-2 w-2 shrink-0 rounded-full ${WORK_DOT[work] || 'bg-gray-300'}`} aria-hidden />
                         <span>
-                          {WORK_LABELS[d.work]}
+                          {WORK_LABELS[work]}
                           {sessions.length > 0 && ` · ${sessions.join(', ')}`}
                         </span>
                       </div>

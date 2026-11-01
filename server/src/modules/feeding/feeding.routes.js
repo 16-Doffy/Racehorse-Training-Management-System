@@ -15,7 +15,7 @@ const { taskTiming, dayBounds } = require('../../utils/taskTiming');
 const StableAssignment = require('../../models/StableAssignment');
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, fail } = require('../../utils/apiResponse');
-const { canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
+const { canAccessHorse, getScopedHorseIds, isHorseInScope, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { logAction } = require('../audit/audit.service');
 const { pushNotification } = require('../alerts/notification.service');
 const clubPolicy = require('../../config/clubPolicy');
@@ -186,6 +186,16 @@ router.post('/calendar/:planId/confirm', authorize(ROLES.HEAD_TRAINER, ROLES.MAN
   const result = await confirmCalendar({ plan, actor: req.user, expectedUpdatedAt: req.body?.expectedUpdatedAt, times: req.body?.times, days: req.body?.days, fresh: req.body?.fresh === true });
   if (result.error) return fail(res, result.error, result.status);
   return ok(res, result, 'Feeding calendar confirmed.');
+}));
+/**
+ * GET /feeding/calendar-horses — the horses (this user may see) whose meals ahead follow a confirmed
+ * calendar of a plan in use: they have their rations, so the planner changes them, it does not make them again.
+ */
+router.get('/calendar-horses', authorize(ROLES.HEAD_TRAINER, ROLES.MANAGER), asyncHandler(async (req, res) => {
+  const plans = await TrainingPlan.find({ status: 'active' }).select('_id');
+  const horses = await FeedingCalendarDay.distinct('horse', { date: { $gte: dateKey(new Date()) }, plan: { $in: plans.map((p) => p._id) } });
+  const scoped = await getScopedHorseIds(req.user);
+  return ok(res, horses.filter((h) => isHorseInScope(scoped, h)).map(String), 'Horses with a feeding calendar fetched.');
 }));
 router.get('/', ctrl.list);
 router.get('/:id', ctrl.getOne);

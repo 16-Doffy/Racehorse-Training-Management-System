@@ -94,9 +94,16 @@ const listStalls = asyncHandler(async (req, res) => {
     .map((a) => ({ assignment: a._id, horse: horseCard(a.horse), stableBlock: a.stableBlock, caretaker: a.assignedCaretaker ? { _id: a.assignedCaretaker._id, name: a.assignedCaretaker.name } : null }));
   // A horse in the wrong part of the stable for its health (placement.js): said on its stall.
   const recoveryStalls = stalls.some((s) => s.isActive && s.type === 'recovery');
+  // A stall kept for its horse while the horse is in isolation or recovery (healthPlacement.service.js).
+  const kept = await StableAssignment.find({ homeStall: { $in: stalls.map((s) => s._id) } }).populate('horse', 'name isArchived');
+  const keptFor = new Map(kept.filter((a) => a.horse && !a.horse.isArchived).map((a) => [String(a.homeStall), isHorseInScope(scoped, a.horse._id) ? { horse: { _id: a.horse._id, name: a.horse.name }, now: a.stableBlock } : { hidden: true }]));
   const withPlacement = (s) => {
     const occupant = byStall.get(String(s._id));
-    return { ...stallJson(s, occupant, req.user), placement: occupant?.horse ? placementProblem(occupant.horse, s, { recoveryStalls }) : null };
+    return {
+      ...stallJson(s, occupant, req.user),
+      placement: occupant?.horse ? placementProblem(occupant.horse, s, { recoveryStalls }) : null,
+      reservedFor: occupant ? null : keptFor.get(String(s._id)) || null,
+    };
   };
   return ok(res, { stalls: stalls.map(withPlacement), unplaced }, 'Stalls fetched.');
 });
@@ -226,6 +233,8 @@ const retireStall = asyncHandler(async (req, res) => {
     const occupant = await StableAssignment.findOne({ stall: current._id }).populate('horse', 'name').session(session);
     if (occupant) throw operationError(409, `Chuồng ${current.code} đang có ngựa ${occupant.horse?.name || ''} — chuyển ngựa trước khi bỏ chuồng.`);
     current.isActive = false;
+    // A stall leaving use is no longer kept for a horse away: it goes back to another stall when fit.
+    await StableAssignment.updateMany({ homeStall: current._id }, { $set: { homeStall: null } }, { session });
     await current.save({ session });
     current.$session(null);
     return current;
@@ -328,6 +337,8 @@ const editZone = asyncHandler(async (req, res) => {
         throw operationError(409, `Còn ${horses.length} ngựa: ${list} — chuyển ngựa sang chuồng khác trước khi bỏ chuồng.`);
       }
       await Stall.updateMany({ _id: { $in: removing.map((s) => s._id) } }, { $set: { isActive: false } }, { session });
+      // A stall leaving use is no longer kept for a horse away: it goes back to another stall when fit.
+      await StableAssignment.updateMany({ homeStall: { $in: removing.map((s) => s._id) } }, { $set: { homeStall: null } }, { session });
     }
     if (Object.keys(names).length) await Stall.updateMany({ zone, isActive: true }, { $set: names }, { session });
 
@@ -394,6 +405,8 @@ const retireZone = asyncHandler(async (req, res) => {
       throw operationError(409, `Khu ${zone} còn ${horses.length} ngựa: ${list} — chuyển ngựa sang chuồng khác trước khi xoá khu.`);
     }
     await Stall.updateMany({ _id: { $in: ids } }, { $set: { isActive: false } }, { session });
+    // A stall leaving use is no longer kept for a horse away: it goes back to another stall when fit.
+    await StableAssignment.updateMany({ homeStall: { $in: ids } }, { $set: { homeStall: null } }, { session });
     return claimed.map((s) => s.code).sort();
   });
   await logAction({ actorId: req.user._id, action: 'stall.zoneRetire', targetModel: 'Stall', metadata: { zone, stalls: codes } });

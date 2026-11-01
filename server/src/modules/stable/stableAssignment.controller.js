@@ -91,6 +91,9 @@ const upsertAssignment = asyncHandler(async (req, res) => {
       .populate('horse', 'name')
       .session(session);
     if (occupied) throw operationError(409, `Chuồng "${code}" đang có ngựa ${occupied.horse?.name || 'khác'}.`);
+    // A stall kept for a horse away in isolation or recovery (healthPlacement.service.js) is not given to another.
+    const keptFor = target ? await StableAssignment.findOne({ homeStall: target._id, horse: { $ne: horse } }).populate('horse', 'name').session(session) : null;
+    if (keptFor) throw operationError(409, `Chuồng ${code} đang giữ chỗ cho ${keptFor.horse?.name || 'ngựa khác'} (đang ở ${keptFor.stableBlock}) — chọn chuồng khác.`);
 
     // A stall on the map has its own groom (Stall.caretaker): the horse placed there gets them, unless
     // the Manager names someone, who then becomes the stall's groom.
@@ -102,10 +105,14 @@ const upsertAssignment = asyncHandler(async (req, res) => {
       caretaker = target.caretaker;
     }
 
-    const previous = await StableAssignment.findOne({ horse }).select('assignedCaretaker').session(session);
+    const previous = await StableAssignment.findOne({ horse }).select('assignedCaretaker stall homeStall').populate('stall', 'type').session(session);
+    // Placed by hand: into an ordinary stall, nothing is kept for the horse any more; from an ordinary
+    // stall into isolation or recovery, the stall it leaves is kept for it (as when it moves by itself).
+    const special = target && target.type && target.type !== 'standard';
+    const homeStall = !special ? null : previous?.stall && (previous.stall.type || 'standard') === 'standard' ? previous.stall._id : previous?.homeStall || null;
     const saved = await StableAssignment.findOneAndUpdate(
       { horse },
-      { horse, stableBlock: code, stall: target ? target._id : null, assignedCaretaker: caretaker },
+      { horse, stableBlock: code, stall: target ? target._id : null, assignedCaretaker: caretaker, homeStall, pendingMove: null },
       { new: true, upsert: true, runValidators: true, session }
     );
 

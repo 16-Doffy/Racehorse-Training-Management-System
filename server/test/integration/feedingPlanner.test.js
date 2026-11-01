@@ -44,7 +44,10 @@ test('the ration planner confirms the days the trainer changed, left out or set 
   assert.equal((await bad({ days: [days[0], days[0]] })).status, 400, 'a day twice');
   assert.equal(await models.FeedingCalendarDay.countDocuments({ horse: horse._id }), 0, 'nothing saved by a refused confirmation');
 
+  assert.ok(!(await api('trainer', 'GET', '/feeding/calendar-horses')).includes(String(horse._id)), 'no calendar yet: rations still to make');
   const confirmed = await api('trainer', 'POST', `${route}/confirm`, { expectedUpdatedAt: preview.plan.updatedAt, times: { morning: '06:30' }, days });
+  assert.ok((await api('trainer', 'GET', '/feeding/calendar-horses')).includes(String(horse._id)), 'has its rations: changed, not made again');
+  assert.equal((await raw('owner', 'GET', '/feeding/calendar-horses')).status, 403);
   assert.equal(confirmed.days, ahead.length);
   const saved = async (date) => models.FeedingCalendarDay.findOne({ horse: horse._id, date }).lean();
   const a = await saved(dayA.date);
@@ -93,5 +96,6 @@ test('the ration planner confirms the days the trainer changed, left out or set 
   const meal = { mealTime: 'evening', timeOfDay: '17:30', items: [{ inventoryItem: oats._id, amount: 2 }] };
   assert.equal((await raw('trainer', 'POST', '/feeding/plan', { horse: horse._id, meals: [meal] })).status, 409);
   await models.TrainingPlan.updateOne({ _id: plan._id }, { $set: { status: 'cancelled' } });
+  assert.ok(!(await api('trainer', 'GET', '/feeding/calendar-horses')).includes(String(horse._id)), 'a closed plan\'s calendar no longer counts');
   await api('trainer', 'POST', '/feeding/plan', { horse: horse._id, meals: [meal] });
 });

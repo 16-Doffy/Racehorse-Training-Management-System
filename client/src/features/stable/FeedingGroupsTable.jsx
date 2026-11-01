@@ -2,10 +2,10 @@ import { Tooltip } from 'antd';
 import dayjs from 'dayjs';
 import { PHASE_COLORS, PHASE_LABELS, SESSION_KINDS } from '../training/trainingVocab';
 import { MealCell } from './FeedingDaysTable';
-import { SLOTS, SLOT_LABELS, WORK_LABELS, amountText, dayLabel, dayTotals, itemsKey } from './feedingPlan';
+import { SLOTS, SLOT_LABELS, WORK_LABELS, amountText, dayLabel, dayTotals, dayWork, itemsKey } from './feedingPlan';
 
 const ddmm = (date) => dayjs(date).format('DD/MM');
-const WORK_DOT = { rest: 'bg-gray-300', light: 'bg-emerald-500', moderate: 'bg-amber-500', high: 'bg-rose-500' };
+const WORK_DOT = { rest: 'bg-gray-300', light: 'bg-emerald-500', moderate: 'bg-amber-500', high: 'bg-rose-500', sick: 'bg-rose-700' };
 const SHOWN_DATES = 6;
 
 /** The days with the same work and the same meals, phase by phase, in the order they first come. */
@@ -16,7 +16,7 @@ function groupDays(days) {
     const p = phases.at(-1);
     p.days.push(day);
     const key = [
-      day.work,
+      dayWork(day),
       ...SLOTS.map((slot) => {
         const m = day.meals.find((x) => x.slot === slot);
         return m ? `${slot}@${m.time}:${itemsKey(m.items)}:${day.locked?.[slot] || ''}` : `${slot}:-`;
@@ -24,11 +24,11 @@ function groupDays(days) {
     ].join('|');
     let g = p.groups.find((x) => x.key === key);
     if (!g) {
-      g = { key, work: day.work, first: day, dates: [], kinds: new Set() };
+      g = { key, work: dayWork(day), first: day, dates: [], kinds: new Set() };
       p.groups.push(g);
     }
     g.dates.push(day.date);
-    for (const s of day.sessions || []) g.kinds.add(`${SESSION_KINDS[s.kind]?.short || s.kind}${s.slot === 'afternoon' ? ' (chiều)' : ''}`);
+    for (const s of day.diet === 'sick' ? [] : day.sessions || []) g.kinds.add(`${SESSION_KINDS[s.kind]?.short || s.kind}${s.slot === 'afternoon' ? ' (chiều)' : ''}`);
   }
   return phases;
 }

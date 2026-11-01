@@ -19,6 +19,7 @@ import {
   MEAL_ROLES,
   SLOTS,
   SLOT_LABELS,
+  SICK_DIET_TEXT,
   SLOT_SHORT,
   WORK_LABELS,
   amountText,
@@ -224,6 +225,14 @@ function PlanCalendarEditor({ plan, feedItems, policy, onDone, setDirty, onPropo
       )}
       {(calendar.problems || []).length > 0 && <Alert type="error" showIcon title="Chưa thể xác nhận lịch ăn" description={calendar.problems.join(' ')} />}
       {calendar.weightNote && <Alert type="warning" showIcon title={`Kiểm tra cân nặng: ${calendar.weightNote}`} />}
+      {calendar.diet === 'sick' && (
+        <Alert
+          type="warning"
+          showIcon
+          title={`${calendar.horse?.name || 'Ngựa'} đang ${calendar.horse?.healthStatus === 'quarantined' ? 'cách ly' : calendar.horse?.healthStatus === 'monitoring' ? 'được theo dõi sau bệnh' : 'chấn thương'}: các ngày từ hôm nay theo chế độ ăn khi bệnh.`}
+          description={`Ngựa không tập nên khẩu phần là ${SICK_DIET_TEXT}. Vẫn sửa được từng bữa; khi bác sĩ kết luận đủ điều kiện, lịch tự về theo kế hoạch tập.`}
+        />
+      )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
         <Segmented
@@ -439,6 +448,14 @@ function DailyRationEditor({ horse, rations, feedItems, policy, onDone, setDirty
         }
       />
       {suggestion?.warning && <Alert type="warning" showIcon title={suggestion.warning} />}
+      {suggestion?.diet === 'sick' && (
+        <Alert
+          type="warning"
+          showIcon
+          title="Ngựa đang bệnh: gợi ý là chế độ ăn khi bệnh."
+          description={`Khẩu phần đang áp dụng đã tự chuyển sang ${SICK_DIET_TEXT}; khẩu phần lúc khỏe được giữ lại và tự trả về khi bác sĩ kết luận đủ điều kiện.`}
+        />
+      )}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {SLOTS.map((slot) => {
           const meal = meals[slot];
@@ -516,9 +533,16 @@ function DailyRationEditor({ horse, rations, feedItems, policy, onDone, setDirty
  * today to the plan's end comes up with its meals worked out from the day's training (rationRules.js on
  * the server) — the trainer reads them, changes, adds or leaves out what they want, and confirms once;
  * without a plan, the three daily meals. `horseId` opens it on a horse.
+ *
+ * A horse has one set of rations: one that has them already (a confirmed calendar, or daily rations)
+ * is not picked to make them again — opened on that horse (`horseId`), the planner changes them, and
+ * the horse cannot be switched. `onOpenHorse(id)` goes to a horse's own rations.
  */
-export default function RationPlanner({ open, horseId, onClose, horses = [], plans = [], rations = [], assignmentOf, feedItems = [], onPropose }) {
+export default function RationPlanner({ open, horseId, onClose, horses = [], plans = [], rations = [], assignmentOf, feedItems = [], onPropose, onOpenHorse }) {
   const policy = useClubPolicy();
+  const { data: calendarData } = useQuery({ queryKey: ['feeding', 'calendar-horses'], queryFn: () => feedingApi.calendarHorses(), enabled: open });
+  const fed = new Set([...(calendarData?.data || []).map(String), ...rations.map((r) => idOf(r.horse))]);
+  const editing = Boolean(horseId) && fed.has(String(horseId));
   const [picked, setPicked] = useState(horseId || null);
   const [openedFor, setOpenedFor] = useState({ open, horseId });
   if (openedFor.open !== open || openedFor.horseId !== horseId) {
@@ -535,6 +559,10 @@ export default function RationPlanner({ open, horseId, onClose, horses = [], pla
     setDirty(false);
     onClose();
   };
+  const goToHorse = (id) => {
+    close();
+    onOpenHorse(id);
+  };
   const switchHorse = (id) =>
     dirty
       ? askToDrop(() => {
@@ -548,7 +576,7 @@ export default function RationPlanner({ open, horseId, onClose, horses = [], pla
       open={open}
       width={1240}
       centered
-      title={horse ? `Tạo khẩu phần ăn — ${horse.name}` : 'Tạo khẩu phần ăn'}
+      title={editing ? `Sửa khẩu phần ăn — ${horse?.name || ''}` : horse ? `Tạo khẩu phần ăn — ${horse.name}` : 'Tạo khẩu phần ăn'}
       onCancel={() => (dirty ? askToDrop(close) : close())}
       footer={null}
       destroyOnHidden
@@ -565,17 +593,24 @@ export default function RationPlanner({ open, horseId, onClose, horses = [], pla
               className="w-full"
               value={picked || undefined}
               onChange={switchHorse}
+              disabled={editing}
               options={horses
                 .filter((h) => !h.isArchived)
                 .map((h) => {
                   const hasPlan = plans.some((p) => p.status === 'active' && idOf(p.horse) === String(h._id));
-                  return { value: String(h._id), label: h.name, hasPlan };
+                  const has = fed.has(String(h._id));
+                  return { value: String(h._id), label: h.name, hasPlan, has, disabled: has && !editing };
                 })
-                .sort((a, b) => Number(b.hasPlan) - Number(a.hasPlan) || a.label.localeCompare(b.label))}
+                // Horses still to be given rations first; those that have them are there, but not to pick.
+                .sort((a, b) => Number(a.has) - Number(b.has) || Number(b.hasPlan) - Number(a.hasPlan) || a.label.localeCompare(b.label))}
               optionRender={(o) => (
                 <div className="flex items-center justify-between gap-2">
                   <span>{o.data.label}</span>
-                  {o.data.hasPlan && <span className="text-[11px] text-emerald-700">có kế hoạch tập</span>}
+                  {o.data.has ? (
+                    <span className="text-[11px] text-gray-500">đã có khẩu phần</span>
+                  ) : (
+                    o.data.hasPlan && <span className="text-[11px] text-emerald-700">có kế hoạch tập</span>
+                  )}
                 </div>
               )}
             />
@@ -626,7 +661,22 @@ export default function RationPlanner({ open, horseId, onClose, horses = [], pla
         {!horse ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="Chọn một con ngựa: hệ thống bày sẵn khẩu phần từng bữa, từ hôm nay đến hết lịch huấn luyện của ngựa, theo đúng ngày tập và ngày nghỉ."
+            description="Chọn một con ngựa chưa có khẩu phần: hệ thống bày sẵn khẩu phần từng bữa, từ hôm nay đến hết lịch huấn luyện của ngựa, theo đúng ngày tập và ngày nghỉ. Ngựa đã có khẩu phần thì sửa trong trang của ngựa đó."
+          />
+        ) : fed.has(String(horse._id)) && !editing ? (
+          // Picked before the list knew it (or someone just made them): its rations are changed on its own page.
+          <Alert
+            type="info"
+            showIcon
+            title={`${horse.name} đã có khẩu phần ăn.`}
+            description="Mỗi ngựa chỉ có một khẩu phần: mở trang của ngựa để xem và sửa, không tạo thêm."
+            action={
+              onOpenHorse && (
+                <Button size="small" onClick={() => (dirty ? askToDrop(() => goToHorse(horse._id)) : goToHorse(horse._id))}>
+                  Mở khẩu phần của ngựa
+                </Button>
+              )
+            }
           />
         ) : plan ? (
           <PlanCalendarEditor key={plan._id} plan={plan} feedItems={feedItems} policy={policy} onDone={close} setDirty={setDirty} onPropose={onPropose} />

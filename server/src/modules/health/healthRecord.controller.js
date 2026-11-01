@@ -149,8 +149,13 @@ const createRecord = asyncHandler(async (req, res) => {
   await logAction({ actorId: req.user._id, action: 'healthRecord.create', targetModel: 'HealthRecord', targetId: record._id });
   if (record.clearedLevel) await applyReturnAssessment(record, req.user);
   await closeRequestsWithRecord(record, req.user);
-  // Quarantined: the Manager is told to move the horse to the isolation zone (stable/placement.js).
-  if (record.resultStatus === 'quarantined') await askToIsolate(record.horse);
+  // The horse moves with the conclusion: isolation, recovery, or back to its own stall when fit
+  // (stable/healthPlacement.service.js). A quarantined horse that could not be moved: the Manager is told.
+  const { followHealth } = require('../stable/healthPlacement.service');
+  const placed = await followHealth(record.horse, { reason: 'exam', actor: req.user._id });
+  if (record.resultStatus === 'quarantined' && !placed) await askToIsolate(record.horse);
+  // The meals follow too: the sick diet while injured or isolated, the usual ones once fit.
+  await require('../feeding/feedingCalendar.service').followHealthDiet(record.horse);
   // The same exam answers whatever the groom reported about this horse.
   await resolveIncidentsWithRecord(record, req.user);
 

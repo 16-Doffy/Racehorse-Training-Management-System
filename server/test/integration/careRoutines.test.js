@@ -35,6 +35,15 @@ test('care routines: a job for many days becomes each day\'s tasks, follows its 
   assert.equal((await raw('groom', 'POST', '/stable/routines', body)).status, 403);
 
   const routine = await api('trainer', 'POST', '/stable/routines', body, 201);
+  // The same job for the same horse on days it already has: refused, naming the job it already has.
+  const twice = await raw('trainer', 'POST', '/stable/routines', { ...body, startDate: inDays(5), endDate: inDays(20) });
+  assert.equal(twice.status, 409);
+  assert.match(twice.body.message, /đã được giao ngâm chân nước đá/);
+  assert.equal(String(twice.body.data.routine), String(routine._id));
+  // Days after it ends, or a different job, are fine (made, then stopped so the rest of the test is unchanged).
+  const after = await api('trainer', 'POST', '/stable/routines', { ...body, startDate: inDays(14), endDate: inDays(20) }, 201);
+  const other = await api('trainer', 'POST', '/stable/routines', { ...body, taskType: 'bathing' }, 201);
+  for (const r of [after, other]) await api('trainer', 'POST', `/stable/routines/${r._id}/stop`);
   assert.equal(routine.occurrences, 14 * body.times.length);
   const todays = () => models.DailyTask.find({ routine: routine._id }).sort({ scheduledDate: 1 }).lean();
   let tasks = await todays();
@@ -64,7 +73,7 @@ test('care routines: a job for many days becomes each day\'s tasks, follows its 
   assert.match(tasks[0].note, /Mỗi lần 30 phút/);
 
   // Listed for the trainer, with its horse and groom; the groom sees the routines in use.
-  const list = await api('trainer', 'GET', `/stable/routines?horse=${horse._id}`);
+  const list = await api('trainer', 'GET', `/stable/routines?horse=${horse._id}&status=active`);
   assert.equal(list.length, 1);
   assert.equal(list[0].horse.name, 'TEST Routine Horse');
   assert.equal((await api('outsider', 'GET', '/stable/routines')).length, 0, 'not seen by the owner of other horses');
@@ -81,6 +90,7 @@ test('care routines: a job for many days becomes each day\'s tasks, follows its 
   const tomorrow = await api('trainer', 'POST', '/stable/routines', { ...body, startDate: inDays(1), endDate: inDays(3) }, 201);
   assert.equal(await models.DailyTask.countDocuments({ routine: tomorrow._id }), 0);
   const otherDays = [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== today.getDay());
-  const notToday = await api('trainer', 'POST', '/stable/routines', { ...body, weekDays: otherDays }, 201);
+  // Another job (the icing from tomorrow is running): on every weekday but today.
+  const notToday = await api('trainer', 'POST', '/stable/routines', { ...body, taskType: 'hoof_care', weekDays: otherDays }, 201);
   assert.equal(await models.DailyTask.countDocuments({ routine: notToday._id }), 0);
 });

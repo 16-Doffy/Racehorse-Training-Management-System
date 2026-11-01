@@ -26,8 +26,10 @@ function Field({ label, children, hint }) {
  * how many times a day and at what times, how long each time, on which weekdays, from when to when, and
  * how to do it step by step. Each day it is due it becomes the groom's tasks (careRoutine.service.js).
  * `routine`: the one being changed; `horseId`: the horse it is for when opened from that horse.
+ * `routines`: the jobs already handed out — the same job for the same horse on days it already has is
+ * not handed out twice (the server refuses it too); `onOpenExisting(routine)` opens that one instead.
  */
-export default function CareRoutineModal({ open, routine, horseId, horses = [], grooms = [], stallOfHorse, planOf, onClose }) {
+export default function CareRoutineModal({ open, routine, horseId, horses = [], grooms = [], stallOfHorse, planOf, onClose, routines = [], onOpenExisting }) {
   const queryClient = useQueryClient();
   const fresh = (type = 'icing') => ({
     horse: horseId || undefined,
@@ -68,6 +70,19 @@ export default function CareRoutineModal({ open, routine, horseId, horses = [], 
   const total = countTimes(v);
   const what = v.taskType === 'other' ? v.title || 'việc khác' : ROUTINE_TYPE_LABELS[v.taskType].toLowerCase();
   const template = ROUTINE_TEMPLATES[v.taskType];
+  // This horse's jobs in use, and the one this would repeat: same job, dates that meet, a weekday in common.
+  const inUse = routines.filter((r) => idOf(r.horse) === String(v.horse) && r.status === 'active' && r._id !== routine?._id && !(r.endDate && dayjs(r.endDate).isBefore(dayjs(), 'day')));
+  const clash = inUse.find(
+    (r) =>
+      r.taskType === v.taskType &&
+      (v.taskType !== 'other' || String(r.title || '').trim().toLowerCase() === v.title.trim().toLowerCase()) &&
+      v.startDate &&
+      (!r.endDate || !dayjs(r.endDate).isBefore(v.startDate, 'day')) &&
+      (!v.endDate || !v.endDate.isBefore(dayjs(r.startDate), 'day')) &&
+      (r.weekDays?.length ? r.weekDays : ALL_DAYS).some((d) => v.weekDays.includes(d))
+  );
+  const jobName = (r) => (r.taskType === 'other' ? r.title : ROUTINE_TYPE_LABELS[r.taskType]);
+  const range = (r) => `${dayjs(r.startDate).format('DD/MM')}${r.endDate ? `–${dayjs(r.endDate).format('DD/MM')}` : ' trở đi'}`;
 
   const pickType = (type) => {
     // A new job takes the usual way of doing it; one being changed keeps what was written.
@@ -96,6 +111,7 @@ export default function CareRoutineModal({ open, routine, horseId, horses = [], 
     if (!v.startDate) return 'Chọn ngày bắt đầu.';
     if (v.endDate && v.endDate.isBefore(v.startDate, 'day')) return 'Ngày kết thúc phải sau ngày bắt đầu.';
     if (!v.instructions.trim()) return 'Ghi cách làm để nhân viên làm đúng.';
+    if (clash) return `${horse?.name || 'Ngựa'} đã được giao ${jobName(clash).toLowerCase()} ${range(clash)}: sửa việc đó, hoặc chọn ngày không trùng.`;
     return null;
   };
 
@@ -141,6 +157,7 @@ export default function CareRoutineModal({ open, routine, horseId, horses = [], 
       okText={routine ? 'Lưu thay đổi' : 'Giao việc'}
       cancelText="Huỷ"
       confirmLoading={save.isPending}
+      okButtonProps={{ disabled: Boolean(clash) }}
       destroyOnHidden
       styles={{ body: { maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', paddingRight: 4 } }}
     >
@@ -172,6 +189,27 @@ export default function CareRoutineModal({ open, routine, horseId, horses = [], 
         <Field label="Công việc" hint={template.hint}>
           <Segmented block value={v.taskType} onChange={pickType} options={ROUTINE_TYPE_OPTIONS} />
         </Field>
+        {inUse.length > 0 && (
+          <Text type="secondary" className="-mt-2 !text-xs">
+            {horse?.name} đang được giao: {inUse.map((r) => `${jobName(r)} (${range(r)})`).join(', ')}.
+          </Text>
+        )}
+        {clash && (
+          // The same job on days the horse already has it: changed there, not handed out twice.
+          <Alert
+            type="warning"
+            showIcon
+            title={`${horse?.name || 'Ngựa'} đã được giao ${jobName(clash).toLowerCase()} ${range(clash)} (${clash.times.join(', ')}, người làm: ${clash.assignedTo?.name || 'người chăm sóc chuồng'}).`}
+            description="Một việc chỉ giao một lần cho cùng khoảng thời gian. Sửa việc đã giao, hoặc chọn ngày bắt đầu sau khi việc đó kết thúc."
+            action={
+              onOpenExisting && (
+                <Button size="small" onClick={() => onOpenExisting(clash)}>
+                  Mở việc đã giao
+                </Button>
+              )
+            }
+          />
+        )}
         {v.taskType === 'other' && (
           <Field label="Tên việc">
             <Input maxLength={80} placeholder="VD: Dắt đi bộ thư giãn, chải lông, xoa bóp cơ lưng" value={v.title} onChange={(e) => set({ title: e.target.value })} />

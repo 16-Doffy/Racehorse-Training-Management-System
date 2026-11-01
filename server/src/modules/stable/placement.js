@@ -19,6 +19,9 @@ function placementProblem(horse, stall, { recoveryStalls = false } = {}) {
   if (type === 'isolation' && horse.healthStatus !== 'quarantined') {
     return { level: 'warn', message: `${name} không bị cách ly mà đang ở chuồng cách ly ${stall.code} — chuyển về khu thường để giữ chỗ cho ngựa bệnh.` };
   }
+  if (type === 'recovery' && horse.healthStatus === 'eligible') {
+    return { level: 'warn', message: `${name} đã đủ điều kiện mà vẫn ở chuồng hồi phục ${stall.code} — chuyển về chuồng thường.` };
+  }
   if (horse.healthStatus === 'injured' && type === 'standard' && recoveryStalls) {
     return { level: 'warn', message: `${name} đang chấn thương — nên chuyển sang chuồng hồi phục.` };
   }

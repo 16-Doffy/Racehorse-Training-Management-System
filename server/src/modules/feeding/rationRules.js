@@ -11,6 +11,8 @@
  *   electrolytes on a hard day.
  * - From stock, for each kind: the item the horse already eats, else one with enough for the coming
  *   week, expiring first, then the fullest.
+ * - A horse injured or in isolation is not worked, whatever its plan says: its days take the sick diet
+ *   (`diet: 'sick'`) — forage as on a rest day, the least concentrate (none at lunch), minerals only.
  */
 const { feedTypeOf } = require('../inventory/feedType');
 
@@ -19,11 +21,17 @@ const SHARES = {
   light: { forage: 0.02, concentrate: 0.005 },
   moderate: { forage: 0.0175, concentrate: 0.0075 },
   high: { forage: 0.015, concentrate: 0.01 },
+  // Box rest while injured or isolated: plenty of forage to keep the gut moving, little energy to burn.
+  sick: { forage: 0.02, concentrate: 0.001 },
 };
 const SPLITS = {
   training: { morning: { forage: 0.3, concentrate: 0.25 }, noon: { forage: 0.2, concentrate: 0.2 }, evening: { forage: 0.5, concentrate: 0.55 } },
   rest: { morning: { forage: 0.3, concentrate: 0.35 }, noon: { forage: 0.2, concentrate: 0.25 }, evening: { forage: 0.5, concentrate: 0.4 } },
+  sick: { morning: { forage: 0.3, concentrate: 0.5 }, noon: { forage: 0.25, concentrate: 0 }, evening: { forage: 0.45, concentrate: 0.5 } },
 };
+// The health states that put a horse on the sick diet (Horse.healthStatus).
+const SICK_STATUSES = ['injured', 'quarantined'];
+const dietOf = (healthStatus) => (SICK_STATUSES.includes(healthStatus) ? 'sick' : 'normal');
 const MAX_CONCENTRATE_PER_MEAL = 0.005;
 const SLOTS = ['morning', 'noon', 'evening'];
 // A racehorse in training weighs about 450–550 kg; outside this the weight was most likely mistyped.
@@ -88,19 +96,22 @@ const line = (item, amount) => ({ inventoryItem: item._id, name: item.name, amou
 
 /**
  * The three meals of one day: [{ slot, time, items: [{ inventoryItem, name, amount, unit }] }].
- * `feeds` = { forage, concentrate, supplements } as picked above; `clocks` = meal times by slot.
+ * `feeds` = { forage, concentrate, supplements } as picked above; `clocks` = meal times by slot;
+ * `diet` = 'sick' while the horse is injured or isolated (its plan's work does not count then).
  */
-function dayMeals({ weightKg, work, phase, clocks, feeds }) {
+function dayMeals({ weightKg, work, phase, clocks, feeds, diet = 'normal' }) {
   const weight = Number(weightKg) > 0 ? Number(weightKg) : DEFAULT_WEIGHT_KG;
-  const share = SHARES[work] || SHARES.moderate;
-  const split = SPLITS[work === 'rest' ? 'rest' : 'training'];
+  const sick = diet === 'sick';
+  const share = sick ? SHARES.sick : SHARES[work] || SHARES.moderate;
+  const split = sick ? SPLITS.sick : SPLITS[work === 'rest' ? 'rest' : 'training'];
   return SLOTS.map((slot) => {
     const items = [];
     if (feeds.forage) items.push(line(feeds.forage, halfKg(weight * share.forage * split[slot].forage)));
-    if (feeds.concentrate) items.push(line(feeds.concentrate, cappedHalfKg(weight * share.concentrate * split[slot].concentrate, weight * MAX_CONCENTRATE_PER_MEAL)));
+    if (feeds.concentrate && split[slot].concentrate > 0) items.push(line(feeds.concentrate, cappedHalfKg(weight * share.concentrate * split[slot].concentrate, weight * MAX_CONCENTRATE_PER_MEAL)));
     if (slot === 'evening') {
       for (const { rule, item } of feeds.supplements || []) {
-        if (rule.applies({ phase: phase?.key, work })) items.push(line(item, rule.dose[unitOf(item)]));
+        // Sick: no oil (no strength or speed work) and no electrolytes (no hard work); minerals still.
+        if (rule.applies(sick ? { phase: null, work: 'rest' } : { phase: phase?.key, work })) items.push(line(item, rule.dose[unitOf(item)]));
       }
     }
     return { slot, time: clocks[slot], items };
@@ -113,4 +124,4 @@ function weekNeed(weightKg, kind) {
   return 7 * weight * SHARES.moderate[kind];
 }
 
-module.exports = { SLOTS, SHARES, SPLITS, weightWarning, trainingDayWork, workOf, pickFeed, pickSupplements, dayMeals, weekNeed, DEFAULT_WEIGHT_KG };
+module.exports = { SLOTS, SHARES, SPLITS, SICK_STATUSES, dietOf, weightWarning, trainingDayWork, workOf, pickFeed, pickSupplements, dayMeals, weekNeed, DEFAULT_WEIGHT_KG };

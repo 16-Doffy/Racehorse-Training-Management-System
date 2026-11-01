@@ -16,6 +16,26 @@ const TYPE_LABELS = { cleaning: 'vệ sinh chuồng', bathing: 'tắm rửa', ic
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 const MAX_TIMES = 8;
 const MAX_DAYS = 366;
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+
+/**
+ * The same job for the same horse already handed out for some of the same days (dates that overlap,
+ * on a weekday both have): giving it again would put it twice on the groom's list. `exceptId`: the
+ * routine being changed. Returns that routine, or null.
+ */
+async function sameJob({ horse, taskType, title, startDate, endDate, weekDays }, exceptId = null) {
+  const others = await CareRoutine.find({ horse, taskType, status: 'active', ...(exceptId ? { _id: { $ne: exceptId } } : {}) }).populate('assignedTo', 'name');
+  const days = new Set(weekDays);
+  return (
+    others.find((o) => {
+      if (taskType === 'other' && String(o.title || '').trim().toLowerCase() !== String(title || '').trim().toLowerCase()) return false;
+      const datesMeet = (!o.endDate || o.endDate >= startDate) && (!endDate || endDate >= o.startDate);
+      return datesMeet && (o.weekDays?.length ? o.weekDays : ALL_DAYS).some((d) => days.has(d));
+    }) || null
+  );
+}
+const clashMessage = (o, horseName) =>
+  `${horseName} đã được giao ${o.taskType === 'other' ? `"${o.title}"` : TYPE_LABELS[o.taskType]} từ ${ddmm(o.startDate)}${o.endDate ? ` đến ${ddmm(o.endDate)}` : ' (không hẹn ngày kết thúc)'}, ${o.times.join(', ')}, người làm: ${o.assignedTo?.name || 'người chăm sóc chuồng'}. Sửa việc đó thay vì giao thêm, hoặc chọn ngày không trùng.`;
 const POPULATE = [
   { path: 'horse', select: 'name' },
   { path: 'assignedTo', select: 'name' },
@@ -96,6 +116,8 @@ const createRoutine = asyncHandler(async (req, res) => {
   if (!horse || horse.isArchived) return fail(res, 'Ngựa không còn được quản lý.', 409);
   const read = await readRoutine(req.body);
   if (read.error) return fail(res, read.error, 400);
+  const clash = await sameJob({ ...read.values, horse: horse._id });
+  if (clash) return fail(res, clashMessage(clash, horse.name), 409, { routine: clash._id });
   const routine = await CareRoutine.create({ ...read.values, horse: horse._id, createdBy: req.user._id });
   const today = await syncRoutineTasks(routine);
   await tell(routine, `📋 ${req.user.name} giao việc dài hạn: ${describe(routine, horse.name)}. Xem cách làm trên từng việc.`);
@@ -111,6 +133,8 @@ const updateRoutine = asyncHandler(async (req, res) => {
   if (routine.status !== 'active') return fail(res, 'Việc này đã dừng — giao việc mới nếu cần làm tiếp.', 409);
   const read = await readRoutine(req.body, routine);
   if (read.error) return fail(res, read.error, 400);
+  const clash = await sameJob({ ...read.values, horse: routine.horse }, routine._id);
+  if (clash) return fail(res, clashMessage(clash, (await Horse.findById(routine.horse).select('name'))?.name || 'Ngựa'), 409, { routine: clash._id });
   Object.assign(routine, read.values);
   await routine.save();
   const today = await syncRoutineTasks(routine);

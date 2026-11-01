@@ -468,8 +468,11 @@ function TaskList() {
 
       {routineModal.open && (
         <CareRoutineModal
+          key={routineModal.routine?._id || 'new'}
           open
           routine={routineModal.routine}
+          routines={routinesData?.data || []}
+          onOpenExisting={(routine) => setRoutineModal({ open: true, routine })}
           horseId={focus.horse}
           horses={horsesData?.data || []}
           grooms={groomsData?.data || []}
@@ -649,6 +652,7 @@ function RationList() {
         assignmentOf={assignmentOf}
         feedItems={feedItems}
         onPropose={() => setProposeOpen(true)}
+        onOpenHorse={focus.select}
       />
 
       <Modal

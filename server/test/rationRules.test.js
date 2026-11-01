@@ -65,3 +65,22 @@ test('meals have roles: a light breakfast before training, the main meal at nigh
   assert.equal(amountOf(restDinner, 'Bột điện giải'), undefined, 'no electrolytes on a rest day');
   assert.ok(amountOf(restBreakfast, 'Cỏ khô Timothy') >= 0.5);
 });
+
+test('an injured or isolated horse eats the sick diet whatever its plan: forage as at rest, the least grain, minerals only', () => {
+  const { dietOf } = require('../src/modules/feeding/rationRules');
+  assert.equal(dietOf('injured'), 'sick');
+  assert.equal(dietOf('quarantined'), 'sick');
+  assert.equal(dietOf('eligible'), 'normal');
+  const feeds = { forage: stock[0], concentrate: stock[2], supplements: pickSupplements(stock) };
+  const total = (meals, name) => meals.flatMap((m) => m.items).filter((i) => i.name === name).reduce((n, i) => n + i.amount, 0);
+  const hard = dayMeals({ weightKg: 500, work: 'high', phase: phase('speed', 'high'), clocks, feeds });
+  const rest = dayMeals({ weightKg: 500, work: 'rest', phase: phase('speed', 'high'), clocks, feeds });
+  const sick = dayMeals({ weightKg: 500, work: 'high', phase: phase('speed', 'high'), clocks, feeds, diet: 'sick' });
+  assert.ok(total(sick, 'Yến mạch') < total(rest, 'Yến mạch'), 'less grain than even a rest day');
+  assert.ok(total(sick, 'Yến mạch') < total(hard, 'Yến mạch'));
+  assert.ok(total(sick, 'Cỏ khô Timothy') >= total(rest, 'Cỏ khô Timothy'), 'forage kept up');
+  assert.equal(amountOf(sick[1], 'Yến mạch'), undefined, 'no grain at lunch');
+  assert.equal(amountOf(sick[2], 'Dầu hạt lanh'), undefined, 'no oil');
+  assert.equal(amountOf(sick[2], 'Bột điện giải'), undefined, 'no electrolytes');
+  assert.ok(amountOf(sick[2], 'Khoáng chất') > 0, 'minerals still');
+});

@@ -10,7 +10,7 @@ import FeedingTimetable from './FeedingTimetable';
 import FeedingDaysTable from './FeedingDaysTable';
 import FeedingGroupsTable from './FeedingGroupsTable';
 import { Fact, PhaseStrip, StockNeedList } from './FeedingPlanParts';
-import { SLOTS, SLOT_LABELS, amountText, dayTotals, idOf, planEnd, stockNeed } from './feedingPlan';
+import { SICK_DIET_TEXT, SLOTS, SLOT_LABELS, amountText, dayTotals, idOf, planEnd, stockNeed } from './feedingPlan';
 
 const { Text } = Typography;
 const FIRST_DAYS = 14;
@@ -47,6 +47,14 @@ function PlanDays({ calendar, feedItems }) {
   return (
     <div className="flex flex-col gap-2.5">
       <PhaseStrip days={days} />
+      {calendar.diet === 'sick' && (
+        <Alert
+          type="warning"
+          showIcon
+          title="Đang áp dụng chế độ ăn khi bệnh từ hôm nay."
+          description={`Ngựa không tập nên khẩu phần là ${SICK_DIET_TEXT}. Khi bác sĩ kết luận đủ điều kiện, lịch tự về theo kế hoạch tập.`}
+        />
+      )}
       {unconfirmed > 0 && (
         <Alert
           type="warning"
@@ -106,8 +114,20 @@ function PlanDays({ calendar, feedItems }) {
 /** The same meals every day, for a horse without a plan: each meal's time, foods and approval. */
 function DailyRations({ rations }) {
   const total = dayTotals(rations.map((r) => ({ items: (r.items || []).filter((i) => i.inventoryItem).map((i) => ({ amount: i.amount, unit: i.inventoryItem.unit })) })));
+  // On the sick diet the rations keep their healthy items aside, given back once the horse is fit.
+  const kept = rations.filter((r) => r.healthyItems?.length);
   return (
     <div className="flex flex-col gap-2">
+      {kept.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          title="Đang áp dụng chế độ ăn khi bệnh."
+          description={`Khẩu phần dưới đây là ${SICK_DIET_TEXT}. Khẩu phần lúc khỏe (${kept
+            .map((r) => `${SLOT_LABELS[r.mealTime].toLowerCase()}: ${r.healthyItems.map((i) => i.quantity || `${i.amount} ${i.unit || ''}`).join(' + ')}`)
+            .join('; ')}) được giữ lại và tự trả về khi bác sĩ kết luận đủ điều kiện.`}
+        />
+      )}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {SLOTS.map((slot) => {
           const r = rations.find((x) => x.mealTime === slot);

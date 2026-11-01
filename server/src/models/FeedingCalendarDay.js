@@ -21,6 +21,8 @@ const schema = new mongoose.Schema({
   date: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
   phase: { type: String, required: true },
   work: { type: String, enum: ['rest', 'light', 'moderate', 'high'], required: true },
+  // 'sick': the horse was injured or isolated when the day was set, so it eats the sick diet (rationRules.js).
+  diet: { type: String, enum: ['normal', 'sick'], default: 'normal' },
   meals: { type: [mealSchema], required: true },
   // The meals the trainer chose not to give that day, so confirming the plan again does not bring them back.
   removedSlots: { type: [{ type: String, enum: ['morning', 'noon', 'evening'] }], default: [] },

@@ -25,6 +25,9 @@ const feedingScheduleSchema = new mongoose.Schema(
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     // Amounts the trainer confirmed ahead for the training plan's next phase: on `from` they replace
     // `items` (realtime/dailyTaskGenerator.js), so the next phase's meals are ready before it starts.
+    // The daily ration as it was before the horse went on the sick diet: given back when it is fit
+    // again (feedingCalendar.service.js followHealthDiet). Empty while the horse is well.
+    healthyItems: { type: [feedingItemSchema], default: undefined },
     upcoming: {
       type: new mongoose.Schema(
         {

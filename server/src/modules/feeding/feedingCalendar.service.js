@@ -8,11 +8,11 @@ const DailyTask = require('../../models/DailyTask');
 const clubPolicy = require('../../config/clubPolicy');
 const { dayBounds, taskTiming } = require('../../utils/taskTiming');
 const { ensureFeedingTasks, DEFAULT_MEAL_TIMES } = require('../../realtime/dailyTaskGenerator');
-const { notifyCaretaker } = require('../alerts/notification.service');
+const { notifyCaretaker, notifyHorseStaff } = require('../alerts/notification.service');
 const { logAction } = require('../audit/audit.service');
 const { SLOT_LABELS, stockFor, readItemsWith, mealSetProblem } = require('./mealInput');
 
-const { SLOTS, weightWarning, trainingDayWork, workOf, pickFeed, pickSupplements, dayMeals, weekNeed } = require('./rationRules');
+const { SLOTS, dietOf, weightWarning, trainingDayWork, workOf, pickFeed, pickSupplements, dayMeals, weekNeed } = require('./rationRules');
 const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const atDay = (key) => new Date(`${key}T00:00:00`);
 const clockOf = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -21,13 +21,26 @@ const sameItems = (a, b) => signature([{ slot: '', time: '', items: a || [] }]) 
 const bySlotOrder = (a, b) => SLOTS.indexOf(a.slot) - SLOTS.indexOf(b.slot);
 const plainMeal = (m) => ({ slot: m.slot, time: m.time, items: (m.items || []).map((i) => ({ inventoryItem: i.inventoryItem, name: i.name, amount: i.amount, unit: i.unit })), edited: Boolean(m.edited) });
 
+/**
+ * The diet the horse is on now: sick while injured or isolated, normal once the vet finds it fit. Under
+ * monitoring it keeps the diet it is on — back to normal only when it is fit (`plan`: its plan in use,
+ * whose days ahead say; `rations`: its daily rations, which keep their healthy items while it is sick).
+ */
+async function dietNow(horse, { plan, rations } = {}) {
+  if (horse?.healthStatus !== 'monitoring') return dietOf(horse?.healthStatus);
+  if (plan && (await FeedingCalendarDay.exists({ plan: plan._id, date: { $gte: dateKey(new Date()) }, diet: 'sick' }))) return 'sick';
+  return (rations || []).some((r) => r.healthyItems?.length) ? 'sick' : 'normal';
+}
+
 async function buildCalendar(plan, { times = {} } = {}) {
   const [horse, stock, rations, assignment] = await Promise.all([
-    Horse.findById(plan.horse).select('name weightKg isArchived'),
+    Horse.findById(plan.horse).select('name weightKg isArchived healthStatus'),
     InventoryItem.find({ category: 'feed', isActive: { $ne: false } }).select('name quantity unit feedType expiryDate isActive'),
-    FeedingSchedule.find({ horse: plan.horse }).select('mealTime timeOfDay items'),
+    FeedingSchedule.find({ horse: plan.horse }).select('mealTime timeOfDay items healthyItems'),
     StableAssignment.findOne({ horse: plan.horse }).populate('assignedCaretaker', 'name isActive'),
   ]);
+  // An injured or isolated horse is not worked: its days from today take the sick diet.
+  const diet = await dietNow(horse, { plan, rations });
   const problems = [];
   if (!horse || horse.isArchived) problems.push('Ngựa không còn được quản lý.');
   if (!horse?.weightKg || horse.weightKg <= 0) problems.push('Chưa có cân nặng của ngựa để tính khẩu phần.');
@@ -57,10 +70,11 @@ async function buildCalendar(plan, { times = {} } = {}) {
     const phase = phases.find((p) => cursor >= dayBounds(p.startDate).start && cursor <= dayBounds(p.endDate).start) || phases.at(-1);
     if (!phase) break;
     const work = workOf(phase, cursor);
-    const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks, feeds: { forage, concentrate, supplements } });
+    const dayDiet = cursor < today ? 'normal' : diet;
+    const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks, feeds: { forage, concentrate, supplements }, diet: dayDiet });
     // The work the plan's week template puts on this day, so the planner reads the meals beside it.
     const sessions = (phase.week || []).filter((w) => Number(w.day) === cursor.getDay()).map((w) => ({ kind: w.kind, slot: w.slot || 'morning', distanceM: w.distanceM || null }));
-    days.push({ date: dateKey(cursor), phase: phase.key, work, sessions, past: cursor < today, meals });
+    days.push({ date: dateKey(cursor), phase: phase.key, work, diet: dayDiet, sessions, past: cursor < today, meals });
   }
   if (!days.length) problems.push('Kế hoạch không có ngày hợp lệ để xếp lịch ăn.');
   if (end >= start && days.length === 672 && dateKey(end) !== days.at(-1).date) problems.push('Kế hoạch vượt quá 672 ngày.');
@@ -68,6 +82,7 @@ async function buildCalendar(plan, { times = {} } = {}) {
   const weightNote = horse?.weightKg > 0 ? weightWarning(horse.weightKg) : null;
   return {
     horse,
+    diet,
     caretaker: assignment?.assignedCaretaker || null,
     stall: assignment?.stableBlock || null,
     clocks,
@@ -95,7 +110,8 @@ async function lockedToday(horseId) {
 /**
  * The plan's days from today as confirming would save them:
  * - a day the trainer set in the planner (`overrides`), as they set it — a meal they left out is not given;
- * - else a day already confirmed for this version of the plan, as it was confirmed (new meal times applied);
+ * - else a day already confirmed for this version of the plan and the same diet, as it was confirmed (new
+ *   meal times applied) — a horse that fell ill or got well takes the rules' day of its new diet;
  * - else the rules' day, keeping the meals the trainer edited and left out on an earlier confirmation of
  *   this plan (`fresh` drops those: everything back to the rules);
  * - today, a meal already given, skipped or missed stays as it happened.
@@ -107,7 +123,8 @@ function mergeDays({ preview, saved, plan, times = {}, overrides = new Map(), fr
   return preview.days.filter((d) => !d.past).map((day) => {
     const old = fresh ? null : saved.get(day.date);
     const samePlan = Boolean(old) && String(old.plan) === String(plan._id);
-    const current = samePlan && new Date(old.approvedPlanUpdatedAt) >= new Date(plan.updatedAt);
+    const sameDiet = (old?.diet || 'normal') === day.diet;
+    const current = samePlan && sameDiet && new Date(old.approvedPlanUpdatedAt) >= new Date(plan.updatedAt);
     const ruled = (slot) => day.meals.find((m) => m.slot === slot);
     let meals;
     let removedSlots;
@@ -120,11 +137,11 @@ function mergeDays({ preview, saved, plan, times = {}, overrides = new Map(), fr
       meals = old.meals.map((m) => withTime(plainMeal(m)));
       removedSlots = old.removedSlots || [];
     } else {
-      removedSlots = samePlan ? old.removedSlots || [] : [];
+      removedSlots = samePlan && sameDiet ? old.removedSlots || [] : [];
       meals = day.meals
         .filter((m) => !removedSlots.includes(m.slot))
         .map((m) => {
-          const edited = samePlan ? old.meals.find((o) => o.slot === m.slot && o.edited) : null;
+          const edited = samePlan && sameDiet ? old.meals.find((o) => o.slot === m.slot && o.edited) : null;
           return edited ? withTime(plainMeal(edited)) : { ...m, edited: false };
         });
     }
@@ -138,7 +155,7 @@ function mergeDays({ preview, saved, plan, times = {}, overrides = new Map(), fr
         removedSlots = removedSlots.filter((s) => s !== slot);
       }
     }
-    return { date: day.date, phase: day.phase, work: day.work, sessions: day.sessions, meals: meals.sort(bySlotOrder), removedSlots, suggested: day.meals };
+    return { date: day.date, phase: day.phase, work: day.work, diet: day.diet, sessions: day.sessions, meals: meals.sort(bySlotOrder), removedSlots, suggested: day.meals };
   });
 }
 
@@ -159,7 +176,7 @@ function stockWarnings(days, stock) {
 async function calendarView(plan) {
   const preview = await buildCalendar(plan);
   const [saved, locked] = await Promise.all([
-    FeedingCalendarDay.find({ horse: plan.horse }).select('plan date meals removedSlots approvedPlanUpdatedAt').lean(),
+    FeedingCalendarDay.find({ horse: plan.horse }).select('plan date meals removedSlots diet approvedPlanUpdatedAt').lean(),
     lockedToday(plan.horse),
   ]);
   const savedByDate = new Map(saved.map((d) => [d.date, d]));
@@ -168,7 +185,9 @@ async function calendarView(plan) {
   const todayKey = dateKey(new Date());
   return {
     plan: { _id: plan._id, horse: plan.horse, status: plan.status, updatedAt: plan.updatedAt, startDate: plan.startDate, endDate: plan.endDate, goal: plan.goal || null, sessionTime: plan.sessionTime || null },
-    horse: preview.horse ? { _id: preview.horse._id, name: preview.horse.name, weightKg: preview.horse.weightKg } : null,
+    horse: preview.horse ? { _id: preview.horse._id, name: preview.horse.name, weightKg: preview.horse.weightKg, healthStatus: preview.horse.healthStatus } : null,
+    // 'sick': the days from today take the sick diet (the horse is injured or isolated).
+    diet: preview.diet,
     caretaker: preview.caretaker ? { _id: preview.caretaker._id, name: preview.caretaker.name } : null,
     stall: preview.stall,
     clocks: preview.clocks,
@@ -240,15 +259,26 @@ async function confirmCalendar({ plan, actor, expectedUpdatedAt, times, days: ra
   if (times && (typeof times !== 'object' || Array.isArray(times) || Object.keys(times).some((slot) => !SLOTS.includes(slot)))) return { error: 'Giờ cho ăn không hợp lệ.', status: 400 };
   const preview = await buildCalendar(plan, { times });
   if (preview.problems.length) return { error: preview.problems.join(' '), status: 409 };
-  const today = dayBounds(new Date()).start;
-  const todayKey = dateKey(today);
   const future = preview.days.filter((d) => !d.past);
   const read = await readOverrides(rawDays, new Set(future.map((d) => d.date)));
   if (read.error) return { error: read.error, status: 400 };
+  return saveDays({ plan, preview, actor, times, overrides: read.overrides, fresh });
+}
+
+/**
+ * Writes the plan's days from today as mergeDays makes them, keeps today's groom list in step, and tells
+ * the groom when anything changed. `system`: written by the system for the horse's health (followHealthDiet),
+ * in the name of whoever confirmed the calendar, with `notice` as the groom's message. Returns
+ * { days, changed } or { error, status }.
+ */
+async function saveDays({ plan, preview, actor, times, overrides = new Map(), fresh = false, system = false, notice = null }) {
+  const today = dayBounds(new Date()).start;
+  const todayKey = dateKey(today);
+  const future = preview.days.filter((d) => !d.past);
   const previous = await FeedingCalendarDay.find({ horse: plan.horse, date: { $gte: todayKey } }).lean();
   const previousByDate = new Map(previous.map((d) => [d.date, d]));
   const locked = await lockedToday(plan.horse);
-  const effective = mergeDays({ preview, saved: previousByDate, plan, times: times || {}, overrides: read.overrides, fresh: Boolean(fresh), locked });
+  const effective = mergeDays({ preview, saved: previousByDate, plan, times: times || {}, overrides, fresh: Boolean(fresh), locked });
   for (const day of effective) {
     if (!day.meals.length) return { error: `Ngày ${day.date.slice(8, 10)}/${day.date.slice(5, 7)} cần ít nhất một bữa.`, status: 400 };
     const problem = mealSetProblem(Object.fromEntries(day.meals.map((m) => [m.slot, m.time])));
@@ -257,12 +287,12 @@ async function confirmCalendar({ plan, actor, expectedUpdatedAt, times, days: ra
   const saveable = (meals) => meals.map(({ slot, time, items, edited }) => ({ slot, time, items, edited: Boolean(edited) }));
   const changed = effective.filter((d) => {
     const old = previousByDate.get(d.date);
-    return !old || old.plan.toString() !== String(plan._id) || old.phase !== d.phase || old.work !== d.work || signature(old.meals) !== signature(d.meals);
+    return !old || old.plan.toString() !== String(plan._id) || old.phase !== d.phase || old.work !== d.work || (old.diet || 'normal') !== d.diet || signature(old.meals) !== signature(d.meals);
   });
   const ops = effective.map((day) => ({
     updateOne: {
       filter: { horse: plan.horse, date: day.date },
-      update: { $set: { plan: plan._id, phase: day.phase, work: day.work, meals: saveable(day.meals), removedSlots: day.removedSlots, approvedBy: actor._id, approvedPlanUpdatedAt: plan.updatedAt } },
+      update: { $set: { plan: plan._id, phase: day.phase, work: day.work, diet: day.diet, meals: saveable(day.meals), removedSlots: day.removedSlots, approvedBy: actor._id, approvedPlanUpdatedAt: plan.updatedAt } },
       upsert: true,
     },
   }));
@@ -279,12 +309,89 @@ async function confirmCalendar({ plan, actor, expectedUpdatedAt, times, days: ra
     if (removable.length) await DailyTask.deleteMany({ _id: { $in: removable.map((t) => t._id) } });
   }
   await ensureFeedingTasks({ horseIds: [plan.horse] });
-  if (changed.length || obsolete.length) {
+  if ((changed.length || obsolete.length) && !system) {
     await notifyCaretaker({ horse: plan.horse, type: 'task_assigned', severity: 'info',
       message: `${actor.name} đã xác nhận lịch cho ăn của ${preview.horse.name} từ ${future[0]?.date || ''} đến ${future.at(-1)?.date || ''}. Xem bữa hôm nay trong mục Cho ăn; chỉ ghi nhận từ giờ hẹn.` });
   }
-  await logAction({ actorId: actor._id, action: 'feeding.calendar_confirm', targetModel: 'TrainingPlan', targetId: plan._id, metadata: { days: future.length, changed: changed.length, edited: read.overrides.size, fresh: Boolean(fresh) } });
+  if (system && notice) await notifyCaretaker({ horse: plan.horse, type: 'task_assigned', severity: 'info', message: notice });
+  if (!system) await logAction({ actorId: actor._id, action: 'feeding.calendar_confirm', targetModel: 'TrainingPlan', targetId: plan._id, metadata: { days: future.length, changed: changed.length, edited: overrides.size, fresh: Boolean(fresh) } });
   return { days: future.length, changed: changed.length };
+}
+
+const asRationItem = (i) => ({ type: i.name, quantity: `${i.amount} ${i.unit}`, inventoryItem: i.inventoryItem, amount: i.amount, unit: i.unit });
+
+/** Today's open meals of a horse on daily rations take the rations as they now are. */
+async function followTodayRations(horseId, rations) {
+  const { start, end } = dayBounds(new Date());
+  for (const r of rations) {
+    // eslint-disable-next-line no-await-in-loop
+    const task = await DailyTask.findOne({ horse: horseId, taskType: 'feeding', mealSlot: r.mealTime, status: 'pending', makeUpOf: null, scheduledDate: { $gte: start, $lt: end } });
+    if (!task || taskTiming(task).state === 'missed') continue;
+    task.supplies = (r.items || []).filter((i) => i.inventoryItem && i.amount).map((i) => ({ inventoryItem: i.inventoryItem, name: i.type, amount: i.amount, unit: i.unit }));
+    // eslint-disable-next-line no-await-in-loop
+    await task.save();
+  }
+}
+
+/**
+ * The horse's meals follow its health (the club's choice of 01/11/2026). Injured or isolated, it is not
+ * worked, so from today it eats the sick diet (rationRules.js): its plan's calendar days ahead are
+ * written again for it, or its daily rations take the sick meals and keep their healthy items aside.
+ * Found fit again, the calendar goes back to the plan's meals and the daily rations get their items
+ * back. Under monitoring nothing changes. The trainer and the groom are told. Returns { diet } or null.
+ */
+async function followHealthDiet(horseId) {
+  const horse = await Horse.findById(horseId).select('name healthStatus isArchived');
+  if (!horse || horse.isArchived) return null;
+  const plan = await TrainingPlan.findOne({ horse: horseId, status: 'active' });
+  const rations = await FeedingSchedule.find({ horse: horseId });
+  const diet = await dietNow(horse, { plan, rations });
+  const ahead = plan ? await FeedingCalendarDay.find({ plan: plan._id, date: { $gte: dateKey(new Date()) } }).select('diet approvedBy').lean() : [];
+  if (ahead.length) {
+    if (ahead.every((d) => (d.diet || 'normal') === diet)) return null;
+    const preview = await buildCalendar(plan);
+    if (preview.problems.length) return null;
+    const notice = diet === 'sick'
+      ? `🍽️ ${horse.name} đang ${horse.healthStatus === 'quarantined' ? 'cách ly' : 'chấn thương'}: từ hôm nay khẩu phần chuyển sang chế độ ăn khi bệnh (nhiều cỏ, ít thức ăn tinh, không điện giải hay dầu). Xem bữa hôm nay trong mục Cho ăn.`
+      : `🍽️ ${horse.name} đã đủ điều kiện: khẩu phần về lại theo kế hoạch tập từ hôm nay. Xem bữa hôm nay trong mục Cho ăn.`;
+    const saved = await saveDays({ plan, preview, actor: { _id: ahead[0].approvedBy }, fresh: true, system: true, notice });
+    if (saved.error) return null;
+  } else {
+    if (!rations.length) return null;
+    const onSick = rations.some((r) => r.healthyItems?.length);
+    if (diet === 'sick' && !onSick) {
+      const { meals } = await suggestMeal({ horseId });
+      for (const r of rations) {
+        const meal = meals.find((m) => m.slot === r.mealTime);
+        if (!meal?.items.length) continue;
+        r.healthyItems = r.items;
+        r.items = meal.items.map(asRationItem);
+        // eslint-disable-next-line no-await-in-loop
+        await r.save();
+      }
+    } else if (diet === 'normal' && onSick) {
+      for (const r of rations) {
+        if (!r.healthyItems?.length) continue;
+        r.items = r.healthyItems;
+        r.healthyItems = undefined;
+        // eslint-disable-next-line no-await-in-loop
+        await r.save();
+      }
+    } else return null;
+    await followTodayRations(horseId, rations);
+    await notifyCaretaker({ horse: horse._id, type: 'task_assigned', severity: 'info',
+      message: diet === 'sick' ? `🍽️ ${horse.name} đang bệnh: từ hôm nay khẩu phần chuyển sang chế độ ăn khi bệnh. Xem bữa hôm nay trong mục Cho ăn.` : `🍽️ ${horse.name} đã đủ điều kiện: khẩu phần về lại như trước khi bệnh.` });
+  }
+  await notifyHorseStaff({
+    staff: 'trainer',
+    horse: horse._id,
+    type: 'ration_review',
+    severity: diet === 'sick' ? 'warning' : 'info',
+    message: diet === 'sick'
+      ? `🍽️ ${horse.name} đang ${horse.healthStatus === 'quarantined' ? 'cách ly' : 'chấn thương'}: khẩu phần từ hôm nay đã chuyển sang chế độ ăn khi bệnh (nhiều cỏ, ít thức ăn tinh, không điện giải hay dầu). Vẫn sửa được trong Khẩu phần ăn; khỏi bệnh thì tự về như cũ.`
+      : `🍽️ ${horse.name} đã đủ điều kiện: khẩu phần ${ahead.length ? 'về lại theo kế hoạch tập' : 'về lại như trước khi bệnh'} từ hôm nay.`,
+  });
+  return { diet };
 }
 
 /**
@@ -295,11 +402,12 @@ async function confirmCalendar({ plan, actor, expectedUpdatedAt, times, days: ra
  */
 async function suggestMeal({ horseId, slot }) {
   const [horse, plan, stock, rations] = await Promise.all([
-    Horse.findById(horseId).select('name weightKg'),
+    Horse.findById(horseId).select('name weightKg healthStatus'),
     TrainingPlan.findOne({ horse: horseId, status: 'active' }),
     InventoryItem.find({ category: 'feed', isActive: { $ne: false } }).select('name quantity unit feedType expiryDate isActive'),
-    FeedingSchedule.find({ horse: horseId }).select('mealTime timeOfDay items'),
+    FeedingSchedule.find({ horse: horseId }).select('mealTime timeOfDay items healthyItems'),
   ]);
+  const diet = await dietNow(horse, { plan, rations });
   const today = dayBounds(new Date()).start;
   const phase = plan ? TrainingPlan.phasesOf(plan).find((p) => today >= dayBounds(p.startDate).start && today <= dayBounds(p.endDate).start) || null : null;
   const work = trainingDayWork(phase);
@@ -310,12 +418,13 @@ async function suggestMeal({ horseId, slot }) {
     supplements: pickSupplements(stock, today),
   };
   const clocks = Object.fromEntries(SLOTS.map((s) => [s, rations.find((r) => r.mealTime === s)?.timeOfDay || DEFAULT_MEAL_TIMES[s]]));
-  const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks, feeds });
+  const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks, feeds, diet });
   const lines = meals.flatMap((m) => m.items);
   const perDay = (item) => (item ? Math.round(lines.filter((i) => String(i.inventoryItem) === String(item._id)).reduce((n, i) => n + i.amount, 0) * 10) / 10 : 0);
   return {
     phase: phase?.key || null,
     work,
+    diet,
     weightKg: horse?.weightKg || null,
     warning: weightWarning(horse?.weightKg),
     sessionTime: plan?.sessionTime || null,
@@ -325,4 +434,4 @@ async function suggestMeal({ horseId, slot }) {
   };
 }
 
-module.exports = { calendarView, confirmCalendar, suggestMeal, dateKey };
+module.exports = { calendarView, confirmCalendar, suggestMeal, followHealthDiet, dateKey };
