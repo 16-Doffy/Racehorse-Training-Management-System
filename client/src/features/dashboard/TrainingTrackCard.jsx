@@ -20,7 +20,7 @@ const horseId = (s) => String(s.horse?._id || s.horse);
  * horses booked today and not out wait by the finish post. Beside it, the running horses' figures, the
  * sessions still to come today and how the day has gone. The full monitor is on the sessions page.
  */
-export default function TrainingTrackCard({ sessions = [], horses = [], compact = false }) {
+export default function TrainingTrackCard({ sessions = [], horses = [], compact = false, onTrack = false }) {
   const queryClient = useQueryClient();
   const screens = Grid.useBreakpoint();
   // The latest reading per session from the feed: { distance, targetDistance, speed, hr }.
@@ -96,6 +96,67 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
     ? `Sân tập 3D: ${rows.length} ngựa đang chạy, đặt theo phần cự ly đã chạy; ${parked.length} ngựa đứng chờ cạnh cột đích`
     : `Sân tập 3D: không có ngựa nào đang chạy; ${parked.length} ngựa đứng cạnh cột đích`;
   const [nextShown, rest] = [waiting.slice(0, 5), waiting.length - 5];
+
+  if (onTrack) {
+    const next = waiting[0];
+    const left = next ? Math.max(0, dayjs(next.scheduledAt).diff(dayjs(), 'minute')) : 0;
+    const summary = [done.length ? `Đã tập ${done.length} buổi, đạt ${met}` : null, missed ? `Lỡ giờ ${missed} buổi` : null, waiting.length ? `Còn ${waiting.length} buổi hôm nay` : null].filter(Boolean).join('. ');
+    const instruments = rows.length
+      ? rows.slice(0, 2).map((x) => (
+          <section key={x.s._id} className="st-live-section pointer-events-auto" onMouseEnter={() => setFocus(x.id)} onMouseLeave={() => setFocus(null)}>
+            <div className="grid items-center gap-x-5 gap-y-2 md:grid-cols-[minmax(0,200px)_minmax(0,1fr)]">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-xs text-gray-700">
+                  <span className={`inline-block h-2 w-2 rounded-full animate-pulse ${x.over ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                  <span>{kindOf(x.s)}</span>
+                </div>
+                <Link to={`/training/sessions?horse=${x.id}`} className="block truncate text-[15px] font-semibold">
+                  {x.s.horse?.name}
+                </Link>
+                <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/15" role="progressbar" aria-label={`Cự ly đã chạy của ${x.s.horse?.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(x.share * 100)}>
+                  <div className={`h-full rounded-full transition-all ${x.over ? 'bg-rose-400' : 'bg-emerald-400'}`} style={{ width: `${Math.round(x.share * 100)}%` }} />
+                </div>
+              </div>
+              <dl className="st-live-figures">
+                <div><dt>Tốc độ</dt><dd>{x.speed != null ? x.speed : '—'}<small> km/h</small></dd></div>
+                <div className={x.over ? 'st-live-warning' : undefined}><dt>Nhịp tim</dt><dd>{x.hr != null ? x.hr : '—'}<small> bpm</small></dd></div>
+                <div><dt>Cự ly</dt><dd>{Math.round(x.distance).toLocaleString('vi-VN')}<small> / {Math.round(x.course).toLocaleString('vi-VN')} m</small></dd></div>
+              </dl>
+            </div>
+            {x.over && <p className="st-live-warning-note">Nhịp tim vượt ngưỡng bài tập</p>}
+          </section>
+        ))
+      : (
+          <div className="st-next-up pointer-events-auto">
+            {next ? (
+              <Link to={`/training/sessions?horse=${horseId(next)}`} className="min-w-0">
+                Buổi kế tiếp <span className="st-figure">{hhmm(next.scheduledAt)}</span> <strong>{next.horse?.name}</strong>, {kindOf(next).toLowerCase()}, còn {left >= 60 ? `${Math.floor(left / 60)} giờ ` : ''}{left % 60} phút
+              </Link>
+            ) : (
+              <span>{today.length ? 'Không còn buổi nào chờ chạy.' : 'Hôm nay chưa có buổi tập nào.'}</span>
+            )}
+            {summary && <small className="tabular-nums">{summary}</small>}
+          </div>
+        );
+    return (
+      <Card
+        className="!overflow-hidden"
+        styles={{ body: { padding: 0 }, title: { whiteSpace: 'normal' } }}
+        title={
+          <span>
+            <span>Sân tập hôm nay</span>
+            <span className="ml-2 text-xs font-normal text-gray-500">{rows.length ? `${rows.length} ngựa đang chạy, vị trí theo cảm biến` : 'không có ngựa nào đang chạy'}</span>
+          </span>
+        }
+        extra={screens.md && <Link to="/training/sessions"><Button size="small">Theo dõi chi tiết</Button></Link>}
+      >
+        <Track3D runners={runners} focus={focus} label={label} height={screens.md ? 'clamp(400px, 58vh, 640px)' : '280px'} frameClassName="rounded-none" hint={false}>
+          {screens.md && <div className="pointer-events-none absolute bottom-3 left-3 right-11 flex flex-col gap-2">{instruments}</div>}
+        </Track3D>
+        {!screens.md && <div className="flex flex-col gap-2 bg-[#0F1211] p-3">{instruments}</div>}
+      </Card>
+    );
+  }
 
   return (
     <Card

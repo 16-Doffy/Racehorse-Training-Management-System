@@ -5,7 +5,6 @@ import {
   UserOutlined, 
   LogoutOutlined, 
   AppstoreFilled,
-  CrownOutlined,
   EllipsisOutlined,
   SunOutlined,
   MoonOutlined,
@@ -30,9 +29,9 @@ import { staffWorkspaceTheme } from './staffWorkspaceTheme';
 const { Sider, Content } = Layout;
 
 /** Brass horseshoe shown as the logo on the forest sidebar for Veterinarian. */
-function HorseshoeMark() {
+function HorseshoeMark({ color = FOREST.brass }) {
   return (
-    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={FOREST.brass} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="mr-2 shrink-0" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={color} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="mr-2 shrink-0" aria-hidden="true">
       <path d="M7 20V9a5 5 0 0 1 10 0v11" />
       <path d="M4.5 20h4" />
       <path d="M15.5 20h4" />
@@ -179,7 +178,7 @@ export default function MainLayout() {
         {/* Logo Area: Team 8 WDP301 for Canvas (Manager/Head Trainer); Horseshoe for Veterinarian; Appstore for others */}
         <div className={`${isStaff ? 'h-16' : 'h-20 pt-3'} flex items-center px-4 shrink-0 ${forest ? 'border-b border-white/10' : 'border-b border-gray-100'}`}>
           {isWorkspace ? (
-            <div className="st-brand-mark mr-3 shrink-0"><CrownOutlined aria-hidden="true" /></div>
+            <span className="st-brand-mark mr-1 shrink-0"><HorseshoeMark color="var(--st-primary)" /></span>
           ) : isStaff ? (
             <div className="w-9 h-9 rounded-lg bg-[#0B291E] border border-[#D4AF37]/35 flex items-center justify-center mr-3 shrink-0">
               <Team8LogoCrest />
@@ -196,7 +195,7 @@ export default function MainLayout() {
           {!siderCollapsed && (
             isWorkspace ? (
               <div className="flex flex-col min-w-0">
-                <span className="st-brand-name truncate">RACEHORSE TMS</span>
+                <span className="st-brand-name truncate">Racehorse TMS</span>
                 <span className="st-brand-role truncate">
                   {user?.role === ROLES.HEAD_TRAINER ? 'Huấn luyện viên Trưởng' : 'Quản lý Câu lạc bộ'}
                 </span>
@@ -308,22 +307,22 @@ export default function MainLayout() {
                 <div className="flex items-center gap-3">
                   <Avatar
                     className={forest ? 'font-bold' : 'bg-gray-200 text-gray-600 font-bold'}
-                    style={forest ? { backgroundColor: FOREST.brass, color: FOREST.sider } : undefined}
+                    style={isWorkspace ? { backgroundColor: 'var(--st-sunk)', color: 'var(--st-ink)' } : forest ? { backgroundColor: FOREST.brass, color: FOREST.sider } : undefined}
                     size={36}
                     src={fileHref(user?.avatarUrl)}
                   >
                     {user?.name?.charAt(0)?.toUpperCase()}
                   </Avatar>
                   <div className="flex flex-col">
-                    <span className={`font-semibold text-sm leading-tight ${forest ? '' : 'text-gray-900'}`} style={forest ? { color: FOREST.logoText } : undefined}>
+                    <span className={`font-semibold text-sm leading-tight ${forest ? '' : 'text-gray-900'}`} style={isWorkspace ? { color: 'var(--st-ink)' } : forest ? { color: FOREST.logoText } : undefined}>
                       {user?.name}
                     </span>
-                    <span className={`text-xs ${forest ? '' : 'text-gray-500'}`} style={forest ? { color: FOREST.siderMuted } : undefined}>
+                    <span className={`text-xs ${forest ? '' : 'text-gray-500'}`} style={isWorkspace ? { color: 'var(--st-ink-secondary)' } : forest ? { color: FOREST.siderMuted } : undefined}>
                       {ROLE_LABELS[user?.role]}
                     </span>
                   </div>
                 </div>
-                <EllipsisOutlined className={`text-lg ${forest ? '' : 'text-gray-400'}`} style={forest ? { color: FOREST.siderMuted } : undefined} />
+                <EllipsisOutlined className={`text-lg ${forest ? '' : 'text-gray-400'}`} style={isWorkspace ? { color: 'var(--st-ink-secondary)' } : forest ? { color: FOREST.siderMuted } : undefined} />
               </div>
             </Dropdown>
           </div>

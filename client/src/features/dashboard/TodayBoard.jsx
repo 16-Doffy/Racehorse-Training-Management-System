@@ -205,7 +205,7 @@ export default function TodayBoard({ horses = [], sessions = [], compact = false
       extra={!compact && screens.md && filterSwitch}
     >
       {/* On a phone the switch goes under the title, which would otherwise be squeezed to a word a line. */}
-      {(compact || !screens.md) && filterSwitch && <div className="pb-2 pt-2">{filterSwitch}</div>}
+      {(compact || !screens.md) && filterSwitch && <div className={`pb-2 pt-3 ${tableView ? "px-4" : ""}`}>{filterSwitch}</div>}
       {!horses.length ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có ngựa nào giao cho bạn." className="!py-6" />
       ) : !rows.length ? (

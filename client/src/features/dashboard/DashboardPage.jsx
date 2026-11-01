@@ -1,11 +1,10 @@
 import { useSelector } from 'react-redux';
 import { useNavigate, Link } from 'react-router-dom';
-import { Card, Tag, Button, Tooltip } from 'antd';
-import { AppstoreOutlined, CheckCircleOutlined, EyeOutlined, MedicineBoxOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { Card, Tag, Button } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { horsesApi } from '../horses/horsesApi';
 import { trainingSessionApi } from '../training/trainingApi';
-import { ROLE_LABELS, ROLES } from '../../constants/roles';
+import { ROLES } from '../../constants/roles';
 import { TRAINING_LEVEL_META } from '../../constants/health';
 import FitnessOverviewChart from './FitnessOverviewChart';
 import TrainingTrackCard from './TrainingTrackCard';
@@ -114,117 +113,41 @@ export default function DashboardPage() {
     </div>
   );
 
+  // What is true today, said first; the counts follow.
+  const injuredNames = horses.filter((h) => h.healthStatus === 'injured').map((h) => h.name);
+  const held = horses.filter((h) => h.examHold).map((h) => h.name);
+  const finding = [
+    `${eligible}/${horses.length} ngựa đủ điều kiện tập`,
+    held.length ? `${held.join(', ')} đang chờ bác sĩ khám` : null,
+    injuredNames.length ? `${injuredNames.join(', ')} chấn thương` : null,
+  ].filter(Boolean).join(', ');
+  const counts = [
+    { label: 'Tổng số ngựa', value: horses.length, hint: isHeadTrainer ? 'Ngựa bạn phụ trách' : 'Toàn CLB', tone: 'text-gray-900' },
+    { label: 'Đủ điều kiện tập', value: eligible, hint: 'Đã khám, không bị hạn chế', tone: 'text-emerald-700' },
+    { label: 'Cần theo dõi', value: monitoring, hint: 'Có cảnh báo sức khỏe', tone: 'text-amber-700' },
+    { label: 'Chấn thương', value: injured, hint: 'Tạm ngưng luyện tập', tone: 'text-rose-700' },
+  ];
+
   return (
     <div className="st-page">
       <PageHeroBanner
-        eyebrow="Tổng quan vận hành"
-        roleLabel={ROLE_LABELS[user?.role]}
-        title={`Xin chào, ${user?.name}`}
-        kicker={isHeadTrainer ? 'Điều hành sân tập' : 'Trung tâm điều hành'}
-        kickerNote={`Hôm nay: ${new Date().toLocaleDateString('vi-VN')}`}
-        subtitle={isHeadTrainer ? 'Giám sát sân tập, số đo trực tiếp và bảng việc hôm nay của từng ngựa.' : `Theo dõi ${horses.length} ngựa, duyệt đề xuất vật tư và công suất chuồng trại.`}
-        statusBadge={
-          <div
-            className="px-3 py-1.5 rounded-lg border text-xs"
-            style={{ background: 'var(--st-sunk)', borderColor: 'var(--st-border)' }}
-          >
-            {/* The vet's side only (healthy, examined, no restriction): a session still has its own checks. */}
-            <div className="text-[11px] font-medium" style={{ color: 'var(--st-ink-secondary)' }}>Bác sĩ cho tập</div>
-            <div className="font-semibold tabular-nums mt-0.5" style={{ color: 'var(--st-ink)' }}>
-              {eligible}/{horses.length} ngựa
-            </div>
-          </div>
-        }
+        title={isHeadTrainer ? 'Tổng quan huấn luyện' : 'Tổng quan câu lạc bộ'}
+        subtitle={`${new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'numeric', year: 'numeric' })}. ${finding}`}
         actionButton={
-          isHeadTrainer ? (
-            <Button
-              type="primary"
-              onClick={() => navigate('/training/sessions?new=1')}
-              className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold flex items-center gap-2 cursor-pointer"
-            >
-              + Lập buổi tập mới
-            </Button>
-          ) : isManager ? (
-            <Button type="primary" onClick={() => navigate('/horses?new=1')} className="!h-9 !px-4 !rounded-lg font-semibold">
-              + Thêm ngựa mới
-            </Button>
-          ) : null
+          <Button type="primary" onClick={() => navigate(isHeadTrainer ? '/training/sessions?new=1' : '/horses?new=1')}>
+            {isHeadTrainer ? '+ Lập buổi tập mới' : '+ Thêm ngựa mới'}
+          </Button>
         }
       />
 
-      {/* KPI Metric Strip: Unified, dense, tabular */}
       <div className="st-kpi-grid light-surface-box">
-        <button
-          type="button"
-          onClick={() => navigate('/horses')}
-          className="st-kpi-tile group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-700"
-        >
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-            <span className="font-semibold text-gray-700 group-hover:text-emerald-900 transition-colors">Tổng số ngựa</span>
-            <span className="w-8 h-8 rounded-lg bg-[#EAE3D5] flex items-center justify-center text-gray-700">
-              <AppstoreOutlined />
-            </span>
-          </div>
-          <div className="text-2xl font-bold tracking-tight text-gray-900 tabular-nums">
-            {horses.length}
-          </div>
-          <div className="text-[11px] text-gray-600 font-medium mt-1">{isHeadTrainer ? 'Ngựa bạn phụ trách' : 'Toàn CLB'}</div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => navigate('/horses')}
-          className="st-kpi-tile group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-700"
-        >
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-            <Tooltip title="Ngựa khỏe, đã có hồ sơ khám của bác sĩ và không bị hạn chế tập. Ngựa mới chưa khám không được tính.">
-              <span className="font-semibold text-emerald-800 flex items-center gap-1">
-                Đủ điều kiện tập <InfoCircleOutlined className="text-[10px]" />
-              </span>
-            </Tooltip>
-            <span className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200/70 flex items-center justify-center text-emerald-700">
-              <CheckCircleOutlined />
-            </span>
-          </div>
-          <div className="text-2xl font-bold tracking-tight text-emerald-700 tabular-nums">
-            {eligible}
-          </div>
-          <div className="text-[11px] text-emerald-800 font-medium mt-1">Đã khám, không bị hạn chế tập</div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => navigate('/horses')}
-          className="st-kpi-tile group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-700"
-        >
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-            <span className="font-semibold text-amber-800 group-hover:text-amber-900">Cần theo dõi</span>
-            <span className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200/70 flex items-center justify-center text-amber-700">
-              <EyeOutlined />
-            </span>
-          </div>
-          <div className="text-2xl font-bold tracking-tight text-amber-700 tabular-nums">
-            {monitoring}
-          </div>
-          <div className="text-[11px] text-amber-900 font-medium mt-1">Có cảnh báo sức khỏe nhẹ</div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => navigate('/horses')}
-          className="st-kpi-tile group focus:outline-hidden focus-visible:ring-2 focus-visible:ring-rose-700"
-        >
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-            <span className="font-semibold text-rose-800 group-hover:text-rose-900">Chấn thương</span>
-            <span className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200/70 flex items-center justify-center text-rose-700">
-              <MedicineBoxOutlined />
-            </span>
-          </div>
-          <div className="text-2xl font-bold tracking-tight text-rose-700 tabular-nums">
-            {injured}
-          </div>
-          <div className="text-[11px] text-rose-900 font-medium mt-1">Đang tạm ngưng luyện tập</div>
-        </button>
+        {counts.map((c) => (
+          <button key={c.label} type="button" onClick={() => navigate('/horses')} className="st-kpi-tile text-left">
+            <span className="block text-xs font-medium text-gray-600">{c.label}</span>
+            <span className={`mt-1 block text-2xl tabular-nums ${c.value ? c.tone : 'text-gray-500'}`}>{c.value}</span>
+            <span className="block text-xs text-gray-500">{c.hint}</span>
+          </button>
+        ))}
       </div>
 
       {isHeadTrainer ? (
@@ -232,7 +155,7 @@ export default function DashboardPage() {
           {/* The Head Trainer's day: the track today in 3D (the horses out running, today's others by the
               finish post), the board of the day, then the safety and medical cards in a structured grid. */}
           <div className="st-trainer-overview">
-            <TrainingTrackCard compact sessions={sessionsData?.data || []} horses={horses} />
+            <TrainingTrackCard compact onTrack sessions={sessionsData?.data || []} horses={horses} />
             <TodayBoard compact horses={horses} sessions={sessionsData?.data || []} />
           </div>
           <section className="space-y-3">

@@ -1,38 +1,40 @@
 // Presentation-only theme for Manager and Head Trainer. Other roles retain forestTheme.
+// Light is a white sheet in a tinted frame, dark a monitoring screen; the values are styles/staff-workspace.css's.
 export function staffWorkspaceTheme(base, dark) {
-  const surface = dark ? '#0F172A' : '#FFFFFF';
-  const page = dark ? '#0B0F19' : '#F4F7FB';
-  const inset = dark ? '#162033' : '#F1F5F9';
-  const border = dark ? '#243044' : '#E2E8F0';
-  const ink = dark ? '#F1F5F9' : '#0F172A';
-  const muted = dark ? '#CBD5E1' : '#475569';
-  const primary = dark ? '#6EE7B7' : '#047857';
+  const surface = dark ? '#0F1211' : '#FFFFFF';
+  const page = dark ? '#141716' : '#F6F8F5';
+  const inset = dark ? '#1C1F1E' : '#F3F5F2';
+  const border = dark ? '#262A28' : '#E7EAE6';
+  const ink = dark ? '#F4F6F5' : '#131416';
+  const muted = dark ? '#B4B8B5' : '#55595A';
+  const primary = dark ? '#4CC38A' : '#0E7A5A';
   return {
     ...base,
     token: {
       ...base.token,
-      fontFamily: "'Plus Jakarta Sans', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      fontFamily: "'IBM Plex Sans', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      borderRadius: 6,
       colorPrimary: primary,
       colorLink: primary,
       colorTextBase: ink,
       colorTextSecondary: muted,
       colorTextTertiary: muted,
       colorTextDescription: muted,
-      colorTextPlaceholder: dark ? '#94A3B8' : '#64748B',
+      colorTextPlaceholder: dark ? '#9A9F9C' : '#6A6E6C',
       colorBgLayout: page,
       colorBgContainer: surface,
-      colorBgElevated: surface,
+      colorBgElevated: dark ? '#1C1F1E' : '#FFFFFF',
       colorFillAlter: inset,
-      colorBorder: border,
+      colorBorder: dark ? '#3A3F3C' : '#CDD1CC',
       colorBorderSecondary: border,
     },
     components: {
       ...base.components,
-      Button: { ...base.components.Button, primaryColor: dark ? '#052E24' : '#FFFFFF' },
+      Button: { ...base.components.Button, primaryColor: dark ? '#0F1211' : '#FFFFFF' },
       Layout: { ...base.components.Layout, bodyBg: page, headerBg: page },
-      Table: { ...base.components.Table, headerBg: inset, headerSplitColor: border, borderColor: border, rowHoverBg: inset, rowSelectedBg: dark ? '#113B32' : '#ECFDF5', rowSelectedHoverBg: dark ? '#164E3E' : '#D1FAE5' },
-      Segmented: { ...base.components.Segmented, trackBg: inset, itemSelectedBg: surface, itemSelectedColor: primary, itemColor: muted, itemHoverColor: ink },
-      Select: { ...base.components.Select, controlItemBgActive: inset, controlItemBgHover: inset, optionSelectedColor: primary },
+      Table: { ...base.components.Table, headerBg: 'transparent', headerSplitColor: 'transparent', borderColor: border, rowHoverBg: inset, headerColor: muted },
+      Segmented: { ...base.components.Segmented, trackBg: inset, itemSelectedBg: surface, itemSelectedColor: ink, itemColor: muted },
+      Select: { ...base.components.Select, controlItemBgActive: inset, controlItemBgHover: inset, optionSelectedColor: ink },
       Dropdown: { ...base.components.Dropdown, controlItemBgActive: inset, controlItemBgHover: inset },
     },
   };

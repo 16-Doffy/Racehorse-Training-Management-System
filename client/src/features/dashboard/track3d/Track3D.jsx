@@ -11,7 +11,7 @@ const GLASS = { background: 'rgba(1,17,12,.62)', border: '1px solid rgba(255,255
  * `share` of its course, or waiting by the finish post without one. `focus`: the id of the horse whose
  * name is picked out. `label`: what the picture shows, for a screen reader.
  */
-export default function Track3D({ runners, focus = null, height = 360, label, className = '' }) {
+export default function Track3D({ runners, focus = null, height = 360, label, className = '', frameClassName = 'rounded-lg', hint = true, children }) {
   const canvas = useRef(null);
   const layer = useRef(null);
   const box = useRef(null);
@@ -62,7 +62,7 @@ export default function Track3D({ runners, focus = null, height = 360, label, cl
 
   return (
     <div className={className}>
-      <div ref={box} className="relative overflow-hidden rounded-lg select-none bg-[#9fbfcf]" style={{ height }}>
+      <div ref={box} className={`relative overflow-hidden select-none bg-[#9fbfcf] ${frameClassName}`} style={{ height }}>
         <canvas ref={canvas} role="img" aria-label={label} className="absolute inset-0 block h-full w-full" style={{ opacity: status === 'ready' ? 1 : 0, transition: 'opacity .4s ease' }} />
         {/* The horses' names, placed over the canvas by the stage. */}
         <div ref={layer} className="pointer-events-none absolute inset-0" aria-hidden="true" />
@@ -81,7 +81,7 @@ export default function Track3D({ runners, focus = null, height = 360, label, cl
             Không hiển thị được sân tập 3D trên thiết bị này. Danh sách bên cạnh vẫn cập nhật theo cảm biến.
           </div>
         )}
-        {status === 'ready' && (
+        {status === 'ready' && hint && (
           <div className="pointer-events-none absolute bottom-2 left-2 hidden rounded-full px-2.5 py-1 text-[11px] text-white [@media(pointer:fine)]:block" style={GLASS}>
             Kéo để xoay sân
           </div>
@@ -96,6 +96,7 @@ export default function Track3D({ runners, focus = null, height = 360, label, cl
             <InfoCircleOutlined />
           </button>
         </Tooltip>
+        {children}
       </div>
     </div>
   );
