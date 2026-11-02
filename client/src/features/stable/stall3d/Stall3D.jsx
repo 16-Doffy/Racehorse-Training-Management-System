@@ -207,7 +207,7 @@ export default function Stall3D({ stalls = [], focusCode, onSelect, height = 380
             ) : (
               <span />
             )}
-            <Space.Compact size="small" className="pointer-events-auto shadow-sm">
+            <Space.Compact size="small" className="st-over-scene pointer-events-auto shadow-sm">
               <Tooltip title="Toàn khu, nhìn chéo từ trên">
                 <Button size="small" icon={<ZoomOutOutlined />} aria-label="Toàn khu" onClick={() => view('overview')}>
                   {!narrow && 'Toàn khu'}
@@ -233,7 +233,7 @@ export default function Stall3D({ stalls = [], focusCode, onSelect, height = 380
         )}
 
         {status === 'ready' && (
-          <div className="pointer-events-none absolute bottom-3 right-3 flex flex-wrap justify-end gap-1.5">
+          <div className="st-over-scene pointer-events-none absolute bottom-3 right-3 flex flex-wrap justify-end gap-1.5">
             <Button
               size="small"
               className="pointer-events-auto shadow-sm"

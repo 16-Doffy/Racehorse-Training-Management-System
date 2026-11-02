@@ -50,7 +50,7 @@ export default function TrainerFlowBar() {
 
   return (
     <nav aria-label="Quy trình huấn luyện" className="flex min-w-0 max-w-full items-center gap-1 overflow-x-auto py-0.5">
-      <span className="mr-1 shrink-0 text-[11px] font-semibold uppercase tracking-wide" style={{ color: token.colorTextSecondary }}>
+      <span className="mr-1 shrink-0 text-[11px] font-semibold" style={{ color: token.colorTextSecondary }}>
         Quy trình
       </span>
       {STEPS.map((step, i) => {

@@ -135,6 +135,10 @@ button.st-kpi-tile:hover {
   background: var(--st-card-elevated);
   box-shadow: var(--st-shadow-card);
 }
+.st-toolbar > .ant-segmented {
+  max-width: 100%;
+  overflow-x: auto;
+}
 
 .st-section-header {
   display: flex;
@@ -150,9 +154,7 @@ button.st-kpi-tile:hover {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  font-weight: 600;
   color: var(--st-ink);
 }
 

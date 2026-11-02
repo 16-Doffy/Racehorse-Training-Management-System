@@ -66,10 +66,8 @@ body.wdp-dark-portals .hf-ui {
 }
 .hf-ui .hf-section-title {
   margin: 4px 0 10px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--hf-faint);
 }
 .hf-ui .hf-tab-error {

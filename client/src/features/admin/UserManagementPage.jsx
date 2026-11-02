@@ -15,7 +15,7 @@ const ROLE_COLORS = {
   [ROLES.HEAD_TRAINER]: 'blue',
   [ROLES.VETERINARIAN]: 'magenta',
   [ROLES.GROOM]: 'green',
-  [ROLES.HORSE_OWNER]: 'orange',
+  [ROLES.OWNER]: 'orange',
 };
 const ROLE_FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả' },
@@ -23,7 +23,7 @@ const ROLE_FILTER_OPTIONS = [
   { value: ROLES.HEAD_TRAINER, label: 'HLV' },
   { value: ROLES.VETERINARIAN, label: 'Bác sĩ' },
   { value: ROLES.GROOM, label: 'NV chăm sóc' },
-  { value: ROLES.HORSE_OWNER, label: 'Chủ ngựa' },
+  { value: ROLES.OWNER, label: 'Chủ ngựa' },
 ];
 
 

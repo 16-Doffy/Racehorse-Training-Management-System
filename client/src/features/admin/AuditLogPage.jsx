@@ -26,6 +26,9 @@ const FAMILY_LABELS = {
   incident: 'Sự cố',
   careEvent: 'Chăm sóc định kỳ',
   examRequest: 'Yêu cầu khám',
+  care_routine: 'Việc giao dài hạn',
+  prescriptionTemplate: 'Mẫu đơn thuốc',
+  stall: 'Chuồng',
 };
 const VERB_LABELS = {
   create: 'tạo',
@@ -61,6 +64,30 @@ const VERB_LABELS = {
   transfer_ownership: 'chuyển chủ',
   accept: 'nhận',
   decline: 'từ chối',
+  stop: 'dừng',
+  generate: 'tạo hàng loạt',
+  retire: 'ngừng dùng',
+  caretaker: 'đổi người chăm sóc',
+  zoneEdit: 'sửa khu',
+  zoneRetire: 'ngừng dùng khu',
+  handover: 'bàn giao việc',
+  registration_approved: 'duyệt đăng ký',
+  registration_rejected: 'từ chối đăng ký',
+  calendar_meal_update: 'sửa bữa trong lịch',
+  calendar_confirm: 'chốt lịch khẩu phần',
+  plan_confirm: 'chốt khẩu phần',
+  request_exam: 'yêu cầu khám',
+  request_exam_auto: 'tự yêu cầu khám',
+  simulate: 'mô phỏng',
+  cancel: 'hủy',
+  evaluate: 'đánh giá',
+  end: 'kết thúc',
+  auto_complete: 'tự hoàn thành',
+  replaced: 'thay phác đồ',
+  lock_training: 'khóa tập',
+  unlock_training: 'mở khóa tập',
+  training_level: 'đổi mức tập',
+  follow_health: 'chuyển theo sức khỏe',
 };
 const MODEL_LABELS = {
   Horse: 'Ngựa',
@@ -76,6 +103,10 @@ const MODEL_LABELS = {
   RaceEntry: 'Giải đua',
   ExamRequest: 'Yêu cầu khám',
   CareEvent: 'Chăm sóc định kỳ',
+  CareRoutine: 'Việc giao dài hạn',
+  PrescriptionTemplate: 'Mẫu đơn thuốc',
+  Stall: 'Chuồng',
+  FeedingCalendarDay: 'Lịch khẩu phần',
 };
 
 function actionLabel(action = '') {

@@ -490,3 +490,52 @@ body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-dra
 
 /* The board of the day: its rows and its filter on the card's own margin. */
 .forest-layout.staff-workspace.is-canvas .st-today-board .ant-table-tbody > tr > td { padding-inline: 16px !important; }
+
+/* Portals (modal, drawer) hang off <body>, outside .staff-workspace: they get the light palette's tokens here
+   (the dark ones are set on body above), and the same one primary and the same accent as the page. */
+body.wdp-staff-workspace {
+  --st-border: #E7EAE6;
+  --st-primary: #0E7A5A;
+  --st-action: #131416;
+  --st-action-ink: #FFFFFF;
+  --st-action-hover: #2B2D2F;
+}
+body.wdp-staff-workspace .inv-ui,
+body.wdp-staff-workspace.wdp-dark-portals .inv-ui,
+body.wdp-staff-workspace .forest-layout.is-dark-canvas .inv-ui {
+  --inv-accent: var(--st-primary);
+  --inv-accent-soft: color-mix(in srgb, var(--st-primary) 12%, transparent);
+  --inv-border: var(--st-border);
+}
+@layer utilities {
+  /* Export buttons still carry the white-on-hero classes of the old banner. */
+  .forest-layout.staff-workspace.is-canvas .st-hero-ghost-btn {
+    background: transparent !important;
+    border-color: var(--st-border-strong) !important;
+    color: var(--st-ink) !important;
+  }
+  .forest-layout.staff-workspace.is-canvas .st-hero-ghost-btn:hover { background: var(--st-sunk) !important; }
+  /* Over the 3D scene the picture changes behind a button: it carries its own surface. */
+  .forest-layout.staff-workspace.is-canvas .st-over-scene .ant-btn:not(.ant-btn-primary) {
+    background: var(--st-card) !important;
+    border-color: var(--st-border) !important;
+    color: var(--st-ink) !important;
+  }
+  .forest-layout.staff-workspace.is-canvas .st-over-scene .ant-btn:not(.ant-btn-primary):hover { background: var(--st-sunk) !important; }
+  /* A button that cannot be pressed stays quiet on a dark page, danger ones too. */
+  .forest-layout.staff-workspace.is-canvas.is-dark-canvas .ant-btn:disabled {
+    background: transparent !important;
+    border-color: var(--st-border) !important;
+    color: var(--st-ink-muted) !important;
+  }
+  body.wdp-staff-workspace :is(.ant-modal, .ant-drawer, .ant-popconfirm) .ant-btn-primary:not(.ant-btn-dangerous) {
+    background: var(--st-action) !important;
+    background-color: var(--st-action) !important;
+    border-color: var(--st-action) !important;
+    color: var(--st-action-ink) !important;
+    box-shadow: none !important;
+    border-radius: 6px !important;
+  }
+  body.wdp-staff-workspace :is(.ant-modal, .ant-drawer, .ant-popconfirm) .ant-btn-primary:not(.ant-btn-dangerous):hover { background-color: var(--st-action-hover) !important; border-color: var(--st-action-hover) !important; }
+  body.wdp-staff-workspace :is(.ant-modal, .ant-drawer, .ant-popconfirm) .ant-btn-primary:not(.ant-btn-dangerous) :is(span, .anticon) { color: inherit !important; background: transparent !important; }
+}

@@ -81,12 +81,6 @@ export default function FinancePage() {
         eyebrow="Sổ cái thu chi"
         roleLabel="Quản lý CLB"
         title="Sổ thu chi & tài chính câu lạc bộ"
-        stats={[
-          { label: 'Giao dịch', value: `${records.length} bản ghi` },
-          { label: 'Doanh thu', value: <span className="text-emerald-300">{revenue.toLocaleString('vi-VN')} đ</span> },
-          { label: 'Chi phí', value: <span className="text-rose-300">{cost.toLocaleString('vi-VN')} đ</span> },
-          { label: 'Lợi nhuận ròng', value: <span className={net >= 0 ? 'text-emerald-300' : 'text-rose-300'}>{net.toLocaleString('vi-VN')} đ</span> },
-        ]}
         actionButton={
             <div className="flex flex-wrap gap-2">
               <Button
@@ -126,18 +120,18 @@ export default function FinancePage() {
       <div className="st-kpi-grid mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
         <div className="st-kpi-tile">
           <div className="st-kpi-label">Tổng Doanh thu</div>
-          <div className="st-kpi-value text-emerald-700 staff-revenue-text">+{revenue.toLocaleString('vi-VN')} đ</div>
+          <div className="st-kpi-value text-emerald-700 staff-revenue-text">{revenue ? '+' : ''}{revenue.toLocaleString('vi-VN')} đ</div>
           <div className="st-kpi-sub">{records.filter((r) => r.type === 'revenue').length} khoản thu</div>
         </div>
         <div className="st-kpi-tile">
           <div className="st-kpi-label">Tổng Chi phí</div>
-          <div className="st-kpi-value text-rose-700 staff-cost-text">−{cost.toLocaleString('vi-VN')} đ</div>
+          <div className="st-kpi-value text-rose-700 staff-cost-text">{cost ? '−' : ''}{cost.toLocaleString('vi-VN')} đ</div>
           <div className="st-kpi-sub">{records.filter((r) => r.type === 'cost').length} khoản chi</div>
         </div>
         <div className={`st-kpi-tile ${net < 0 ? 'is-danger' : ''}`}>
           <div className="st-kpi-label">Lợi nhuận ròng</div>
           <div className={`st-kpi-value ${net >= 0 ? 'text-emerald-700 staff-revenue-text' : 'text-rose-700 staff-cost-text'}`}>
-            {net >= 0 ? '+' : ''}{net.toLocaleString('vi-VN')} đ
+            {net > 0 ? '+' : ''}{net.toLocaleString('vi-VN')} đ
           </div>
           <div className="st-kpi-sub">{records.length} giao dịch ghi nhận</div>
         </div>

@@ -520,6 +520,9 @@ export default function InventoryPage() {
             <Text type="secondary" className="!text-xs">
               {[r.code, r.description, r.stableBlock ? `Khu ${r.stableBlock}` : null].filter(Boolean).join(' · ') || CATEGORY_BY_KEY[r.category]?.label}
             </Text>
+            <div className={`mt-0.5 font-semibold tabular-nums sm:hidden ${isLow(r) ? 'text-rose-600' : ''}`}>
+              {num(r.quantity)} {r.unit}
+            </div>
           </div>
         </div>
       ),
@@ -644,7 +647,7 @@ export default function InventoryPage() {
             onClick={addHere}
             className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
           >
-            Thêm vào kho
+            Thêm {kind ? kind.label.toLowerCase() : 'vào kho'}
           </Button>
         }
       />
@@ -780,9 +783,6 @@ export default function InventoryPage() {
             { value: 'inactive', label: 'Ngừng sử dụng' },
           ]}
         />
-        <Button className="sm:!ml-auto" icon={<PlusOutlined />} onClick={addHere}>
-          Thêm {kind ? kind.label.toLowerCase() : 'vào kho'}
-        </Button>
       </div>
       {kind && (
         <Text type="secondary" className="mb-2 block !text-xs">
