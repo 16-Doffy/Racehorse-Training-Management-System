@@ -20,7 +20,7 @@ const horseId = (s) => String(s.horse?._id || s.horse);
  * horses booked today and not out wait by the finish post. Beside it, the running horses' figures, the
  * sessions still to come today and how the day has gone. The full monitor is on the sessions page.
  */
-export default function TrainingTrackCard({ sessions = [], horses = [], compact = false, onTrack = false }) {
+export default function TrainingTrackCard({ sessions = [], horses = [], compact = false, onTrack = false, loading = false }) {
   const queryClient = useQueryClient();
   const screens = Grid.useBreakpoint();
   // The latest reading per session from the feed: { distance, targetDistance, speed, hr }.
@@ -133,7 +133,7 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
                 Buổi kế tiếp <span className="st-figure">{hhmm(next.scheduledAt)}</span> <strong>{next.horse?.name}</strong>, {kindOf(next).toLowerCase()}, còn {left >= 60 ? `${Math.floor(left / 60)} giờ ` : ''}{left % 60} phút
               </Link>
             ) : (
-              <span>{today.length ? 'Không còn buổi nào chờ chạy.' : 'Hôm nay chưa có buổi tập nào.'}</span>
+              <span>{loading ? 'Đang tải lịch hôm nay…' : today.length ? 'Không còn buổi nào chờ chạy.' : 'Hôm nay chưa có buổi tập nào.'}</span>
             )}
             {summary && <small className="tabular-nums">{summary}</small>}
           </div>

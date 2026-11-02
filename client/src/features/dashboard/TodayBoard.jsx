@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge, Card, Empty, Grid, Segmented, Table, Tag, Tooltip, Typography } from 'antd';
+import { Badge, Card, Empty, Grid, Segmented, Skeleton, Table, Tag, Tooltip, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { horsesApi } from '../horses/horsesApi';
@@ -122,7 +122,7 @@ function HorseName({ row }) {
  * that need something — held back, a meal missed, a session blocked, missed or stopped, a step still to
  * do — come first, and "Cần xử lý" shows only them.
  */
-export default function TodayBoard({ horses = [], sessions = [], compact = false }) {
+export default function TodayBoard({ horses = [], sessions = [], compact = false, loading = false }) {
   const screens = Grid.useBreakpoint();
   const tableView = screens.lg;
   const [filter, setFilter] = useState('all');
@@ -206,7 +206,9 @@ export default function TodayBoard({ horses = [], sessions = [], compact = false
     >
       {/* On a phone the switch goes under the title, which would otherwise be squeezed to a word a line. */}
       {(compact || !screens.md) && filterSwitch && <div className={`pb-2 pt-3 ${tableView ? "px-4" : ""}`}>{filterSwitch}</div>}
-      {!horses.length ? (
+      {loading ? (
+        <Skeleton active title={false} paragraph={{ rows: 5 }} className="p-4" />
+      ) : !horses.length ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có ngựa nào giao cho bạn." className="!py-6" />
       ) : !rows.length ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không ngựa nào cần xử lý lúc này." className="!py-6" />

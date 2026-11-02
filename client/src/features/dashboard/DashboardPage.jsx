@@ -28,7 +28,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const isHeadTrainer = user?.role === ROLES.HEAD_TRAINER;
   const isManager = user?.role === ROLES.MANAGER;
-  const { data } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
+  const { data, isPending: horsesPending } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const horses = data?.data || [];
   // Same query as NextStepsCard: whether each horse has a vet's exam and no restriction in force.
   const { data: checklistData } = useQuery({ queryKey: ['horses', 'checklist'], queryFn: () => horsesApi.checklists() });
@@ -37,7 +37,7 @@ export default function DashboardPage() {
 
   // Only fetched for the Head Trainer, who's the one this chart is for (§ Head Trainer
   // requirement: "bảng tiến độ và biểu đồ thể lực tổng quan").
-  const { data: sessionsData } = useQuery({
+  const { data: sessionsData, isPending: sessionsPending } = useQuery({
     queryKey: ['training-sessions'],
     queryFn: () => trainingSessionApi.list(),
     enabled: isHeadTrainer,
@@ -116,7 +116,7 @@ export default function DashboardPage() {
   // What is true today, said first; the counts follow.
   const injuredNames = horses.filter((h) => h.healthStatus === 'injured').map((h) => h.name);
   const held = horses.filter((h) => h.examHold).map((h) => h.name);
-  const finding = [
+  const finding = horsesPending ? 'Đang tải số liệu…' : [
     `${eligible}/${horses.length} ngựa đủ điều kiện tập`,
     held.length ? `${held.join(', ')} đang chờ bác sĩ khám` : null,
     injuredNames.length ? `${injuredNames.join(', ')} chấn thương` : null,
@@ -144,7 +144,7 @@ export default function DashboardPage() {
         {counts.map((c) => (
           <button key={c.label} type="button" onClick={() => navigate('/horses')} className="st-kpi-tile text-left">
             <span className="block text-xs font-medium text-gray-600">{c.label}</span>
-            <span className={`mt-1 block text-2xl tabular-nums ${c.value ? c.tone : 'text-gray-500'}`}>{c.value}</span>
+            <span className={`mt-1 block text-2xl tabular-nums ${c.value ? c.tone : 'text-gray-500'}`}>{horsesPending ? '–' : c.value}</span>
             <span className="block text-xs text-gray-500">{c.hint}</span>
           </button>
         ))}
@@ -155,8 +155,8 @@ export default function DashboardPage() {
           {/* The Head Trainer's day: the track today in 3D (the horses out running, today's others by the
               finish post), the board of the day, then the safety and medical cards in a structured grid. */}
           <div className="st-trainer-overview">
-            <TrainingTrackCard compact onTrack sessions={sessionsData?.data || []} horses={horses} />
-            <TodayBoard compact horses={horses} sessions={sessionsData?.data || []} />
+            <TrainingTrackCard compact onTrack loading={sessionsPending} sessions={sessionsData?.data || []} horses={horses} />
+            <TodayBoard compact loading={horsesPending} horses={horses} sessions={sessionsData?.data || []} />
           </div>
           <section className="space-y-3">
             {safetyHeader}
