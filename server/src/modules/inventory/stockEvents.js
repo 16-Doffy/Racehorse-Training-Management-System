@@ -2,6 +2,9 @@ const { getIO } = require('../../realtime/socketServer');
 const { pushNotification } = require('../alerts/notification.service');
 const { ROLES } = require('../../constants/roles');
 
+// Everyone with a screen that shows the stock; an owner has none.
+const STOCK_ROOMS = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN, ROLES.GROOM].map((role) => `role:${role}`);
+
 const CATEGORY_LABELS = { feed: 'thức ăn', medicine: 'thuốc & vật tư y tế', equipment: 'dụng cụ' };
 
 /** "250 kg (10 bao)", "247 kg (9 bao + 22 kg)" — the amount in the unit it is used in, and in packs. */
@@ -21,7 +24,7 @@ function amountText(item, quantity) {
  */
 function emitInventoryChanged(change = {}) {
   try {
-    getIO().emit('inventory:changed', { at: new Date().toISOString(), ...change });
+    getIO().to(STOCK_ROOMS).emit('inventory:changed', { at: new Date().toISOString(), ...change });
   } catch {
     // No socket server (a script, a unit test): there is no open screen to tell.
   }

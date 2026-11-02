@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const morgan = require('morgan');
-const path = require('path');
 const swaggerUi = require('swagger-ui-express');
 const { clientOrigins } = require('./config/env');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
@@ -24,12 +24,15 @@ const reportsRoutes = require('./modules/reports/reports.routes');
 
 const app = express();
 
+// Behind the host's proxy: req.ip is the visitor's, which the login limit counts by.
+app.set('trust proxy', 1);
 app.use(cors({ origin: clientOrigins, credentials: true }));
+// Files are shown on the client's own origin; this API serves no page of ours but Swagger UI, which CSP would break.
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' }, contentSecurityPolicy: false }));
 // 1 MB: a horse's whole feeding calendar, edited in the planner, is confirmed in one request.
 app.use(express.json({ limit: '1mb' }));
 app.use(rejectOperatorKeys);
-app.use(morgan('dev'));
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use(morgan(process.env.NODE_ENV === 'production' || process.env.RENDER ? 'combined' : 'dev'));
 
 app.get('/api/v1/health-check', (req, res) => res.json({ success: true, message: 'API is running.' }));
 

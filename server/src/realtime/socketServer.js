@@ -2,6 +2,7 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { jwtSecret, clientOrigins } = require('../config/env');
 const Horse = require('../models/Horse');
+const User = require('../models/User');
 
 let io = null;
 
@@ -11,14 +12,18 @@ function initSocket(httpServer) {
     cors: { origin: clientOrigins, credentials: true },
   });
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error('Missing auth token'));
     try {
-      socket.user = jwt.verify(token, jwtSecret);
-      next();
+      const { id } = jwt.verify(token, jwtSecret);
+      // As `protect` does for REST: a blocked account stays out, and the role is the one it has now.
+      const user = await User.findById(id).select('role isActive').lean();
+      if (!user || !user.isActive) return next(new Error('Account is not active'));
+      socket.user = { id: String(user._id), role: user.role };
+      return next();
     } catch (err) {
-      next(new Error('Invalid or expired token'));
+      return next(new Error('Invalid or expired token'));
     }
   });
 
@@ -42,4 +47,16 @@ function getIO() {
   return io;
 }
 
-module.exports = { initSocket, getIO };
+/** Closes an account's open connections: it was blocked, or its role changed. No socket server (a script, a test): nothing to do. */
+function closeUserSockets(userId) {
+  if (io) io.in(`user:${userId}`).disconnectSockets(true);
+}
+
+/** An owner's open screens follow a horse that changes hands, without waiting for the next connection. */
+function moveHorseRoom(horseId, fromOwner, toOwner) {
+  if (!io) return;
+  if (fromOwner) io.in(`user:${fromOwner}`).socketsLeave(`horse:${horseId}`);
+  if (toOwner) io.in(`user:${toOwner}`).socketsJoin(`horse:${horseId}`);
+}
+
+module.exports = { initSocket, getIO, closeUserSockets, moveHorseRoom };

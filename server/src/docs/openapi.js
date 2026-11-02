@@ -56,7 +56,7 @@ module.exports = {
       'veterinarian, groom, owner, manager). All responses use the shape `{ success, data, message }`. ' +
       'Authenticate with `POST /auth/login`, then send `Authorization: Bearer <token>` on every other ' +
       'request. Socket.io connects to the server root (not under /api/v1) with `auth: { token }` and ' +
-      'emits `fitness:alert` / `sensor:reading` — see README.md for details, not covered by this spec. ' +
+      'emits `notification:new`, `sensor:reading`, `session:completed` and `inventory:changed`; not covered by this spec. ' +
       'A body or query with a key starting with `$` (a MongoDB operator) is refused with 400.',
   },
   servers: [
@@ -1639,6 +1639,16 @@ module.exports = {
         responses: { 200: responses[200]({ $ref: '#/components/schemas/DailyTask' }), 403: responses[403], 404: responses[404], 409: responses[409] },
       },
     },
+    '/stable/routines': {
+      get: { tags: ['Stable (Groom)'], summary: 'Care jobs given for many days (any role that may see the horse)', description: 'Query: horse, status (active | stopped).', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { type: 'object' } }) } },
+      post: { tags: ['Stable (Groom)'], summary: 'Give a groom a care job for many days (Head Trainer, Manager)', description: 'Body: { horse, assignedTo?, taskType, title?, instructions, times[], durationMinutes, weekDays?, startDate, endDate? }. The daily tasks follow from it.', responses: { 201: responses[201]({ type: 'object' }), 400: responses[400], 403: responses[403], 404: responses[404] } },
+    },
+    '/stable/routines/{id}': {
+      put: { tags: ['Stable (Groom)'], summary: 'Change a care job given for many days (Head Trainer, Manager)', description: 'Body: { horse, assignedTo?, taskType, title?, instructions, times[], durationMinutes, weekDays?, startDate, endDate? }.', parameters: [idParam('id', 'Care routine id')], responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 403: responses[403], 404: responses[404] } },
+    },
+    '/stable/routines/{id}/stop': {
+      post: { tags: ['Stable (Groom)'], summary: 'Stop a care job given for many days (Head Trainer, Manager)', parameters: [idParam('id', 'Care routine id')], responses: { 200: responses[200]({ type: 'object' }), 403: responses[403], 404: responses[404] } },
+    },
     '/stable/assignments': {
       get: { tags: ['Stable (Groom)'], summary: 'List stable/stall assignments', responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/StableAssignment' } }) } },
       post: { tags: ['Stable (Groom)'], summary: 'Create/update stall assignment for a horse (Manager)', description: 'Body: { horse, stall | stableBlock, assignedCaretaker? }. On a stall of the map, the horse gets the stall\'s groom when assignedCaretaker is left out, and a named assignedCaretaker becomes the stall\'s groom. 404 when the horse or the stall does not exist; 409 when the horse is archived or the stall is taken, under maintenance or out of use. Placements, maintenance, retiring a stall and archiving a horse at the same moment are serialized: one goes through, the other gets the 409.', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/StableAssignment' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/StableAssignment' }), 400: responses[400], 403: responses[403], 404: responses[404], 409: responses[409] } },
@@ -1695,6 +1705,9 @@ module.exports = {
     '/feeding': {
       get: { tags: ['Feeding'], summary: 'List feeding schedules', parameters: [horseQueryParam], responses: { 200: responses[200]({ type: 'array', items: { $ref: '#/components/schemas/FeedingSchedule' } }) } },
       post: { tags: ['Feeding'], summary: 'Create feeding schedule (Head Trainer, Manager)', description: 'items: at least one line, each { inventoryItem (a feed item in stock), amount > 0 } — a line typed as text is refused (400), since it cannot leave stock. timeOfDay (HH:mm) must fit the meal: morning before 11:00, noon 11:00–15:59, evening from 16:00; and be at least mealMinGapHours (club policy, default 3) from the horse\'s other rations (400). One ration per horse per meal (409). approvedBy is stamped with the caller; a meal can only be recorded by the groom when its ration has an approver and lines (409 NO_APPROVED_RATION otherwise).', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedingSchedule' } } } }, responses: { 201: responses[201]({ $ref: '#/components/schemas/FeedingSchedule' }), 403: responses[403] } },
+    },
+    '/feeding/calendar-horses': {
+      get: { tags: ['Feeding'], summary: 'Horses whose meals ahead follow a confirmed calendar (Head Trainer, Manager)', description: 'Ids of the horses this user may see: they have their rations, so the planner changes them, it does not make them again.', responses: { 200: responses[200]({ type: 'array', items: { type: 'string' } }), 403: responses[403] } },
     },
     '/feeding/suggest': {
       get: { tags: ['Feeding'], summary: 'Suggest one meal from the plan, the stock and the weight (Head Trainer, Manager)', description: 'For a training day of the current phase of the horse\'s active plan (no plan or no training day: rest). Breakfast mostly forage, lunch light, the evening the main meal with supplements (minerals daily, oil in strength/speed, electrolytes on hard days). Concentrate never above 0.5% of body weight per meal. Items: the one the horse already eats, else enough for a week, expiring first. Returns { phase, work, weightKg, warning, sessionTime, daily { forage, concentrate }, items [{ inventoryItem, name, amount, unit }] }.', parameters: [{ name: 'horse', in: 'query', required: true, schema: { type: 'string' } }, { name: 'slot', in: 'query', required: true, schema: { type: 'string', enum: ['morning', 'noon', 'evening'] } }], responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 403: responses[403] } },

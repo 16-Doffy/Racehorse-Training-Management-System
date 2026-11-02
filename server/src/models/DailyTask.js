@@ -4,7 +4,7 @@ const { taskTiming } = require('../utils/taskTiming');
 const incidentReportSchema = new mongoose.Schema(
   {
     description: { type: String, required: true },
-    images: [{ type: String }], // relative URLs served from /uploads
+    images: [{ type: String }], // from POST /uploads, kept in GridFS and served by GET /files/:id
     severity: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
     // What kind of incident, and when it happened (the groom may report it a while after seeing it).
     // Optional: reports filed before these existed carry neither.

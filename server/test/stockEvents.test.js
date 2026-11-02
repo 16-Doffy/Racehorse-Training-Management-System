@@ -5,7 +5,7 @@ const { EventEmitter } = require('node:events');
 // The socket server stands in for itself: the events the inventory routes send are recorded here.
 const sent = [];
 const socketServer = require('../src/realtime/socketServer');
-socketServer.getIO = () => ({ emit: (event, payload) => sent.push({ event, payload }) });
+socketServer.getIO = () => ({ to: () => ({ emit: (event, payload) => sent.push({ event, payload }) }) });
 const { broadcastWrites, emitInventoryChanged, amountText } = require('../src/modules/inventory/stockEvents');
 
 /** Runs the middleware for one request and finishes the response with `status`. */

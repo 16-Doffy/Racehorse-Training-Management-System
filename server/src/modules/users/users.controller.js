@@ -11,6 +11,7 @@ const { runTransaction, afterCommit } = require('../../utils/transaction');
 const { pushNotification } = require('../alerts/notification.service');
 const { bringWorkTo } = require('../stable/stallCaretaker.service');
 const { groomWork, replacementProblem, handOverGroomWork } = require('./groomHandover.service');
+const { closeUserSockets } = require('../../realtime/socketServer');
 
 const MIN_PASSWORD_LENGTH = 6;
 
@@ -192,6 +193,7 @@ const updateUser = asyncHandler(async (req, res) => {
   }
   const handed = await saveAccount(user, handover?.replacement);
   const handedNote = handed ? await finishHandover(req.user, user, handover.replacement, handover.work, handed) : '';
+  if (losingCoverage) closeUserSockets(user._id);
 
   if (isActive === true && !previouslyActive) {
     await logAction({ actorId: req.user._id, action: 'user.approve', targetModel: 'User', targetId: user._id, metadata: { role: user.role } });

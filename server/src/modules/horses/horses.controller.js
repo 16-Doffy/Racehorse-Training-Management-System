@@ -12,6 +12,7 @@ const DailyTask = require('../../models/DailyTask');
 const FinancialRecord = require('../../models/FinancialRecord');
 const CareEvent = require('../../models/CareEvent');
 const asyncHandler = require('../../utils/asyncHandler');
+const { moveHorseRoom } = require('../../realtime/socketServer');
 const pick = require('../../utils/pick');
 const { ok, created, fail } = require('../../utils/apiResponse');
 const { logAction } = require('../audit/audit.service');
@@ -185,6 +186,7 @@ const createHorse = asyncHandler(async (req, res) => {
   }
   await logAction({ actorId: req.user._id, action: 'horse.create', targetModel: 'Horse', targetId: horse._id });
   await notifyNewAssignees(horse);
+  moveHorseRoom(horse._id, null, horse.owner);
   return created(res, horse, 'Horse created.');
 });
 
@@ -215,6 +217,7 @@ const updateHorse = asyncHandler(async (req, res) => {
     assignedTrainer: before.assignedTrainer,
     assignedVet: before.assignedVet,
   });
+  if (String(before.owner || '') !== String(horse.owner || '')) moveHorseRoom(horse._id, before.owner, horse.owner);
   // A change of owner is a transfer: on the record, and the previous owner is told too — they
   // stop seeing the horse from this moment.
   if (before.owner && String(before.owner) !== String(horse.owner || '')) {

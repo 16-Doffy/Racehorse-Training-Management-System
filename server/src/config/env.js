@@ -28,6 +28,11 @@ const deployedFrontendPattern = new RegExp(
 // Both `cors` and Socket.io accept a mix of exact strings and patterns.
 const clientOrigins = [...listedOrigins, deployedFrontendPattern];
 
+// The fallback below is for a local machine and is in a public repository: on the host, no secret means no server.
+if (!process.env.JWT_SECRET && (process.env.NODE_ENV === 'production' || process.env.RENDER)) {
+  throw new Error('JWT_SECRET is required on the host.');
+}
+
 module.exports = {
   port: process.env.PORT || 5000,
   mongoUri: process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/wdp301_racehorse',
