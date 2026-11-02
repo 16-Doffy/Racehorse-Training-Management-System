@@ -77,13 +77,16 @@ function DecisionCell({ entry, form }) {
         {STATUS_LABELS[entry.status] || entry.status}
       </Tag>
       {d?.at && (
-        <Text type="secondary" className="!text-xs">
+        <Text type="secondary" className="!text-xs line-clamp-3" title={d.reason || undefined}>
           {d.by?.name || 'HLV'} · {dayjs(d.at).format('DD/MM HH:mm')}
           {d.status === 'confirmed' ? (d.exception ? ' · ngoại lệ, chưa chạy thử' : d.trialMet === false ? ' · chạy thử chưa đạt' : ' · dựa trên chạy thử') : ''}
           {d.reason ? ` — ${d.reason}` : ''}
         </Text>
       )}
       {!d?.at && entry.status === 'confirmed' && <Text type="secondary" className="!text-xs">Xác nhận cũ (chưa ghi người quyết định)</Text>}
+      {entry.status === 'registered' && !isPast(entry) && (
+        <Text className="!text-xs font-medium">Chưa quyết định: chốt trước ngày đua {raceDayOf(entry).format('DD/MM')}</Text>
+      )}
       {/* Health changed after the horse was confirmed: the trainer decides again (withdraw, or confirm once fit). */}
       {entry.reviewNeeded && (
         <>
@@ -277,6 +280,10 @@ export default function RacePage() {
     onError: (err) => message.error(err.message || 'Cập nhật thất bại.'),
   });
 
+  const waiting = (data?.data || []).filter((r) => (r.status === 'registered' || r.reviewNeeded) && !isPast(r));
+  const firstWaitingId = waiting.length ? String(waiting.reduce((a, b) => (raceDayOf(b).isBefore(raceDayOf(a)) ? b : a))._id) : null;
+  const decisionLabel = (r) => (r.reviewNeeded ? 'Xem lại quyết định' : r.status === 'registered' ? 'Quyết định dự giải' : 'Đổi quyết định');
+
   const columns = [
     {
       title: 'Ngựa',
@@ -372,8 +379,8 @@ export default function RacePage() {
               </Button>
             )}
             {['registered', 'confirmed', 'withdrawn'].includes(record.status) && !isPast(record) && (
-              <Button size="small" type={record.status === 'registered' || record.reviewNeeded ? 'primary' : 'default'} icon={<FlagOutlined />} onClick={() => setDecisionRace(record)}>
-                Quyết định dự giải
+              <Button size="small" type={String(record._id) === firstWaitingId ? 'primary' : 'default'} icon={<FlagOutlined />} onClick={() => setDecisionRace(record)}>
+                {decisionLabel(record)}
               </Button>
             )}
             {!isBeforeRaceDay(record) && record.status !== 'withdrawn' && (

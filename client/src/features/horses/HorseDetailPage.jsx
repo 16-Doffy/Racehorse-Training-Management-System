@@ -134,7 +134,7 @@ export default function HorseDetailPage() {
   return (
     <div className="space-y-4">
       {/* Where it sits, and the way to the next horse without going back to the list (same tab kept). */}
-      <div className="st-toolbar !py-2 !px-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <Breadcrumb items={[{ title: <Link to="/horses">Danh sách đàn ngựa</Link> }, { title: horse.name }]} />
         {herd.length > 1 && (
           <div className="flex items-center gap-1.5">

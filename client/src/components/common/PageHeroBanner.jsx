@@ -93,17 +93,16 @@ export default function PageHeroBanner({
     );
   }
 
-  // One band: the title (its one-line description beside it from a tablet up), the counts on the same
-  // line, the page's own actions on the right. The role and section are already in the sidebar, so the
+  // The title and the page's own actions on one line, the counts read under the title: beside it they
+  // squeezed the title onto two lines and pushed the button under them. The role and section are already in the sidebar, so the
   // staff header leaves out `roleLabel` and `eyebrow`. The heading's size is set with !: a global
   // heading style outside Tailwind's layer otherwise wins and makes it 40px.
   return (
     <div
       className={`st-hero-banner px-4 py-3.5 sm:px-5 mb-4 ${className}`}
     >
-      {/* Wraps instead of squeezing: the title keeps 280px, the counts and the actions move to the next line. */}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5">
-        <div className="min-w-0 flex-[1_1_280px]">
+      <div className="flex flex-wrap items-start gap-x-6 gap-y-2.5">
+        <div className="min-w-0 flex-[1_1_320px]">
           <h1
             className="!m-0 !leading-tight text-balance"
             style={{ fontFamily: 'inherit', color: 'var(--st-ink)' }}
@@ -117,8 +116,16 @@ export default function PageHeroBanner({
           )}
         </div>
 
-        {stats.length > 0 && (
-          <dl className="m-0 flex flex-wrap items-center gap-2 text-xs">
+        {(statusBadge || actionButton) && (
+          // Wraps on a phone, where the badge and the button do not fit side by side.
+          <div className="ml-auto flex max-w-full flex-wrap items-center gap-2.5">
+            {statusBadge}
+            {actionButton}
+          </div>
+        )}
+      </div>
+      {stats.length > 0 && (
+          <dl className="m-0 mt-2.5 flex flex-wrap items-center gap-2 text-xs">
             {stats.map((stat, idx) => (
               <div
                 key={idx}
@@ -132,16 +139,7 @@ export default function PageHeroBanner({
               </div>
             ))}
           </dl>
-        )}
-
-        {(statusBadge || actionButton) && (
-          // Wraps on a phone, where the badge and the button do not fit side by side.
-          <div className="ml-auto flex max-w-full flex-wrap items-center gap-2.5">
-            {statusBadge}
-            {actionButton}
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
