@@ -190,16 +190,27 @@ async function main() {
 
   const until = Date.now() + RUN_MIN * MIN;
   let sessions = [];
+  let failures = 0;
   for (;;) {
     const now = Date.now();
-    // eslint-disable-next-line no-await-in-loop
-    await doWork(today, now);
-    // eslint-disable-next-line no-await-in-loop
-    sessions = await runSessions(today, now);
+    // A run lasts hours: each pass works on the day it is in, and a pass the API failed (a restart, a blip)
+    // is only tried again a minute later.
+    const day = dayKey();
+    if (UNTIL && day > UNTIL) break;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await doWork(day, now);
+      // eslint-disable-next-line no-await-in-loop
+      sessions = await runSessions(day, now);
+    } catch (error) {
+      console.error(`${clock()} ${error.message}`);
+      failures += 1;
+    }
     if (Date.now() >= until) break;
     // eslint-disable-next-line no-await-in-loop
     await sleep(MIN);
   }
+  if (failures) say(`Không chạy được ${failures} lượt quét vì API không trả lời, đã thử lại.`);
 
   const count = (status) => sessions.filter((s) => s.status === status).length;
   const overview = `Buổi hôm nay: ${sessions.length}; đang chạy ${count('in_progress')}, đã đánh giá ${count('evaluated')}, bị chặn ${count('blocked')}, lỡ giờ ${count('missed')}.`;
