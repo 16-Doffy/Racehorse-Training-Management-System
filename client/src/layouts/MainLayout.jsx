@@ -307,22 +307,22 @@ export default function MainLayout() {
                 <div className="flex items-center gap-3">
                   <Avatar
                     className={forest ? 'font-bold' : 'bg-gray-200 text-gray-600 font-bold'}
-                    style={isWorkspace ? { backgroundColor: 'var(--st-sunk)', color: 'var(--st-ink)' } : forest ? { backgroundColor: FOREST.brass, color: FOREST.sider } : undefined}
+                    style={isWorkspace ? { backgroundColor: 'var(--st-sider-active)', color: '#FFFFFF' } : forest ? { backgroundColor: FOREST.brass, color: FOREST.sider } : undefined}
                     size={36}
                     src={fileHref(user?.avatarUrl)}
                   >
                     {user?.name?.charAt(0)?.toUpperCase()}
                   </Avatar>
                   <div className="flex flex-col">
-                    <span className={`font-semibold text-sm leading-tight ${forest ? '' : 'text-gray-900'}`} style={isWorkspace ? { color: 'var(--st-ink)' } : forest ? { color: FOREST.logoText } : undefined}>
+                    <span className={`st-sider-user-name font-semibold text-sm leading-tight ${forest ? '' : 'text-gray-900'}`} style={isWorkspace ? { color: 'var(--st-sider-ink)' } : forest ? { color: FOREST.logoText } : undefined}>
                       {user?.name}
                     </span>
-                    <span className={`text-xs ${forest ? '' : 'text-gray-500'}`} style={isWorkspace ? { color: 'var(--st-ink-secondary)' } : forest ? { color: FOREST.siderMuted } : undefined}>
+                    <span className={`st-sider-user-role text-xs ${forest ? '' : 'text-gray-500'}`} style={isWorkspace ? { color: 'var(--st-sider-muted)' } : forest ? { color: FOREST.siderMuted } : undefined}>
                       {ROLE_LABELS[user?.role]}
                     </span>
                   </div>
                 </div>
-                <EllipsisOutlined className={`text-lg ${forest ? '' : 'text-gray-400'}`} style={isWorkspace ? { color: 'var(--st-ink-secondary)' } : forest ? { color: FOREST.siderMuted } : undefined} />
+                <EllipsisOutlined className={`text-lg ${forest ? '' : 'text-gray-400'}`} style={isWorkspace ? { color: 'var(--st-sider-muted)' } : forest ? { color: FOREST.siderMuted } : undefined} />
               </div>
             </Dropdown>
           </div>

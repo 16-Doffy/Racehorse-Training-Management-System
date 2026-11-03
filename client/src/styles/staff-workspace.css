@@ -87,7 +87,7 @@ body.wdp-staff-workspace.wdp-dark-portals {
     color: #FFFFFF !important;
   }
   .forest-layout.staff-workspace.is-canvas.is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous) {
-    color: #052E24 !important;
+    color: var(--st-action-ink) !important;
   }
   .forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous):hover {
     background-color: var(--st-primary-hover) !important;
@@ -244,30 +244,35 @@ body.wdp-staff-workspace.wdp-dark-portals {
   }
 }
 
-/* The workspaces' design system (tasteskill, app screens). Light: a white sheet in a tinted frame.
-   Dark: a monitoring screen, cards darker than the ground. One accent, turf green: on data and on what is selected. */
+/* The workspaces' design system: blue, white and black. Light: a white sheet in a cool frame beside a black sidebar.
+   Dark: a monitoring screen, cards on a near-black navy. One accent, blue: actions, the page you are on, what is selected. */
 .forest-layout.staff-workspace.is-canvas {
-  --st-bg-page: #F6F8F5;
+  --st-bg-page: #F4F6FA;
   --st-card: #FFFFFF;
   --st-card-elevated: #FFFFFF;
   --st-card-header: #FFFFFF;
-  --st-sunk: #F3F5F2;
-  --st-border: #E7EAE6;
-  --st-border-strong: #CDD1CC;
-  --st-border-subtle: #EEF0ED;
-  --st-ink: #131416;
-  --st-ink-secondary: #55595A;
-  --st-ink-muted: #6A6E6C;
-  --st-primary: #0E7A5A;
-  --st-primary-hover: #0B6349;
-  --st-primary-soft: #E6F3EE;
+  --st-sunk: #EEF2F8;
+  --st-border: #E2E7F0;
+  --st-border-strong: #C8D1DF;
+  --st-border-subtle: #EDF1F7;
+  --st-ink: #0B1220;
+  --st-ink-secondary: #475467;
+  --st-ink-muted: #5F6B7E;
+  --st-primary: #2563EB;
+  --st-primary-hover: #1D4ED8;
+  --st-primary-soft: #EAF1FF;
   --st-good-ink: #0B6349; --st-good-bg: #DCF5E8;
   --st-watch-ink: #92400E; --st-watch-bg: #FFF6DF;
   --st-bad-ink: #A31F24; --st-bad-bg: #FFEDEA;
-  --st-info-ink: #1D5C9C; --st-info-bg: #E6F0FB;
-  --st-action: #131416;
+  --st-info-ink: #1D4ED8; --st-info-bg: #EAF1FF;
+  --st-action: #2563EB;
   --st-action-ink: #FFFFFF;
-  --st-action-hover: #2B2D2F;
+  --st-action-hover: #1D4ED8;
+  --st-sider: #0B1220;
+  --st-sider-ink: #F3F6FB;
+  --st-sider-muted: #9AA6BA;
+  --st-sider-hover: #18223A;
+  --st-sider-active: #2563EB;
   --st-figure: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
   background: var(--st-bg-page) !important;
   color: var(--st-ink);
@@ -276,50 +281,58 @@ body.wdp-staff-workspace.wdp-dark-portals {
 }
 .forest-layout.staff-workspace.is-canvas.is-dark-canvas,
 body.wdp-staff-workspace.wdp-dark-portals {
-  --st-bg-page: #141716;
-  --st-card: #0F1211;
-  --st-card-elevated: #0F1211;
-  --st-card-header: #0F1211;
-  --st-sunk: #1C1F1E;
-  --st-border: #262A28;
-  --st-border-strong: #3A3F3C;
-  --st-border-subtle: #1E2120;
-  --st-ink: #F4F6F5;
-  --st-ink-secondary: #B4B8B5;
-  --st-ink-muted: #9A9F9C;
-  --st-primary: #4CC38A;
-  --st-primary-hover: #6FD3A2;
-  --st-primary-soft: #15271F;
+  --st-bg-page: #0A0F1A;
+  --st-card: #0F1626;
+  --st-card-elevated: #0F1626;
+  --st-card-header: #0F1626;
+  --st-sunk: #162033;
+  --st-border: #1F2A3D;
+  --st-border-strong: #2E3B52;
+  --st-border-subtle: #172234;
+  --st-ink: #F3F6FB;
+  --st-ink-secondary: #A9B4C6;
+  --st-ink-muted: #8E9AAE;
+  --st-primary: #60A5FA;
+  --st-primary-hover: #93C5FD;
+  --st-primary-soft: #12223F;
   --st-good-ink: #5FC39C; --st-good-bg: #172820;
   --st-watch-ink: #D9A441; --st-watch-bg: #2A2416;
   --st-bad-ink: #EF6A80; --st-bad-bg: #2C1A20;
   --st-info-ink: #7FB0E6; --st-info-bg: #172230;
-  --st-action: #F4F6F5;
-  --st-action-ink: #0F1211;
-  --st-action-hover: #FFFFFF;
+  --st-action: #2563EB;
+  --st-action-ink: #FFFFFF;
+  --st-action-hover: #3B82F6;
+  --st-sider: #05080F;
+  --st-sider-ink: #F3F6FB;
+  --st-sider-muted: #8E9AAE;
+  --st-sider-hover: #131C2E;
+  --st-sider-active: #2563EB;
 }
 .forest-layout.staff-workspace.is-canvas .tabular-nums { font-variant-numeric: tabular-nums; }
 .st-figure { font-family: var(--st-figure); font-variant-numeric: tabular-nums; }
 
-/* The frame: sidebar and top bar on the page's ground, the work on its own sheet in the light look. */
-.forest-layout.staff-workspace.is-canvas .canvas-sider { background: var(--st-bg-page) !important; border-right: 0 !important; }
+/* The frame: a black sidebar, the page you are on a blue block in it; the top bar on the page's ground, the work on
+   its own white sheet in the light look. */
+.forest-layout.staff-workspace.is-canvas .canvas-sider { background: var(--st-sider) !important; border-right: 0 !important; }
 .forest-layout.staff-workspace.is-canvas.is-dark-canvas .canvas-sider { border-right: 1px solid var(--st-border) !important; }
 .forest-layout.staff-workspace.is-canvas .canvas-sider :is(.border-t, .border-b) { border-color: transparent !important; }
-.forest-layout.staff-workspace.is-canvas .canvas-sider .ant-layout-sider-children { background: var(--st-bg-page); }
-.st-brand-name { color: var(--st-ink); font-size: 15px; font-weight: 600; line-height: 1.2; }
-.st-brand-role { color: var(--st-ink-secondary); font-size: 12px; margin-top: 2px; }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu > div:first-child { color: var(--st-ink-muted) !important; font-size: 12px; }
+.forest-layout.staff-workspace.is-canvas .canvas-sider .ant-layout-sider-children { background: var(--st-sider); }
+.st-brand-name { color: var(--st-sider-ink); font-size: 15px; font-weight: 600; line-height: 1.2; }
+.st-brand-role { color: var(--st-sider-muted); font-size: 12px; margin-top: 2px; }
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu > div:first-child { color: var(--st-sider-muted) !important; font-size: 12px; }
 .forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item {
-  height: 34px !important; line-height: 34px !important; margin-block: 1px !important;
+  height: 38px !important; line-height: 38px !important; margin-block: 2px !important; border-radius: 8px !important;
   background: transparent !important; border: 0 !important; box-shadow: none !important;
-  color: var(--st-ink-secondary) !important;
+  color: var(--st-sider-muted) !important;
 }
 .forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item :is(.anticon, span) { color: inherit !important; }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item:hover:not(.ant-menu-item-selected) { background: var(--st-sunk) !important; color: var(--st-ink) !important; }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected { background: transparent !important; border: 0 !important; color: var(--st-ink) !important; }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected .font-medium { font-weight: 600; box-shadow: 0 2px 0 var(--st-primary); }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected .anticon { color: var(--st-primary) !important; }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu [aria-label^="Bước"] { background: transparent !important; border: 0 !important; color: var(--st-ink-muted) !important; width: auto; }
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item:hover:not(.ant-menu-item-selected) { background: var(--st-sider-hover) !important; color: var(--st-sider-ink) !important; }
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected { background: var(--st-sider-active) !important; border: 0 !important; color: #FFFFFF !important; }
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected .font-medium { font-weight: 600; }
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected .anticon { color: #FFFFFF !important; }
+.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu [aria-label^="Bước"] { background: transparent !important; border: 0 !important; color: inherit !important; width: auto; }
+.forest-layout.staff-workspace.is-canvas .canvas-sider .st-sider-user-name { color: var(--st-sider-ink) !important; }
+.forest-layout.staff-workspace.is-canvas .canvas-sider .st-sider-user-role { color: var(--st-sider-muted) !important; }
 .forest-layout.staff-workspace.is-canvas .st-top-bar { background: var(--st-bg-page) !important; border: 0 !important; backdrop-filter: none; }
 .forest-layout.staff-workspace.is-canvas .st-top-bar nav a { background: transparent !important; border-color: transparent !important; box-shadow: none !important; border-radius: 0 !important; padding-inline: 4px !important; }
 .forest-layout.staff-workspace.is-canvas .st-top-bar nav a[aria-current] { box-shadow: 0 2px 0 var(--st-primary) !important; }
@@ -494,11 +507,11 @@ body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-dra
 /* Portals (modal, drawer) hang off <body>, outside .staff-workspace: they get the light palette's tokens here
    (the dark ones are set on body above), and the same one primary and the same accent as the page. */
 body.wdp-staff-workspace {
-  --st-border: #E7EAE6;
-  --st-primary: #0E7A5A;
-  --st-action: #131416;
+  --st-border: #E2E7F0;
+  --st-primary: #2563EB;
+  --st-action: #2563EB;
   --st-action-ink: #FFFFFF;
-  --st-action-hover: #2B2D2F;
+  --st-action-hover: #1D4ED8;
 }
 body.wdp-staff-workspace .inv-ui,
 body.wdp-staff-workspace.wdp-dark-portals .inv-ui,

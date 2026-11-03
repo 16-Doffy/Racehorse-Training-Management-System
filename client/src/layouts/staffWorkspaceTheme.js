@@ -1,13 +1,13 @@
 // Presentation-only theme for Manager and Head Trainer. Other roles retain forestTheme.
-// Light is a white sheet in a tinted frame, dark a monitoring screen; the values are styles/staff-workspace.css's.
+// Blue, white and black: the values are styles/staff-workspace.css's.
 export function staffWorkspaceTheme(base, dark) {
-  const surface = dark ? '#0F1211' : '#FFFFFF';
-  const page = dark ? '#141716' : '#F6F8F5';
-  const inset = dark ? '#1C1F1E' : '#F3F5F2';
-  const border = dark ? '#262A28' : '#E7EAE6';
-  const ink = dark ? '#F4F6F5' : '#131416';
-  const muted = dark ? '#B4B8B5' : '#55595A';
-  const primary = dark ? '#4CC38A' : '#0E7A5A';
+  const surface = dark ? '#0F1626' : '#FFFFFF';
+  const page = dark ? '#0A0F1A' : '#F4F6FA';
+  const inset = dark ? '#162033' : '#EEF2F8';
+  const border = dark ? '#1F2A3D' : '#E2E7F0';
+  const ink = dark ? '#F3F6FB' : '#0B1220';
+  const muted = dark ? '#A9B4C6' : '#475467';
+  const primary = dark ? '#3B82F6' : '#2563EB';
   return {
     ...base,
     token: {
@@ -20,17 +20,17 @@ export function staffWorkspaceTheme(base, dark) {
       colorTextSecondary: muted,
       colorTextTertiary: muted,
       colorTextDescription: muted,
-      colorTextPlaceholder: dark ? '#9A9F9C' : '#6A6E6C',
+      colorTextPlaceholder: dark ? '#8E9AAE' : '#5F6B7E',
       colorBgLayout: page,
       colorBgContainer: surface,
-      colorBgElevated: dark ? '#1C1F1E' : '#FFFFFF',
+      colorBgElevated: dark ? '#162033' : '#FFFFFF',
       colorFillAlter: inset,
-      colorBorder: dark ? '#3A3F3C' : '#CDD1CC',
+      colorBorder: dark ? '#2E3B52' : '#C8D1DF',
       colorBorderSecondary: border,
     },
     components: {
       ...base.components,
-      Button: { ...base.components.Button, primaryColor: dark ? '#0F1211' : '#FFFFFF' },
+      Button: { ...base.components.Button, primaryColor: '#FFFFFF' },
       Layout: { ...base.components.Layout, bodyBg: page, headerBg: page },
       Table: { ...base.components.Table, headerBg: 'transparent', headerSplitColor: 'transparent', borderColor: border, rowHoverBg: inset, headerColor: muted },
       Segmented: { ...base.components.Segmented, trackBg: inset, itemSelectedBg: surface, itemSelectedColor: ink, itemColor: muted },
