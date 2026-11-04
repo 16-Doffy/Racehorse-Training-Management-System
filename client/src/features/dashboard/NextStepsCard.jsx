@@ -30,7 +30,7 @@ export default function NextStepsCard() {
 
   return (
     <Card
-      className="shadow-xs border-[#E5DEC9] rounded-xl overflow-hidden bg-[#FFFDF8]"
+      className="shadow-xs rounded-xl overflow-hidden"
       styles={{
         title: { whiteSpace: 'normal', overflow: 'visible', padding: '14px 16px' },
         body: { padding: '12px 16px 16px 16px' },
@@ -39,9 +39,9 @@ export default function NextStepsCard() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Wraps on a phone: the count goes under the title instead of out of the card. */}
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="font-semibold text-gray-900 text-[15px]">Bước tiếp theo của từng ngựa</span>
+            <span className="font-bold text-gray-900 text-[15px]">Bước tiếp theo của từng ngựa (Quy trình 1→5)</span>
             {openCount > 0 && (
-              <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
+              <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-amber-100 text-amber-900 border border-amber-300 shrink-0">
                 {openCount} cần xử lý
               </span>
             )}
@@ -55,7 +55,7 @@ export default function NextStepsCard() {
               { label: `Cần làm (${openCount})`, value: 'pending' },
               { label: `Đạt (${doneCount})`, value: 'done' },
             ]}
-            className="self-start sm:self-auto max-w-full overflow-x-auto bg-[#F2EDE2]"
+            className="self-start sm:self-auto max-w-full overflow-x-auto"
           />
         </div>
       }
@@ -81,7 +81,7 @@ export default function NextStepsCard() {
                 <div className="flex flex-col py-0.5">
                   <Link
                     to={`/horses/${r.horse._id}`}
-                    className="font-semibold text-emerald-950 hover:text-emerald-700 transition-colors text-sm"
+                    className="font-bold text-gray-900 hover:underline transition-colors text-sm"
                   >
                     {r.horse.name}
                   </Link>
@@ -109,15 +109,15 @@ export default function NextStepsCard() {
                 const percent = total > 0 ? Math.round((done / total) * 100) : 0;
                 return (
                   <div className="flex flex-col items-end gap-1">
-                    <span className="tabular-nums font-semibold text-xs text-gray-900">
+                    <span className="tabular-nums font-bold text-xs text-gray-900">
                       {done}/{total} mục
                     </span>
                     <Progress
                       percent={percent}
-                      size={['100%', 4]}
+                      size={['100%', 5]}
                       showInfo={false}
-                      strokeColor={percent === 100 ? '#2E7D4F' : '#0F5A43'}
-                      railColor="rgba(120, 112, 90, 0.22)"
+                      strokeColor={percent === 100 ? '#15803D' : '#EAB308'}
+                      railColor="rgba(148, 163, 184, 0.35)"
                       className="!m-0 w-16"
                     />
                   </div>

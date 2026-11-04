@@ -3,7 +3,12 @@ import { Button, Tooltip } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { MOVING_HORSE } from '../../horses/horse3d/horseMotion';
 
-const GLASS = { background: 'rgba(1,17,12,.62)', border: '1px solid rgba(255,255,255,.14)', backdropFilter: 'blur(6px)' };
+const GLASS = { background: 'rgba(15, 23, 42, 0.78)', border: '1px solid rgba(255,255,255,.18)', backdropFilter: 'blur(8px)' };
+const VIEW_PRESETS = [
+  { key: 'overview', label: 'Toàn cảnh' },
+  { key: 'stands', label: 'Khán đài' },
+  { key: 'finish', label: 'Cột đích' },
+];
 
 /**
  * The training oval in 3D (trackStage.js, three.js), loaded with this component so pages without it
@@ -17,6 +22,7 @@ export default function Track3D({ runners, focus = null, height = 360, label, cl
   const box = useRef(null);
   const stage = useRef(null);
   const [status, setStatus] = useState('loading');
+  const [view, setView] = useState('overview');
   // The latest list, for the stage once it has loaded (kept up to date after each render).
   const latest = useRef(runners);
   useEffect(() => {
@@ -59,13 +65,42 @@ export default function Track3D({ runners, focus = null, height = 360, label, cl
   useEffect(() => {
     stage.current?.setFocus(focus);
   }, [focus, status]);
+  useEffect(() => {
+    stage.current?.setView?.(view);
+  }, [view, status]);
+
+  const stretchFull = height === '100%';
 
   return (
     <div className={className}>
-      <div ref={box} className={`relative overflow-hidden select-none bg-[#9fbfcf] ${frameClassName}`} style={{ height }}>
+      <div
+        ref={box}
+        className={`relative overflow-hidden select-none bg-[#9fbfcf] ${stretchFull ? 'flex-1 h-full min-h-[380px]' : ''} ${frameClassName}`}
+        style={stretchFull ? { minHeight: 380 } : { height }}
+      >
         <canvas ref={canvas} role="img" aria-label={label} className="absolute inset-0 block h-full w-full" style={{ opacity: status === 'ready' ? 1 : 0, transition: 'opacity .4s ease' }} />
         {/* The horses' names, placed over the canvas by the stage. */}
         <div ref={layer} className="pointer-events-none absolute inset-0" aria-hidden="true" />
+
+        {status === 'ready' && (
+          <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1 rounded-lg p-1" style={GLASS}>
+            {VIEW_PRESETS.map((preset) => {
+              const active = view === preset.key;
+              return (
+                <button
+                  key={preset.key}
+                  type="button"
+                  onClick={() => setView(preset.key)}
+                  className={`cursor-pointer rounded-md border-0 px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    active ? 'bg-[#EAB308] text-[#0F172A]' : 'bg-transparent text-white hover:bg-white/15'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {status === 'loading' && <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[13px] text-[#0b2a20]">Đang dựng sân tập 3D…</div>}
         {status === 'stale' && (

@@ -766,12 +766,12 @@ export default function TrainingSessionPage() {
       />
 
       {/* The club's rule in one line; the steps of a session open on demand. */}
-      <details className="light-surface-box mb-4 rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 text-xs text-gray-700">
+      <details className="light-surface-box mb-4 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-xs text-gray-700 shadow-xs">
         <summary className="cursor-pointer select-none">
-          <SafetyCertificateOutlined className="mr-1.5 text-[#0F5A43]" />
-          <span className="font-medium text-gray-900">Quy định CLB:</span> kiểm tra sẵn sàng từ {policy.precheckOpensBeforeMin} phút trước đến{' '}
+          <SafetyCertificateOutlined className="mr-1.5" style={{ color: 'var(--st-primary)' }} />
+          <span className="font-bold text-gray-900">Quy định CLB:</span> kiểm tra sẵn sàng từ {policy.precheckOpensBeforeMin} phút trước đến{' '}
           {policy.precheckClosesAfterMin} phút sau giờ tập{policy.afternoonLightOnly ? ', buổi chiều chỉ tập nhẹ' : ''}.{' '}
-          <span className="font-medium text-[#0F5A43]">Xem các bước</span>
+          <span className="font-bold" style={{ color: 'var(--st-primary)' }}>Xem các bước</span>
         </summary>
         <ol className="m-0 mt-2 pl-5 space-y-0.5 leading-relaxed">
           <li>Xếp lịch: kế hoạch tự xếp tuần này và tuần sau; buổi lỡ giờ xếp lại được ngay trên lịch.</li>

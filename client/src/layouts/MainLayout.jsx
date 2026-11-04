@@ -237,10 +237,10 @@ export default function MainLayout() {
             <div
               className={
                 isStaff
-                  ? `px-3 text-xs font-medium mb-1.5 ${forest ? '' : 'text-gray-500'}`
+                  ? `px-3 text-xs font-semibold mb-1.5 ${forest ? '' : 'text-gray-500'}`
                   : `px-3 text-xs font-semibold mb-2 uppercase ${forest ? 'tracking-wider' : 'text-gray-400'}`
               }
-              style={forest ? { color: FOREST.siderMuted } : undefined}
+              style={isWorkspace ? { color: 'var(--st-sider-muted)' } : forest ? { color: FOREST.siderMuted } : undefined}
             >
               {forest ? MENU_SECTION_LABEL[user?.role] : 'Dashboards'}
             </div>
@@ -256,13 +256,17 @@ export default function MainLayout() {
                 icon: siderCollapsed && count ? <Badge dot offset={[2, 0]}>{m.icon}</Badge> : m.icon,
                 label: (
                   <span className="flex items-center justify-between gap-2">
-                    <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="flex min-w-0 items-center gap-2">
                       {/* The trainer's tabs carry the number of their step in the work (menuConfig). */}
                       {m.step && (
                         <span
-                          className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular-nums ${
-                            m.key === selectedKey ? 'border border-[#D4AF37]/75 bg-[#D4AF37]/20 text-[#F6D57A]' : 'bg-white/15'
-                          }`}
+                          className={
+                            isWorkspace
+                              ? 'st-sider-step shrink-0'
+                              : `inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular-nums ${
+                                  m.key === selectedKey ? 'border border-[#D4AF37]/75 bg-[#D4AF37]/20 text-[#F6D57A]' : 'bg-white/15'
+                                }`
+                          }
                           aria-label={`Bước ${m.step}`}
                         >
                           {m.step}
@@ -307,7 +311,7 @@ export default function MainLayout() {
                 <div className="flex items-center gap-3">
                   <Avatar
                     className={forest ? 'font-bold' : 'bg-gray-200 text-gray-600 font-bold'}
-                    style={isWorkspace ? { backgroundColor: 'var(--st-sider-active)', color: '#FFFFFF' } : forest ? { backgroundColor: FOREST.brass, color: FOREST.sider } : undefined}
+                    style={isWorkspace ? { backgroundColor: 'var(--st-sider-active)', color: 'var(--st-sider-active-ink)' } : forest ? { backgroundColor: FOREST.brass, color: FOREST.sider } : undefined}
                     size={36}
                     src={fileHref(user?.avatarUrl)}
                   >
@@ -404,8 +408,8 @@ export default function MainLayout() {
           display: none !important;
         }
 
-        /* Forest sidebar (Club Manager, Head Trainer): Royal Equestrian look */
-        .canvas-sider {
+        /* Forest sidebar (Horse Owner): Royal Equestrian look */
+        .forest-layout:not(.staff-workspace) .canvas-sider {
           background: linear-gradient(180deg, #05140E 0%, #081F17 50%, #030D09 100%) !important;
           border-right: 1px solid rgba(212, 175, 55, 0.15) !important;
         }
@@ -437,11 +441,11 @@ export default function MainLayout() {
           color: #F2C14E !important;
         }
 
-        /* Royal Equestrian custom menu styling for Manager & Head Trainer (Canvas) */
-        .custom-sidebar-menu.is-canvas-menu .ant-menu-dark {
+        /* Royal Equestrian custom menu styling for Horse Owner (Canvas, non-staff-workspace) */
+        .forest-layout:not(.staff-workspace) .custom-sidebar-menu.is-canvas-menu .ant-menu-dark {
           background: transparent !important;
         }
-        .custom-sidebar-menu.is-canvas-menu .ant-menu-item {
+        .forest-layout:not(.staff-workspace) .custom-sidebar-menu.is-canvas-menu .ant-menu-item {
           height: 40px !important;
           line-height: 40px !important;
           border-radius: 8px !important;
@@ -451,267 +455,267 @@ export default function MainLayout() {
           border: 1px solid transparent !important;
           transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
-        .custom-sidebar-menu.is-canvas-menu .ant-menu-item:hover:not(.ant-menu-item-selected) {
+        .forest-layout:not(.staff-workspace) .custom-sidebar-menu.is-canvas-menu .ant-menu-item:hover:not(.ant-menu-item-selected) {
           background: rgba(255, 255, 255, 0.05) !important;
           border-color: rgba(212, 175, 55, 0.15) !important;
           color: #FAF8F5 !important;
         }
-        .custom-sidebar-menu.is-canvas-menu .ant-menu-inline-collapsed .ant-menu-item {
+        .forest-layout:not(.staff-workspace) .custom-sidebar-menu.is-canvas-menu .ant-menu-inline-collapsed .ant-menu-item {
           padding-inline: calc(50% - 8px) !important;
         }
-        .custom-sidebar-menu.is-canvas-menu .ant-menu-title-content {
+        .forest-layout:not(.staff-workspace) .custom-sidebar-menu.is-canvas-menu .ant-menu-title-content {
           margin-inline-start: 10px !important;
         }
-        .custom-sidebar-menu.is-canvas-menu .ant-menu-title-content span {
+        .forest-layout:not(.staff-workspace) .custom-sidebar-menu.is-canvas-menu .ant-menu-title-content span {
           font-size: 13.5px;
           letter-spacing: -0.01em;
         }
-        .custom-sidebar-menu.is-canvas-menu .ant-menu-item-selected {
+        .forest-layout:not(.staff-workspace) .custom-sidebar-menu.is-canvas-menu .ant-menu-item-selected {
           background: linear-gradient(90deg, rgba(212, 175, 55, 0.22) 0%, rgba(154, 91, 50, 0.12) 100%) !important;
           border: 1px solid rgba(212, 175, 55, 0.4) !important;
           border-left: 3px solid #D4AF37 !important;
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.25) !important;
         }
-        .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected {
+        .forest-layout:not(.staff-workspace) .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected {
           background: none !important;
           background-color: rgba(212, 175, 55, 0.14) !important;
           border: 1px solid rgba(212, 175, 55, 0.3) !important;
           border-left: 3px solid #D4AF37 !important;
           box-shadow: none !important;
         }
-        .custom-sidebar-menu.is-canvas-menu .ant-menu-item-selected span {
+        .forest-layout:not(.staff-workspace) .custom-sidebar-menu.is-canvas-menu .ant-menu-item-selected span {
           color: #F8E7B2 !important;
           font-weight: 600 !important;
         }
-        .custom-sidebar-menu.is-canvas-menu .ant-menu-item-selected .anticon {
+        .forest-layout:not(.staff-workspace) .custom-sidebar-menu.is-canvas-menu .ant-menu-item-selected .anticon {
           color: #F2C14E !important;
         }
 
-        /* Luxury Equestrian Card & Table Styling for Light Canvas */
-        .forest-layout.is-canvas:not(.is-dark-canvas) .ant-card {
+        /* Luxury Equestrian Card & Table Styling for Light Canvas (non-staff-workspace) */
+        .forest-layout:not(.staff-workspace).is-canvas:not(.is-dark-canvas) .ant-card {
           background-color: #FAF7F0 !important;
           border: 1px solid #E5DEC9 !important;
           border-radius: 14px !important;
           box-shadow: 0 4px 16px -2px rgba(15, 42, 34, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02) !important;
           overflow: hidden !important;
         }
-        .forest-layout.is-canvas:not(.is-dark-canvas) .ant-card-head {
+        .forest-layout:not(.staff-workspace).is-canvas:not(.is-dark-canvas) .ant-card-head {
           background-color: #F4EFE2 !important;
           border-bottom: 1px solid #E5DEC9 !important;
         }
-        .forest-layout.is-canvas:not(.is-dark-canvas) .ant-card-body {
+        .forest-layout:not(.staff-workspace).is-canvas:not(.is-dark-canvas) .ant-card-body {
           background-color: #FAF7F0 !important;
         }
-        .forest-layout.is-canvas:not(.is-dark-canvas) .ant-table {
+        .forest-layout:not(.staff-workspace).is-canvas:not(.is-dark-canvas) .ant-table {
           background-color: #FAF7F0 !important;
         }
-        .forest-layout.is-canvas:not(.is-dark-canvas) .ant-table-container {
+        .forest-layout:not(.staff-workspace).is-canvas:not(.is-dark-canvas) .ant-table-container {
           border: 1px solid #E5DEC9 !important;
           border-radius: 12px !important;
           overflow: hidden !important;
         }
-        .forest-layout.is-canvas:not(.is-dark-canvas) .ant-table-thead > tr > th {
+        .forest-layout:not(.staff-workspace).is-canvas:not(.is-dark-canvas) .ant-table-thead > tr > th {
           background-color: #F4EFE2 !important;
           color: #123326 !important;
           font-weight: 600 !important;
           border-bottom: 1px solid #E5DEC9 !important;
         }
-        .forest-layout.is-canvas:not(.is-dark-canvas) .ant-table-tbody > tr > td {
+        .forest-layout:not(.staff-workspace).is-canvas:not(.is-dark-canvas) .ant-table-tbody > tr > td {
           border-bottom-color: #EFE9DB !important;
         }
-        .forest-layout.is-canvas:not(.is-dark-canvas) .ant-table-tbody > tr:hover > td {
+        .forest-layout:not(.staff-workspace).is-canvas:not(.is-dark-canvas) .ant-table-tbody > tr:hover > td {
           background-color: #F2EBDC !important;
         }
 
-        /* Luxury Equestrian Card & Table Styling for Dark Canvas (PA 5 Peak Grand Prix) */
-        .forest-layout.is-dark-canvas .ant-card {
+        /* Luxury Equestrian Card & Table Styling for Dark Canvas (PA 5 Peak Grand Prix, non-staff-workspace) */
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card {
           background-color: #0D211A !important;
           border: 1px solid rgba(212, 175, 55, 0.25) !important;
           border-radius: 14px !important;
           color: #FAF8F5 !important;
           overflow: hidden !important;
         }
-        .forest-layout.is-dark-canvas .ant-card-head {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-head {
           background-color: #122B22 !important;
           border-bottom: 1px solid rgba(212, 175, 55, 0.22) !important;
           color: #FAF8F5 !important;
         }
-        .forest-layout.is-dark-canvas .ant-card-body {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-body {
           background-color: #0D211A !important;
           color: #E2E8F0 !important;
         }
-        .forest-layout.is-dark-canvas .ant-table {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-table {
           background-color: #0D211A !important;
           color: #FAF8F5 !important;
         }
-        .forest-layout.is-dark-canvas .ant-table-container {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-table-container {
           border: 1px solid rgba(212, 175, 55, 0.22) !important;
           border-radius: 12px !important;
           overflow: hidden !important;
         }
-        .forest-layout.is-dark-canvas .ant-table-thead > tr > th {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-table-thead > tr > th {
           background-color: #132E24 !important;
           color: #F6D57A !important;
           font-weight: 600 !important;
           border-bottom: 1px solid rgba(212, 175, 55, 0.25) !important;
         }
-        .forest-layout.is-dark-canvas .ant-table-tbody > tr > td {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-table-tbody > tr > td {
           background-color: #0D211A !important;
           border-bottom-color: rgba(255, 255, 255, 0.06) !important;
           color: #E2E8F0 !important;
         }
-        .forest-layout.is-dark-canvas .ant-table-tbody > tr:hover > td {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-table-tbody > tr:hover > td {
           background-color: #16362B !important;
         }
 
-        /* High contrast text overrides for Dark Canvas (PA 5 Peak Grand Prix) */
-        .forest-layout.is-dark-canvas .ant-card-head .text-gray-900:not([class*="bg-"]),
-        .forest-layout.is-dark-canvas .ant-card-head .ant-card-head-title,
-        .forest-layout.is-dark-canvas .ant-card-head h1,
-        .forest-layout.is-dark-canvas .ant-card-head h2,
-        .forest-layout.is-dark-canvas .ant-card-head h3,
-        .forest-layout.is-dark-canvas .ant-card-head h4 {
+        /* High contrast text overrides for Dark Canvas (PA 5 Peak Grand Prix, non-staff-workspace) */
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-head .text-gray-900:not([class*="bg-"]),
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-head .ant-card-head-title,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-head h1,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-head h2,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-head h3,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-head h4 {
           color: #FAF8F5 !important;
         }
-        .forest-layout.is-dark-canvas .ant-card-head .text-gray-500,
-        .forest-layout.is-dark-canvas .ant-card-head .text-gray-400,
-        .forest-layout.is-dark-canvas .ant-card-head .ant-typography-secondary {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-head .text-gray-500,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-head .text-gray-400,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-head .ant-typography-secondary {
           color: rgba(250, 248, 245, 0.7) !important;
         }
-        .forest-layout.is-dark-canvas .ant-card-body .text-gray-900:not(.light-surface-box *):not(.light-surface-box),
-        .forest-layout.is-dark-canvas .ant-card-body span.text-gray-900:not(.light-surface-box *):not(.light-surface-box),
-        .forest-layout.is-dark-canvas .ant-card-body strong:not(.light-surface-box *):not(.light-surface-box) {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-body .text-gray-900:not(.light-surface-box *):not(.light-surface-box),
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-body span.text-gray-900:not(.light-surface-box *):not(.light-surface-box),
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-body strong:not(.light-surface-box *):not(.light-surface-box) {
           color: #FAF8F5 !important;
         }
-        .forest-layout.is-dark-canvas .ant-card-body .text-gray-600:not(.light-surface-box *):not(.light-surface-box),
-        .forest-layout.is-dark-canvas .ant-card-body .text-gray-500:not(.light-surface-box *):not(.light-surface-box),
-        .forest-layout.is-dark-canvas .ant-card-body .text-gray-400:not(.light-surface-box *):not(.light-surface-box),
-        .forest-layout.is-dark-canvas .ant-card-body .ant-typography-secondary:not(.light-surface-box *):not(.light-surface-box) {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-body .text-gray-600:not(.light-surface-box *):not(.light-surface-box),
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-body .text-gray-500:not(.light-surface-box *):not(.light-surface-box),
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-body .text-gray-400:not(.light-surface-box *):not(.light-surface-box),
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-card-body .ant-typography-secondary:not(.light-surface-box *):not(.light-surface-box) {
           color: rgba(250, 248, 245, 0.75) !important;
         }
         /* Golden links across dark canvas, excluding light surface boxes */
-        .forest-layout.is-dark-canvas a:not(.ant-btn):not(.light-surface-box *):not(.light-surface-box) {
+        .forest-layout:not(.staff-workspace).is-dark-canvas a:not(.ant-btn):not(.light-surface-box *):not(.light-surface-box) {
           color: #F6D57A !important;
         }
-        .forest-layout.is-dark-canvas a:not(.ant-btn):not(.light-surface-box *):not(.light-surface-box):hover {
+        .forest-layout:not(.staff-workspace).is-dark-canvas a:not(.ant-btn):not(.light-surface-box *):not(.light-surface-box):hover {
           color: #F8E7B2 !important;
         }
-        .forest-layout.is-dark-canvas .ant-table-cell a:not(.light-surface-box *) {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-table-cell a:not(.light-surface-box *) {
           color: #F6D57A !important;
         }
-        .forest-layout.is-dark-canvas .ant-table-cell a:not(.light-surface-box *):hover {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-table-cell a:not(.light-surface-box *):hover {
           color: #F8E7B2 !important;
         }
-        .forest-layout.is-dark-canvas .ant-empty-description {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-empty-description {
           color: rgba(250, 248, 245, 0.7) !important;
         }
-        .forest-layout.is-dark-canvas .ant-table-cell {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-table-cell {
           color: #E2E8F0 !important;
         }
-        .forest-layout.is-dark-canvas .ant-table-cell .ant-typography {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-table-cell .ant-typography {
           color: #FAF8F5 !important;
         }
 
         /* Primary button in dark canvas: crisp dark equestrian text on gold button background */
-        .forest-layout.is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous) {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous) {
           color: #0D211A !important;
           background-color: #D4AF37 !important;
           border-color: #D4AF37 !important;
           font-weight: 600 !important;
         }
-        .forest-layout.is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous):hover {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous):hover {
           color: #05140E !important;
           background-color: #E2C058 !important;
           border-color: #E2C058 !important;
         }
-        .forest-layout.is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous) > span {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous) > span {
           color: #0D211A !important;
         }
 
         /* Dangerous (red) buttons in dark canvas: soft rose with high contrast */
-        .forest-layout.is-dark-canvas .ant-btn-dangerous,
-        .forest-layout.is-dark-canvas .ant-btn-dangerous span {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-btn-dangerous,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-btn-dangerous span {
           color: #FDA4AF !important;
           border-color: rgba(244, 63, 94, 0.4) !important;
         }
 
         /* Select placeholders & metadata text in dark canvas */
-        .forest-layout.is-dark-canvas .ant-select-placeholder,
-        .forest-layout.is-dark-canvas .ant-select-selection-placeholder {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-select-placeholder,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-select-selection-placeholder {
           color: #94A3B8 !important;
         }
-        .forest-layout.is-dark-canvas .ant-input::placeholder {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-input::placeholder {
           color: #94A3B8 !important;
         }
-        .forest-layout.is-dark-canvas .text-gray-500:not(.light-surface-box *):not(.light-surface-box),
-        .forest-layout.is-dark-canvas .text-gray-400:not(.light-surface-box *):not(.light-surface-box),
-        .forest-layout.is-dark-canvas .ant-typography-secondary:not(.light-surface-box *):not(.light-surface-box) {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .text-gray-500:not(.light-surface-box *):not(.light-surface-box),
+        .forest-layout:not(.staff-workspace).is-dark-canvas .text-gray-400:not(.light-surface-box *):not(.light-surface-box),
+        .forest-layout:not(.staff-workspace).is-dark-canvas .ant-typography-secondary:not(.light-surface-box *):not(.light-surface-box) {
           color: #C3D4CA !important;
         }
-        .forest-layout.is-dark-canvas .text-gray-600:not(.light-surface-box *):not(.light-surface-box) {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .text-gray-600:not(.light-surface-box *):not(.light-surface-box) {
           color: #D1D5DB !important;
         }
-        .forest-layout.is-dark-canvas .text-slate-600:not(.light-surface-box *):not(.light-surface-box) {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .text-slate-600:not(.light-surface-box *):not(.light-surface-box) {
           color: #A1B5AB !important;
         }
-        .forest-layout.is-dark-canvas .guardrail-title {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .guardrail-title {
           color: #34D399 !important;
         }
-        .forest-layout.is-dark-canvas .guardrail-dot {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .guardrail-dot {
           background-color: #34D399 !important;
         }
-        .forest-layout.is-dark-canvas .text-2xl.font-semibold {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .text-2xl.font-semibold {
           color: #FAF8F5 !important;
         }
 
         /* Surface protection: crisp dark text inside designated light surface callouts */
-        .forest-layout.is-dark-canvas .light-surface-box {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box {
           background-color: #FAF6EE !important;
           border-color: #E2D7C3 !important;
           color: #0F172A !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box a:not(.ant-btn) {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box a:not(.ant-btn) {
           color: #0F5A43 !important;
           text-decoration: underline !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box a:not(.ant-btn):hover {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box a:not(.ant-btn):hover {
           color: #0B4634 !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .ant-btn {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-btn {
           color: #451A03 !important;
           background-color: #FFFFFF !important;
           border-color: #FCD34D !important;
           font-weight: 600 !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .text-gray-900,
-        .forest-layout.is-dark-canvas .light-surface-box .text-gray-800,
-        .forest-layout.is-dark-canvas .light-surface-box .text-gray-700,
-        .forest-layout.is-dark-canvas .light-surface-box strong,
-        .forest-layout.is-dark-canvas .light-surface-box th {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-gray-900,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-gray-800,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-gray-700,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box strong,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box th {
           color: #0F172A !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .text-gray-600,
-        .forest-layout.is-dark-canvas .light-surface-box .text-slate-600 {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-gray-600,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-slate-600 {
           color: #334155 !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .text-gray-500,
-        .forest-layout.is-dark-canvas .light-surface-box .text-slate-500,
-        .forest-layout.is-dark-canvas .light-surface-box .ant-typography-secondary {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-gray-500,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-slate-500,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-typography-secondary {
           color: #475569 !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box td {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box td {
           color: #1E293B !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .text-emerald-950,
-        .forest-layout.is-dark-canvas .light-surface-box .text-emerald-900 {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-emerald-950,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-emerald-900 {
           color: #022C22 !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .text-slate-900,
-        .forest-layout.is-dark-canvas .light-surface-box .text-slate-800 {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-slate-900,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-slate-800 {
           color: #0F172A !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .text-amber-950,
-        .forest-layout.is-dark-canvas .light-surface-box .text-amber-900 {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-amber-950,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .text-amber-900 {
           color: #451A03 !important;
         }
         /* Bootstrap (loaded for the vet pages) paints every plain <a> blue and underlined; inside the
@@ -787,145 +791,145 @@ export default function MainLayout() {
 
         /* A light box keeps its antd cards and tables light on a dark canvas, so they never turn dark while the
            text inside stays dark; the fully dark pages (.staff-dark) recolour the box itself further down. */
-        .forest-layout.is-dark-canvas .light-surface-box .ant-card,
-        .forest-layout.is-dark-canvas .light-surface-box .ant-card-body,
-        .forest-layout.is-dark-canvas .light-surface-box .ant-table,
-        .forest-layout.is-dark-canvas .light-surface-box .ant-table-tbody > tr > td {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-card,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-card-body,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-table,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-table-tbody > tr > td {
           background-color: #FFFFFF !important;
           color: #1F2937 !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .ant-card,
-        .forest-layout.is-dark-canvas .light-surface-box .ant-table-container {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-card,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-table-container {
           border-color: #E5DEC9 !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .ant-card-head,
-        .forest-layout.is-dark-canvas .light-surface-box .ant-table-thead > tr > th {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-card-head,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-table-thead > tr > th {
           background-color: #F4EFE2 !important;
           color: #123326 !important;
           border-color: #E5DEC9 !important;
         }
         /* The card title has its own cream rule for dark cards; inside a light box it stays dark.
            Not for the staff's dark pages (.staff-dark): they colour their own light boxes. */
-        .forest-layout.is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head .ant-card-head-title,
-        .forest-layout.is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head h1,
-        .forest-layout.is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head h2,
-        .forest-layout.is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head h3,
-        .forest-layout.is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head h4 {
+        .forest-layout:not(.staff-workspace).is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head .ant-card-head-title,
+        .forest-layout:not(.staff-workspace).is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head h1,
+        .forest-layout:not(.staff-workspace).is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head h2,
+        .forest-layout:not(.staff-workspace).is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head h3,
+        .forest-layout:not(.staff-workspace).is-dark-canvas:not(.staff-dark) .light-surface-box .ant-card-head h4 {
           color: #123326 !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .ant-table-tbody > tr > td {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-table-tbody > tr > td {
           border-bottom-color: #EFE9DB !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .ant-table-tbody > tr:hover > td {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-table-tbody > tr:hover > td {
           background-color: #F7F3EA !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .ant-table-cell a:not(.ant-btn) {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-table-cell a:not(.ant-btn) {
           color: #0F5A43 !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .ant-pagination-item,
-        .forest-layout.is-dark-canvas .light-surface-box .ant-pagination-item-link {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-pagination-item,
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-pagination-item-link {
           background-color: #FFFFFF !important;
           border-color: #E5DEC9 !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .ant-pagination-item a {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-pagination-item a {
           color: #0F5A43 !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .ant-statistic-title {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-statistic-title {
           color: #6B7280 !important;
         }
-        .forest-layout.is-dark-canvas .light-surface-box .ant-empty-description {
+        .forest-layout:not(.staff-workspace).is-dark-canvas .light-surface-box .ant-empty-description {
           color: #6B7280 !important;
         }
 
         /* On the dark canvas the boxes that stay light on the light canvas (KPI strips, ribbons, the week
            calendar, empty states) go dark as well, with cream text, so the page has no white blocks. These
            win over the light-box rules above by one more class. */
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box {
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box {
           background-color: #10261E !important;
           background-image: none !important;
           border-color: rgba(212, 175, 55, 0.22) !important;
           color: #E6EDE8 !important;
         }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box strong, .forest-layout.is-dark-canvas.staff-dark .light-surface-box th, .forest-layout.is-dark-canvas.staff-dark .light-surface-box td { color: #F4F1E8 !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box a:not(.ant-btn) { color: #F6D57A !important; text-decoration: none !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box a:not(.ant-btn):hover { color: #F8E7B2 !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-btn:not(.ant-btn-primary):not(.ant-btn-dangerous) {
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box strong, .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box th, .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box td { color: #F4F1E8 !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box a:not(.ant-btn) { color: #F6D57A !important; text-decoration: none !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box a:not(.ant-btn):hover { color: #F8E7B2 !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box .ant-btn:not(.ant-btn-primary):not(.ant-btn-dangerous) {
           color: #FCD34D !important;
           background-color: rgba(255, 255, 255, 0.06) !important;
           border-color: rgba(252, 211, 77, 0.4) !important;
         }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-card, .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-card-body, .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-table, .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-table-tbody > tr > td {
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box .ant-card, .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box .ant-card-body, .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box .ant-table, .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box .ant-table-tbody > tr > td {
           background-color: transparent !important;
           color: #E6EDE8 !important;
         }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-card-head, .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-table-thead > tr > th {
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box .ant-card-head, .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box .ant-table-thead > tr > th {
           background-color: rgba(255, 255, 255, 0.05) !important;
           color: #F4F1E8 !important;
           border-color: rgba(212, 175, 55, 0.18) !important;
         }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-table-tbody > tr:hover > td { background-color: rgba(255, 255, 255, 0.05) !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-statistic-title, .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-empty-description, .forest-layout.is-dark-canvas.staff-dark .light-surface-box .ant-typography-secondary { color: #B9CABF !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box .ant-table-tbody > tr:hover > td { background-color: rgba(255, 255, 255, 0.05) !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box .ant-statistic-title, .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box .ant-empty-description, .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box .ant-typography-secondary { color: #B9CABF !important; }
 
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-gray-900"], [class~="text-gray-800"], [class~="text-gray-700"], [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-slate-700"], [class~="text-[#0F5A43]"]) { color: #F4F1E8 !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-gray-600"], [class~="text-gray-500"], [class~="text-slate-600"], [class~="text-slate-500"]) { color: #B9CABF !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-gray-400"], [class~="text-gray-300"], [class~="text-slate-400"]) { color: #93AB9E !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-emerald-900"], [class~="text-emerald-950"], [class~="text-green-600"], [class~="text-green-700"]) { color: #6EE7B7 !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-orange-600"], [class~="text-orange-700"], [class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"]) { color: #FCD34D !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-rose-900"], [class~="text-red-600"], [class~="text-red-700"]) { color: #FDA4AF !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"], [class~="text-sky-700"], [class~="text-cyan-600"], [class~="text-cyan-700"]) { color: #93C5FD !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-white"], [class~="!bg-white"], [class~="bg-gray-100"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-50/80"], [class~="bg-slate-50"], [class~="bg-slate-50/80"], [class~="bg-[#FFFDF8]"], [class~="bg-[#FAF7F0]"], [class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"]) { background-color: rgba(255, 255, 255, 0.05) !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-emerald-100"], [class~="bg-emerald-50"], [class~="bg-emerald-50/20"], [class~="bg-emerald-50/40"], [class~="bg-emerald-50/60"], [class~="bg-green-50"]) { background-color: rgba(16, 185, 129, 0.14) !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-orange-50"], [class~="bg-orange-100"], [class~="bg-yellow-50"], [class~="bg-amber-50"], [class~="bg-amber-50/20"], [class~="bg-amber-50/30"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/90"]) { background-color: rgba(245, 158, 11, 0.14) !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-rose-50"], [class~="bg-rose-100"], [class~="bg-red-50"], [class~="bg-red-100"]) { background-color: rgba(244, 63, 94, 0.14) !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-blue-50"], [class~="bg-blue-50/60"], [class~="bg-blue-100"], [class~="bg-cyan-50"], [class~="bg-sky-50"]) { background-color: rgba(59, 130, 246, 0.16) !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="border-amber-200"], [class~="border-amber-200/50"], [class~="border-amber-200/80"], [class~="border-emerald-200"], [class~="border-emerald-200/60"], [class~="divide-[#EFE8DA]"], [class~="divide-[#E4DFD3]"], [class~="divide-gray-100"]) { border-color: rgba(212, 175, 55, 0.18) !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box:is([class~="divide-[#E4DFD3]"], [class~="divide-[#EFE8DA]"], [class~="divide-gray-100"]) > *,
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="divide-[#E4DFD3]"], [class~="divide-[#EFE8DA]"], [class~="divide-amber-200/50"], [class~="divide-gray-100"]) > * { border-color: rgba(212, 175, 55, 0.18) !important; }
-        .forest-layout.is-dark-canvas.staff-dark .staff-revenue-text { color: #6EE7B7 !important; }
-        .forest-layout.is-dark-canvas.staff-dark .staff-cost-text { color: #FDA4AF !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="text-gray-900"], [class~="text-gray-800"], [class~="text-gray-700"], [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-slate-700"], [class~="text-[#0F5A43]"]) { color: #F4F1E8 !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="text-gray-600"], [class~="text-gray-500"], [class~="text-slate-600"], [class~="text-slate-500"]) { color: #B9CABF !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="text-gray-400"], [class~="text-gray-300"], [class~="text-slate-400"]) { color: #93AB9E !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-emerald-900"], [class~="text-emerald-950"], [class~="text-green-600"], [class~="text-green-700"]) { color: #6EE7B7 !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="text-orange-600"], [class~="text-orange-700"], [class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"]) { color: #FCD34D !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-rose-900"], [class~="text-red-600"], [class~="text-red-700"]) { color: #FDA4AF !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"], [class~="text-sky-700"], [class~="text-cyan-600"], [class~="text-cyan-700"]) { color: #93C5FD !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-white"], [class~="!bg-white"], [class~="bg-gray-100"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-50/80"], [class~="bg-slate-50"], [class~="bg-slate-50/80"], [class~="bg-[#FFFDF8]"], [class~="bg-[#FAF7F0]"], [class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"]) { background-color: rgba(255, 255, 255, 0.05) !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-emerald-100"], [class~="bg-emerald-50"], [class~="bg-emerald-50/20"], [class~="bg-emerald-50/40"], [class~="bg-emerald-50/60"], [class~="bg-green-50"]) { background-color: rgba(16, 185, 129, 0.14) !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-orange-50"], [class~="bg-orange-100"], [class~="bg-yellow-50"], [class~="bg-amber-50"], [class~="bg-amber-50/20"], [class~="bg-amber-50/30"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/90"]) { background-color: rgba(245, 158, 11, 0.14) !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-rose-50"], [class~="bg-rose-100"], [class~="bg-red-50"], [class~="bg-red-100"]) { background-color: rgba(244, 63, 94, 0.14) !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="bg-blue-50"], [class~="bg-blue-50/60"], [class~="bg-blue-100"], [class~="bg-cyan-50"], [class~="bg-sky-50"]) { background-color: rgba(59, 130, 246, 0.16) !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="border-amber-200"], [class~="border-amber-200/50"], [class~="border-amber-200/80"], [class~="border-emerald-200"], [class~="border-emerald-200/60"], [class~="divide-[#EFE8DA]"], [class~="divide-[#E4DFD3]"], [class~="divide-gray-100"]) { border-color: rgba(212, 175, 55, 0.18) !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box:is([class~="divide-[#E4DFD3]"], [class~="divide-[#EFE8DA]"], [class~="divide-gray-100"]) > *,
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="divide-[#E4DFD3]"], [class~="divide-[#EFE8DA]"], [class~="divide-amber-200/50"], [class~="divide-gray-100"]) > * { border-color: rgba(212, 175, 55, 0.18) !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .staff-revenue-text { color: #6EE7B7 !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .staff-cost-text { color: #FDA4AF !important; }
         /* Cells that stay put while a table scrolls under them (the week calendar) need a solid ground:
            the recoloured light backgrounds above are see-through. */
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box .wc-sticky.wc-sticky { background-color: #10261E !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box th.wc-sticky.wc-sticky { background-color: #172E25 !important; }
-        .forest-layout.is-dark-canvas.staff-dark .light-surface-box :is([class~="hover:bg-rose-50/40"], [class~="hover:bg-gray-50/40"], [class~="hover:bg-emerald-50/40"], [class~="hover:bg-emerald-50/50"], [class~="hover:bg-amber-50/50"], [class~="hover:!bg-amber-50"], [class~="hover:bg-gray-50"], [class~="hover:bg-[#F2ECE0]"]):hover { background-color: rgba(255, 255, 255, 0.07) !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box .wc-sticky.wc-sticky { background-color: #10261E !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box th.wc-sticky.wc-sticky { background-color: #172E25 !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .light-surface-box :is([class~="hover:bg-rose-50/40"], [class~="hover:bg-gray-50/40"], [class~="hover:bg-emerald-50/40"], [class~="hover:bg-emerald-50/50"], [class~="hover:bg-amber-50/50"], [class~="hover:!bg-amber-50"], [class~="hover:bg-gray-50"], [class~="hover:bg-[#F2ECE0]"]):hover { background-color: rgba(255, 255, 255, 0.07) !important; }
         /* Item codes (<code>, inventory): Bootstrap's pink is too faint on the warm cards and on the dark ones. */
-        .forest-layout.is-canvas code { color: #0F5A43 !important; }
-        .forest-layout.is-dark-canvas.staff-dark code { color: #F6D57A !important; background-color: rgba(255, 255, 255, 0.06) !important; }
+        .forest-layout:not(.staff-workspace).is-canvas code { color: #0F5A43 !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark code { color: #F6D57A !important; background-color: rgba(255, 255, 255, 0.06) !important; }
         /* Chart legends on the dark canvas: the label reads in cream, the marker keeps the series colour. */
-        .forest-layout.is-dark-canvas.staff-dark .recharts-legend-item-text { color: #E6EDE8 !important; }
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .recharts-legend-item-text { color: #E6EDE8 !important; }
         /* Headings on the dark canvas: warm champagne rather than plain white, to sit with the brass accents. */
-        .forest-layout.is-dark-canvas.staff-dark .ant-card-head-title,
-        .forest-layout.is-dark-canvas.staff-dark h1.ant-typography,
-        .forest-layout.is-dark-canvas.staff-dark h2.ant-typography,
-        .forest-layout.is-dark-canvas.staff-dark h3.ant-typography,
-        .forest-layout.is-dark-canvas.staff-dark h4.ant-typography {
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark .ant-card-head-title,
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark h1.ant-typography,
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark h2.ant-typography,
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark h3.ant-typography,
+        .forest-layout:not(.staff-workspace).is-dark-canvas.staff-dark h4.ant-typography {
           color: #F3E3BC !important;
         }
 
         /* Popups render outside the layout (body), so the dark canvas reaches them through a body class:
            text written for a light popup turns light on the dark popup. */
-        body.wdp-dark-portals .ant-popover .ant-popover-inner,
-        body.wdp-dark-portals .ant-popover .ant-popover-arrow::before {
+        body.wdp-dark-portals:not(.wdp-staff-workspace) .ant-popover .ant-popover-inner,
+        body.wdp-dark-portals:not(.wdp-staff-workspace) .ant-popover .ant-popover-arrow::before {
           border: 1px solid rgba(212, 175, 55, 0.25);
         }
 
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-gray-900"], [class~="text-gray-800"], [class~="text-gray-700"], [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-slate-700"], [class~="text-[#0F5A43]"]) { color: #F4F1E8 !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-gray-600"], [class~="text-gray-500"], [class~="text-slate-600"], [class~="text-slate-500"]) { color: #B9CABF !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-gray-400"], [class~="text-gray-300"], [class~="text-slate-400"]) { color: #93AB9E !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-emerald-900"], [class~="text-emerald-950"], [class~="text-green-600"], [class~="text-green-700"]) { color: #6EE7B7 !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-orange-600"], [class~="text-orange-700"], [class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"]) { color: #FCD34D !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-rose-900"], [class~="text-red-600"], [class~="text-red-700"]) { color: #FDA4AF !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"], [class~="text-sky-700"], [class~="text-cyan-600"], [class~="text-cyan-700"]) { color: #93C5FD !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-white"], [class~="!bg-white"], [class~="bg-gray-100"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-50/80"], [class~="bg-slate-50"], [class~="bg-slate-50/80"], [class~="bg-[#FFFDF8]"], [class~="bg-[#FAF7F0]"], [class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"]) { background-color: #12291F !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-emerald-100"], [class~="bg-emerald-50"], [class~="bg-emerald-50/20"], [class~="bg-emerald-50/60"], [class~="bg-green-50"]) { background-color: rgba(16, 185, 129, 0.14) !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-orange-50"], [class~="bg-orange-100"], [class~="bg-yellow-50"], [class~="bg-amber-50"], [class~="bg-amber-50/30"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/90"]) { background-color: rgba(245, 158, 11, 0.14) !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-rose-50"], [class~="bg-rose-100"], [class~="bg-red-50"], [class~="bg-red-100"]) { background-color: rgba(244, 63, 94, 0.14) !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-blue-50"], [class~="bg-blue-50/60"], [class~="bg-blue-100"], [class~="bg-cyan-50"], [class~="bg-sky-50"]) { background-color: rgba(59, 130, 246, 0.16) !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="border-amber-200/50"], [class~="border-emerald-200/60"], [class~="divide-[#EFE8DA]"], [class~="divide-gray-100"]) { border-color: rgba(212, 175, 55, 0.18) !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="hover:bg-rose-50/40"], [class~="hover:bg-gray-50/40"], [class~="hover:bg-emerald-50/50"], [class~="hover:bg-amber-50/50"], [class~="hover:!bg-amber-50"], [class~="hover:bg-gray-50"]):hover { background-color: #1A3A2E !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) strong { color: #F4F1E8 !important; }
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) .ant-btn-dangerous:not(.ant-btn-primary),
-        body.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) .ant-btn-dangerous:not(.ant-btn-primary) span {
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-gray-900"], [class~="text-gray-800"], [class~="text-gray-700"], [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-slate-700"], [class~="text-[#0F5A43]"]) { color: #F4F1E8 !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-gray-600"], [class~="text-gray-500"], [class~="text-slate-600"], [class~="text-slate-500"]) { color: #B9CABF !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-gray-400"], [class~="text-gray-300"], [class~="text-slate-400"]) { color: #93AB9E !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-emerald-900"], [class~="text-emerald-950"], [class~="text-green-600"], [class~="text-green-700"]) { color: #6EE7B7 !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-orange-600"], [class~="text-orange-700"], [class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"]) { color: #FCD34D !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-rose-900"], [class~="text-red-600"], [class~="text-red-700"]) { color: #FDA4AF !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"], [class~="text-sky-700"], [class~="text-cyan-600"], [class~="text-cyan-700"]) { color: #93C5FD !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-white"], [class~="!bg-white"], [class~="bg-gray-100"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-50/80"], [class~="bg-slate-50"], [class~="bg-slate-50/80"], [class~="bg-[#FFFDF8]"], [class~="bg-[#FAF7F0]"], [class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"]) { background-color: #12291F !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-emerald-100"], [class~="bg-emerald-50"], [class~="bg-emerald-50/20"], [class~="bg-emerald-50/60"], [class~="bg-green-50"]) { background-color: rgba(16, 185, 129, 0.14) !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-orange-50"], [class~="bg-orange-100"], [class~="bg-yellow-50"], [class~="bg-amber-50"], [class~="bg-amber-50/30"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/90"]) { background-color: rgba(245, 158, 11, 0.14) !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-rose-50"], [class~="bg-rose-100"], [class~="bg-red-50"], [class~="bg-red-100"]) { background-color: rgba(244, 63, 94, 0.14) !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-blue-50"], [class~="bg-blue-50/60"], [class~="bg-blue-100"], [class~="bg-cyan-50"], [class~="bg-sky-50"]) { background-color: rgba(59, 130, 246, 0.16) !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="border-amber-200/50"], [class~="border-emerald-200/60"], [class~="divide-[#EFE8DA]"], [class~="divide-gray-100"]) { border-color: rgba(212, 175, 55, 0.18) !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="hover:bg-rose-50/40"], [class~="hover:bg-gray-50/40"], [class~="hover:bg-emerald-50/50"], [class~="hover:bg-amber-50/50"], [class~="hover:!bg-amber-50"], [class~="hover:bg-gray-50"]):hover { background-color: #1A3A2E !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) strong { color: #F4F1E8 !important; }
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) .ant-btn-dangerous:not(.ant-btn-primary),
+        body.wdp-dark-portals:not(.wdp-staff-workspace) :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) .ant-btn-dangerous:not(.ant-btn-primary) span {
           color: #FDA4AF !important;
           border-color: rgba(244, 63, 94, 0.45) !important;
         }

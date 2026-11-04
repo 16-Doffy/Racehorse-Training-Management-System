@@ -191,22 +191,38 @@ export function createTrackStage(canvas, labelLayer) {
 
   const finish = new THREE.Group();
   const postZ = RADIUS + inside - 0.4;
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 4, 8), white);
-  pole.position.set(FINISH_X, 2, postZ);
-  const board = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), new THREE.MeshBasicMaterial({ map: checker, side: THREE.DoubleSide }));
-  board.position.set(FINISH_X, 3.9, postZ + 0.1);
-  const line = new THREE.Mesh(new THREE.PlaneGeometry(0.35, WIDTH), new THREE.MeshBasicMaterial({ color: '#f4f2ec' }));
+  const outerPostZ = RADIUS + WIDTH / 2 + RAIL_GAP + 0.4;
+  const darkMetal = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.45, metalness: 0.3 });
+  const goldTrim = new THREE.MeshStandardMaterial({ color: '#eab308', roughness: 0.35, metalness: 0.4 });
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 4.4, 10), darkMetal);
+  pole.position.set(FINISH_X, 2.2, postZ);
+  const outerPole = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 4.4, 10), darkMetal);
+  outerPole.position.set(FINISH_X, 2.2, outerPostZ);
+  const spanLen = outerPostZ - postZ + 0.3;
+  const archBeam = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.36, spanLen), darkMetal);
+  archBeam.position.set(FINISH_X, 4.35, (postZ + outerPostZ) / 2);
+  const archGold = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, spanLen + 0.06), goldTrim);
+  archGold.position.set(FINISH_X, 4.56, (postZ + outerPostZ) / 2);
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.3), new THREE.MeshBasicMaterial({ map: checker, side: THREE.DoubleSide }));
+  board.position.set(FINISH_X, 3.6, postZ + 0.12);
+  const line = new THREE.Mesh(new THREE.PlaneGeometry(0.42, WIDTH), new THREE.MeshBasicMaterial({ color: '#f4f2ec' }));
   line.rotation.x = -Math.PI / 2;
   line.position.set(FINISH_X, 0.015, RADIUS);
-  finish.add(pole, board, line);
-  // The quarter poles, red, on the inner rail: how far round a horse is at a glance.
+  finish.add(pole, outerPole, archBeam, archGold, board, line);
+  // The quarter poles, red & gold-topped, on the inner rail: how far round a horse is at a glance.
   const red = new THREE.MeshStandardMaterial({ color: '#c62828', roughness: 0.6 });
   for (const share of [0.25, 0.5, 0.75]) {
     const p = offsetAt(share, inside - 0.4);
-    const quarter = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.2, 8), red);
-    quarter.position.set(p.x, 1.1, p.z);
-    finish.add(quarter);
+    const quarter = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.3, 8), red);
+    quarter.position.set(p.x, 1.15, p.z);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.28, 0.08), goldTrim);
+    cap.position.set(p.x, 2.35, p.z);
+    finish.add(quarter, cap);
   }
+  // Outer paddock rail around the stable apron so the surrounding field feels structured.
+  const outerFence = makeRail(WIDTH / 2 + RAIL_GAP + 5.5, white);
+  outerFence.scale.set(1, 0.78, 1);
+  finish.add(outerFence);
   scene.add(finish);
 
   // The stable block across the track, trees round it, clouds; the sky of the hour in Vietnam.
@@ -259,10 +275,28 @@ export function createTrackStage(canvas, labelLayer) {
     const p = offsetAt(i / 36, WIDTH / 2 + RAIL_GAP);
     rim.push(p, p.clone().setY(HORSE_SCALE * 1.8));
   }
+  let viewPreset = 'overview';
   const fit = () => {
+    if (viewPreset === 'finish') {
+      target.set(FINISH_X - 2, 1.2, RADIUS - 1.5);
+      camera.position.set(FINISH_X + 18, 9.5, RADIUS + 18);
+      camera.lookAt(target);
+      controls.target.copy(target);
+      controls.update();
+      return;
+    }
+    if (viewPreset === 'stands') {
+      target.set(0, 0.8, 0);
+      camera.position.set(0, 14, RADIUS + WIDTH / 2 + 34);
+      camera.lookAt(target);
+      controls.target.copy(target);
+      controls.update();
+      return;
+    }
+    target.set(0, 0, 1);
     const wide = camera.aspect >= 1.45;
     const azimuth = wide ? 0 : 0.75;
-    const elevation = wide ? 0.6 : 0.7;
+    const elevation = wide ? 0.56 : 0.68;
     const dir = new THREE.Vector3(Math.sin(azimuth) * Math.cos(elevation), Math.sin(elevation), Math.cos(azimuth) * Math.cos(elevation));
     const v = new THREE.Vector3();
     let near = 10;
@@ -275,7 +309,7 @@ export function createTrackStage(canvas, labelLayer) {
       const fits = rim.every((p) => {
         v.copy(p).project(camera);
         // Room left at the sides for the name of a horse in a bend.
-        return Math.abs(v.x) <= 0.86 && Math.abs(v.y) <= 0.9 && v.z < 1;
+        return Math.abs(v.x) <= 0.88 && Math.abs(v.y) <= 0.91 && v.z < 1;
       });
       if (fits) far = d;
       else near = d;
@@ -539,6 +573,11 @@ export function createTrackStage(canvas, labelLayer) {
     setFocus(id) {
       focus = id;
       for (const r of runners.values()) styleLabel(r);
+    },
+    /** Switches camera preset: 'overview' | 'stands' | 'finish'. */
+    setView(preset) {
+      viewPreset = preset || 'overview';
+      fit();
     },
     resize(width, height) {
       renderer.setSize(width, height, false);

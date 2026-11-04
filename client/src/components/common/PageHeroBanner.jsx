@@ -16,8 +16,8 @@ const STEP_NOTES = {
 
 /**
  * Reusable Hero Banner for Team 8 WDP301.
- * - Head Trainer & Club Manager: a compact one-band header (title, counts, actions), so the page's
- *   own work starts near the top.
+ * - Head Trainer & Club Manager: Split Command Header Card with left gold accent bar,
+ *   step indicator badge (1->5), high-contrast title/subtitle, action cluster, and framed KPI strip.
  * - Horse Owner & other roles: preserves the original atmospheric banner untouched.
  */
 export default function PageHeroBanner({
@@ -93,53 +93,42 @@ export default function PageHeroBanner({
     );
   }
 
-  // The title and the page's own actions on one line, the counts read under the title: beside it they
-  // squeezed the title onto two lines and pushed the button under them. The role and section are already in the sidebar, so the
-  // staff header leaves out `roleLabel` and `eyebrow`. The heading's size is set with !: a global
-  // heading style outside Tailwind's layer otherwise wins and makes it 40px.
   return (
-    <div
-      className={`st-hero-banner px-4 py-3.5 sm:px-5 mb-4 ${className}`}
-    >
-      <div className="flex flex-wrap items-start gap-x-6 gap-y-2.5">
+    <header className={`st-hero-banner ${className}`}>
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <div className="min-w-0 flex-[1_1_320px]">
-          <h1
-            className="!m-0 !leading-tight text-balance"
-            style={{ fontFamily: 'inherit', color: 'var(--st-ink)' }}
-          >
+          <div className="st-hero-banner__eyebrow">
+            {step && <span className="st-hero-banner__step-pill">Bước {step}/5</span>}
+            <span>{roleLabel || (userRole === ROLES.HEAD_TRAINER ? 'Huấn luyện viên Trưởng' : 'Quản lý Câu lạc bộ')}</span>
+          </div>
+          <h1 className="!m-0 !leading-tight text-balance">
             {title}
           </h1>
           {(subtitle || STEP_NOTES[step]) && (
-            <p className="m-0 mt-0.5 hidden max-w-2xl text-xs leading-snug sm:block" style={{ color: 'var(--st-ink-secondary)' }}>
+            <p className="st-hero-banner__subtitle m-0 mt-1 max-w-3xl">
               {subtitle || STEP_NOTES[step]}
             </p>
           )}
         </div>
 
         {(statusBadge || actionButton) && (
-          // Wraps on a phone, where the badge and the button do not fit side by side.
-          <div className="ml-auto flex max-w-full flex-wrap items-center gap-2.5">
+          <div className="ml-auto flex max-w-full flex-wrap items-center gap-2.5 shrink-0">
             {statusBadge}
             {actionButton}
           </div>
         )}
       </div>
+
       {stats.length > 0 && (
-          <dl className="m-0 mt-2.5 flex flex-wrap items-center gap-2 text-xs">
-            {stats.map((stat, idx) => (
-              <div
-                key={idx}
-                className="inline-flex items-baseline gap-1.5 rounded-lg border px-2.5 py-1"
-                style={{ background: 'var(--st-sunk)', borderColor: 'var(--st-border)' }}
-              >
-                <dt style={{ color: 'var(--st-ink-secondary)' }}>{stat.label}</dt>
-                <dd className="m-0 font-semibold tabular-nums" style={{ color: 'var(--st-ink)' }}>
-                  {stat.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
+        <dl className="st-hero-banner__stats">
+          {stats.map((stat, idx) => (
+            <div key={idx} className="st-hero-stat-cell">
+              <dt>{stat.label}</dt>
+              <dd>{stat.value}</dd>
+            </div>
+          ))}
+        </dl>
       )}
-    </div>
+    </header>
   );
 }

@@ -260,9 +260,9 @@ export default function WeekCalendar({
     .sort((a, b) => weight(a) - weight(b) || (a.horse?.name || '').localeCompare(b.horse?.name || '', 'vi'));
 
   return (
-    <div>
+    <div className="st-workbench-frame">
       {/* One row: the page's own switches (`toolbar`), the horse search, the week. */}
-      <div className="st-toolbar mb-3 justify-between">
+      <div className="st-toolbar justify-between">
         <div className="flex flex-wrap items-center gap-3">
           {toolbar}
           <Input allowClear prefix={<SearchOutlined className="text-gray-400" />} placeholder="Tìm ngựa" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-44" aria-label="Tìm ngựa trong lịch tuần" />
@@ -278,29 +278,31 @@ export default function WeekCalendar({
               Về tuần này
             </Button>
           )}
-          <span className="pl-1 text-xs tabular-nums text-gray-500">
+          <span className="pl-1 text-xs font-semibold tabular-nums text-gray-500">
             {rows.size} ngựa, {inWeek.length} buổi
           </span>
         </div>
       </div>
 
       {rows.size === 0 ? (
-        <Empty description="Tuần này chưa có buổi tập nào." />
+        <div className="py-8">
+          <Empty description="Tuần này chưa có buổi tập nào." />
+        </div>
       ) : !shown.length ? (
-        <p className="light-surface-box m-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">Không có ngựa nào tên “{search}”.</p>
+        <p className="light-surface-box m-0 px-4 py-3 text-sm text-gray-600">Không có ngựa nào tên “{search}”.</p>
       ) : (
         // Scrolls inside its frame when the club is large: the day row and the horse column stay put.
-        <div className="light-surface-box max-h-[calc(100vh-230px)] min-h-[240px] overflow-auto rounded-xl border border-[#E5DEC9] bg-white shadow-xs">
+        <div className="light-surface-box max-h-[calc(100vh-230px)] min-h-[240px] overflow-auto bg-white">
           <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
             <thead>
               <tr>
-                <th className="wc-sticky sticky left-0 top-0 z-[3] w-[220px] border-b border-[#E5DEC9] bg-[#FAF7F0] px-3 py-2 text-left text-xs font-semibold text-gray-700">Ngựa</th>
+                <th className="wc-sticky sticky left-0 top-0 z-[3] w-[220px] border-b border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-gray-700">Ngựa</th>
                 {days.map((d) => {
                   const today = d.date.isSame(dayjs(), 'day');
                   return (
-                    <th key={d.day} className={`wc-sticky sticky top-0 z-[2] border-b px-1.5 py-2 text-left text-xs ${today ? 'border-[#0F5A43] bg-[#DCEFE3] font-bold text-[#0F5A43]' : 'border-[#E5DEC9] bg-[#FAF7F0] font-semibold text-gray-600'}`}>
+                    <th key={d.day} className={`wc-sticky sticky top-0 z-[2] border-b px-1.5 py-2.5 text-left text-xs ${today ? 'border-[var(--st-action,#EAB308)] bg-[var(--st-primary-soft,#FEF3C7)] font-bold text-[var(--st-ink,#0F172A)]' : 'border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] font-bold text-gray-600'}`}>
                       <span>{d.short}</span> <span className={`tabular-nums ${today ? '' : 'font-normal text-gray-500'}`}>{d.date.format('DD/MM')}</span>
-                      {today && <span className="ml-1 inline-block whitespace-nowrap rounded bg-[#0F5A43] px-1 py-px text-[10px] font-semibold text-white">Hôm nay</span>}
+                      {today && <span className="ml-1 inline-block whitespace-nowrap rounded bg-[var(--st-action,#EAB308)] px-1.5 py-px text-[10px] font-bold text-[var(--st-action-ink,#0F172A)]">Hôm nay</span>}
                     </th>
                   );
                 })}
@@ -313,10 +315,10 @@ export default function WeekCalendar({
                 return (
                   <tr key={horse?._id} className="group align-top">
                     {/* The horse on one line (its race form a dot), what it is building to on a second, small. */}
-                    <td className="wc-sticky sticky left-0 z-[1] bg-white px-3 py-1.5 group-hover:bg-[#FAF7F0]">
+                    <td className="wc-sticky sticky left-0 z-[1] bg-white px-3 py-2 group-hover:bg-[var(--st-hover,#F1F5F9)]">
                       <div className="flex items-center gap-1.5">
                         <RaceFormDot form={plan?.progress?.form} />
-                        <Link to={`?horse=${horse?._id}`} title="Xem lịch của riêng ngựa này" className="min-w-0 truncate text-[13px] font-semibold text-emerald-950 hover:text-emerald-700">
+                        <Link to={`?horse=${horse?._id}`} title="Xem lịch của riêng ngựa này" className="min-w-0 truncate text-[13px] font-bold text-[var(--st-ink,#0F172A)] hover:text-[var(--st-primary,#B45309)]">
                           {horse?.name}
                         </Link>
                         {plan && (
@@ -363,7 +365,7 @@ export default function WeekCalendar({
                       const planned = locked ? [] : due;
                       const today = d.date.isSame(dayjs(), 'day');
                       return (
-                        <td key={d.day} className={`px-1 py-1.5 ${today ? 'bg-emerald-50/70' : d.date.isBefore(dayjs(), 'day') ? 'bg-black/[0.015]' : ''}`}>
+                        <td key={d.day} className={`px-1 py-1.5 ${today ? 'bg-[var(--st-primary-soft,#ecfdf5)]' : d.date.isBefore(dayjs(), 'day') ? 'bg-black/[0.015]' : ''}`}>
                           <div className="flex flex-col gap-1">
                             {list.map((s) => (
                               <SessionChip
@@ -410,7 +412,7 @@ export default function WeekCalendar({
           </table>
         </div>
       )}
-      <p className="m-0 mt-1.5 text-[11px] text-gray-500">
+      <p className="m-0 border-t border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] px-3.5 py-2 text-[11px] font-medium text-gray-500">
         Viền nét đứt: buổi dự kiến theo kế hoạch, chưa xếp. Chấm cạnh tên: phong độ dự giải (rê chuột để xem).
       </p>
     </div>

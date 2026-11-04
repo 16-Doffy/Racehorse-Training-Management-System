@@ -58,36 +58,48 @@ export default function DashboardPage() {
 
   // The safety and medical side of the day: its heading, and the horses the vet has restricted.
   const safetyHeader = (
-    <div className="st-section-header light-surface-box px-1">
+    <div className="st-section-header light-surface-box">
       <span className="st-section-header__title guardrail-title">
         <span className="st-section-header__bar" />
         An toàn tập luyện &amp; y tế
       </span>
-      <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#EAE1D2] text-slate-700 font-semibold tabular-nums">
+      <span
+        className="text-xs px-2.5 py-0.5 rounded-full font-bold tabular-nums border"
+        style={{ background: 'var(--st-sunk)', color: 'var(--st-ink)', borderColor: 'var(--st-border)' }}
+      >
         {restrictedHorses.length > 0 ? `${restrictedHorses.length} ngựa hạn chế` : 'Không có khóa tập'}
       </span>
     </div>
   );
   const restrictedCard = restrictedHorses.length > 0 && (
-    <div className="light-surface-box rounded-xl border border-[#E5DEC9] bg-[#FFFDF8] p-4 shadow-xs">
-      <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-200/80">
-        <span className="font-semibold text-gray-900 text-[15px]">{restrictedHorses.length} ngựa bị hạn chế tập luyện</span>
-        <span className="text-[11px] font-medium text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded border border-amber-200">
-          Bác sĩ chỉ định
-        </span>
-      </div>
-      <div className="divide-y divide-amber-200/50">
+    <Card
+      className="shadow-xs rounded-xl overflow-hidden h-full"
+      styles={{
+        title: { whiteSpace: 'normal', overflow: 'visible', padding: '12px 16px' },
+        header: { height: 'auto', whiteSpace: 'normal' },
+        body: { padding: '4px 16px 12px 16px' },
+      }}
+      title={
+        <div className="flex flex-wrap items-center justify-between gap-2 py-0.5">
+          <span className="font-bold text-gray-900 text-[15px]">{restrictedHorses.length} ngựa bị hạn chế tập luyện</span>
+          <span className="text-[11px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+            Bác sĩ chỉ định
+          </span>
+        </div>
+      }
+    >
+      <div className="divide-y divide-gray-100">
         {restrictedShown.map((h) => {
           const c = h.trainingClearance;
           const why = `${c.reason || 'theo phác đồ điều trị'}${c.prescribedBy ? ` (BS ${c.prescribedBy})` : ''}`;
           return (
-            <div key={h._id} className="py-2 flex items-center justify-between gap-2 text-sm">
+            <div key={h._id} className="py-2.5 flex items-center justify-between gap-2 text-sm">
               <div className="min-w-0 pr-2 flex-1">
                 <div className="flex min-w-0 items-center gap-1.5">
-                  <Tag color={TRAINING_LEVEL_META[c.level]?.color} className="!m-0 shrink-0 text-xs font-medium">
+                  <Tag color={TRAINING_LEVEL_META[c.level]?.color} className="!m-0 shrink-0 text-xs font-semibold">
                     {TRAINING_LEVEL_META[c.level]?.short}
                   </Tag>
-                  <Link to={`/horses/${h._id}`} className="truncate font-semibold text-emerald-950 hover:text-emerald-800 underline decoration-emerald-950/20" title={h.name}>
+                  <Link to={`/horses/${h._id}`} className="truncate font-bold text-gray-900 hover:underline" title={h.name}>
                     {h.name}
                   </Link>
                 </div>
@@ -99,7 +111,7 @@ export default function DashboardPage() {
               {isHeadTrainer && (
                 <Button
                   size="small"
-                  className="shrink-0 text-xs !text-amber-950 font-semibold !bg-white hover:!bg-amber-50 border-amber-300 shadow-xs"
+                  className="shrink-0 text-xs font-semibold"
                   onClick={() => navigate(`/training/sessions?horse=${h._id}`)}
                 >
                   Xem buổi tập
@@ -110,7 +122,7 @@ export default function DashboardPage() {
         })}
       </div>
       {restrictedMore}
-    </div>
+    </Card>
   );
 
   // What is true today, said first; the counts follow.
@@ -122,10 +134,10 @@ export default function DashboardPage() {
     injuredNames.length ? `${injuredNames.join(', ')} chấn thương` : null,
   ].filter(Boolean).join(', ');
   const counts = [
-    { label: 'Tổng số ngựa', value: horses.length, hint: isHeadTrainer ? 'Ngựa bạn phụ trách' : 'Toàn CLB', tone: 'text-gray-900' },
-    { label: 'Đủ điều kiện tập', value: eligible, hint: 'Đã khám, không bị hạn chế', tone: 'text-emerald-700' },
-    { label: 'Cần theo dõi', value: monitoring, hint: 'Có cảnh báo sức khỏe', tone: 'text-amber-700' },
-    { label: 'Chấn thương', value: injured, hint: 'Tạm ngưng luyện tập', tone: 'text-rose-700' },
+    { label: 'Tổng số ngựa', value: horses.length, hint: isHeadTrainer ? 'Ngựa bạn phụ trách' : 'Toàn CLB', tone: 'text-gray-900', dataTone: 'default' },
+    { label: 'Đủ điều kiện tập', value: eligible, hint: 'Đã khám, không bị hạn chế', tone: 'text-emerald-700', dataTone: 'good' },
+    { label: 'Cần theo dõi', value: monitoring, hint: 'Có cảnh báo sức khỏe', tone: 'text-amber-700', dataTone: 'warn' },
+    { label: 'Chấn thương', value: injured, hint: 'Tạm ngưng luyện tập', tone: 'text-rose-700', dataTone: 'danger' },
   ];
 
   return (
@@ -142,10 +154,12 @@ export default function DashboardPage() {
 
       <div className="st-kpi-grid light-surface-box">
         {counts.map((c) => (
-          <button key={c.label} type="button" onClick={() => navigate('/horses')} className="st-kpi-tile text-left">
-            <span className="block text-xs font-medium text-gray-600">{c.label}</span>
-            <span className={`mt-1 block text-2xl tabular-nums ${c.value ? c.tone : 'text-gray-500'}`}>{horsesPending ? '–' : c.value}</span>
-            <span className="block text-xs text-gray-500">{c.hint}</span>
+          <button key={c.label} type="button" data-tone={c.dataTone} onClick={() => navigate('/horses')} className="st-kpi-tile text-left">
+            <div className="min-w-0">
+              <span className="st-kpi-tile__label block">{c.label}</span>
+              <span className="st-kpi-tile__hint block mt-0.5">{c.hint}</span>
+            </div>
+            <span className={`st-kpi-tile__value text-2xl tabular-nums shrink-0 ${c.value ? c.tone : 'text-gray-500'}`}>{horsesPending ? '–' : c.value}</span>
           </button>
         ))}
       </div>
@@ -160,7 +174,7 @@ export default function DashboardPage() {
           </div>
           <section className="space-y-3">
             {safetyHeader}
-            <div className="st-bento-grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            <div className="st-bento-grid st-safety-grid">
               {restrictedCard}
               <MissedMealsCard />
               <ExamRequestsCard />
@@ -177,13 +191,13 @@ export default function DashboardPage() {
             <StableOverviewCard />
             {isManager && <ManagerQueueCard />}
           </div>
-          <div className="st-bento-grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="st-bento-grid grid-cols-1 lg:grid-cols-2 gap-4">
             <StaffTodayCard />
             <StockWatchCard />
           </div>
           <section className="space-y-3">
             {safetyHeader}
-            <div className="st-bento-grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="st-bento-grid st-safety-grid">
               {restrictedCard}
               <MissedMealsCard />
               <OpenIncidentsCard />

@@ -1,41 +1,109 @@
-// Presentation-only theme for Manager and Head Trainer. Other roles retain forestTheme.
-// Blue, white and black: the values are styles/staff-workspace.css's.
-export function staffWorkspaceTheme(base, dark) {
-  const surface = dark ? '#0F1626' : '#FFFFFF';
-  const page = dark ? '#0A0F1A' : '#F4F6FA';
-  const inset = dark ? '#162033' : '#EEF2F8';
-  const border = dark ? '#1F2A3D' : '#E2E7F0';
-  const ink = dark ? '#F3F6FB' : '#0B1220';
-  const muted = dark ? '#A9B4C6' : '#475467';
-  const primary = dark ? '#3B82F6' : '#2563EB';
+/**
+ * Ant Design ConfigProvider tokens for the Club Manager and Head Trainer workspace.
+ * Inspired by LoginPage.jsx: obsidian-charcoal authority + championship gold (#EAB308) CTA +
+ * crisp pure-white/cool-slate surfaces (#F8FAFC / #FFFFFF) with ultra-sharp typography (>= 7:1 contrast).
+ * Zero beige backgrounds, zero low-contrast faded text.
+ */
+export function staffWorkspaceTheme(base, dark = false) {
+  const page = dark ? '#0B0F17' : '#F8FAFC';
+  const card = dark ? '#111827' : '#FFFFFF';
+  const inset = dark ? '#1E293B' : '#F1F5F9';
+  const border = dark ? '#334155' : '#CBD5E1';
+  const ink = dark ? '#F8FAFC' : '#0F172A';
+  const secondary = dark ? '#E2E8F0' : '#334155';
+  const muted = dark ? '#94A3B8' : '#475569';
+  const primary = dark ? '#F59E0B' : '#B45309';
+
   return {
     ...base,
     token: {
       ...base.token,
-      fontFamily: "'IBM Plex Sans', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      borderRadius: 6,
       colorPrimary: primary,
+      colorInfo: primary,
       colorLink: primary,
-      colorTextBase: ink,
-      colorTextSecondary: muted,
-      colorTextTertiary: muted,
-      colorTextDescription: muted,
-      colorTextPlaceholder: dark ? '#8E9AAE' : '#5F6B7E',
+      colorLinkHover: dark ? '#FBBF24' : '#92400E',
+      colorSuccess: dark ? '#34D399' : '#15803D',
+      colorWarning: dark ? '#FBBF24' : '#B45309',
+      colorError: dark ? '#F87171' : '#B91C1C',
       colorBgLayout: page,
-      colorBgContainer: surface,
-      colorBgElevated: dark ? '#162033' : '#FFFFFF',
+      colorBgContainer: card,
+      colorBgElevated: dark ? '#1E293B' : '#FFFFFF',
       colorFillAlter: inset,
-      colorBorder: dark ? '#2E3B52' : '#C8D1DF',
-      colorBorderSecondary: border,
+      colorFillSecondary: dark ? 'rgba(248, 250, 252, 0.08)' : '#E2E8F0',
+      colorFillTertiary: inset,
+      colorBorder: border,
+      colorBorderSecondary: dark ? '#1E293B' : '#E2E8F0',
+      colorSplit: dark ? '#1E293B' : '#E2E8F0',
+      colorText: ink,
+      colorTextSecondary: secondary,
+      colorTextTertiary: muted,
+      colorTextQuaternary: muted,
+      borderRadius: 10,
+      borderRadiusLG: 12,
+      fontSize: 14,
     },
     components: {
       ...base.components,
-      Button: { ...base.components.Button, primaryColor: '#FFFFFF' },
-      Layout: { ...base.components.Layout, bodyBg: page, headerBg: page },
-      Table: { ...base.components.Table, headerBg: 'transparent', headerSplitColor: 'transparent', borderColor: border, rowHoverBg: inset, headerColor: muted },
-      Segmented: { ...base.components.Segmented, trackBg: inset, itemSelectedBg: surface, itemSelectedColor: ink, itemColor: muted },
-      Select: { ...base.components.Select, controlItemBgActive: inset, controlItemBgHover: inset, optionSelectedColor: ink },
-      Dropdown: { ...base.components.Dropdown, controlItemBgActive: inset, controlItemBgHover: inset },
+      Card: {
+        ...base.components?.Card,
+        colorBgContainer: card,
+        colorBorderSecondary: border,
+        headerBg: dark ? '#0F172A' : '#F8FAFC',
+        headerFontSize: 15,
+        borderRadiusLG: 12,
+      },
+      Table: {
+        ...base.components?.Table,
+        headerBg: dark ? '#1E293B' : '#F1F5F9',
+        headerColor: secondary,
+        headerSplitColor: 'transparent',
+        borderColor: border,
+        rowHoverBg: dark ? 'rgba(234, 179, 8, 0.08)' : '#F8FAFC',
+        cellPaddingBlock: 11,
+        cellPaddingInline: 14,
+      },
+      Button: {
+        ...base.components?.Button,
+        primaryColor: '#0F172A',
+        defaultBg: card,
+        defaultBorderColor: border,
+        defaultColor: ink,
+        fontWeight: 600,
+        borderRadius: 8,
+      },
+      Input: { ...base.components?.Input, colorBgContainer: card, colorBorder: border, activeBorderColor: primary },
+      InputNumber: { ...base.components?.InputNumber, colorBgContainer: card, colorBorder: border, activeBorderColor: primary },
+      Select: { ...base.components?.Select, colorBgContainer: card, colorBorder: border, optionSelectedBg: dark ? 'rgba(234, 179, 8, 0.18)' : '#FEF3C7' },
+      DatePicker: { ...base.components?.DatePicker, colorBgContainer: card, colorBorder: border },
+      Segmented: {
+        ...base.components?.Segmented,
+        trackBg: inset,
+        itemColor: secondary,
+        itemHoverColor: ink,
+        itemSelectedBg: card,
+        itemSelectedColor: ink,
+      },
+      Tabs: {
+        ...base.components?.Tabs,
+        inkBarColor: primary,
+        itemSelectedColor: primary,
+        itemHoverColor: ink,
+        itemColor: secondary,
+      },
+      Modal: { ...base.components?.Modal, contentBg: card, headerBg: card, titleColor: ink },
+      Drawer: { ...base.components?.Drawer, colorBgElevated: card },
+      // The sidebar menu sits on the charcoal sidebar: none of the base theme's forest green, the page you are on in gold.
+      Menu: {
+        ...base.components?.Menu,
+        darkItemBg: 'transparent',
+        darkSubMenuItemBg: 'transparent',
+        darkPopupBg: dark ? '#0B0F17' : '#111827',
+        darkItemColor: '#CBD5E1',
+        darkItemHoverBg: 'rgba(255, 255, 255, 0.08)',
+        darkItemHoverColor: '#FFFFFF',
+        darkItemSelectedBg: '#EAB308',
+        darkItemSelectedColor: '#0F172A',
+      },
     },
   };
 }

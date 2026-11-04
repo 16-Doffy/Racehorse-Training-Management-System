@@ -129,19 +129,19 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
       : (
           <div className="st-next-up pointer-events-auto">
             {next ? (
-              <Link to={`/training/sessions?horse=${horseId(next)}`} className="min-w-0">
-                Buổi kế tiếp <span className="st-figure">{hhmm(next.scheduledAt)}</span> <strong>{next.horse?.name}</strong>, {kindOf(next).toLowerCase()}, còn {left >= 60 ? `${Math.floor(left / 60)} giờ ` : ''}{left % 60} phút
+              <Link to={`/training/sessions?horse=${horseId(next)}`} className="min-w-0 font-medium">
+                Buổi kế tiếp <span className="st-figure font-bold text-[#FDE047]">{hhmm(next.scheduledAt)}</span> <strong>{next.horse?.name}</strong> · {kindOf(next).toLowerCase()} (còn {left >= 60 ? `${Math.floor(left / 60)} giờ ` : ''}{left % 60} phút)
               </Link>
             ) : (
               <span>{loading ? 'Đang tải lịch hôm nay…' : today.length ? 'Không còn buổi nào chờ chạy.' : 'Hôm nay chưa có buổi tập nào.'}</span>
             )}
-            {summary && <small className="tabular-nums">{summary}</small>}
+            {summary && <small className="tabular-nums shrink-0 rounded bg-white/10 px-2 py-0.5 text-xs font-medium">{summary}</small>}
           </div>
         );
     return (
       <Card
-        className="!overflow-hidden"
-        styles={{ body: { padding: 0 }, title: { whiteSpace: 'normal' } }}
+        className="!overflow-hidden h-full flex flex-col"
+        styles={{ body: { padding: 0, flex: 1, display: 'flex', flexDirection: 'column' }, title: { whiteSpace: 'normal' } }}
         title={
           <span>
             <span>Sân tập hôm nay</span>
@@ -150,7 +150,7 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
         }
         extra={screens.md && <Link to="/training/sessions"><Button size="small">Theo dõi chi tiết</Button></Link>}
       >
-        <Track3D runners={runners} focus={focus} label={label} height={screens.md ? 'clamp(400px, 58vh, 640px)' : '280px'} frameClassName="rounded-none" hint={false}>
+        <Track3D runners={runners} focus={focus} label={label} height={screens.md ? '100%' : '280px'} className="flex-1 flex flex-col min-h-[420px]" frameClassName="rounded-none flex-1" hint={false}>
           {screens.md && <div className="pointer-events-none absolute bottom-3 left-3 right-11 flex flex-col gap-2">{instruments}</div>}
         </Track3D>
         {!screens.md && <div className="flex flex-col gap-2 bg-[#0F1211] p-3">{instruments}</div>}

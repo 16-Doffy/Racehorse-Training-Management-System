@@ -169,7 +169,7 @@ export default function TodayBoard({ horses = [], sessions = [], compact = false
   allRows.sort((a, b) => Number(b.needs) - Number(a.needs) || a.first - b.first || a.name.localeCompare(b.name, 'vi'));
   const needCount = allRows.filter((r) => r.needs).length;
   const rows = filter === 'needs' ? allRows.filter((r) => r.needs) : allRows;
-  const [shown, more] = useFirst(rows, compact ? 4 : 8);
+  const [shown, more] = useFirst(rows, compact ? 6 : 8);
   const weekday = WEEK_DAYS.find((w) => w.day === dayjs().day())?.short;
   const filterSwitch = horses.length > 0 && (
     <Segmented
@@ -192,58 +192,84 @@ export default function TodayBoard({ horses = [], sessions = [], compact = false
 
   return (
     <Card
-      className="st-today-board shadow-xs border-[#E5DEC9] rounded-xl overflow-hidden"
-      styles={{ title: { whiteSpace: 'normal' }, header: { height: 'auto', paddingBlock: 10 }, body: { padding: tableView ? 0 : '4px 16px 12px' } }}
+      className="st-today-board shadow-xs border-[#E5DEC9] rounded-xl overflow-hidden h-full flex flex-col"
+      styles={{
+        title: { whiteSpace: 'normal' },
+        header: { height: 'auto', paddingBlock: 10 },
+        body: { padding: tableView ? 0 : '4px 16px 12px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' },
+      }}
       title={
         <div>
-          <span className="font-semibold text-gray-900 text-[15px]">Bảng việc hôm nay</span>
+          <span className="font-bold text-gray-900 text-[15px]">Bảng việc hôm nay</span>
           <p className="m-0 mt-0.5 text-xs font-normal text-gray-600">
             {weekday} {dayjs().format('DD/MM')}: buổi tập, bữa ăn và bước tiếp theo của từng ngựa
           </p>
         </div>
       }
-      extra={!compact && screens.md && filterSwitch}
+      extra={screens.sm && filterSwitch}
     >
-      {/* On a phone the switch goes under the title, which would otherwise be squeezed to a word a line. */}
-      {(compact || !screens.md) && filterSwitch && <div className={`pb-2 pt-3 ${tableView ? "px-4" : ""}`}>{filterSwitch}</div>}
-      {loading ? (
-        <Skeleton active title={false} paragraph={{ rows: 5 }} className="p-4" />
-      ) : !horses.length ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có ngựa nào giao cho bạn." className="!py-6" />
-      ) : !rows.length ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không ngựa nào cần xử lý lúc này." className="!py-6" />
-      ) : tableView ? (
-        <Table
-          rowKey="id"
-          size="small"
-          columns={compact ? [{ key: 'work', title: 'Việc hôm nay', render: (_, r) => (
-            <div className="st-day-card space-y-2">
-              <div className="flex items-center justify-between gap-2"><HorseName row={r} /><MealDots meals={r.meals} /></div>
-              <Sessions list={r.sessions} horseId={r.id} />
-              <HorseNextStep checklist={r.checklist} />
-            </div>
-          ) }] : columns}
-          showHeader={!compact}
-          dataSource={shown}
-          pagination={false}
-          scroll={compact ? undefined : { x: 'max-content' }}
-        />
-      ) : (
-        <ul className={`m-0 list-none p-0 ${compact ? 'st-day-worklist' : 'divide-y divide-gray-100'}`}>
-          {shown.map((r) => (
-            <li key={r.id} className="space-y-1.5 py-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <HorseName row={r} />
-                <MealDots meals={r.meals} />
-              </div>
-              <Sessions list={r.sessions} horseId={r.id} />
-              <HorseNextStep checklist={r.checklist} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <div>
+        {/* On a narrow phone the switch goes under the title so the title is not squeezed. */}
+        {!screens.sm && filterSwitch && <div className={`pb-2 pt-2.5 ${tableView ? 'px-4' : ''}`}>{filterSwitch}</div>}
+        {loading ? (
+          <Skeleton active title={false} paragraph={{ rows: 5 }} className="p-4" />
+        ) : !horses.length ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có ngựa nào giao cho bạn." className="!py-6" />
+        ) : !rows.length ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không ngựa nào cần xử lý lúc này." className="!py-6" />
+        ) : tableView ? (
+          <Table
+            rowKey="id"
+            size="small"
+            columns={
+              compact
+                ? [
+                    {
+                      key: 'work',
+                      title: 'Việc hôm nay',
+                      render: (_, r) => (
+                        <div className="st-day-card grid grid-cols-1 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 py-0.5">
+                          <div className="min-w-0 space-y-1">
+                            <HorseName row={r} />
+                            <Sessions list={r.sessions} horseId={r.id} />
+                          </div>
+                          <div className="flex flex-wrap sm:flex-col items-center sm:items-end justify-between gap-1.5 min-w-0">
+                            <MealDots meals={r.meals} />
+                            <div className="max-w-full truncate">
+                              <HorseNextStep checklist={r.checklist} />
+                            </div>
+                          </div>
+                        </div>
+                      ),
+                    },
+                  ]
+                : columns
+            }
+            showHeader={!compact}
+            dataSource={shown}
+            pagination={false}
+            scroll={compact ? undefined : { x: 'max-content' }}
+          />
+        ) : (
+          <ul className={`m-0 list-none p-0 ${compact ? 'st-day-worklist' : 'divide-y divide-gray-100'}`}>
+            {shown.map((r) => (
+              <li key={r.id} className="space-y-1.5 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <HorseName row={r} />
+                  <MealDots meals={r.meals} />
+                </div>
+                <Sessions list={r.sessions} horseId={r.id} />
+                <HorseNextStep checklist={r.checklist} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       {(more || horses.length > 0) && (
-        <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-gray-500 ${tableView ? 'px-4 py-2' : 'pt-2'}`}>
+        <div
+          className={`mt-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t text-[11px] text-gray-500 ${tableView ? 'px-4 py-2.5' : 'pt-2.5'}`}
+          style={{ borderColor: 'var(--st-border)', background: 'var(--st-sunk)' }}
+        >
           <span>{more}</span>
           <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
             {LEGEND.map((k) => (

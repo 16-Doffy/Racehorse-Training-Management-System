@@ -82,7 +82,7 @@ function MealCell({ meal, isToday }) {
 
       {meal.items?.length > 0 && (
         <Tooltip title={itemsText(meal.items)}>
-          <div className="mt-1 truncate text-[11px] text-gray-600 font-medium bg-[#FAF7F0] px-1.5 py-0.5 rounded border border-[#EFE8DA]">
+          <div className="mt-1 truncate text-[11px] text-gray-600 font-medium bg-[var(--st-sunk,#F1F5F9)] px-1.5 py-0.5 rounded border border-[var(--st-border,#CBD5E1)]">
             {itemsText(meal.items)}
           </div>
         </Tooltip>
@@ -114,17 +114,17 @@ export default function FeedingTimetable({ horseId }) {
     timetable?.days?.find((d) => d.date === date.format('YYYY-MM-DD'))?.meals.find((m) => m.slot === slot);
 
   return (
-    <section aria-label="Thời khóa biểu cho ăn" className="space-y-2.5">
+    <section aria-label="Thời khóa biểu cho ăn" className="st-workbench-frame">
       <div className="st-toolbar justify-between">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-gray-900 text-sm">Thời khóa biểu cho ăn</span>
+          <span className="font-bold text-gray-900 text-sm">Thời khóa biểu cho ăn</span>
           {timetable?.caretaker ? (
-            <span title="Nhân viên chăm sóc" className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-900 border border-emerald-200">
+            <span title="Nhân viên chăm sóc" className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-900 border border-emerald-200">
               <UserOutlined className="text-[10px] text-emerald-700" />
               {timetable.caretaker.name}
             </span>
           ) : (
-            <span className="text-xs text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+            <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
               Chưa phân công người chăm sóc
             </span>
           )}
@@ -143,14 +143,15 @@ export default function FeedingTimetable({ horseId }) {
             aria-label="Tuần sau"
             onClick={() => setWeekStart(weekStart.add(7, 'day'))}
           />
-          <span className="px-2 text-xs font-semibold tabular-nums text-gray-800">
+          <span className="px-2 text-xs font-bold tabular-nums text-gray-800">
             {weekStart.format('DD/MM')} – {weekStart.add(6, 'day').format('DD/MM/YYYY')}
           </span>
           {!isThisWeek && (
             <Button
               size="small"
               type="link"
-              className="!px-1.5 !text-xs !text-[#0F5A43] font-semibold"
+              className="!px-1.5 !text-xs font-bold"
+              style={{ color: 'var(--st-primary)' }}
               onClick={() => setWeekStart(mondayOf(dayjs()))}
             >
               Về tuần này
@@ -160,22 +161,22 @@ export default function FeedingTimetable({ horseId }) {
       </div>
 
       {isLoading ? (
-        <div className="py-8 text-center bg-white rounded-xl border border-gray-200/80">
+        <div className="py-8 text-center bg-white">
           <Spin />
         </div>
       ) : !timetable ? (
-        <div className="light-surface-box flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">
+        <div className="light-surface-box flex flex-wrap items-center justify-between gap-2 bg-white px-3.5 py-2.5 text-sm text-gray-600">
           Chưa tải được thời khóa biểu.
           <Button size="small" onClick={() => refetch()}>
             Thử lại
           </Button>
         </div>
       ) : (
-        <div className="light-surface-box overflow-x-auto rounded-xl border border-[#E5DEC9] bg-white shadow-xs">
+        <div className="light-surface-box overflow-x-auto bg-white">
           <table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
             <thead>
-              <tr className="border-b border-[#E5DEC9] bg-[#FAF7F0]">
-                <th className="w-[72px] px-3 py-2.5 text-left text-xs font-semibold text-gray-700">
+              <tr className="border-b border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)]">
+                <th className="w-[72px] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-gray-700">
                   Bữa
                 </th>
                 {days.map((d) => {
@@ -183,12 +184,12 @@ export default function FeedingTimetable({ horseId }) {
                   return (
                     <th
                       key={d.day}
-                      className={`border-b px-2 py-2 text-left text-xs font-semibold ${today ? 'border-[#0F5A43] bg-[#DCEFE3] font-bold text-[#0F5A43]' : 'border-transparent text-gray-600'}`}
+                      className={`border-b px-2 py-2.5 text-left text-xs font-bold ${today ? 'border-[var(--st-action,#EAB308)] bg-[var(--st-primary-soft,#FEF3C7)] text-[var(--st-ink,#0F172A)]' : 'border-transparent text-gray-600'}`}
                     >
                       <div className="flex flex-wrap items-center gap-1">
                         <span>{d.short}</span>
                         <span className={`tabular-nums ${today ? '' : 'font-normal text-gray-500'}`}>{d.date.format('DD/MM')}</span>
-                        {today && <span className="whitespace-nowrap rounded bg-[#0F5A43] px-1 py-px text-[10px] font-semibold text-white">Hôm nay</span>}
+                        {today && <span className="whitespace-nowrap rounded bg-[var(--st-action,#EAB308)] px-1.5 py-px text-[10px] font-bold text-[var(--st-action-ink,#0F172A)]">Hôm nay</span>}
                       </div>
                     </th>
                   );
@@ -198,13 +199,13 @@ export default function FeedingTimetable({ horseId }) {
             <tbody className="divide-y divide-gray-100">
               {Object.entries(SLOT_LABELS).map(([slot, label]) => (
                 <tr key={slot} className="align-top hover:bg-gray-50/30 transition-colors">
-                  <td className="px-3 py-2 text-xs font-semibold text-gray-800">
+                  <td className="px-3 py-2 text-xs font-bold text-gray-800">
                     {label}
                   </td>
                   {days.map((d) => {
                     const today = d.date.isSame(dayjs(), 'day');
                     return (
-                      <td key={d.day} className={`px-1.5 py-2 ${today ? 'bg-emerald-50/70' : ''}`}>
+                      <td key={d.day} className={`px-1.5 py-2 ${today ? 'bg-[var(--st-primary-soft,#FEF3C7)]/40' : ''}`}>
                         <MealCell meal={mealOf(d.date, slot)} isToday={today} />
                       </td>
                     );
@@ -216,7 +217,7 @@ export default function FeedingTimetable({ horseId }) {
         </div>
       )}
 
-      <p className="text-[11px] text-gray-500 m-0 px-1 leading-relaxed">
+      <p className="text-[11px] font-medium text-gray-500 m-0 border-t border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] px-3.5 py-2 leading-relaxed">
         Đến hôm nay: kết quả thực tế của nhân viên. Ngày tới (viền nét đứt): bữa dự kiến theo lịch ăn đã xác nhận hoặc khẩu phần mẫu. Rê chuột vào món để xem đủ.
       </p>
     </section>

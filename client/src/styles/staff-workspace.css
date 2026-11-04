@@ -1,554 +1,1164 @@
-/* Scoped to the two staff workspaces; no global reset or prototype dependencies. */
-.forest-layout.staff-workspace.is-canvas {
-  --st-bg-page: #F8FAFC;
-  --st-card: #FFFFFF;
-  --st-card-elevated: #FFFFFF;
-  --st-card-header: #F8FAFC;
+/* ==========================================================================
+   Staff Workspace (Club Manager & Head Trainer)
+   Design language: Login-inspired Obsidian & Championship Gold (#EAB308)
+   Surfaces: Crisp cool-slate & pure white (#F8FAFC / #FFFFFF) — ZERO beige
+   Typography: High-contrast slate ink (#0F172A / #334155 / #475569, >= 7:1)
+   ========================================================================== */
+
+.forest-layout.staff-workspace.is-canvas,
+body.wdp-staff-workspace {
+  --st-bg: #F8FAFC;
+  --st-surface: #FFFFFF;
+  --st-surface-raised: #FFFFFF;
   --st-sunk: #F1F5F9;
-  --st-border: #E2E8F0;
-  --st-border-strong: #CBD5E1;
-  --st-border-subtle: #E2E8F0;
+  --st-hover: #F1F5F9;
+  --st-border: #CBD5E1;
+  --st-border-strong: #94A3B8;
   --st-ink: #0F172A;
-  --st-ink-secondary: #475569;
-  --st-ink-muted: #64748B;
-  --st-primary: #047857;
-  --st-primary-hover: #065F46;
-  --st-primary-soft: #ECFDF5;
-  --st-shadow-card: 0 1px 3px rgb(15 23 42 / 4%);
-  --st-shadow-hover: 0 3px 10px rgb(15 23 42 / 7%);
-  background: var(--st-bg-page) !important;
-  color: var(--st-ink);
-  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --st-ink-secondary: #334155;
+  --st-ink-muted: #475569;
+  --st-primary: #B45309;
+  --st-primary-hover: #92400E;
+  --st-primary-ink: #FFFFFF;
+  --st-primary-soft: #FEF3C7;
+  --st-action: #EAB308;
+  --st-action-hover: #CA8A04;
+  --st-action-ink: #0F172A;
+  --st-accent: #B45309;
+  --st-accent-soft: #FEF3C7;
+  --st-good: #15803D;
+  --st-good-bg: #DCFCE7;
+  --st-good-ink: #14532D;
+  --st-warn: #B45309;
+  --st-warn-bg: #FEF3C7;
+  --st-warn-ink: #78350F;
+  --st-danger: #B91C1C;
+  --st-danger-bg: #FEE2E2;
+  --st-danger-ink: #7F1D1D;
+  --st-info: #1D4ED8;
+  --st-info-bg: #DBEAFE;
+  --st-info-ink: #1E3A8A;
+  --st-sider-bg: #111827;
+  --st-sider-surface: #1E293B;
+  --st-sider-border: #1F2937;
+  --st-sider-ink: #F8FAFC;
+  --st-sider-muted: #CBD5E1;
+  --st-sider-active: #EAB308;
+  --st-sider-active-ink: #0F172A;
+  --st-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --st-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
 }
 
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas,
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark,
 body.wdp-staff-workspace.wdp-dark-portals {
-  --st-bg-page: #0B0F19;
-  --st-card: #0F172A;
-  --st-card-elevated: #0F172A;
-  --st-card-header: #162033;
-  --st-sunk: #162033;
+  --st-bg: #0B0F17;
+  --st-surface: #111827;
+  --st-surface-raised: #1E293B;
+  --st-sunk: #1E293B;
+  --st-hover: #263349;
   --st-border: #334155;
   --st-border-strong: #475569;
-  --st-border-subtle: #334155;
-  --st-ink: #F1F5F9;
-  --st-ink-secondary: #CBD5E1;
+  --st-ink: #F8FAFC;
+  --st-ink-secondary: #E2E8F0;
   --st-ink-muted: #94A3B8;
-  --st-primary: #6EE7B7;
-  --st-primary-hover: #A7F3D0;
-  --st-primary-soft: #113B32;
-  --st-shadow-card: 0 1px 3px rgb(0 0 0 / 12%);
+  --st-primary: #F59E0B;
+  --st-primary-hover: #FBBF24;
+  --st-primary-ink: #0F172A;
+  --st-primary-soft: rgba(245, 158, 11, 0.16);
+  --st-action: #EAB308;
+  --st-action-hover: #FACC15;
+  --st-action-ink: #0F172A;
+  --st-accent: #F59E0B;
+  --st-accent-soft: rgba(245, 158, 11, 0.16);
+  --st-good: #34D399;
+  --st-good-bg: rgba(16, 185, 129, 0.18);
+  --st-good-ink: #A7F3D0;
+  --st-warn: #FBBF24;
+  --st-warn-bg: rgba(245, 158, 11, 0.18);
+  --st-warn-ink: #FDE68A;
+  --st-danger: #F87171;
+  --st-danger-bg: rgba(239, 68, 68, 0.18);
+  --st-danger-ink: #FECACA;
+  --st-info: #60A5FA;
+  --st-info-bg: rgba(59, 130, 246, 0.18);
+  --st-info-ink: #BFDBFE;
+  --st-sider-bg: #090D14;
+  --st-sider-surface: #111827;
+  --st-sider-border: #1E293B;
+  --st-sider-ink: #F8FAFC;
+  --st-sider-muted: #CBD5E1;
+  --st-sider-active: #EAB308;
+  --st-sider-active-ink: #0F172A;
+  --st-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  --st-shadow-md: 0 8px 20px rgba(0, 0, 0, 0.45);
 }
 
+/* Base Workspace Canvas */
+.forest-layout.staff-workspace.is-canvas,
 .forest-layout.staff-workspace.is-canvas > .ant-layout {
-  background: var(--st-bg-page) !important;
+  background: var(--st-bg) !important;
+  color: var(--st-ink);
+  font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-.forest-layout.staff-workspace.is-canvas .st-top-bar {
-  background: var(--st-card) !important;
-  border-color: var(--st-border);
-  backdrop-filter: none;
+/* Sidebar — Obsidian Charcoal & Championship Gold (Login Page Aesthetic) */
+.forest-layout.staff-workspace .custom-sider.canvas-sider {
+  background: var(--st-sider-bg) !important;
+  border-right: 1px solid var(--st-sider-border) !important;
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.18);
 }
 
-.forest-layout.staff-workspace.is-canvas .st-hero-banner {
-  background: var(--st-card);
+.forest-layout.staff-workspace .st-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: rgba(234, 179, 8, 0.14);
+  border: 1px solid rgba(234, 179, 8, 0.45);
+  color: #EAB308;
+}
+
+.forest-layout.staff-workspace .st-brand-name {
+  color: var(--st-sider-ink);
+  font-family: 'Be Vietnam Pro', 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.forest-layout.staff-workspace .st-brand-role {
+  color: #EAB308;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+
+.forest-layout.staff-workspace .custom-sidebar-menu.is-canvas-menu .ant-menu-item {
+  height: 40px !important;
+  line-height: 40px !important;
+  border-radius: 8px !important;
+  margin: 3px 0 !important;
+  padding-inline: 12px !important;
+  color: var(--st-sider-muted) !important;
+  border: 1px solid transparent !important;
+  font-weight: 500 !important;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.forest-layout.staff-workspace .custom-sidebar-menu.is-canvas-menu .ant-menu-item .anticon {
+  color: var(--st-sider-muted) !important;
+  font-size: 15px !important;
+}
+
+.forest-layout.staff-workspace .custom-sidebar-menu.is-canvas-menu .ant-menu-item:hover {
+  background: var(--st-sider-surface) !important;
+  color: var(--st-sider-ink) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.forest-layout.staff-workspace .custom-sidebar-menu.is-canvas-menu .ant-menu-item:hover .anticon {
+  color: #FDE047 !important;
+}
+
+.forest-layout.staff-workspace .custom-sidebar-menu.is-canvas-menu .ant-menu-item-selected {
+  background: var(--st-sider-active) !important;
+  color: var(--st-sider-active-ink) !important;
+  border-color: var(--st-sider-active) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 8px rgba(234, 179, 8, 0.28) !important;
+}
+
+.forest-layout.staff-workspace .custom-sidebar-menu.is-canvas-menu .ant-menu-item-selected .anticon,
+.forest-layout.staff-workspace .custom-sidebar-menu.is-canvas-menu .ant-menu-item-selected span {
+  color: var(--st-sider-active-ink) !important;
+}
+
+.forest-layout.staff-workspace .custom-sidebar-menu.is-canvas-menu.ant-menu-inline-collapsed .ant-menu-item {
+  width: 44px !important;
+  height: 40px !important;
+  margin: 4px auto !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.forest-layout.staff-workspace .custom-sidebar-menu.is-canvas-menu.ant-menu-inline-collapsed .ant-menu-title-content {
+  display: none !important;
+}
+
+/* Step 1-5 pill inside Sidebar Menu */
+.forest-layout.staff-workspace .st-sider-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background: rgba(255, 255, 255, 0.14);
+  color: #F8FAFC;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* On the gold pill the number stays the pill's dark ink, on a faint dark square (dark on dark could not be read). */
+.forest-layout.staff-workspace .ant-menu-item-selected .st-sider-step {
+  background: rgba(15, 23, 42, 0.14) !important;
+  color: #0F172A !important;
+  border-color: rgba(15, 23, 42, 0.35) !important;
+}
+/* The menu sits on the sidebar itself: no panel of the base theme's forest green behind it. */
+.forest-layout.staff-workspace .custom-sidebar-menu.is-staff-menu .ant-menu,
+.forest-layout.staff-workspace .custom-sidebar-menu.is-staff-menu .ant-menu-sub { background: transparent !important; }
+
+/* Executive Top Command Bar & Trainer 1->5 Flow Pipeline */
+.forest-layout.staff-workspace .st-top-bar {
+  background: var(--st-surface);
+  border-bottom: 1px solid var(--st-border);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  z-index: 10;
+}
+
+.forest-layout.staff-workspace .st-flow-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 10px;
+  background: var(--st-sunk);
+  border: 1px solid var(--st-border);
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.forest-layout.staff-workspace .st-flow-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--st-ink-secondary);
+  border-right: 1px solid var(--st-border);
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.forest-layout.staff-workspace .st-flow-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--st-ink) !important;
+  background: var(--st-surface);
+  border: 1px solid var(--st-border);
+  transition: all 140ms ease;
+  text-decoration: none !important;
+}
+
+.forest-layout.staff-workspace .st-flow-step:hover {
+  border-color: var(--st-primary);
+  background: var(--st-primary-soft);
+}
+
+.forest-layout.staff-workspace .st-flow-step.is-active {
+  background: var(--st-action) !important;
+  color: var(--st-action-ink) !important;
+  border-color: var(--st-action-hover) !important;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(234, 179, 8, 0.35);
+}
+
+.forest-layout.staff-workspace .st-flow-step.is-active span {
+  color: var(--st-action-ink) !important;
+}
+
+.forest-layout.staff-workspace .st-flow-step__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background: var(--st-sunk);
+  color: var(--st-ink);
+  border: 1px solid var(--st-border);
+}
+
+.forest-layout.staff-workspace .st-flow-step.is-active .st-flow-step__num {
+  background: #0F172A;
+  color: #EAB308 !important;
+  border-color: #0F172A;
+}
+
+.forest-layout.staff-workspace .st-flow-step__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background: var(--st-warn-bg);
+  color: var(--st-warn-ink) !important;
+  border: 1px solid rgba(180, 83, 9, 0.3);
+}
+
+.forest-layout.staff-workspace .st-flow-step__badge.is-optional {
+  background: var(--st-sunk);
+  color: var(--st-ink-secondary) !important;
   border-color: var(--st-border);
-  border-left-color: var(--st-primary);
+}
+
+.forest-layout.staff-workspace .st-flow-step.is-active .st-flow-step__badge {
+  background: #0F172A;
+  color: #FDE047 !important;
+  border-color: #0F172A;
+}
+
+/* Page Container & Split Command Header Card (PageHeroBanner) */
+.forest-layout.staff-workspace .st-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.forest-layout.staff-workspace .st-hero-banner {
+  position: relative;
+  background: var(--st-surface);
+  border: 1px solid var(--st-border);
+  border-left: 4px solid var(--st-action);
   border-radius: 12px;
+  padding: 16px 20px !important;
+  margin-bottom: 16px;
+  box-shadow: var(--st-shadow);
+}
+
+.forest-layout.staff-workspace .st-page > .st-hero-banner {
   margin-bottom: 0;
 }
 
-/* The legacy canvas rules are embedded after the stylesheets and use !important.
-   Add the role scope and canvas state so the new surfaces win only in this workspace. */
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) :is(.ant-card, .ant-card-body, .ant-table) {
-  background-color: var(--st-card) !important;
-  border-color: var(--st-border) !important;
-  box-shadow: none !important;
+.forest-layout.staff-workspace .st-hero-banner__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--st-primary);
+  margin-bottom: 4px;
 }
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) :is(.ant-card-head, .ant-table-thead > tr > th) {
-  background-color: var(--st-card-header) !important;
-  border-color: var(--st-border) !important;
+
+.forest-layout.staff-workspace .st-hero-banner__step-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--st-action);
+  color: var(--st-action-ink);
+  font-size: 10.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.forest-layout.staff-workspace .st-hero-banner h1 {
+  font-family: 'Be Vietnam Pro', 'Inter', sans-serif !important;
+  font-size: clamp(19px, 1.5vw, 23px) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.02em;
   color: var(--st-ink) !important;
-}
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table-container {
-  border-color: var(--st-border) !important;
-}
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table-tbody > tr:hover > td {
-  background-color: var(--st-sunk) !important;
-}
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .st-kpi-grid { background: transparent !important; }
-
-/* Important Tailwind button utilities live in a layer; keep these in that same layer
-   so staff theme colors also override older !bg-gold utilities on individual pages. */
-@layer utilities {
-  .forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous) {
-    background-color: var(--st-primary) !important;
-    border-color: var(--st-primary) !important;
-    color: #FFFFFF !important;
-  }
-  .forest-layout.staff-workspace.is-canvas.is-dark-canvas .ant-btn-primary:not(.ant-btn-dangerous) {
-    color: var(--st-action-ink) !important;
-  }
-  .forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous):hover {
-    background-color: var(--st-primary-hover) !important;
-    border-color: var(--st-primary-hover) !important;
-  }
-  .forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous) > span {
-    color: inherit !important;
-    background-color: transparent !important;
-  }
+  line-height: 1.25 !important;
 }
 
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box [class~="bg-[#EAE3D5]"] {
-  background-color: var(--st-sunk) !important;
+.forest-layout.staff-workspace .st-hero-banner__subtitle {
+  color: var(--st-ink-secondary) !important;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.forest-layout.staff-workspace .st-hero-banner__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, auto));
+  gap: 8px;
+  margin: 12px 0 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--st-border);
+}
+
+.forest-layout.staff-workspace .st-hero-stat-cell {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--st-sunk);
+  border: 1px solid var(--st-border);
+}
+
+.forest-layout.staff-workspace .st-hero-stat-cell dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--st-ink-secondary);
+}
+
+.forest-layout.staff-workspace .st-hero-stat-cell dd {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--st-ink);
+}
+
+/* Executive KPI Telemetry Ribbon */
+.forest-layout.staff-workspace .st-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (min-width: 992px) {
+  .forest-layout.staff-workspace .st-kpi-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.forest-layout.staff-workspace .st-kpi-tile {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--st-surface) !important;
+  border: 1px solid var(--st-border) !important;
+  border-radius: 12px;
+  padding: 12px 16px;
+  min-height: 76px;
+  box-shadow: var(--st-shadow);
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.forest-layout.staff-workspace .st-kpi-tile::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--kpi-accent, var(--st-action));
+}
+
+.forest-layout.staff-workspace .st-kpi-tile[data-tone="good"] { --kpi-accent: var(--st-good); }
+.forest-layout.staff-workspace .st-kpi-tile[data-tone="warn"] { --kpi-accent: var(--st-warn); }
+.forest-layout.staff-workspace .st-kpi-tile[data-tone="danger"] { --kpi-accent: var(--st-danger); }
+
+.forest-layout.staff-workspace .st-kpi-tile:hover {
+  border-color: var(--st-primary) !important;
+  box-shadow: var(--st-shadow-md);
+  transform: translateY(-1px);
+}
+
+.forest-layout.staff-workspace .st-kpi-tile__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.forest-layout.staff-workspace .st-kpi-tile__label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--st-ink-secondary) !important;
 }
 
-.forest-layout.staff-workspace.is-canvas :is(h1, h2.ant-typography, h3.ant-typography) {
-  font-family: inherit;
+.forest-layout.staff-workspace .st-kpi-tile .text-2xl,
+.forest-layout.staff-workspace .st-kpi-tile__value {
+  font-size: 28px !important;
+  line-height: 1 !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--st-sunk);
+  border: 1px solid var(--st-border);
 }
 
-.forest-layout.staff-workspace.is-canvas .st-section-header__title {
-  text-transform: none;
-  letter-spacing: normal;
+.forest-layout.staff-workspace .st-kpi-tile__hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--st-ink-muted) !important;
+  line-height: 1.3;
 }
 
+/* Dashboard Equal-Height Command Grids */
+.forest-layout.staff-workspace .st-manager-overview,
+.forest-layout.staff-workspace .st-trainer-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.forest-layout.staff-workspace .st-manager-overview > .ant-card,
+.forest-layout.staff-workspace .st-trainer-overview > .ant-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.forest-layout.staff-workspace .st-manager-overview > .ant-card > .ant-card-body,
+.forest-layout.staff-workspace .st-trainer-overview > .ant-card > .ant-card-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1280px) {
+  .forest-layout.staff-workspace .st-manager-overview {
+    grid-template-columns: minmax(0, 1.32fr) minmax(380px, 0.98fr);
+  }
+  .forest-layout.staff-workspace .st-trainer-overview {
+    grid-template-columns: minmax(0, 1.15fr) minmax(440px, 1fr);
+  }
+}
+
+.forest-layout.staff-workspace .st-bento-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.forest-layout.staff-workspace .st-bento-grid.st-safety-grid {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.forest-layout.staff-workspace .st-bento-grid > .ant-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.forest-layout.staff-workspace .st-bento-grid > .ant-card > .ant-card-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Section Headers */
+.forest-layout.staff-workspace .st-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--st-surface);
+  border: 1px solid var(--st-border);
+  border-radius: 10px;
+  box-shadow: var(--st-shadow);
+}
+
+.forest-layout.staff-workspace .st-section-header__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--st-ink);
+  letter-spacing: -0.01em;
+}
+
+.forest-layout.staff-workspace .st-section-header__bar {
+  width: 4px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--st-action);
+}
+
+/* Cards, Toolbars & Workbench Layout */
 .forest-layout.staff-workspace.is-canvas .ant-card {
-  background: var(--st-card);
-  border-color: var(--st-border) !important;
-  box-shadow: var(--st-shadow-card);
+  background: var(--st-surface) !important;
+  border: 1px solid var(--st-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--st-shadow) !important;
+  color: var(--st-ink) !important;
 }
 
-.forest-layout.staff-workspace.is-canvas .ant-card-head {
-  background: var(--st-card-header);
+.forest-layout.staff-workspace.is-canvas .ant-card .ant-card-body {
+  background: var(--st-surface) !important;
+  color: var(--st-ink) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas .ant-card .ant-card-head {
+  background: var(--st-sunk) !important;
+  border-bottom: 1px solid var(--st-border) !important;
+  padding: 10px 16px !important;
+  min-height: 46px;
+  color: var(--st-ink) !important;
+  font-weight: 700;
+}
+
+.forest-layout.staff-workspace.is-canvas .ant-card .ant-card-head-title {
+  color: var(--st-ink) !important;
+  font-weight: 700;
+}
+
+.forest-layout.staff-workspace .st-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--st-surface) !important;
+  border: 1px solid var(--st-border) !important;
+  box-shadow: var(--st-shadow);
+}
+
+.forest-layout.staff-workspace .st-workbench-frame {
+  background: var(--st-surface);
+  border: 1px solid var(--st-border);
+  border-radius: 12px;
+  box-shadow: var(--st-shadow);
+  overflow: hidden;
+}
+
+.forest-layout.staff-workspace .st-workbench-frame > .st-toolbar {
+  border: 0 !important;
+  border-bottom: 1px solid var(--st-border) !important;
+  border-radius: 0 !important;
+  background: var(--st-sunk) !important;
+  box-shadow: none !important;
+  margin-bottom: 0 !important;
+}
+
+/* Primary Action Buttons — Login Page Gold (#EAB308) with Dark Ink (#0F172A) */
+.forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous),
+body.wdp-staff-workspace .ant-modal .ant-btn-primary:not(.ant-btn-dangerous),
+body.wdp-staff-workspace .ant-drawer .ant-btn-primary:not(.ant-btn-dangerous),
+body.wdp-staff-workspace .ant-popover .ant-btn-primary:not(.ant-btn-dangerous) {
+  background: var(--st-action) !important;
+  border-color: var(--st-action) !important;
+  color: var(--st-action-ink) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous) *,
+body.wdp-staff-workspace .ant-modal .ant-btn-primary:not(.ant-btn-dangerous) * {
+  color: var(--st-action-ink) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous):hover:not(:disabled),
+body.wdp-staff-workspace .ant-modal .ant-btn-primary:not(.ant-btn-dangerous):hover:not(:disabled) {
+  background: var(--st-action-hover) !important;
+  border-color: var(--st-action-hover) !important;
+  color: var(--st-action-ink) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas .ant-btn-default {
+  background: var(--st-surface) !important;
+  border-color: var(--st-border) !important;
+  color: var(--st-ink) !important;
+  font-weight: 600 !important;
+}
+
+.forest-layout.staff-workspace.is-canvas .ant-btn-default:hover:not(:disabled) {
+  border-color: var(--st-primary) !important;
+  color: var(--st-primary) !important;
+  background: var(--st-primary-soft) !important;
+}
+
+/* Tables & Sticky Week Calendar */
+.forest-layout.staff-workspace.is-canvas .ant-table-wrapper .ant-table {
+  background: var(--st-surface) !important;
+  color: var(--st-ink) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas .ant-table-wrapper .ant-table-thead > tr > th {
+  background: var(--st-sunk) !important;
+  color: var(--st-ink-secondary) !important;
+  border-bottom: 1px solid var(--st-border) !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.forest-layout.staff-workspace.is-canvas .ant-table-wrapper .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--st-border) !important;
+  color: var(--st-ink) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas .ant-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: var(--st-hover) !important;
+}
+
+.forest-layout.staff-workspace th.wc-sticky {
+  background: var(--st-sunk) !important;
+  color: var(--st-ink-secondary) !important;
+  border-color: var(--st-border) !important;
+}
+
+.forest-layout.staff-workspace td.wc-sticky {
+  background: var(--st-surface) !important;
+  border-right: 1px solid var(--st-border) !important;
+}
+
+.forest-layout.staff-workspace tr.group:hover td.wc-sticky {
+  background: var(--st-hover) !important;
+}
+
+/* Zone Chips (StableOverviewCard) */
+.forest-layout.staff-workspace .st-zone-chip {
+  background: var(--st-surface);
+  border-color: var(--st-border);
+  color: var(--st-ink);
+  font-weight: 500;
+  transition: all 140ms ease;
+}
+
+.forest-layout.staff-workspace .st-zone-chip:hover {
+  border-color: var(--zone, var(--st-primary));
+  background: var(--st-sunk);
+}
+
+.forest-layout.staff-workspace .st-zone-chip[aria-pressed="true"] {
+  background: var(--st-action);
+  border-color: var(--st-action-hover);
+  color: var(--st-action-ink);
+  font-weight: 700;
+}
+
+/* Stable Care Tabs, Zone Band & Queue List (Responsive Mobile Safe) */
+.forest-layout.staff-workspace .st-care-nav {
+  background: var(--st-surface);
   border-color: var(--st-border);
 }
 
-.forest-layout.staff-workspace.is-canvas:not(.is-dark-canvas) :is([class~="bg-[#FAF7F0]"], [class~="bg-[#FFFDF8]"], [class~="bg-[#F4EFE6]"]) {
-  background-color: var(--st-card) !important;
+.forest-layout.staff-workspace .st-care-tabs .ant-tabs-nav {
+  margin-bottom: 16px !important;
 }
 
-.forest-layout.staff-workspace.is-canvas:not(.is-dark-canvas) :is([class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"], [class~="bg-[#EAE3D5]"]) {
+@media (max-width: 639px) {
+  .forest-layout.staff-workspace .st-care-tabs .ant-tabs-nav-list {
+    width: 100%;
+  }
+
+  .forest-layout.staff-workspace .st-care-tabs .ant-tabs-tab {
+    flex: 1 1 0;
+    justify-content: center;
+    margin: 0 !important;
+    padding: 8px 6px !important;
+    font-size: 12px !important;
+  }
+
+  .forest-layout.staff-workspace .st-care-tabs .ant-tabs-tab-btn {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
+  }
+}
+
+.forest-layout.staff-workspace .st-zone-tab {
+  min-width: 108px;
+  border: 1px solid var(--st-border);
+  border-left: 3px solid var(--zone-accent, var(--st-primary));
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--st-surface);
+  color: var(--st-ink);
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.forest-layout.staff-workspace .st-zone-tab.is-active,
+.forest-layout.staff-workspace .st-zone-tab[aria-pressed="true"] {
+  border-color: var(--zone-accent, var(--st-action));
+  background: var(--st-primary-soft);
+}
+
+.forest-layout.staff-workspace .st-zone-band {
+  border: 1px solid var(--st-border);
+  border-left: 4px solid var(--zone-accent, var(--st-primary));
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--st-sunk);
+}
+
+.forest-layout.staff-workspace .st-queue-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--st-border);
+  border-radius: 10px;
+  background: var(--st-surface);
+  overflow: hidden;
+}
+
+.forest-layout.staff-workspace .st-queue-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--st-border);
+}
+
+.forest-layout.staff-workspace .st-queue-row:last-child {
+  border-bottom: 0;
+}
+
+/* Track3D & Live Telemetry Instruments */
+.forest-layout.staff-workspace .st-live-section,
+.forest-layout.staff-workspace .st-next-up {
+  background: rgba(15, 23, 42, 0.90) !important;
+  border: 1px solid rgba(234, 179, 8, 0.35) !important;
+  border-radius: 10px;
+  padding: 9px 14px;
+  color: #F8FAFC !important;
+  backdrop-filter: blur(8px);
+}
+
+.forest-layout.staff-workspace .st-next-up {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 14px;
+}
+
+.forest-layout.staff-workspace .st-live-section *,
+.forest-layout.staff-workspace .st-next-up * {
+  color: #F8FAFC !important;
+}
+
+.forest-layout.staff-workspace .st-live-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.forest-layout.staff-workspace .st-live-figures > div {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 5px 9px;
+}
+
+.forest-layout.staff-workspace .st-live-figures dt {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #CBD5E1 !important;
+}
+
+.forest-layout.staff-workspace .st-live-figures dd {
+  margin: 1px 0 0 0;
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #FDE047 !important;
+}
+
+.forest-layout.staff-workspace .st-live-figures dd small {
+  font-size: 11px;
+  font-weight: 600;
+  color: #E2E8F0 !important;
+}
+
+.forest-layout.staff-workspace .st-live-warning {
+  border-color: rgba(248, 113, 113, 0.65) !important;
+  background: rgba(185, 28, 28, 0.28) !important;
+}
+
+.forest-layout.staff-workspace .st-live-warning-note {
+  margin: 6px 0 0;
+  color: #FCA5A5 !important;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+/* Training Plan Focus Panel (4 Phases + 7-Day Template) */
+.forest-layout.staff-workspace .st-plan-focus-region {
+  margin-bottom: 16px;
+}
+
+.forest-layout.staff-workspace .st-plan-focus {
+  background: var(--st-surface);
+  border: 1px solid var(--st-border);
+  border-top: 3px solid var(--st-action);
+  border-radius: 12px;
+  padding: 18px 20px;
+  box-shadow: var(--st-shadow);
+}
+
+.forest-layout.staff-workspace .st-plan-focus-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--st-border);
+}
+
+.forest-layout.staff-workspace .st-focus-action {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: var(--st-action);
+  color: var(--st-action-ink) !important;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+}
+
+.forest-layout.staff-workspace .st-focus-action:hover {
+  background: var(--st-action-hover);
+}
+
+.forest-layout.staff-workspace .st-phase-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 0;
+}
+
+@media (min-width: 768px) {
+  .forest-layout.staff-workspace .st-phase-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .forest-layout.staff-workspace .st-phase-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.forest-layout.staff-workspace .st-phase-card {
+  border: 1px solid var(--st-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--st-sunk);
+  color: var(--st-ink);
+}
+
+.forest-layout.staff-workspace .st-phase-card.is-current {
+  border-color: var(--st-action);
+  border-width: 2px;
+  background: var(--st-primary-soft);
+}
+
+.forest-layout.staff-workspace .st-phase-state {
+  display: inline-block;
+  margin-bottom: 4px;
+  color: var(--st-primary);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.forest-layout.staff-workspace .st-week-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.forest-layout.staff-workspace .st-week-template {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(112px, 1fr));
+  gap: 8px;
+  min-width: 784px;
+}
+
+.forest-layout.staff-workspace .st-week-day {
+  border: 1px solid var(--st-border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--st-sunk);
+  color: var(--st-ink);
+}
+
+.forest-layout.staff-workspace .st-week-day-label {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--st-border);
+  color: var(--st-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.forest-layout.staff-workspace .st-sub-panel {
+  border: 1px solid var(--st-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--st-sunk) !important;
+}
+
+/* Eliminate Legacy Beige & Low-Contrast Text Across All Staff Screens (Light & Dark) */
+.forest-layout.staff-workspace.is-canvas :is(
+  [class~="bg-[#FAF7F0]"],
+  [class~="bg-[#FFFDF8]"],
+  [class~="bg-[#F2EDE2]"],
+  [class~="bg-[#F2ECE0]"],
+  [class~="bg-[#EAE1D2]"]
+) {
   background-color: var(--st-sunk) !important;
 }
 
-/* Win over the existing warm-canvas compatibility rules without changing other roles. */
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is(.ant-card, .ant-card-body, .ant-table, .ant-table-tbody > tr > td) {
-  background-color: var(--st-card) !important;
+.forest-layout.staff-workspace.is-canvas .light-surface-box[class~="bg-[#FFFDF8]"],
+.forest-layout.staff-workspace.is-canvas .ant-card[class~="bg-[#FFFDF8]"] {
+  background-color: var(--st-surface) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas :is(
+  [class~="border-[#E5DEC9]"],
+  [class~="border-[#E4DFD3]"],
+  [class~="border-[#EFE8DA]"],
+  [class~="border-[#E2D9C8]"],
+  [class~="divide-[#EFE8DA]"],
+  [class~="divide-[#E4DFD3]"]
+) {
   border-color: var(--st-border) !important;
 }
 
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is(.ant-card-head, .ant-table-thead > tr > th, .wc-sticky.wc-sticky) {
-  background-color: var(--st-card-header) !important;
-  border-color: var(--st-border) !important;
+/* Sharpen muted gray classes so text contrast is always >= 7:1 (never blurry) */
+.forest-layout.staff-workspace.is-canvas :is(
+  [class~="text-gray-400"],
+  [class~="text-gray-500"],
+  [class~="text-slate-400"],
+  [class~="text-slate-500"]
+) {
+  color: var(--st-ink-muted) !important;
 }
 
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box a:not(.ant-btn) {
+.forest-layout.staff-workspace.is-canvas :is(
+  [class~="text-gray-600"],
+  [class~="text-gray-700"],
+  [class~="text-slate-600"],
+  [class~="text-slate-700"]
+) {
+  color: var(--st-ink-secondary) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas :is(
+  [class~="text-gray-800"],
+  [class~="text-gray-900"],
+  [class~="text-slate-800"],
+  [class~="text-slate-900"],
+  [class~="text-emerald-950"]
+) {
+  color: var(--st-ink) !important;
+}
+
+.forest-layout.staff-workspace.is-canvas :is([class~="text-[#0F5A43]"]) {
   color: var(--st-primary) !important;
 }
 
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box .ant-btn:not(.ant-btn-primary):not(.ant-btn-dangerous) {
-  background-color: var(--st-card) !important;
-  color: var(--st-ink) !important;
-  border-color: var(--st-border-strong) !important;
+/* Dark Mode Overrides for Nested Tailwind Boxes & Portals */
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is(
+  [class~="bg-white"],
+  [class~="!bg-white"],
+  [class~="bg-gray-50"],
+  [class~="bg-gray-50/80"],
+  [class~="bg-slate-50"],
+  [class~="bg-slate-50/80"],
+  [class~="bg-gray-100"],
+  [class~="bg-slate-100"]
+),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is(
+  [class~="bg-white"],
+  [class~="!bg-white"],
+  [class~="bg-gray-50"],
+  [class~="bg-gray-100"],
+  [class~="bg-slate-50"],
+  [class~="bg-slate-100"],
+  [class~="bg-[#FFFDF8]"],
+  [class~="bg-[#FAF7F0]"]
+) {
+  background-color: var(--st-sunk) !important;
 }
 
-.st-manager-overview {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 20px;
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box[class~="bg-white"] {
+  background-color: var(--st-surface) !important;
 }
 
-.st-manager-overview > *, .st-stable-overview-body > * { min-width: 0; }
-.st-stable-overview-body { display: grid; gap: 16px; }
-
-.st-trainer-overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
-.st-trainer-overview > * { min-width: 0; }
-.st-day-worklist { display: grid; gap: 10px; }
-.st-day-worklist > li { padding: 12px; border: 1px solid var(--st-border); background: var(--st-sunk); border-radius: 10px; }
-.st-day-worklist a { white-space: normal; }
-
-.st-plan-focus { padding: 20px; margin-bottom: 20px; background: var(--st-card); border: 1px solid var(--st-border); border-radius: 12px; }
-.st-plan-focus-region { scroll-margin-top: 80px; }
-.st-plan-focus-header { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
-.st-focus-action { display: inline-flex; flex-shrink: 0; padding: 8px 12px; border: 1px solid var(--st-border-strong); border-radius: 8px; color: var(--st-primary); font-size: 13px; font-weight: 600; }
-.st-phase-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; list-style: none; margin: 0; padding: 0; }
-.st-phase-card { padding: 14px; border: 1px solid var(--st-border); border-radius: 10px; background: var(--st-sunk); min-width: 0; }
-.st-phase-card.is-current { border-color: var(--st-primary); box-shadow: inset 0 3px var(--st-primary); }
-.st-phase-state { display: block; min-height: 20px; margin-bottom: 8px; font-size: 11px; color: var(--st-ink-secondary); }
-.st-phase-card.is-current .st-phase-state { color: var(--st-primary); font-weight: 600; }
-.st-week-scroll { max-width: 100%; overflow-x: auto; border-radius: 10px; }
-.st-week-template { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); gap: 8px; }
-.st-week-day { padding: 12px; border: 1px solid var(--st-border); border-radius: 8px; background: var(--st-sunk); }
-.st-week-day-label { font-size: 12px; font-weight: 600; color: var(--st-ink-secondary); }
-.st-care-nav { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--st-border); padding-bottom: 12px; }
-.st-care-nav a { padding: 7px 12px; border-radius: 7px; background: var(--st-sunk); color: var(--st-primary); font-size: 13px; font-weight: 600; }
-.st-care-section { scroll-margin-top: 140px; }
-
-.st-live-figures {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: 12px 0 4px;
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is(
+  [class~="border-gray-100"],
+  [class~="border-gray-200"],
+  [class~="border-gray-200/80"],
+  [class~="border-gray-300"],
+  [class~="border-slate-200"],
+  [class~="divide-gray-100"]
+),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is(
+  [class~="border-gray-100"],
+  [class~="border-gray-200"],
+  [class~="border-gray-300"],
+  [class~="border-[#E5DEC9]"],
+  [class~="divide-gray-100"]
+) {
+  border-color: var(--st-border) !important;
 }
 
-.st-live-figures > div { min-width: 0; }
-.st-live-figures dt { color: var(--st-ink-secondary); font-size: 11px; }
-.st-live-figures dd {
-  margin: 2px 0 0;
-  color: var(--st-ink);
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.3;
-  font-variant-numeric: tabular-nums;
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-green-50"], [class~="bg-emerald-50"], [class~="bg-emerald-50/70"], [class~="bg-emerald-100"], [class~="bg-[#DCEFE3]"]) {
+  background-color: var(--st-good-bg) !important;
 }
-.st-live-figures small { display: block; font-size: 11px; font-weight: 400; color: var(--st-ink-secondary); }
-.st-live-figures .st-live-warning dd { color: var(--st-bad-ink); }
-.st-live-warning-note { color: var(--st-bad-ink); font-size: 12px; font-weight: 600; margin: 6px 0 0; }
-
-@media (min-width: 1280px) {
-  .st-manager-overview { grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); }
-  .st-trainer-overview { grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr); }
-  .st-phase-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-amber-50"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/90"], [class~="bg-orange-50"]) {
+  background-color: var(--st-warn-bg) !important;
 }
-
-@media (min-width: 1600px) {
-  .st-manager-overview .st-stable-overview-body { grid-template-columns: minmax(0, 1.5fr) minmax(200px, 1fr); }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-red-50"], [class~="bg-rose-50"], [class~="bg-rose-50/50"], [class~="bg-pink-50"]) {
+  background-color: var(--st-danger-bg) !important;
 }
-
-@media (max-width: 639px) {
-  .staff-workspace .st-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .staff-workspace .st-kpi-tile { padding: 12px; }
-  .staff-workspace .st-kpi-tile > div:first-child > span:last-child { display: none; }
-  /* Keep the narrow 3D preview visible; full instructions remain in Cách điều khiển. */
-  .staff-workspace .st-stable-overview-body button.absolute.left-3 { display: none; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-blue-50"], [class~="bg-cyan-50"]) {
+  background-color: var(--st-info-bg) !important;
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .staff-workspace :is(.animate-pulse, .st-kpi-tile, .st-live-figures) { animation: none; transition: none; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-emerald-900"], [class~="text-green-700"]) {
+  color: var(--st-good-ink) !important;
 }
-@media (max-width: 639px) {
-  .staff-workspace .st-care-tabs > .ant-tabs-nav .ant-tabs-nav-list { width: 100%; }
-  .staff-workspace .st-care-tabs > .ant-tabs-nav .ant-tabs-tab {
-    flex: 1;
-    margin: 0;
-    padding: 12px 8px;
-    justify-content: center;
-  }
-  .staff-workspace .st-care-tabs > .ant-tabs-nav .ant-tabs-tab-btn {
-    white-space: normal;
-    text-align: center;
-    max-width: 104px;
-    line-height: 1.5;
-  }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"], [class~="text-orange-700"], [class~="text-orange-800"]) {
+  color: var(--st-warn-ink) !important;
 }
-
-/* The workspaces' design system: blue, white and black. Light: a white sheet in a cool frame beside a black sidebar.
-   Dark: a monitoring screen, cards on a near-black navy. One accent, blue: actions, the page you are on, what is selected. */
-.forest-layout.staff-workspace.is-canvas {
-  --st-bg-page: #F4F6FA;
-  --st-card: #FFFFFF;
-  --st-card-elevated: #FFFFFF;
-  --st-card-header: #FFFFFF;
-  --st-sunk: #EEF2F8;
-  --st-border: #E2E7F0;
-  --st-border-strong: #C8D1DF;
-  --st-border-subtle: #EDF1F7;
-  --st-ink: #0B1220;
-  --st-ink-secondary: #475467;
-  --st-ink-muted: #5F6B7E;
-  --st-primary: #2563EB;
-  --st-primary-hover: #1D4ED8;
-  --st-primary-soft: #EAF1FF;
-  --st-good-ink: #0B6349; --st-good-bg: #DCF5E8;
-  --st-watch-ink: #92400E; --st-watch-bg: #FFF6DF;
-  --st-bad-ink: #A31F24; --st-bad-bg: #FFEDEA;
-  --st-info-ink: #1D4ED8; --st-info-bg: #EAF1FF;
-  --st-action: #2563EB;
-  --st-action-ink: #FFFFFF;
-  --st-action-hover: #1D4ED8;
-  --st-sider: #0B1220;
-  --st-sider-ink: #F3F6FB;
-  --st-sider-muted: #9AA6BA;
-  --st-sider-hover: #18223A;
-  --st-sider-active: #2563EB;
-  --st-figure: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
-  background: var(--st-bg-page) !important;
-  color: var(--st-ink);
-  font-family: 'IBM Plex Sans', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 14px;
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-red-600"], [class~="text-red-700"], [class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-pink-700"]) {
+  color: var(--st-danger-ink) !important;
 }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas,
-body.wdp-staff-workspace.wdp-dark-portals {
-  --st-bg-page: #0A0F1A;
-  --st-card: #0F1626;
-  --st-card-elevated: #0F1626;
-  --st-card-header: #0F1626;
-  --st-sunk: #162033;
-  --st-border: #1F2A3D;
-  --st-border-strong: #2E3B52;
-  --st-border-subtle: #172234;
-  --st-ink: #F3F6FB;
-  --st-ink-secondary: #A9B4C6;
-  --st-ink-muted: #8E9AAE;
-  --st-primary: #60A5FA;
-  --st-primary-hover: #93C5FD;
-  --st-primary-soft: #12223F;
-  --st-good-ink: #5FC39C; --st-good-bg: #172820;
-  --st-watch-ink: #D9A441; --st-watch-bg: #2A2416;
-  --st-bad-ink: #EF6A80; --st-bad-bg: #2C1A20;
-  --st-info-ink: #7FB0E6; --st-info-bg: #172230;
-  --st-action: #2563EB;
-  --st-action-ink: #FFFFFF;
-  --st-action-hover: #3B82F6;
-  --st-sider: #05080F;
-  --st-sider-ink: #F3F6FB;
-  --st-sider-muted: #8E9AAE;
-  --st-sider-hover: #131C2E;
-  --st-sider-active: #2563EB;
-}
-.forest-layout.staff-workspace.is-canvas .tabular-nums { font-variant-numeric: tabular-nums; }
-.st-figure { font-family: var(--st-figure); font-variant-numeric: tabular-nums; }
-
-/* The frame: a black sidebar, the page you are on a blue block in it; the top bar on the page's ground, the work on
-   its own white sheet in the light look. */
-.forest-layout.staff-workspace.is-canvas .canvas-sider { background: var(--st-sider) !important; border-right: 0 !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas .canvas-sider { border-right: 1px solid var(--st-border) !important; }
-.forest-layout.staff-workspace.is-canvas .canvas-sider :is(.border-t, .border-b) { border-color: transparent !important; }
-.forest-layout.staff-workspace.is-canvas .canvas-sider .ant-layout-sider-children { background: var(--st-sider); }
-.st-brand-name { color: var(--st-sider-ink); font-size: 15px; font-weight: 600; line-height: 1.2; }
-.st-brand-role { color: var(--st-sider-muted); font-size: 12px; margin-top: 2px; }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu > div:first-child { color: var(--st-sider-muted) !important; font-size: 12px; }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item {
-  height: 38px !important; line-height: 38px !important; margin-block: 2px !important; border-radius: 8px !important;
-  background: transparent !important; border: 0 !important; box-shadow: none !important;
-  color: var(--st-sider-muted) !important;
-}
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item :is(.anticon, span) { color: inherit !important; }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item:hover:not(.ant-menu-item-selected) { background: var(--st-sider-hover) !important; color: var(--st-sider-ink) !important; }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected { background: var(--st-sider-active) !important; border: 0 !important; color: #FFFFFF !important; }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected .font-medium { font-weight: 600; }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu.is-canvas-menu.is-staff-menu .ant-menu-item-selected .anticon { color: #FFFFFF !important; }
-.forest-layout.staff-workspace.is-canvas .custom-sidebar-menu [aria-label^="Bước"] { background: transparent !important; border: 0 !important; color: inherit !important; width: auto; }
-.forest-layout.staff-workspace.is-canvas .canvas-sider .st-sider-user-name { color: var(--st-sider-ink) !important; }
-.forest-layout.staff-workspace.is-canvas .canvas-sider .st-sider-user-role { color: var(--st-sider-muted) !important; }
-.forest-layout.staff-workspace.is-canvas .st-top-bar { background: var(--st-bg-page) !important; border: 0 !important; backdrop-filter: none; }
-.forest-layout.staff-workspace.is-canvas .st-top-bar nav a { background: transparent !important; border-color: transparent !important; box-shadow: none !important; border-radius: 0 !important; padding-inline: 4px !important; }
-.forest-layout.staff-workspace.is-canvas .st-top-bar nav a[aria-current] { box-shadow: 0 2px 0 var(--st-primary) !important; }
-.forest-layout.staff-workspace.is-canvas .st-top-bar nav a > span { background: transparent !important; color: var(--st-ink-secondary) !important; }
-.forest-layout.staff-workspace.is-canvas .st-top-bar nav a[aria-current] > span { color: var(--st-ink) !important; font-weight: 600; }
-.forest-layout.staff-workspace.is-canvas .st-top-bar nav a > span:last-child:not(:nth-child(2)) { background: var(--st-watch-bg) !important; color: var(--st-watch-ink) !important; }
-.forest-layout.staff-workspace.is-canvas:not(.is-dark-canvas) .ant-layout-content {
-  background: var(--st-card);
-  border: 1px solid var(--st-border);
-  border-radius: 16px;
-  margin: 0 8px 8px 0;
-}
-.forest-layout.staff-workspace.is-canvas .ant-layout-content { padding-top: 24px !important; }
-
-/* A page's title: a noun and what is true today, with its one action. No banner. */
-.forest-layout.staff-workspace.is-canvas .st-hero-banner { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0 !important; margin: 0 0 4px; color: var(--st-ink); }
-.forest-layout.staff-workspace.is-canvas .st-hero-banner h1 { font-size: 24px !important; font-weight: 600 !important; letter-spacing: -0.01em; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas .st-hero-banner h1 { font-size: 26px !important; }
-.forest-layout.staff-workspace.is-canvas .st-hero-banner p { font-size: 13px; }
-.forest-layout.staff-workspace.is-canvas .st-hero-banner dl > div { background: transparent !important; border: 0 !important; padding: 0 !important; gap: 6px; font-size: 13px; }
-.forest-layout.staff-workspace.is-canvas .st-hero-banner dl { gap: 18px; }
-
-/* Buttons: one near-black (near-white on dark) primary; the page's colour stays on its data. */
-@layer utilities {
-  .forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous) {
-    background: var(--st-action) !important;
-    background-color: var(--st-action) !important;
-    border-color: var(--st-action) !important;
-    color: var(--st-action-ink) !important;
-    box-shadow: none !important;
-    border-radius: 6px !important;
-  }
-  .forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous):hover { background-color: var(--st-action-hover) !important; border-color: var(--st-action-hover) !important; }
-  .forest-layout.staff-workspace.is-canvas .ant-btn-primary:not(.ant-btn-dangerous) :is(span, .anticon) { color: inherit !important; background: transparent !important; }
-  .forest-layout.staff-workspace.is-canvas .ant-card {
-    border-color: var(--st-border) !important;
-    border-radius: 8px !important;
-    box-shadow: none !important;
-  }
-  .forest-layout.staff-workspace.is-canvas:not(.is-dark-canvas) :is([class~="!border-[#E5DEC9]"], [class~="border-[#E5DEC9]"], [class~="border-[#E4DFD3]"], [class~="border-[#EFE8DA]"], [class~="border-[#E2D9C8]"], [class~="!border-[#E2D9C8]"]) { border-color: var(--st-border) !important; }
-  .forest-layout.staff-workspace.is-canvas:not(.is-dark-canvas) :is([class~="divide-[#EFE8DA]"], [class~="divide-[#E4DFD3]"]) > * { border-color: var(--st-border) !important; }
-  .forest-layout.staff-workspace.is-canvas :is(.rounded-xl, .rounded-2xl) { border-radius: 8px; }
-}
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box .ant-btn:not(.ant-btn-primary):not(.ant-btn-dangerous),
-.forest-layout.staff-workspace.is-canvas .ant-btn-default:not(.ant-btn-dangerous) { background: transparent !important; border-color: var(--st-border-strong) !important; color: var(--st-ink) !important; box-shadow: none !important; }
-
-/* Cards and tables: flat, ruled, right where they sit. */
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-card { box-shadow: none !important; background-color: var(--st-card) !important; }
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-card-head { background-color: var(--st-card) !important; border-color: var(--st-border) !important; }
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-card-body { background-color: var(--st-card) !important; color: var(--st-ink); }
-.forest-layout.staff-workspace.is-canvas .ant-card-head-title { font-size: 14px; font-weight: 600; color: var(--st-ink) !important; }
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table { background-color: transparent !important; }
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table-container { border: 0 !important; border-radius: 0 !important; }
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table-thead > tr > th {
-  background-color: transparent !important;
-  border-bottom: 1px solid var(--st-border) !important;
-  color: var(--st-ink-secondary) !important;
-  font-size: 12px; font-weight: 500 !important;
-}
-.forest-layout.staff-workspace.is-canvas .ant-table-thead > tr > th::before { display: none !important; }
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table-tbody > tr > td { background-color: transparent !important; border-bottom: 1px solid var(--st-border-subtle) !important; color: var(--st-ink) !important; }
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .ant-table-tbody > tr:hover > td { background-color: var(--st-sunk) !important; }
-.forest-layout.staff-workspace.is-canvas .ant-tabs-nav::before { border-color: var(--st-border) !important; }
-.forest-layout.staff-workspace.is-canvas .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn { color: var(--st-ink) !important; font-weight: 600; }
-.forest-layout.staff-workspace.is-canvas .ant-tabs-ink-bar { background: var(--st-primary) !important; height: 2px !important; }
-
-/* Status: a pale tint with its own dark ink, never a solid block. */
-.forest-layout.staff-workspace.is-canvas .ant-tag:not(.ant-tag-has-color) { background: var(--st-sunk) !important; border-color: transparent !important; color: var(--st-ink-secondary) !important; border-radius: 999px; font-weight: 500; }
-.forest-layout.staff-workspace.is-canvas :is(.ant-tag-success, .ant-tag-green, .ant-tag-cyan, .ant-tag-lime):not(.ant-tag-has-color) { background: var(--st-good-bg) !important; border-color: transparent !important; color: var(--st-good-ink) !important; }
-.forest-layout.staff-workspace.is-canvas :is(.ant-tag-warning, .ant-tag-orange, .ant-tag-gold, .ant-tag-yellow, .ant-tag-volcano):not(.ant-tag-has-color) { background: var(--st-watch-bg) !important; border-color: transparent !important; color: var(--st-watch-ink) !important; }
-.forest-layout.staff-workspace.is-canvas :is(.ant-tag-error, .ant-tag-red):not(.ant-tag-has-color) { background: var(--st-bad-bg) !important; border-color: transparent !important; color: var(--st-bad-ink) !important; }
-.forest-layout.staff-workspace.is-canvas :is(.ant-tag-processing, .ant-tag-blue, .ant-tag-geekblue, .ant-tag-purple, .ant-tag-magenta, .ant-tag-pink):not(.ant-tag-has-color) { background: var(--st-info-bg) !important; border-color: transparent !important; color: var(--st-info-ink) !important; }
-
-/* The counts: one strip split by rules, label over figure. A count is its filter where a list follows. */
-.forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .st-kpi-grid {
-  display: grid; gap: 0 !important; grid-template-columns: repeat(4, minmax(0, 1fr));
-  background: var(--st-card) !important; border: 1px solid var(--st-border) !important; border-radius: 8px; overflow: hidden;
-}
-.forest-layout.staff-workspace.is-canvas .st-kpi-tile { background: transparent !important; border: 0 !important; border-left: 1px solid var(--st-border) !important; border-radius: 0 !important; box-shadow: none !important; padding: 14px 18px; }
-.forest-layout.staff-workspace.is-canvas .st-kpi-tile:first-child { border-left: 0 !important; }
-.forest-layout.staff-workspace.is-canvas button.st-kpi-tile:hover { background: var(--st-sunk) !important; box-shadow: none !important; }
-.forest-layout.staff-workspace.is-canvas .st-kpi-tile:is([aria-pressed="true"], .is-active) { background: transparent !important; box-shadow: inset 0 -2px 0 var(--st-primary) !important; }
-.forest-layout.staff-workspace.is-canvas .st-kpi-tile :is(.text-2xl, .tabular-nums) { font-family: var(--st-figure); font-weight: 500; }
-.forest-layout.staff-workspace.is-canvas .st-kpi-tile .text-2xl { font-size: 28px; line-height: 34px; }
-@media (max-width: 640px) {
-  .forest-layout.staff-workspace.is-canvas:is(.is-dark-canvas, :not(.is-dark-canvas)) .st-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .forest-layout.staff-workspace.is-canvas .st-kpi-tile:nth-child(odd) { border-left: 0 !important; }
-  .forest-layout.staff-workspace.is-canvas .st-kpi-tile:nth-child(n + 3) { border-top: 1px solid var(--st-border) !important; }
-}
-
-/* The Manager's queue: a job waiting says so in its own colour, with its action; a done one stays quiet. */
-.st-queue-list { display: flex; flex-direction: column; padding: 4px 16px 8px; }
-.forest-layout .st-queue-row {
-  --queue-ink: var(--st-ink);
-  display: flex; align-items: center; gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--st-border-subtle);
-}
-.forest-layout .st-queue-row:last-child { border-bottom: 0; }
-.st-queue-row__icon { flex: none; color: var(--st-ink-muted); font-size: 15px; }
-.st-queue-row__text { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
-.st-queue-row__title { color: var(--st-ink); font-size: 13.5px; font-weight: 500; }
-.st-queue-row__desc { color: var(--st-ink-secondary); font-size: 12px; margin-top: 1px; }
-.st-queue-row__figure { display: flex; flex: none; flex-direction: column; align-items: flex-end; }
-.st-queue-row__count { color: var(--queue-ink); font-family: var(--st-figure); font-size: 18px; font-weight: 500; line-height: 1.1; }
-.st-queue-row__note { color: var(--st-ink-muted); font-size: 11px; }
-.st-queue-row__action { flex: none; padding: 5px 10px; border-radius: 6px; background: var(--queue-soft); color: var(--queue-ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
-.forest-layout .st-queue-row:hover .st-queue-row__title { text-decoration: underline; }
-.forest-layout .st-queue-row:is(.is-amber) { --queue-ink: var(--st-watch-ink); --queue-soft: var(--st-watch-bg); }
-.forest-layout .st-queue-row:is(.is-rose) { --queue-ink: var(--st-bad-ink); --queue-soft: var(--st-bad-bg); }
-.forest-layout .st-queue-row:is(.is-blue) { --queue-ink: var(--st-info-ink); --queue-soft: var(--st-info-bg); }
-@media (max-width: 480px) { .st-queue-row__desc { display: none; } }
-
-/* The live figures: instruments on the track. Speed, heart and distance each keep their colour. */
-.forest-layout.staff-workspace.is-canvas .st-live-section.st-live-section { background: #0F1211; border: 1px solid #262A28; border-radius: 8px; padding: 12px 14px; color: #F4F6F5; }
-.forest-layout.staff-workspace.is-canvas .st-live-section.st-live-section :is(.text-gray-700, .text-gray-500) { color: #B4B8B5 !important; }
-.forest-layout.staff-workspace.is-canvas .st-live-section.st-live-section a:not(.ant-btn) { color: #F4F6F5 !important; }
-.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures { margin: 0; }
-.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures dt { color: #B4B8B5; font-size: 12px; }
-.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures dd { font-family: var(--st-figure); font-size: 26px; font-weight: 500; line-height: 1.15; }
-.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures small { color: #9A9F9C; font-family: inherit; font-size: 11px; }
-.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures > div:nth-child(1) dd { color: #7FD4E8; }
-.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures > div:nth-child(2) dd { color: #F58E9F; }
-.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-figures > div:nth-child(3) dd { color: #6FD3A2; }
-.forest-layout.staff-workspace.is-canvas .st-live-section .st-live-warning-note { color: #F58E9F; }
-.st-next-up { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; background: #0F1211; border: 1px solid #262A28; border-radius: 8px; padding: 10px 14px; color: #F4F6F5; font-size: 13px; }
-.st-next-up .st-figure { font-size: 18px; font-weight: 500; }
-.st-next-up small { color: #B4B8B5; font-size: 12px; }
-.forest-layout.staff-workspace.is-canvas .st-next-up a:not(.ant-btn) { color: #F4F6F5 !important; }
-
-/* Each part of the stable has its colour (ZONE_KINDS): --zone and --zone-soft come from the element. */
-.forest-layout .st-zone-tab { background-color: var(--zone-soft); border-color: transparent; box-shadow: inset 4px 0 0 var(--zone); padding-left: 14px; }
-.forest-layout .st-zone-tab:hover:not(:disabled) { border-color: var(--zone); }
-.forest-layout .st-zone-tab[aria-selected="true"] { border-color: var(--zone); box-shadow: inset 4px 0 0 var(--zone), inset 0 -2px 0 var(--zone); }
-.forest-layout .st-zone-chip { background-color: var(--zone-soft); border-color: var(--zone); color: var(--st-ink); }
-.forest-layout .st-zone-chip[aria-pressed="true"] { background-color: var(--zone); color: #FFFFFF; }
-.forest-layout .st-zone-band { border-left: 4px solid var(--zone) !important; }
-.forest-layout.staff-workspace.is-canvas .st-zone-band.st-zone-band { background-color: var(--zone-soft); }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .st-zone-band.st-zone-band.light-surface-box { background-color: var(--zone-soft) !important; }
-.st-zone-frame > * { border-top: 3px solid var(--zone) !important; }
-
-/* What the dark canvas still paints in forest and gold (MainLayout's staff-dark rules), in this system's colours. */
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box { background-color: var(--st-card) !important; border-color: var(--st-border) !important; color: var(--st-ink) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark a:not(.ant-btn) { color: var(--st-primary) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark code { color: var(--st-primary) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is(.ant-card-head-title, h1.ant-typography, h2.ant-typography, h3.ant-typography, h4.ant-typography) { color: var(--st-ink) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-gray-300"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-[#E2D9C8]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="border-amber-200"], [class~="border-amber-200/50"], [class~="border-amber-200/70"], [class~="border-amber-200/80"], [class~="border-amber-300"], [class~="border-emerald-200"], [class~="border-emerald-200/60"], [class~="border-emerald-200/70"], [class~="border-rose-200"], [class~="border-rose-200/70"], [class~="border-blue-200"], [class~="border-orange-200/60"], [class~="border-pink-200"], [class~="divide-[#EFE8DA]"], [class~="divide-[#E4DFD3]"], [class~="divide-gray-100"]) { border-color: var(--st-border) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-gray-300"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-[#E2D9C8]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="border-amber-200"], [class~="border-amber-200/50"], [class~="border-amber-200/70"], [class~="border-amber-200/80"], [class~="border-amber-300"], [class~="border-emerald-200"], [class~="border-emerald-200/60"], [class~="border-emerald-200/70"], [class~="border-rose-200"], [class~="border-rose-200/70"], [class~="border-blue-200"], [class~="border-orange-200/60"], [class~="border-pink-200"], [class~="divide-[#EFE8DA]"], [class~="divide-[#E4DFD3]"], [class~="divide-gray-100"]) { border-color: var(--st-border) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box :is([class~="divide-[#E4DFD3]"], [class~="divide-[#EFE8DA]"], [class~="divide-gray-100"]) > * { border-color: var(--st-border) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box .wc-sticky.wc-sticky { background-color: var(--st-card) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box th.wc-sticky.wc-sticky { background-color: var(--st-card) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box th.wc-sticky.wc-sticky[class~="bg-[#DCEFE3]"] { background-color: var(--st-primary-soft) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-white"], [class~="!bg-white"], [class~="bg-gray-50"], [class~="bg-gray-50/80"], [class~="bg-slate-50"], [class~="bg-slate-50/80"], [class~="bg-gray-100"], [class~="bg-slate-100"], [class~="bg-slate-100/80"], [class~="bg-gray-200"], [class~="bg-[#F2EDE2]"], [class~="bg-[#FFFDF8]"], [class~="bg-[#FAF7F0]"], [class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"]) { background-color: var(--st-sunk) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-green-50"], [class~="bg-emerald-50"], [class~="bg-emerald-50/20"], [class~="bg-emerald-50/40"], [class~="bg-emerald-50/60"], [class~="bg-emerald-50/70"], [class~="bg-emerald-100"], [class~="bg-[#DCEFE3]"]) { background-color: var(--st-good-bg) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-amber-50"], [class~="bg-amber-50/20"], [class~="bg-amber-50/30"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-50/70"], [class~="bg-amber-100"], [class~="bg-yellow-50"], [class~="bg-orange-50"], [class~="bg-orange-100"]) { background-color: var(--st-watch-bg) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-red-50"], [class~="bg-red-100"], [class~="bg-rose-50"], [class~="bg-rose-100"]) { background-color: var(--st-bad-bg) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-blue-50"], [class~="bg-blue-50/60"], [class~="bg-blue-100"], [class~="bg-sky-50"], [class~="bg-cyan-50"], [class~="bg-pink-50"]) { background-color: var(--st-info-bg) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-gray-900"], [class~="text-gray-800"], [class~="text-gray-700"], [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-slate-700"]) { color: var(--st-ink) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-gray-600"], [class~="text-gray-500"], [class~="text-slate-600"], [class~="text-slate-500"]) { color: var(--st-ink-secondary) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-gray-400"], [class~="text-gray-300"], [class~="text-slate-400"]) { color: var(--st-ink-muted) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-emerald-900"], [class~="text-green-600"], [class~="text-green-700"], [class~="text-[#0F5A43]"]) { color: var(--st-good-ink) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-orange-600"], [class~="text-orange-700"], [class~="text-orange-800"]) { color: var(--st-watch-ink) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-red-600"], [class~="text-red-700"], [class~="text-pink-600"], [class~="text-pink-700"]) { color: var(--st-bad-ink) !important; }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"], [class~="text-sky-700"], [class~="text-cyan-600"], [class~="text-cyan-700"]) { color: var(--st-info-ink) !important; }
-body.wdp-staff-workspace.wdp-dark-portals .ant-popover .ant-popover-inner { border-color: var(--st-border); }
-body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="bg-white"], [class~="!bg-white"], [class~="bg-gray-100"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-50/80"], [class~="bg-slate-50"], [class~="bg-slate-50/80"], [class~="bg-[#FFFDF8]"], [class~="bg-[#FAF7F0]"], [class~="bg-[#F2ECE0]"], [class~="bg-[#EAE1D2]"]) { background-color: var(--st-sunk) !important; }
-body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is([class~="border-gray-100"], [class~="border-gray-200"], [class~="border-gray-200/80"], [class~="border-gray-300"], [class~="border-[#E4DFD3]"], [class~="border-[#E5DEC9]"], [class~="border-[#EFE8DA]"], [class~="border-[#E2D9C8]"], [class~="border-slate-200"], [class~="border-slate-200/70"], [class~="border-amber-200"], [class~="border-amber-200/50"], [class~="border-amber-200/70"], [class~="border-amber-200/80"], [class~="border-amber-300"], [class~="border-emerald-200"], [class~="border-emerald-200/60"], [class~="border-emerald-200/70"], [class~="border-rose-200"], [class~="border-rose-200/70"], [class~="border-blue-200"], [class~="border-orange-200/60"], [class~="border-pink-200"], [class~="divide-[#EFE8DA]"], [class~="divide-[#E4DFD3]"], [class~="divide-gray-100"]) { border-color: var(--st-border) !important; }
-
-/* The board of the day: its rows and its filter on the card's own margin. */
-.forest-layout.staff-workspace.is-canvas .st-today-board .ant-table-tbody > tr > td { padding-inline: 16px !important; }
-
-/* Portals (modal, drawer) hang off <body>, outside .staff-workspace: they get the light palette's tokens here
-   (the dark ones are set on body above), and the same one primary and the same accent as the page. */
-body.wdp-staff-workspace {
-  --st-border: #E2E7F0;
-  --st-primary: #2563EB;
-  --st-action: #2563EB;
-  --st-action-ink: #FFFFFF;
-  --st-action-hover: #1D4ED8;
-}
-body.wdp-staff-workspace .inv-ui,
-body.wdp-staff-workspace.wdp-dark-portals .inv-ui,
-body.wdp-staff-workspace .forest-layout.is-dark-canvas .inv-ui {
-  --inv-accent: var(--st-primary);
-  --inv-accent-soft: color-mix(in srgb, var(--st-primary) 12%, transparent);
-  --inv-border: var(--st-border);
-}
-@layer utilities {
-  /* Export buttons still carry the white-on-hero classes of the old banner. */
-  .forest-layout.staff-workspace.is-canvas .st-hero-ghost-btn {
-    background: transparent !important;
-    border-color: var(--st-border-strong) !important;
-    color: var(--st-ink) !important;
-  }
-  .forest-layout.staff-workspace.is-canvas .st-hero-ghost-btn:hover { background: var(--st-sunk) !important; }
-  /* Over the 3D scene the picture changes behind a button: it carries its own surface. */
-  .forest-layout.staff-workspace.is-canvas .st-over-scene .ant-btn:not(.ant-btn-primary) {
-    background: var(--st-card) !important;
-    border-color: var(--st-border) !important;
-    color: var(--st-ink) !important;
-  }
-  .forest-layout.staff-workspace.is-canvas .st-over-scene .ant-btn:not(.ant-btn-primary):hover { background: var(--st-sunk) !important; }
-  /* A button that cannot be pressed stays quiet on a dark page, danger ones too. */
-  .forest-layout.staff-workspace.is-canvas.is-dark-canvas .ant-btn:disabled {
-    background: transparent !important;
-    border-color: var(--st-border) !important;
-    color: var(--st-ink-muted) !important;
-  }
-  body.wdp-staff-workspace :is(.ant-modal, .ant-drawer, .ant-popconfirm) .ant-btn-primary:not(.ant-btn-dangerous) {
-    background: var(--st-action) !important;
-    background-color: var(--st-action) !important;
-    border-color: var(--st-action) !important;
-    color: var(--st-action-ink) !important;
-    box-shadow: none !important;
-    border-radius: 6px !important;
-  }
-  body.wdp-staff-workspace :is(.ant-modal, .ant-drawer, .ant-popconfirm) .ant-btn-primary:not(.ant-btn-dangerous):hover { background-color: var(--st-action-hover) !important; border-color: var(--st-action-hover) !important; }
-  body.wdp-staff-workspace :is(.ant-modal, .ant-drawer, .ant-popconfirm) .ant-btn-primary:not(.ant-btn-dangerous) :is(span, .anticon) { color: inherit !important; background: transparent !important; }
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-blue-700"], [class~="text-blue-800"], [class~="text-cyan-700"]) {
+  color: var(--st-info-ink) !important;
 }
