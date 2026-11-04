@@ -13,24 +13,24 @@
 // morning of 13/11 the last one adds up the whole campaign.
 //
 // Reads only unless DEFENSE_CONFIRM=write. DEFENSE_DAY (YYYY-MM-DD) and DEFENSE_SHIFT (morning, noon,
-// evening, report, final) replace what the clock says. A shift that has begun does not begin again, so any
-// number of triggers is harmless. GitHub runs this repo's schedules 2 to 3.5 hours late, so the workflow
-// starts asking hours ahead: before 05:00 the script does nothing, and a report delayed past midnight is
+// evening, report, relay, final) replace what the clock says. A shift that has begun does not begin again, so
+// any number of triggers is harmless. GitHub runs this repo's schedules 2 to 3.5 hours late, so the workflow
+// also asks hours ahead: from 03:00 to 04:40 a run is the night relay, and a report delayed past midnight is
 // still the day before's.
+//
+// Since 04/11 each run asks for the next one when it is done (defenseClock.js): a run asked for, or started by
+// the clock within 20 minutes of a shift, waits for 05:00, 11:00 or 16:00. DEFENSE_SHIFT may also be 'relay',
+// the night run that only waits and asks for the morning.
 if (process.env.DEMO_TZ) process.env.TZ = process.env.DEMO_TZ;
-const shiftByClock = (hour) => {
-  if (hour < 3) return 'report';
-  if (hour < 5) return 'early';
-  if (hour < 11) return 'morning';
-  if (hour < 16) return 'noon';
-  return hour < 22 ? 'evening' : 'report';
-};
+const fs = require('fs');
+const clock = require('./defenseClock');
+
 const TODAY = new Date().toLocaleDateString('sv-SE');
 // The day of the rota to run: today, or another for a rehearsal.
 const ROTA_DAY = process.env.DEFENSE_DAY || TODAY;
 const FINAL_DAY = '2026-11-13';
 const REPORT_DAY = new Date().getHours() < 3 ? new Date(Date.now() - 24 * 3600000).toLocaleDateString('sv-SE') : TODAY;
-const SHIFT = process.env.DEFENSE_SHIFT || (TODAY === FINAL_DAY ? 'final' : shiftByClock(new Date().getHours()));
+const SHIFT = TODAY === FINAL_DAY && !process.env.DEFENSE_SHIFT ? 'final' : clock.pickShift(process.env.DEFENSE_SHIFT, new Date());
 if (['morning', 'noon', 'evening'].includes(SHIFT)) process.env.DEMO_MEAL_SLOT = SHIFT;
 process.env.DEMO_LATEST_START = process.env.DEMO_LATEST_START || '23:30';
 const demo = require('./demoFlows');
@@ -39,7 +39,7 @@ const { ids, must, refused, read, log, minutes, hhmm } = demo;
 const WRITE = process.env.DEFENSE_CONFIRM === 'write';
 const SLEEP_MIN = Number(process.env.DEFENSE_TIDY_MIN ?? 5);
 const SHIFT_ENDS = { morning: '10:50', noon: '15:50', evening: '21:50' };
-const SHIFT_WORDS = { morning: 'Ca sáng', noon: 'Ca trưa', evening: 'Ca tối' };
+const SHIFT_WORDS = { morning: 'Ca sáng', noon: 'Ca trưa', evening: 'Ca tối', relay: 'Chờ qua đêm' };
 const HAY_CLOCK = process.env.DEFENSE_HAY_CLOCK || '20:10';
 const ORION = 'Orion';
 const PEGASUS = 'Pegasus';
@@ -677,10 +677,26 @@ async function finalReport() {
 }
 
 let reportText = '';
+// The shift's work started here: only then does this run ask for the next one (defenseClock.nextAfter).
+let began = false;
 async function main() {
   if (SHIFT === 'early') {
     console.log(`${hhmm(new Date())}: chưa tới 05:00, không có việc.`);
     return;
+  }
+  if (SHIFT === 'relay') {
+    log('Chờ qua đêm', '-', 'không làm gì trên API; tới giờ thì gọi ca sáng', true);
+    return;
+  }
+  // Before any call to the API: a run asked for a few minutes early waits for its shift here.
+  const wait = clock.waitBefore(SHIFT, new Date());
+  if (wait === null) {
+    log('Kiểm tra trước', '-', `${hhmm(new Date())}: còn quá xa giờ ${SHIFT_WORDS[SHIFT]}, không chờ`, true);
+    return;
+  }
+  if (wait > 0) {
+    console.log(`${hhmm(new Date())}: chờ tới ${clock.START[SHIFT]} để bắt đầu ${SHIFT_WORDS[SHIFT]}.`);
+    await sleep(wait);
   }
   const accounts = JSON.parse(process.env.DEFENSE_ACCOUNTS || process.env.DEMO_ACCOUNTS || '{}');
   if (SHIFT === 'report' || SHIFT === 'final') {
@@ -690,6 +706,7 @@ async function main() {
       if (!(await demo.login('Kiểm tra trước', accounts, role))) return;
     }
     reportText = SHIFT === 'final' ? await finalReport() : `${await dayReport(REPORT_DAY)}\n${await raceReport()}`;
+    began = true;
     return;
   }
   const ctx = await demo.preflight(accounts);
@@ -707,6 +724,7 @@ async function main() {
     log('Kiểm tra trước', '-', `${TODAY} ${SHIFT} đã chạy, không chạy lại`, true);
     return;
   }
+  began = true;
   await prepare(ctx);
   await runShift(ctx);
 }
@@ -724,5 +742,13 @@ main()
     if (reportText) console.log(reportText);
     // Annotations: the public API shows them without a token, so the end-of-day diagnosis can read them.
     if (process.env.GITHUB_ACTIONS) for (const s of demo.steps.filter((x) => !x.ok).slice(0, 10)) console.log(`::error::${s.flow}: ${s.action}. ${s.detail}`);
+    // The run the workflow asks for next (its last step), even when a case failed: the day goes on.
+    const now = new Date();
+    const ask = WRITE ? clock.nextAfter({ shift: SHIFT, now, began, hasDay: (day) => Boolean(ROTA[day]) }) : null;
+    if (ask) {
+      const waitSec = Math.max(0, Math.round((ask.at - now) / 1000));
+      console.log(`Lượt kế: ${ask.next} lúc ${hhmm(ask.at)} (chờ ${Math.round(waitSec / 60)} phút).`);
+      if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `next=${ask.next}\nwait=${waitSec}\n`);
+    }
     if (demo.hasFailed()) process.exitCode = 1;
   });

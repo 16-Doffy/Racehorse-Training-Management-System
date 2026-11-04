@@ -4,6 +4,8 @@ name: Defense data (live)
 # the clock to know its shift, stays until the shift ends, and does nothing if the shift has begun or before
 # 05:00. GitHub runs this repo's schedules 2 to 3.5 hours late (Test 06:45 runs near 09:30, the 05:00 demo ran at
 # 08:22), so each shift is asked for from hours ahead, and whichever lands first in its time starts it.
+# Since 04/11 each run also asks for the next itself (server/scripts/defenseClock.js): morning → noon at 11:00
+# → evening at 16:00 → the day's report → a night relay → morning at 05:00. The schedules stay as a fallback.
 # A run shown as cancelled with no steps was only replaced in the queue. Read each run's Summary for its report.
 on:
   schedule:
@@ -27,13 +29,24 @@ on:
     - cron: '30 16 2-12 11 *'
     - cron: '7 0 13 11 *' # 07:07 on 13/11, the whole campaign's report
   workflow_dispatch:
+    inputs:
+      shift:
+        description: 'morning, noon, evening, report hoặc relay; để trống thì theo đồng hồ'
+        required: false
+        default: ''
+        type: string
+# actions: write lets a run ask for the next one with its own token.
+permissions:
+  contents: read
+  actions: write
 concurrency:
   group: defense-data
   cancel-in-progress: false
 jobs:
   shift:
     runs-on: ubuntu-latest
-    timeout-minutes: 355
+    # A shift run is 05:00–10:50 or 16:00–21:50 after starting a minute early; a job may last 6 hours.
+    timeout-minutes: 360
     env:
       TZ: Asia/Ho_Chi_Minh
     steps:
@@ -45,7 +58,21 @@ jobs:
         with:
           node-version: 22
       - name: Run this shift on the live API
+        id: shift
         run: node server/scripts/defenseData.js
         env:
           DEMO_ACCOUNTS: ${{ secrets.DEMO_ACCOUNTS }}
           DEFENSE_CONFIRM: 'write'
+          DEFENSE_SHIFT: ${{ inputs.shift }}
+      # A run started by workflow_dispatch with this token is the one kind GitHub starts at once. The script says
+      # which run comes next and after how long; a shift found already begun says nothing, so runs never loop.
+      - name: Ask for the next run
+        if: ${{ !cancelled() && steps.shift.outputs.next != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT: ${{ steps.shift.outputs.next }}
+          WAIT: ${{ steps.shift.outputs.wait }}
+        run: |
+          echo "Gọi lượt ${NEXT} sau ${WAIT:-0} giây."
+          sleep "${WAIT:-0}"
+          gh workflow run defense-data.yml --repo "$GITHUB_REPOSITORY" --ref main -f shift="$NEXT"
