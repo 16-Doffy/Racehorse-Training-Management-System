@@ -41,6 +41,19 @@ function HorseshoeMark({ color = FOREST.brass }) {
   );
 }
 
+/** A racehorse's head with its mane, in the workspace's gold: the Manager's and Head Trainer's logo. */
+function HorseHeadMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" className="shrink-0" aria-hidden="true">
+      <path
+        fill="var(--st-action, #EAB308)"
+        d="M20.6 22.5L20.3 19.2L21.3 18.3L19.8 16.6L20.8 15.5L19.1 13.8L20 12.5L18.3 11.1L18.9 9.5L17.4 8.4L17.5 6.6C17.4 5.3 17.2 4 16.9 2.9C16.1 3.8 15.5 4.9 15.2 6.1C12.9 6.6 10.2 8.2 7.6 10.7C6.2 12 4.9 13.2 3.9 14.3C3.3 15 3.4 16.1 4.2 16.7C5 17.3 6.2 17.3 7.1 16.8C8.3 16.2 9.5 15.7 10.6 15.7C11.9 15.8 13.1 15.2 13.6 14C14 15.6 14 17.4 14 19L14.3 22.5Z"
+      />
+      <circle cx="14.2" cy="8.9" r="0.8" fill="var(--st-sider, #1A1D21)" />
+    </svg>
+  );
+}
+
 /** Royal Team 8 Equestrian Crest: Gold horseshoe, silhouette horse profile, and championship crown */
 function Team8LogoCrest() {
   return (
@@ -178,7 +191,7 @@ export default function MainLayout() {
         {/* Logo Area: Team 8 WDP301 for Canvas (Manager/Head Trainer); Horseshoe for Veterinarian; Appstore for others */}
         <div className={`${isStaff ? 'h-16' : 'h-20 pt-3'} flex items-center px-4 shrink-0 ${forest ? 'border-b border-white/10' : 'border-b border-gray-100'}`}>
           {isWorkspace ? (
-            <span className="st-brand-mark mr-1 shrink-0"><HorseshoeMark color="var(--st-primary)" /></span>
+            <span className="st-brand-mark mr-1 shrink-0"><HorseHeadMark /></span>
           ) : isStaff ? (
             <div className="w-9 h-9 rounded-lg bg-[#0B291E] border border-[#D4AF37]/35 flex items-center justify-center mr-3 shrink-0">
               <Team8LogoCrest />

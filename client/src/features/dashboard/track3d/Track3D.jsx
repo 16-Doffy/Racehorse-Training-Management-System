@@ -5,7 +5,7 @@ import { MOVING_HORSE } from '../../horses/horse3d/horseMotion';
 
 const GLASS = { background: 'rgba(15, 23, 42, 0.78)', border: '1px solid rgba(255,255,255,.18)', backdropFilter: 'blur(8px)' };
 const VIEW_PRESETS = [
-  { key: 'overview', label: 'Toàn cảnh' },
+  { key: 'overview', label: 'Sân tập' },
   { key: 'stands', label: 'Khán đài' },
   { key: 'finish', label: 'Cột đích' },
 ];
@@ -91,7 +91,7 @@ export default function Track3D({ runners, focus = null, height = 360, label, cl
                   key={preset.key}
                   type="button"
                   onClick={() => setView(preset.key)}
-                  className={`cursor-pointer rounded-md border-0 px-2.5 py-1 text-xs font-semibold transition-colors ${
+                  className={`cursor-pointer whitespace-nowrap rounded-md border-0 px-2 py-1 text-[11px] font-semibold transition-colors sm:px-2.5 sm:text-xs ${
                     active ? 'bg-[#EAB308] text-[#0F172A]' : 'bg-transparent text-white hover:bg-white/15'
                   }`}
                 >

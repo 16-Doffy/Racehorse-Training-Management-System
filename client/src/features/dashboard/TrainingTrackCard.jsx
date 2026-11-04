@@ -72,14 +72,15 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
   // on a day with nothing booked, the trainer's horses, so the oval is never empty.
   const out = new Set(rows.map((x) => x.id));
   const parked = [];
-  const park = (id, name, note) => {
+  // state: the dot a waiting horse shows on the oval (next to go out, trained today, waiting, nothing booked).
+  const park = (id, name, note, state) => {
     if (out.has(id) || parked.some((p) => p.id === id)) return;
-    parked.push({ id, name, note, coat: coatOf(id) });
+    parked.push({ id, name, note, state, coat: coatOf(id) });
   };
   // Short notes: the names of horses standing side by side must not run into each other; the list beside has the rest.
-  for (const s of waiting) park(horseId(s), s.horse?.name, hhmm(s.scheduledAt));
-  for (const s of done) park(horseId(s), s.horse?.name, 'Đã tập');
-  if (!today.length) for (const h of horses.filter((x) => x.healthStatus === 'eligible').slice(0, 8)) park(String(h._id), h.name, 'Chưa có lịch');
+  waiting.forEach((s, i) => park(horseId(s), s.horse?.name, `${i ? '' : 'Kế tiếp '}${hhmm(s.scheduledAt)}`, i ? 'waiting' : 'next'));
+  for (const s of done) park(horseId(s), s.horse?.name, 'Đã tập', 'done');
+  if (!today.length) for (const h of horses.filter((x) => x.healthStatus === 'eligible').slice(0, 8)) park(String(h._id), h.name, 'Chưa có lịch', 'idle');
   const runners = [
     ...rows.map((x) => ({
       id: x.id,
