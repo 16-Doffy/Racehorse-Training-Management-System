@@ -385,10 +385,15 @@ export default function WeekCalendar({
                                 scheduling={schedulingId === s._id}
                               />
                             ))}
+                            {/* The race day opens the horse's entries on the race page: the decision, the trial, the result. */}
                             {race && (
-                              <span className="flex items-center gap-1 rounded-md border border-pink-200 bg-pink-50 px-1.5 py-0.5 text-[11px] font-semibold text-pink-700">
-                                <FlagOutlined /> Ngày đua
-                              </span>
+                              <Link
+                                to={`/races?horse=${horse?._id}`}
+                                title={`${race.raceName || 'Giải đua'}${race.venue ? ` · ${race.venue}` : ''}: mở trang Giải đua`}
+                                className="flex min-w-0 items-center gap-1 rounded-md border border-pink-200 bg-pink-50 px-1.5 py-0.5 text-[11px] font-semibold text-pink-700 hover:bg-pink-100"
+                              >
+                                <FlagOutlined /> <span className="truncate">Ngày đua{race.raceName ? ` · ${race.raceName}` : ''}</span>
+                              </Link>
                             )}
                             {planned.map((e) => (
                               <PlannedChip key={e.slot} entry={e} />
