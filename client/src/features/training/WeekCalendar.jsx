@@ -11,6 +11,7 @@ import {
   CheckCircleOutlined,
   PauseCircleOutlined,
   FlagOutlined,
+  TrophyOutlined,
   HistoryOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
@@ -385,14 +386,19 @@ export default function WeekCalendar({
                                 scheduling={schedulingId === s._id}
                               />
                             ))}
-                            {/* The race day opens the horse's entries on the race page: the decision, the trial, the result. */}
+                            {/* The race day stands out in the club's gold: the race, its distance, and a way to its entries
+                                (the decision, the trial, the result) on the race page. */}
                             {race && (
                               <Link
                                 to={`/races?horse=${horse?._id}`}
-                                title={`${race.raceName || 'Giải đua'}${race.venue ? ` · ${race.venue}` : ''}: mở trang Giải đua`}
-                                className="flex min-w-0 items-center gap-1 rounded-md border border-pink-200 bg-pink-50 px-1.5 py-0.5 text-[11px] font-semibold text-pink-700 hover:bg-pink-100"
+                                title={`${race.raceName || 'Giải đua'}: mở trang Giải đua`}
+                                className="flex min-w-0 flex-col gap-0.5 rounded-md border border-[var(--st-action,#EAB308)] bg-[var(--st-action,#EAB308)] px-2 py-1.5 text-[var(--st-action-ink,#1A1D21)] no-underline shadow-sm transition-colors hover:brightness-105"
                               >
-                                <FlagOutlined /> <span className="truncate">Ngày đua{race.raceName ? ` · ${race.raceName}` : ''}</span>
+                                <span className="flex items-center gap-1 text-[12px] font-bold"><TrophyOutlined /> Ngày đua</span>
+                                {race.raceName && <span className="truncate text-[11.5px] font-semibold">{race.raceName}</span>}
+                                <span className="text-[10.5px] font-medium opacity-80">
+                                  {race.distance ? `${race.distance} m · ` : ''}{race.status === 'completed' ? 'Đã có kết quả' : 'Xem giải'} →
+                                </span>
                               </Link>
                             )}
                             {planned.map((e) => (
