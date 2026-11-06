@@ -1,4 +1,6 @@
 const TrainingPlan = require('../../models/TrainingPlan');
+const TrainingSession = require('../../models/TrainingSession');
+const { SESSION_KINDS } = require('../../constants/training');
 const Horse = require('../../models/Horse');
 const InventoryItem = require('../../models/InventoryItem');
 const FeedingSchedule = require('../../models/FeedingSchedule');
@@ -14,7 +16,7 @@ const { notifyCaretaker, notifyHorseStaff, pushNotification } = require('../aler
 const { logAction } = require('../audit/audit.service');
 const { SLOT_LABELS, stockFor, readItemsWith, mealSetProblem } = require('./mealInput');
 
-const { SLOTS, SICK_STATUSES, dietOf, weightWarning, trainingDayWork, workOf, pickFeed, pickSupplements, dayMeals, weekNeed } = require('./rationRules');
+const { SLOTS, SICK_STATUSES, dietOf, weightWarning, trainingDayWork, workOf, heavierWork, pickFeed, pickSecond, pickSupplements, dayMeals, weekNeed } = require('./rationRules');
 const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const atDay = (key) => new Date(`${key}T00:00:00`);
 const clockOf = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -57,6 +59,8 @@ async function buildCalendar(plan, { times = {} } = {}) {
   const forage = pickFeed(stock, 'forage', { keep, weekNeed: weekNeed(horse?.weightKg, 'forage'), day: today0 });
   const concentrate = pickFeed(stock, 'concentrate', { keep, weekNeed: weekNeed(horse?.weightKg, 'concentrate'), day: today0 });
   const supplements = pickSupplements(stock, today0);
+  const forageMix = pickSecond(stock, 'forage', forage, { weekNeed: weekNeed(horse?.weightKg, 'forage'), day: today0 });
+  const concentrateMix = pickSecond(stock, 'concentrate', concentrate, { weekNeed: weekNeed(horse?.weightKg, 'concentrate'), day: today0 });
   if (!forage) problems.push('Kho chưa có cỏ đang sử dụng, đơn vị kg.');
   if (!concentrate) problems.push('Kho chưa có thức ăn tinh đang sử dụng, đơn vị kg.');
 
@@ -66,16 +70,32 @@ async function buildCalendar(plan, { times = {} } = {}) {
   const end = new Date(plan.endDate || phases.at(-1)?.endDate);
   end.setHours(0, 0, 0, 0);
   const today = dayBounds(new Date()).start;
+  // The sessions actually booked: a day the horse trains is a training day, whatever the week template says
+  // (sessions are often booked straight on the calendar, not from the template).
+  const until = new Date(end);
+  until.setDate(until.getDate() + 1);
+  const booked = await TrainingSession.find({ horse: plan.horse, scheduledAt: { $gte: start, $lt: until }, status: { $nin: ['cancelled', 'missed'] } })
+    .select('kind scheduledAt prescription')
+    .sort({ scheduledAt: 1 })
+    .lean();
+  const bookedOn = new Map();
+  for (const s of booked) {
+    const key = dateKey(new Date(s.scheduledAt));
+    bookedOn.set(key, [...(bookedOn.get(key) || []), s]);
+  }
   const days = [];
   // Eight phases of at most 12 weeks: bounded independently from malformed legacy plan dates.
   for (let cursor = new Date(start); cursor <= end && days.length < 672; cursor.setDate(cursor.getDate() + 1)) {
     const phase = phases.find((p) => cursor >= dayBounds(p.startDate).start && cursor <= dayBounds(p.endDate).start) || phases.at(-1);
     if (!phase) break;
-    const work = workOf(phase, cursor);
+    const actual = bookedOn.get(dateKey(cursor)) || [];
+    const work = actual.reduce((w, s) => heavierWork(w, SESSION_KINDS[s.kind]?.intensity || 'moderate'), workOf(phase, cursor));
     const dayDiet = cursor < today ? 'normal' : diet;
-    const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks, feeds: { forage, concentrate, supplements }, diet: dayDiet });
-    // The work the plan's week template puts on this day, so the planner reads the meals beside it.
-    const sessions = (phase.week || []).filter((w) => Number(w.day) === cursor.getDay()).map((w) => ({ kind: w.kind, slot: w.slot || 'morning', distanceM: w.distanceM || null }));
+    const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks, feeds: { forage, forageMix, concentrate, concentrateMix, supplements }, diet: dayDiet });
+    // The day's work beside its meals: the sessions booked that day, else what the plan's week template puts on it.
+    const sessions = actual.length
+      ? actual.map((s) => ({ kind: s.kind, slot: new Date(s.scheduledAt).getHours() < 12 ? 'morning' : 'afternoon', distanceM: s.prescription?.distanceM || null, at: clockOf(new Date(s.scheduledAt)) }))
+      : (phase.week || []).filter((w) => Number(w.day) === cursor.getDay()).map((w) => ({ kind: w.kind, slot: w.slot || 'morning', distanceM: w.distanceM || null }));
     days.push({ date: dateKey(cursor), phase: phase.key, work, diet: dayDiet, sessions, past: cursor < today, meals });
   }
   if (!days.length) problems.push('Kế hoạch không có ngày hợp lệ để xếp lịch ăn.');
@@ -89,7 +109,7 @@ async function buildCalendar(plan, { times = {} } = {}) {
     stall: assignment?.stableBlock || null,
     clocks,
     phases: phases.map((p) => ({ key: p.key, startDate: dateKey(dayBounds(p.startDate).start), endDate: dateKey(dayBounds(p.endDate).start), intensity: trainingDayWork(p), trainDays: [...new Set((p.week || []).map((w) => Number(w.day)))].sort() })),
-    feeds: { forage, concentrate, supplements: supplements.map((s) => s.item) },
+    feeds: { forage, forageMix, concentrate, concentrateMix, supplements: supplements.map((s) => s.item) },
     stock,
     days,
     problems: [...new Set(problems)],
@@ -483,6 +503,8 @@ async function suggestMeal({ horseId, slot }) {
     concentrate: pickFeed(stock, 'concentrate', { keep, weekNeed: weekNeed(horse?.weightKg, 'concentrate'), day: today }),
     supplements: pickSupplements(stock, today),
   };
+  feeds.forageMix = pickSecond(stock, 'forage', feeds.forage, { weekNeed: weekNeed(horse?.weightKg, 'forage'), day: today });
+  feeds.concentrateMix = pickSecond(stock, 'concentrate', feeds.concentrate, { weekNeed: weekNeed(horse?.weightKg, 'concentrate'), day: today });
   const clocks = Object.fromEntries(SLOTS.map((s) => [s, rations.find((r) => r.mealTime === s)?.timeOfDay || DEFAULT_MEAL_TIMES[s]]));
   const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks, feeds, diet });
   const lines = meals.flatMap((m) => m.items);

@@ -65,6 +65,10 @@ function trainingDayWork(phase) {
   return phase.key === 'recovery' ? 'light' : phase.intensity || 'moderate';
 }
 
+const WORK_RANK = { rest: 0, light: 1, moderate: 2, high: 3 };
+/** The harder of two days' work (rest < light < moderate < high): a day's meals follow its hardest session. */
+const heavierWork = (a, b) => ((WORK_RANK[b] ?? 2) > (WORK_RANK[a] ?? 0) ? b : a);
+
 /** The work of a day: the phase's intensity on a day its week template trains, else rest. */
 function workOf(phase, date) {
   const trains = (phase?.week || []).some((w) => Number(w.day) === date.getDay());
@@ -82,6 +86,17 @@ function pickFeed(stock, kind, { keep = [], weekNeed = 0, day = new Date() } = {
   return [...usable].sort((a, b) => Number(b.quantity >= weekNeed) - Number(a.quantity >= weekNeed) || expiry(a) - expiry(b) || b.quantity - a.quantity)[0] || null;
 }
 
+/**
+ * A second item of the same kind to mix in (Timothy with alfalfa, oats with barley or pellets), when the club
+ * stocks another one that is usable and lasts its share of a week: a varied diet, the main item still the most.
+ */
+function pickSecond(stock, kind, first, { weekNeed = 0, day = new Date() } = {}) {
+  if (!first) return null;
+  const share = kind === 'forage' ? MIX.forage : MIX.concentrate;
+  const usable = stock.filter((i) => String(i._id) !== String(first._id) && feedTypeOf(i) === kind && unitOf(i) === 'kg' && usableOn(i, day) && i.quantity >= weekNeed * share);
+  return usable.sort((a, b) => b.quantity - a.quantity)[0] || null;
+}
+
 /** The supplement items to use, one per kind that the club stocks in a unit with a known dose. */
 function pickSupplements(stock, day = new Date()) {
   return SUPPLEMENTS.map((rule) => {
@@ -93,6 +108,14 @@ function pickSupplements(stock, day = new Date()) {
 }
 
 const line = (item, amount) => ({ inventoryItem: item._id, name: item.name, amount, unit: item.unit });
+// The second item's share of its kind when two are mixed; the first keeps the rest.
+const MIX = { forage: 0.3, concentrate: 0.4 };
+/** `total` kg of one kind as lines: split between the two items when there is a second and enough to split. */
+function mixedLines(first, second, total, share) {
+  if (!second || total < 1) return [line(first, total)];
+  const part = Math.min(halfKg(total * share), total - 0.5);
+  return [line(first, total - part), line(second, part)];
+}
 
 /**
  * The three meals of one day: [{ slot, time, items: [{ inventoryItem, name, amount, unit }] }].
@@ -106,8 +129,11 @@ function dayMeals({ weightKg, work, phase, clocks, feeds, diet = 'normal' }) {
   const split = sick ? SPLITS.sick : SPLITS[work === 'rest' ? 'rest' : 'training'];
   return SLOTS.map((slot) => {
     const items = [];
-    if (feeds.forage) items.push(line(feeds.forage, halfKg(weight * share.forage * split[slot].forage)));
-    if (feeds.concentrate && split[slot].concentrate > 0) items.push(line(feeds.concentrate, cappedHalfKg(weight * share.concentrate * split[slot].concentrate, weight * MAX_CONCENTRATE_PER_MEAL)));
+    if (feeds.forage) items.push(...mixedLines(feeds.forage, feeds.forageMix, halfKg(weight * share.forage * split[slot].forage), MIX.forage));
+    if (feeds.concentrate && split[slot].concentrate > 0) {
+      const grain = cappedHalfKg(weight * share.concentrate * split[slot].concentrate, weight * MAX_CONCENTRATE_PER_MEAL);
+      items.push(...mixedLines(feeds.concentrate, feeds.concentrateMix, grain, MIX.concentrate));
+    }
     if (slot === 'evening') {
       for (const { rule, item } of feeds.supplements || []) {
         // Sick: no oil (no strength or speed work) and no electrolytes (no hard work); minerals still.
@@ -124,4 +150,7 @@ function weekNeed(weightKg, kind) {
   return 7 * weight * SHARES.moderate[kind];
 }
 
-module.exports = { SLOTS, SHARES, SPLITS, SICK_STATUSES, dietOf, weightWarning, trainingDayWork, workOf, pickFeed, pickSupplements, dayMeals, weekNeed, DEFAULT_WEIGHT_KG };
+module.exports = {
+  heavierWork,
+  pickSecond,
+  SLOTS, SHARES, SPLITS, SICK_STATUSES, dietOf, weightWarning, trainingDayWork, workOf, pickFeed, pickSupplements, dayMeals, weekNeed, DEFAULT_WEIGHT_KG };

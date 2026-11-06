@@ -84,3 +84,32 @@ test('an injured or isolated horse eats the sick diet whatever its plan: forage 
   assert.equal(amountOf(sick[2], 'Bột điện giải'), undefined, 'no electrolytes');
   assert.ok(amountOf(sick[2], 'Khoáng chất') > 0, 'minerals still');
 });
+
+test('a day takes the work of its hardest booked session: rest < light < moderate < high', () => {
+  const { heavierWork } = require('../src/modules/feeding/rationRules');
+  assert.equal(heavierWork('rest', 'moderate'), 'moderate');
+  assert.equal(heavierWork('high', 'light'), 'high');
+  assert.equal(heavierWork('light', 'high'), 'high');
+  assert.equal(['light', 'moderate', 'light'].reduce(heavierWork, 'rest'), 'moderate');
+});
+
+test('two items of a kind are mixed: the second a share, the first the rest, the day\'s total unchanged', () => {
+  const { pickSecond } = require('../src/modules/feeding/rationRules');
+  const barley = { _id: id(8), name: 'Lúa mạch', feedType: 'concentrate', unit: 'kg', quantity: 150 };
+  const all = [...stock, barley];
+  const forage = all[0];
+  const concentrate = all[2];
+  const forageMix = pickSecond(all, 'forage', forage, { weekNeed: 70 });
+  const concentrateMix = pickSecond(all, 'concentrate', concentrate, { weekNeed: 20 });
+  assert.equal(forageMix.name, 'Cỏ Alfalfa');
+  assert.equal(concentrateMix.name, 'Lúa mạch');
+  assert.equal(pickSecond(stock, 'concentrate', concentrate, { weekNeed: 20 }), null); // only oats in stock
+  const base = { weightKg: 500, work: 'moderate', phase: phase('base_building', 'moderate'), clocks };
+  const plain = dayMeals({ ...base, feeds: { forage, concentrate, supplements: [] } });
+  const mixed = dayMeals({ ...base, feeds: { forage, forageMix, concentrate, concentrateMix, supplements: [] } });
+  const total = (meals) => meals.flatMap((m) => m.items).reduce((n, i) => n + i.amount, 0);
+  assert.equal(total(mixed), total(plain));
+  const evening = mixed.find((m) => m.slot === 'evening');
+  assert.ok(amountOf(evening, 'Cỏ Alfalfa') > 0 && amountOf(evening, 'Cỏ khô Timothy') > amountOf(evening, 'Cỏ Alfalfa'));
+  assert.ok(amountOf(evening, 'Lúa mạch') > 0 && amountOf(evening, 'Yến mạch') >= amountOf(evening, 'Lúa mạch'));
+});
