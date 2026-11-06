@@ -12,6 +12,9 @@ import FeedingGroupsTable from './FeedingGroupsTable';
 import { Fact, PhaseStrip, StockNeedList } from './FeedingPlanParts';
 import { SICK_DIET_TEXT, SLOTS, SLOT_LABELS, amountText, dayTotals, idOf, planEnd, stockNeed } from './feedingPlan';
 
+// Whether to say the ration is still a suggestion the trainer has not confirmed: off until the ration flow is settled.
+const SHOW_UNCONFIRMED_NOTE = false;
+
 const { Text } = Typography;
 const FIRST_DAYS = 14;
 
@@ -55,7 +58,8 @@ function PlanDays({ calendar, feedItems }) {
           description={`Ngựa không tập nên khẩu phần là ${SICK_DIET_TEXT}. Khi bác sĩ kết luận đủ điều kiện, lịch tự về theo kế hoạch tập.`}
         />
       )}
-      {unconfirmed > 0 && (
+      {/* Hidden for now (Duy, 06/11): the ration flow (confirm or apply by itself) is decided after the demo. */}
+      {SHOW_UNCONFIRMED_NOTE && unconfirmed > 0 && (
         <Alert
           type="warning"
           showIcon

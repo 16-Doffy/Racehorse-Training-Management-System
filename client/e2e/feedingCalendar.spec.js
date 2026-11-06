@@ -21,7 +21,8 @@ test('trainer reviews every meal to the end of the plan, changes one and confirm
   const section = page.getByRole('region', { name: 'Lịch ăn theo kế hoạch huấn luyện' });
   await expect(section.getByRole('heading', { name: 'Lịch ăn từ hôm nay đến hết kế hoạch tập' })).toBeVisible();
   await expect(section.getByText('TEST Browser Hay').first()).toBeVisible();
-  await expect(section.getByText(/khẩu phần gợi ý, chưa xác nhận/)).toBeVisible();
+  // The "suggestion, not confirmed" note is hidden for now (HorseFeedingView SHOW_UNCONFIRMED_NOTE, Duy 06/11).
+  await expect(section.getByText(/khẩu phần gợi ý, chưa xác nhận/)).toHaveCount(0);
 
   // The planner: the plan's days folded into a few rows; one meal changed for its whole row, then confirmed once.
   await page.getByRole('button', { name: 'Tạo khẩu phần ăn' }).click();
