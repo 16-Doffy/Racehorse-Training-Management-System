@@ -20,6 +20,7 @@ import RequestExamModal from '../health/RequestExamModal';
 import { ROLES, ROLE_LABELS } from '../../constants/roles';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import dayjs from 'dayjs';
+import { examLine, useLastExam } from '../health/useLastExam';
 
 /** Calculate age string from date of birth */
 function calcAge(dob) {
@@ -51,6 +52,7 @@ const TABS = ['history', 'stall', 'races'];
 // The Horse Owner has their own horse page (features/owner/OwnerHorse.jsx); this one is the staff's.
 export default function HorseDetailPage() {
   const { id } = useParams();
+  const { data: lastExam } = useLastExam(id);
   const { user } = useSelector((state) => state.auth);
   const canRequestExam = user?.role === ROLES.HEAD_TRAINER || user?.role === ROLES.MANAGER;
   const isManager = user?.role === ROLES.MANAGER;
@@ -166,6 +168,7 @@ export default function HorseDetailPage() {
         stats={[
           { label: 'Sức khỏe', value: horse.examHold ? 'Chờ bác sĩ khám' : HEALTH_LABELS[horse.healthStatus] || horse.healthStatus },
           { label: 'Mức cho phép tập', value: horse.examHold ? 'Tạm dừng tập' : TRAINING_LEVEL_META[clearanceLevel]?.label || clearanceLevel },
+          { label: 'Lần khám gần nhất', value: examLine(lastExam) },
         ]}
         actionButton={
           canRequestExam ? (

@@ -12,6 +12,7 @@ import { SURFACE_LABELS, surfaceOptions, DONE_STATUSES } from '../training/train
 import { RaceFormTag } from '../training/RaceForm';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import { newestFirst } from '../../utils/newestFirst';
+import ReviewExamNote from '../health/ReviewExamNote';
 
 const { Text } = Typography;
 
@@ -94,6 +95,7 @@ function DecisionCell({ entry, form }) {
             Cần xem lại quyết định
           </Tag>
           {entry.reviewReason && <Text type="warning" className="!text-xs">Sức khỏe thay đổi: {entry.reviewReason}</Text>}
+          <ReviewExamNote horseId={entry.horse?._id || entry.horse} since={entry.reviewFlaggedAt} />
         </>
       )}
       {form && ['registered', 'confirmed'].includes(entry.status) && (

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button, Col, Form, Row } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -119,6 +119,14 @@ function ExamForm({ horse, presetLevel }) {
 
   const openRequests = (requestsQ.data || []).filter((r) => idOf(r.horse) === horse._id);
   const openIncidents = (incidentsQ.data || []).filter((t) => idOf(t.horse) === horse._id);
+  // Opened on a horse someone asked about (the trainer, the sensors' stop, the groom): what they said is already the
+  // history's opening lines, once; the vet edits from there, and "Chép từ yêu cầu" adds it again if cleared.
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (prefilled.current || history.trim() || (!openRequests.length && !openIncidents.length)) return;
+    prefilled.current = true;
+    setHistory(historyFrom(openRequests, openIncidents));
+  }, [history, openRequests, openIncidents]);
   const activeInjuries = (injuriesQ.data || []).filter(isActiveInjury);
   const back = `/veterinarian/horses/${horse._id}`;
   const severe = injuries.some((d) => d.severity === 'severe');
