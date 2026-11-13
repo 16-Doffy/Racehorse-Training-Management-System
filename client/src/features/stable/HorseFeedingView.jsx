@@ -226,7 +226,7 @@ export default function HorseFeedingView({ horseId, horses, plans, rations, assi
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="light-surface-box sticky top-0 z-10 flex flex-col gap-3 rounded-xl border border-[#D4AF37]/40 bg-[#FAF7F0] px-4 py-3 shadow-2xs">
+      <div className="light-surface-box sticky top-0 z-10 flex flex-col gap-3 rounded-xl border border-[#D4AF37]/40 bg-slate-50/95 px-4 py-3 shadow-2xs">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <span className="text-xs text-gray-500">Đang xem riêng:</span>

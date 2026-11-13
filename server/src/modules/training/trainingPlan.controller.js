@@ -218,7 +218,7 @@ async function formByPlan(plans) {
 /** Session stats and the next bookings for many plans in two queries: Map(planId → …). */
 async function sessionsByPlan(planIds) {
   const sessions = await TrainingSession.find({ trainingPlan: { $in: planIds }, status: { $ne: 'cancelled' } })
-    .select('trainingPlan scheduledAt status outcome.met kind objective intensity sessionType prescription')
+    .select('trainingPlan scheduledAt status outcome.met performanceRating kind objective intensity sessionType prescription')
     .sort({ scheduledAt: 1 })
     .lean();
   const stats = new Map();
@@ -227,7 +227,7 @@ async function sessionsByPlan(planIds) {
   for (const s of sessions) {
     const key = String(s.trainingPlan);
     if (!stats.has(key)) stats.set(key, []);
-    stats.get(key).push({ at: s.scheduledAt, status: s.status, met: s.outcome?.met });
+    stats.get(key).push({ at: s.scheduledAt, status: s.status, met: s.outcome?.met, rating: s.performanceRating ?? null });
     if (['scheduled', 'ready', 'blocked'].includes(s.status) && new Date(s.scheduledAt).getTime() >= now) {
       if (!upcoming.has(key)) upcoming.set(key, []);
       const list = upcoming.get(key);

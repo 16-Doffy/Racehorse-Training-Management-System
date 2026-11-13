@@ -43,7 +43,7 @@ export default function StaffTodayCard() {
 
   return (
     <Card
-      className="shadow-xs border-[#E5DEC9] rounded-xl"
+      className="shadow-xs rounded-xl"
       loading={isLoading}
       styles={{ title: { whiteSpace: 'normal' }, body: { padding: '4px 16px 12px' } }}
       title={

@@ -100,7 +100,7 @@ function HorseFocusTag({ focus, rows }) {
   if (!focus.horse) return null;
   const name = (rows || []).find((r) => horseIdOf(r) === focus.horse && r.horse?.name)?.horse?.name || 'ngựa được chọn';
   return (
-    <div className="light-surface-box sticky top-0 z-10 mb-3.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl border border-[#D4AF37]/40 border-l-4 border-l-[#D4AF37] bg-[#FAF7F0] px-3.5 py-2.5 shadow-xs">
+    <div className="light-surface-box sticky top-0 z-10 mb-3.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl border border-[#D4AF37]/40 border-l-4 border-l-[#D4AF37] bg-slate-50/95 px-3.5 py-2.5 shadow-xs">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
         <span className="text-xs font-medium text-gray-500">Đang xem riêng:</span>
         <span className="text-sm font-bold text-gray-900">{name}</span>
@@ -449,7 +449,7 @@ function TaskList({ embedded = false }) {
                 Các việc của ngựa này
               </Text>
             </div>
-            <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+            <Card className="!rounded-xl shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
               <Table
                 rowKey="_id"
                 columns={columns.filter((c) => !focus.horse || c.key !== 'horse')}
@@ -780,7 +780,7 @@ function IncidentsList() {
         <Segmented options={INCIDENT_FILTERS} value={filter} onChange={setFilter} />
       </div>
       <HorseFocusTag focus={focus} rows={data?.data} />
-      <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+      <Card className="!rounded-xl shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
         <Table
           rowKey="_id"
           columns={columns.filter((c) => !focus.horse || c.key !== 'horse')}
@@ -802,9 +802,10 @@ export default function StableAssignPage() {
   return (
     <div>
       <PageHeroBanner
-        eyebrow="TEAM 8 • CHUỒNG TRẠI & CHĂM SÓC"
-        roleLabel="Head Trainer"
+        eyebrow="Chăm sóc, Dinh dưỡng & Chuồng trại"
+        roleLabel="Huấn luyện viên Trưởng"
         title="Chuồng trại, chăm sóc & khẩu phần ăn"
+        subtitle="Giao việc cho nhân viên chuồng (App Mobile), chốt khẩu phần theo từng giai đoạn tập và theo dõi sự cố liên kết bác sĩ thú y."
       />
 
       <Tabs
@@ -817,9 +818,9 @@ export default function StableAssignPage() {
         }, { replace: true })}
         destroyOnHidden
         items={[
-          { key: 'tasks', label: 'Công việc chăm sóc', children: <TaskList /> },
-          { key: 'rations', label: 'Khẩu phần ăn', children: <RationList /> },
-          { key: 'incidents', label: 'Sự cố chuồng trại', children: <IncidentsList /> },
+          { key: 'tasks', label: 'Công việc chăm sóc (Groom)', children: <TaskList /> },
+          { key: 'rations', label: 'Khẩu phần ăn (Theo lịch tập)', children: <RationList /> },
+          { key: 'incidents', label: 'Sự cố chuồng trại (Báo BS/QL)', children: <IncidentsList /> },
         ]}
       />
     </div>

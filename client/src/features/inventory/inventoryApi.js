@@ -8,8 +8,10 @@ export const inventoryApi = {
   propose: (payload) => axiosClient.post('/inventory/proposals', payload),
   /** Daily use from rations and ongoing treatments, and the days of stock left per item. */
   forecast: () => axiosClient.get('/inventory/forecast'),
-  /** Record a delivery: { quantity } in the item's unit, or { packs }. */
+  /** Record a delivery: { quantity } in the item's unit, or { packs }, plus optional { expiryDate, note }. */
   receive: (id, payload) => axiosClient.post(`/inventory/${id}/receive`, payload),
+  /** Remove all expired batches from an item's stock. */
+  disposeExpired: (id) => axiosClient.post(`/inventory/${id}/dispose-expired`),
   /** Manager's decision on one restock request: { status: 'approved' | 'rejected', note }. */
   decideRestock: (itemId, requestId, payload) =>
     axiosClient.patch(`/inventory/${itemId}/restock-requests/${requestId}`, payload),

@@ -17,7 +17,7 @@ import {
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, PHASE_SHORT, mondayOf, DONE_STATUSES, canReplay } from './trainingVocab';
+import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, PHASE_SHORT, mondayOf, DONE_STATUSES, canReplay, sessionWindowLabel } from './trainingVocab';
 import { SESSION_STATUS_LABELS } from './sessionStatus';
 import { useClubPolicy, precheckRuleText } from './useClubPolicy';
 import SessionDetail from './SessionDetail';
@@ -176,20 +176,27 @@ function SessionChip({ session, replaced = [], onStart, onPreCheck, onEvaluate, 
     </div>
   );
   const detail = <SessionDetail session={session} statusLabel={rescheduled ? 'Đã xếp lại lịch' : status.label} notes={notes} actions={actions} />;
+  const timeWindow = sessionWindowLabel(session);
+  const segCount = Array.isArray(session.segments) ? session.segments.filter((seg) => seg?.kind).length : 0;
 
-  // White chip, its status on the left edge: the work and its result, then the time (and the status
-  // in words while it still needs something). The border is not one the dark canvas recolours, so the
-  // edge keeps its colour there.
+  // White chip, its status on the left edge: the work and its result, then the time window (start–end).
   return (
     <Popover content={detail} trigger="click" placement="bottom" open={open} onOpenChange={setOpen}>
       <button
         type="button"
-        aria-label={`${kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}, ${slotLabel(session.scheduledAt)} ${dayjs(session.scheduledAt).format('HH:mm')}, ${rescheduled ? 'Đã xếp lại lịch' : status.label}`}
+        aria-label={`${kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}, ${slotLabel(session.scheduledAt)} ${timeWindow}, ${rescheduled ? 'Đã xếp lại lịch' : status.label}`}
         className={`w-full cursor-pointer rounded-md border border-black/10 border-l-[3px] ${status.accent} ${status.fill} px-1.5 py-0.5 text-left transition-shadow hover:shadow-xs ${session.status === 'cancelled' ? 'opacity-60 line-through' : ''}`}
       >
         <div className="flex items-center justify-between gap-1 text-[11px]">
-          <span className="truncate font-semibold text-gray-900">{kind?.short || kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}</span>
-          <span className="shrink-0 tabular-nums text-gray-500">{dayjs(session.scheduledAt).format('HH:mm')}</span>
+          <span className="truncate font-semibold text-gray-900">
+            {kind?.short || kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}
+            {segCount > 1 && (
+              <span className="ml-1 inline-block rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800" title={`Buổi ghép ${segCount} bài tập`}>
+                {segCount} bài
+              </span>
+            )}
+          </span>
+          <span className="shrink-0 tabular-nums text-gray-500">{timeWindow}</span>
         </div>
         {/* A second line only for what needs a look: its result, or a state still waiting on someone. */}
         {(met != null || ['missed', 'blocked', 'in_progress', 'ready'].includes(session.status)) && (

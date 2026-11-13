@@ -22,6 +22,7 @@ const {
   canTransition,
 } = require('../../constants/training');
 const { notifyHorseStaff } = require('../alerts/notification.service');
+const { evaluateSegmentOutcomes } = require('../../realtime/segmentTimeline');
 
 /*
  * What happens around a training session that more than the HTTP routes need: judging it against
@@ -52,10 +53,22 @@ function computeOutcome(session) {
     checks.push({ ok: m.distance >= total, text: `cự ly ${m.distance}/${total} m` });
   }
 
-  if (checks.length === 0) return { met: null, summary: '' };
+  const hasSegments = Array.isArray(session.segments) && session.segments.length > 0;
+  const segmentResults = hasSegments ? evaluateSegmentOutcomes(session.segments, session.trace, m) : [];
+  const judgedSegs = segmentResults.filter((s) => s.met !== null);
 
-  const met = checks.every((c) => c.ok);
-  return { met, summary: `${met ? 'Đạt mục tiêu' : 'Chưa đạt mục tiêu'} — ${checks.map((c) => c.text).join(', ')}.` };
+  if (checks.length === 0 && judgedSegs.length === 0) {
+    return segmentResults.length ? { met: null, summary: '', segmentResults } : { met: null, summary: '' };
+  }
+
+  const allSegmentsOk = judgedSegs.every((s) => s.met === true);
+  const met = checks.every((c) => c.ok) && allSegmentsOk;
+  const segText = judgedSegs.length ? ` (${judgedSegs.filter((s) => s.met).length}/${judgedSegs.length} bài đạt)` : '';
+  return {
+    met,
+    summary: `${met ? 'Đạt mục tiêu' : 'Chưa đạt mục tiêu'}${segText}${checks.length ? ` — ${checks.map((c) => c.text).join(', ')}` : ''}.`,
+    ...(segmentResults.length ? { segmentResults } : {}),
+  };
 }
 
 // Average heart rate this far past the session's own ceiling is no longer "worked hard" but
@@ -257,13 +270,16 @@ async function closeRun(sessionId, { to, user = null, abortCategory, abortReason
   }
   if (to === SESSION_STATUS.ABORTED) Object.assign(set, { abortCategory, abortReason });
 
-  const session = await TrainingSession.findOneAndUpdate({ _id: sessionId, status: SESSION_STATUS.IN_PROGRESS }, { $set: set }, { new: true });
+  const claimQuery = TrainingSession.findOneAndUpdate({ _id: sessionId, status: SESSION_STATUS.IN_PROGRESS }, { $set: set }, { new: true });
+  const session = await (typeof claimQuery?.select === 'function' ? claimQuery.select('+trace') : claimQuery);
   if (!session) return null;
 
   const actor = user?.name ? user : (await actorFor(session)) || user;
   if (to === SESSION_STATUS.COMPLETED) {
     session.outcome = computeOutcome(session);
     await TrainingSession.updateOne({ _id: session._id }, { $set: { outcome: session.outcome } });
+    // Avoid sending up to 400 trace readings back in the close response (readings has its own endpoint).
+    session.trace = undefined;
     if (actor?._id) {
       await logAction({
         actorId: actor._id,
@@ -275,6 +291,7 @@ async function closeRun(sessionId, { to, user = null, abortCategory, abortReason
     }
     await onCompleted(session, actor);
   } else {
+    session.trace = undefined;
     if (actor?._id) {
       await logAction({
         actorId: actor._id,

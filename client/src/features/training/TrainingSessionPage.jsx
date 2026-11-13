@@ -24,11 +24,15 @@ import {
 import { message, notification } from '../../lib/antdStatic';
 import {
   PlusOutlined,
+  DeleteOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
   EditOutlined,
   CloseCircleOutlined,
   AimOutlined,
   PlayCircleOutlined,
   CalendarOutlined,
+  ClockCircleOutlined,
   UnorderedListOutlined,
   SafetyCertificateOutlined,
   StopOutlined,
@@ -58,6 +62,7 @@ import { SESSION_STATUS_LABELS as STATUS_LABELS, SESSION_STATUS_COLORS as STATUS
 import SessionOutcome from './SessionOutcome';
 import confirmReadinessOverride, { needsOverride } from './confirmReadinessOverride';
 import WeekCalendar from './WeekCalendar';
+import DayShiftView from './DayShiftView';
 import {
   OBJECTIVE_LABELS,
   OBJECTIVE_DESCRIPTIONS,
@@ -77,6 +82,7 @@ import {
   TRAINER_ABORT_OPTIONS,
   TRIAL_MIN_RACE_SHARE,
   canReplay,
+  segmentSafetyWarnings,
 } from './trainingVocab';
 import { newestFirst } from '../../utils/newestFirst';
 
@@ -130,6 +136,7 @@ export default function TrainingSessionPage() {
   const focusSession = searchParams.get('session');
   const [view, setView] = useState(() => (searchParams.get('session') ? 'list' : 'week'));
   const [weekStart, setWeekStart] = useState(() => mondayOf(dayjs()));
+  const [selectedDay, setSelectedDay] = useState(() => dayjs());
   const [createForm] = Form.useForm();
   const [evalForm] = Form.useForm();
   const [endSession, setEndSession] = useState(null);
@@ -207,6 +214,9 @@ export default function TrainingSessionPage() {
   const firstWeek = searchParams.get('first') === '1';
   const policy = useClubPolicy();
   const draftAt = Form.useWatch('scheduledAt', createForm);
+  const draftEndAt = Form.useWatch('endAt', createForm);
+  const draftSegments = Form.useWatch('segments', createForm);
+  const segmentWarnings = segmentSafetyWarnings(draftSegments);
   const draftSlotProblem = afternoonProblem(policy, draftKind, draftAt);
 
   const filteredPlan = planFilter ? (plansData?.data || []).find((p) => p._id === planFilter) : null;
@@ -229,11 +239,41 @@ export default function TrainingSessionPage() {
     queryClient.invalidateQueries({ queryKey: ['session-readiness'] });
   };
 
+  const syncSegmentsToForm = (rawSegments, { resetWhenEmpty = false } = {}) => {
+    const segs = (rawSegments || []).filter((s) => s?.kind);
+    const start = createForm.getFieldValue('scheduledAt');
+    if (segs.length > 0) {
+      const nextMin = segs.reduce((s, x) => s + (Number(x?.durationMinutes) || 0), 0);
+      const nextDist = segs.reduce((s, x) => s + (Number(x?.distanceM) || 0), 0);
+      if (nextMin > 0) {
+        createForm.setFieldValue(['prescription', 'durationMinutes'], nextMin);
+        if (start) createForm.setFieldValue('endAt', dayjs(start).add(nextMin, 'minute'));
+      }
+      if (nextDist > 0) createForm.setFieldValue(['prescription', 'distanceM'], nextDist);
+      return;
+    }
+    if (resetWhenEmpty) {
+      const currentKind = createForm.getFieldValue('kind');
+      const baseRx = SESSION_KINDS[currentKind]?.prescription;
+      if (baseRx?.durationMinutes) {
+        createForm.setFieldValue(['prescription', 'durationMinutes'], baseRx.durationMinutes);
+        if (start) createForm.setFieldValue('endAt', dayjs(start).add(baseRx.durationMinutes, 'minute'));
+      }
+      if (baseRx?.distanceM !== undefined) {
+        createForm.setFieldValue(['prescription', 'distanceM'], baseRx.distanceM);
+      }
+    }
+  };
+
   const submitCreate = (values, overrideReason) => {
-    const { prescription, ...rest } = values;
+    const { prescription, segments, ...rest } = values;
+    const rawSegments = Array.isArray(segments) ? segments : createForm.getFieldValue('segments') || [];
+    const cleanSegments = rawSegments.filter((s) => s?.kind).map((s) => ({ ...s }));
     createMutation.mutate({
       ...rest,
       scheduledAt: values.scheduledAt?.toISOString(),
+      ...(values.endAt ? { endAt: values.endAt.toISOString() } : {}),
+      ...(cleanSegments.length ? { segments: cleanSegments } : {}),
       // Mongoose ignores a prescription of all-undefined, so an untargeted session stays untargeted
       // rather than being stored as a set of empty targets.
       prescription,
@@ -254,7 +294,7 @@ export default function TrainingSessionPage() {
       // A blocked medical gate is final. An amber gate is the trainer's call: show the warnings and
       // ask for a reason for the record, rather than silently refusing or silently allowing.
       if (needsOverride(err)) {
-        const values = createForm.getFieldsValue();
+        const values = createForm.getFieldsValue(true);
         confirmReadinessOverride({
           readiness: err.data.readiness,
           okText: 'Vẫn tạo buổi tập',
@@ -516,30 +556,46 @@ export default function TrainingSessionPage() {
       title: 'Thời gian',
       dataIndex: 'scheduledAt',
       key: 'scheduledAt',
-      render: (d, r) => (
-        <div className="whitespace-nowrap tabular-nums text-sm">
-          <div>
-            <Text type="secondary" className="!text-xs">
-              Dự kiến{' '}
-            </Text>
-            <span className="font-medium text-gray-800">{sessionTimeLabel(d)}</span>
-          </div>
-          {actualTimeLabel(r) ? (
-            <div className="text-gray-500">
+      render: (d, r) => {
+        const end = r.endAt ? dayjs(r.endAt) : r.prescription?.durationMinutes ? dayjs(d).add(r.prescription.durationMinutes, 'minute') : null;
+        return (
+          <div className="whitespace-nowrap tabular-nums text-sm">
+            <div>
               <Text type="secondary" className="!text-xs">
-                Thực tế{' '}
+                Dự kiến{' '}
               </Text>
-              {actualTimeLabel(r)}
+              <span className="font-medium text-gray-800">
+                {sessionTimeLabel(d)}
+                {end ? ` – ${end.format('HH:mm')}` : ''}
+              </span>
             </div>
-          ) : (
-            ['completed', 'evaluated'].includes(r.status) && (
-              <Text type="secondary" className="!text-xs text-gray-400">
-                Chưa ghi giờ thực tế
-              </Text>
-            )
-          )}
-        </div>
-      ),
+            {Array.isArray(r.segments) && r.segments.length > 0 && (
+              <div className="mt-0.5 flex flex-wrap gap-1 whitespace-normal">
+                {r.segments.map((seg, idx) => (
+                  <Tag key={idx} className="!m-0 !text-[10px]">
+                    {SESSION_KINDS[seg.kind]?.short || seg.kind}
+                    {seg.durationMinutes ? ` ${seg.durationMinutes}'` : ''}
+                  </Tag>
+                ))}
+              </div>
+            )}
+            {actualTimeLabel(r) ? (
+              <div className="text-gray-500">
+                <Text type="secondary" className="!text-xs">
+                  Thực tế{' '}
+                </Text>
+                {actualTimeLabel(r)}
+              </div>
+            ) : (
+              ['completed', 'evaluated'].includes(r.status) && (
+                <Text type="secondary" className="!text-xs text-gray-400">
+                  Chưa ghi giờ thực tế
+                </Text>
+              )
+            )}
+          </div>
+        );
+      },
     },
     {
       title: 'Trạng thái',
@@ -726,6 +782,7 @@ export default function TrainingSessionPage() {
         onChange={setView}
         options={[
           { value: 'week', label: 'Lịch tuần', icon: <CalendarOutlined /> },
+          { value: 'day', label: 'Trong ngày (3 ca)', icon: <ClockCircleOutlined /> },
           { value: 'list', label: 'Danh sách', icon: <UnorderedListOutlined /> },
         ]}
       />
@@ -873,10 +930,28 @@ export default function TrainingSessionPage() {
           schedulingId={scheduleMutation.isPending ? scheduleMutation.variables?.session._id : null}
         />
       )}
-      {view === 'week' && <NextReadiness sessions={sessionsData?.data || []} />}
+      {view === 'day' && (
+        <DayShiftView
+          toolbar={toolbar}
+          selectedDate={selectedDay}
+          onDateChange={(d) => setSelectedDay(d || dayjs())}
+          sessions={sessionsData?.data || []}
+          plans={(plansData?.data || []).filter((p) => (!planFilter || p._id === planFilter) && (!horseFilter || String(p.horse?._id) === horseFilter))}
+          onStart={(session) => startMutation.mutate({ id: session._id })}
+          onPreCheck={setPreCheckSession}
+          startingId={startMutation.isPending ? startMutation.variables?.id : null}
+          onEvaluate={openEvaluation}
+          onSchedule={openSchedule}
+          onCancel={setCancelSession}
+          onEnd={setEndSession}
+          onAbort={setAbortSession}
+          onReplay={setReplaySession}
+        />
+      )}
+      {(view === 'week' || view === 'day') && <NextReadiness sessions={sessionsData?.data || []} />}
 
       <Table
-        className={view === 'week' ? 'hidden' : ''}
+        className={view === 'list' ? '' : 'hidden'}
         rowClassName={(r) => (focusSession && r._id === focusSession ? 'row-focus' : '')}
         onRow={(r) => (focusSession && r._id === focusSession ? { 'data-focus': 'session' } : {})}
         rowKey="_id"
@@ -970,6 +1045,24 @@ export default function TrainingSessionPage() {
                   createForm.setFieldValue('intensity', intensity);
                 }
               }
+            }
+            const activeSegments = (all.segments || []).filter((seg) => seg?.kind);
+            if ((changed.segments || changed.scheduledAt || changed.kind) && activeSegments.length > 0) {
+              const totalMin = activeSegments.reduce((s, seg) => s + (Number(seg?.durationMinutes) || 0), 0);
+              const totalDist = activeSegments.reduce((s, seg) => s + (Number(seg?.distanceM) || 0), 0);
+              if (totalMin > 0) {
+                createForm.setFieldValue(['prescription', 'durationMinutes'], totalMin);
+                if (all.scheduledAt) createForm.setFieldValue('endAt', dayjs(all.scheduledAt).add(totalMin, 'minute'));
+              }
+              if (totalDist > 0) createForm.setFieldValue(['prescription', 'distanceM'], totalDist);
+            } else if ((changed.scheduledAt || changed.kind || changed.prescription?.durationMinutes !== undefined) && all.scheduledAt) {
+              const mins = changed.kind
+                ? Number(SESSION_KINDS[changed.kind]?.prescription?.durationMinutes)
+                : Number(all.prescription?.durationMinutes);
+              if (mins > 0) createForm.setFieldValue('endAt', dayjs(all.scheduledAt).add(mins, 'minute'));
+            } else if (changed.endAt && all.endAt && all.scheduledAt) {
+              const diff = dayjs(all.endAt).diff(dayjs(all.scheduledAt), 'minute');
+              if (diff > 0) createForm.setFieldValue(['prescription', 'durationMinutes'], diff);
             }
             setDraft({
               horse: all.horse,
@@ -1093,7 +1186,152 @@ export default function TrainingSessionPage() {
                     <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
                   </Form.Item>
                 </Col>
+                <Col xs={24} md={8}>
+                  <Form.Item
+                    name="endAt"
+                    label="Giờ kết thúc dự kiến"
+                    extra="Tự tính từ thời lượng hoặc chọn trực tiếp."
+                  >
+                    <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
+                  </Form.Item>
+                </Col>
               </Row>
+
+              <Divider titlePlacement="left" className="!my-2 !text-sm">
+                Ghép nhiều bài tập trong buổi (tùy chọn)
+              </Divider>
+              <Form.List name="segments">
+                {(fields, { add, remove, move }) => {
+                  const cleanSegs = (draftSegments || []).filter((s) => s?.kind);
+                  const totalSegMin = cleanSegs.reduce((s, x) => s + (Number(x.durationMinutes) || 0), 0);
+                  const totalSegDist = cleanSegs.reduce((s, x) => s + (Number(x.distanceM) || 0), 0);
+                  const seedThreeSteps = () => {
+                    const mainKind = createForm.getFieldValue('kind') || draftKind || 'canter';
+                    const rx = createForm.getFieldValue('prescription') || {};
+                    const kRx = SESSION_KINDS[mainKind]?.prescription || {};
+                    const useKindDefaults = fields.length > 0;
+                    const mainMin = (!useKindDefaults && Number(rx.durationMinutes)) || kRx.durationMinutes || 20;
+                    const mainDist = (!useKindDefaults && Number(rx.distanceM)) || kRx.distanceM || undefined;
+                    const next = [
+                      { kind: 'walk', durationMinutes: 15, note: 'Khởi động' },
+                      { kind: mainKind, durationMinutes: mainMin, ...(mainDist ? { distanceM: mainDist } : {}), note: 'Bài chính' },
+                      { kind: 'walk', durationMinutes: 10, note: 'Thả lỏng' },
+                    ];
+                    createForm.setFieldValue('segments', next);
+                    syncSegmentsToForm(next);
+                  };
+                  const addSegmentSmart = () => {
+                    if (fields.length === 0) {
+                      const mainKind = createForm.getFieldValue('kind') || draftKind || 'canter';
+                      const rx = createForm.getFieldValue('prescription') || {};
+                      const kRx = SESSION_KINDS[mainKind]?.prescription || {};
+                      const mainMin = Number(rx.durationMinutes) || kRx.durationMinutes || 20;
+                      const mainDist = Number(rx.distanceM) || kRx.distanceM || undefined;
+                      const next = [
+                        { kind: mainKind, durationMinutes: mainMin, ...(mainDist ? { distanceM: mainDist } : {}), note: 'Bài chính' },
+                        { kind: 'walk', durationMinutes: 15, note: 'Thả lỏng / bổ sung' },
+                      ];
+                      createForm.setFieldValue('segments', next);
+                      syncSegmentsToForm(next);
+                      return;
+                    }
+                    add({ kind: 'walk', durationMinutes: 15 });
+                    queueMicrotask(() => syncSegmentsToForm(createForm.getFieldValue('segments')));
+                  };
+
+                  return (
+                    <div className="mb-3 rounded-lg border border-black/10 p-2.5">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <Text type="secondary" className="!text-xs">
+                          Thêm các đoạn nối tiếp (VD: Khởi động 15&apos; → Bài chính 20&apos; → Thả lỏng 10&apos;) — bấm Thêm bài để giữ sẵn bài chính đang chọn và ghép tiếp đoạn mới.
+                        </Text>
+                        <div className="flex gap-1.5">
+                          <Button size="small" type="dashed" onClick={seedThreeSteps}>
+                            Mẫu 3 đoạn (45&apos;)
+                          </Button>
+                          <Button size="small" icon={<PlusOutlined />} onClick={addSegmentSmart}>
+                            Thêm bài
+                          </Button>
+                        </div>
+                      </div>
+                      {fields.map(({ key, name, ...restField }, idx) => (
+                        <div key={key} className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                          <span className="w-5 text-xs text-gray-400">#{idx + 1}</span>
+                          <Form.Item {...restField} name={[name, 'kind']} className="!mb-0 min-w-[125px] flex-1" rules={[{ required: true, message: 'Chọn bài' }]}>
+                            <Select
+                              size="small"
+                              placeholder="Loại bài"
+                              options={Object.entries(SESSION_KINDS).map(([k, v]) => ({ value: k, label: v.short || v.label }))}
+                              onChange={(nextKind) => {
+                                const sRx = SESSION_KINDS[nextKind]?.prescription || {};
+                                createForm.setFieldValue(['segments', name, 'durationMinutes'], sRx.durationMinutes ?? 15);
+                                createForm.setFieldValue(['segments', name, 'distanceM'], sRx.distanceM ?? undefined);
+                                queueMicrotask(() => syncSegmentsToForm(createForm.getFieldValue('segments')));
+                              }}
+                            />
+                          </Form.Item>
+                          <Form.Item {...restField} name={[name, 'durationMinutes']} className="!mb-0 w-24">
+                            <InputNumber size="small" min={1} max={180} placeholder="Phút" suffix="ph" className="w-full" />
+                          </Form.Item>
+                          <Form.Item {...restField} name={[name, 'distanceM']} className="!mb-0 w-24">
+                            <InputNumber size="small" min={0} step={100} placeholder="Cự ly" suffix="m" className="w-full" />
+                          </Form.Item>
+                          <Form.Item {...restField} name={[name, 'note']} className="!mb-0 min-w-[115px] flex-1">
+                            <Input size="small" placeholder="Ghi chú (Khởi động…)" />
+                          </Form.Item>
+                          <div className="flex items-center">
+                            {fields.length > 1 && (
+                              <>
+                                <Button size="small" type="text" icon={<ArrowUpOutlined />} disabled={idx === 0} onClick={() => move(idx, idx - 1)} aria-label="Đưa lên" />
+                                <Button size="small" type="text" icon={<ArrowDownOutlined />} disabled={idx === fields.length - 1} onClick={() => move(idx, idx + 1)} aria-label="Đưa xuống" />
+                              </>
+                            )}
+                            <Button
+                              size="small"
+                              type="text"
+                              danger
+                              icon={<DeleteOutlined />}
+                              onClick={() => {
+                                remove(name);
+                                queueMicrotask(() => syncSegmentsToForm(createForm.getFieldValue('segments'), { resetWhenEmpty: true }));
+                              }}
+                              aria-label="Xóa đoạn"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      {cleanSegs.length > 0 && (
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded bg-black/[0.03] px-2.5 py-1.5 text-xs">
+                          <span className="font-medium text-gray-800">
+                            Tổng ghép: {cleanSegs.length} bài · {totalSegMin} phút
+                            {totalSegDist > 0 ? ` · ${totalSegDist.toLocaleString('vi-VN')} m` : ''}
+                          </span>
+                          {draftAt && draftEndAt && (
+                            <span className="tabular-nums text-gray-600">
+                              Khung giờ: {dayjs(draftAt).format('HH:mm')}–{dayjs(draftEndAt).format('HH:mm')}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {segmentWarnings.length > 0 && (
+                        <Alert
+                          className="!mt-2"
+                          type="warning"
+                          showIcon
+                          title="Lưu ý an toàn khi ghép bài"
+                          description={
+                            <ul className="m-0 pl-4 text-xs">
+                              {segmentWarnings.map((w) => (
+                                <li key={w}>{w}</li>
+                              ))}
+                            </ul>
+                          }
+                        />
+                      )}
+                    </div>
+                  );
+                }}
+              </Form.List>
 
               <Divider titlePlacement="left" className="!my-2 !text-sm">
                 <AimOutlined className="mr-1" />

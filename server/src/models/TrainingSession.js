@@ -49,6 +49,19 @@ const trainingSessionSchema = new mongoose.Schema(
     // What actually happened, as opposed to the booking above (scheduledAt, prescription). Written
     // only by the server when the session is started, ended or stopped; never accepted from a client,
     // and never used to overwrite a planned value.
+    endAt: { type: Date, default: null },
+    // Multiple workout items combined in a single session (warm-up -> main work -> cool-down).
+    segments: [
+      {
+        kind: { type: String, enum: ['walk', 'canter', 'hill', 'breeze', 'trial'], required: true },
+        durationMinutes: { type: Number, min: 1 },
+        distanceM: { type: Number, min: 0 },
+        targetSpeedKmh: { type: Number, min: 0 },
+        targetHeartRateMax: { type: Number, min: 60 },
+        restMinutes: { type: Number, min: 0 },
+        note: { type: String, trim: true },
+      },
+    ],
     actualStartAt: { type: Date, default: null },
     actualEndAt: { type: Date, default: null },
     actualDurationSec: { type: Number, default: null },
@@ -121,6 +134,25 @@ const trainingSessionSchema = new mongoose.Schema(
     outcome: {
       met: { type: Boolean, default: null },
       summary: { type: String },
+      segmentResults: [
+        {
+          _id: false,
+          index: Number,
+          kind: String,
+          label: String,
+          note: String,
+          durationMinutes: Number,
+          targetDistanceM: Number,
+          targetSpeedKmh: Number,
+          targetHeartRateMax: Number,
+          actualDistanceM: Number,
+          actualMaxSpeedKmh: Number,
+          actualAvgHeartRate: Number,
+          actualLastHeartRate: Number,
+          recoveryDropBpm: Number,
+          met: { type: Boolean, default: null },
+        },
+      ],
     },
   },
   { timestamps: true }

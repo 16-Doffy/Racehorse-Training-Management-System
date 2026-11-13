@@ -39,7 +39,7 @@ export default function NextStepsCard() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Wraps on a phone: the count goes under the title instead of out of the card. */}
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="font-bold text-gray-900 text-[15px]">Bước tiếp theo của từng ngựa (Quy trình 1→5)</span>
+            <span className="font-bold text-gray-900 text-[15px]">Việc cần xử lý của từng ngựa</span>
             {openCount > 0 && (
               <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-amber-100 text-amber-900 border border-amber-300 shrink-0">
                 {openCount} cần xử lý

@@ -18,6 +18,73 @@ const RENOTIFY_MS = 24 * 60 * 60 * 1000;
 
 const round = (n) => Math.round(n * 1000) / 1000;
 
+function startOfToday(ref = new Date()) {
+  const d = new Date(ref);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function isExpiredDate(expiryDate, ref = new Date()) {
+  if (!expiryDate) return false;
+  return new Date(expiryDate) < startOfToday(ref);
+}
+
+/**
+ * Materializes legacy stock (quantity > 0, no batches array yet) into a single batch so
+ * FEFO deduction and per-batch expiry work uniformly across old and new items.
+ */
+function ensureBatches(item) {
+  if (Array.isArray(item.batches) && item.batches.length > 0) return item.batches;
+  if (item.quantity > 0) {
+    item.batches = [
+      {
+        qty: item.quantity,
+        expiryDate: item.expiryDate || null,
+        receivedAt: item.lastRestockedAt || item.createdAt || new Date(),
+      },
+    ];
+  } else {
+    item.batches = [];
+  }
+  return item.batches;
+}
+
+/**
+ * Recomputes `item.quantity` (total on-hand batches) and `item.expiryDate`
+ * (nearest expiry among usable batches, or earliest expired batch if all remaining stock expired).
+ */
+function syncItemFromBatches(item, ref = new Date()) {
+  const activeBatches = (item.batches || []).filter((b) => b.qty > 0);
+  item.batches = activeBatches;
+  const usable = activeBatches.filter((b) => !isExpiredDate(b.expiryDate, ref));
+  item.quantity = round(activeBatches.reduce((sum, b) => sum + b.qty, 0));
+
+  const datedUsable = usable.filter((b) => b.expiryDate).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+  if (datedUsable.length > 0) {
+    item.expiryDate = datedUsable[0].expiryDate;
+  } else if (usable.length > 0) {
+    item.expiryDate = null;
+  } else {
+    const datedAll = activeBatches.filter((b) => b.expiryDate).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+    item.expiryDate = datedAll.length > 0 ? datedAll[0].expiryDate : item.expiryDate || null;
+  }
+  return item;
+}
+
+/** Returns how much usable (non-expired) stock an item currently has. */
+function usableQuantityOf(item, ref = new Date()) {
+  if (!item) return 0;
+  if (Array.isArray(item.batches) && item.batches.length > 0) {
+    return round(
+      item.batches
+        .filter((b) => b.qty > 0 && !isExpiredDate(b.expiryDate, ref))
+        .reduce((sum, b) => sum + b.qty, 0)
+    );
+  }
+  if (isExpiredDate(item.expiryDate, ref)) return 0;
+  return item.quantity || 0;
+}
+
 /** Items a list of task supplies needs that stock can't cover right now, one entry per item. */
 function shortagesFrom(supplies, stockById) {
   const needed = new Map();
@@ -29,18 +96,33 @@ function shortagesFrom(supplies, stockById) {
     needed.set(id, entry);
   }
   const missing = [];
+  const now = new Date();
   for (const [id, entry] of needed) {
     const item = stockById.get(id);
-    const available = item ? item.quantity : 0;
+    const available = usableQuantityOf(item, now);
+    const hasExpiredStock = Boolean(
+      item &&
+        ((Array.isArray(item.batches) && item.batches.some((b) => b.qty > 0 && isExpiredDate(b.expiryDate, now))) ||
+          (isExpiredDate(item.expiryDate, now) && item.quantity > 0))
+    );
     if (available < entry.needed) {
-      missing.push({ ...entry, name: item?.name || entry.name, unit: item?.unit || entry.unit, available, short: round(entry.needed - available) });
+      missing.push({
+        ...entry,
+        name: item?.name || entry.name,
+        unit: item?.unit || entry.unit,
+        available,
+        short: round(entry.needed - available),
+        ...(available === 0 && hasExpiredStock ? { expired: true } : {}),
+      });
     }
   }
   return missing;
 }
 
 async function stockMap(ids, { session = null } = {}) {
-  const items = await InventoryItem.find({ _id: { $in: [...new Set(ids.map(String))] } }).select('name unit quantity').session(session);
+  const items = await InventoryItem.find({ _id: { $in: [...new Set(ids.map(String))] } })
+    .select('name unit quantity expiryDate batches')
+    .session(session);
   return new Map(items.map((i) => [String(i._id), i]));
 }
 
@@ -61,7 +143,8 @@ async function withSupplyStatus(tasks) {
 
 /**
  * Called inside the same transaction as task completion. No notifications before commit.
- * Each decrement still checks available quantity; aborting rolls back all earlier lines.
+ * Deducts usable (non-expired) stock following FEFO (First Expired, First Out); aborting rolls
+ * back all earlier lines.
  */
 async function consumeSupplies(supplies, { session }) {
   if (!session?.inTransaction()) throw new Error('Stock consumption requires the task transaction.');
@@ -71,10 +154,42 @@ async function consumeSupplies(supplies, { session }) {
   const missing = shortagesFrom(lines, await stockMap(lines.map((line) => line.inventoryItem), { session }));
   if (missing.length) return { ok: false, missing };
 
+  const now = new Date();
   const taken = [];
   for (const line of lines) {
     // eslint-disable-next-line no-await-in-loop
-    const res = await InventoryItem.updateOne({ _id: line.inventoryItem, quantity: { $gte: line.amount } }, { $inc: { quantity: -line.amount } }, { session });
+    const item = await InventoryItem.findById(line.inventoryItem).session(session);
+    if (!item || usableQuantityOf(item, now) < line.amount) {
+      throw Object.assign(new Error('Tồn kho vừa thay đổi — tải lại công việc rồi thử lại.'), { statusCode: 409 });
+    }
+    ensureBatches(item);
+    const fefo = item.batches
+      .filter((b) => b.qty > 0 && !isExpiredDate(b.expiryDate, now))
+      .sort((a, b) => {
+        if (a.expiryDate && b.expiryDate) return new Date(a.expiryDate) - new Date(b.expiryDate);
+        if (a.expiryDate) return -1;
+        if (b.expiryDate) return 1;
+        return new Date(a.receivedAt || 0) - new Date(b.receivedAt || 0);
+      });
+    let remaining = line.amount;
+    for (const batch of fefo) {
+      if (remaining <= 0) break;
+      const take = Math.min(batch.qty, remaining);
+      batch.qty = round(batch.qty - take);
+      remaining = round(remaining - take);
+    }
+    if (remaining > 0) {
+      throw Object.assign(new Error('Tồn kho còn hạn không đủ — tải lại công việc rồi thử lại.'), { statusCode: 409 });
+    }
+    const prevQuantity = item.quantity;
+    syncItemFromBatches(item, now);
+    // Use InventoryItem.updateOne so concurrent writes guard on previous stock and transaction tests can hook updates.
+    // eslint-disable-next-line no-await-in-loop
+    const res = await InventoryItem.updateOne(
+      { _id: item._id, quantity: prevQuantity },
+      { $set: { batches: item.batches, quantity: item.quantity, expiryDate: item.expiryDate } },
+      { session }
+    );
     if (res.modifiedCount !== 1) {
       throw Object.assign(new Error('Tồn kho vừa thay đổi — tải lại công việc rồi thử lại.'), { statusCode: 409 });
     }
@@ -102,7 +217,7 @@ async function recordConsumption(consumed, { actor, task }) {
  */
 async function computeForecast() {
   const [items, rations, treatments] = await Promise.all([
-    InventoryItem.find({ isProposed: { $ne: true } }).select('name unit quantity category stableBlock lowStockNotifiedAt reorderLevel packUnit packSize'),
+    InventoryItem.find({ isProposed: { $ne: true } }).select('name unit quantity expiryDate batches category stableBlock lowStockNotifiedAt reorderLevel packUnit packSize'),
     FeedingSchedule.find({ 'items.inventoryItem': { $ne: null } }).populate('horse', 'name').select('horse mealTime items'),
     Treatment.find({ status: 'ongoing', 'medications.inventoryItem': { $ne: null } }).populate('horse', 'name').select('horse medications'),
   ]);
@@ -128,19 +243,21 @@ async function computeForecast() {
     }
   }
 
+  const now = new Date();
   return items.map((item) => {
     const u = usage.get(String(item._id));
     const dailyUsage = u?.daily || 0;
+    const usableQty = usableQuantityOf(item, now);
     return {
       _id: item._id,
       name: item.name,
       unit: item.unit,
       category: item.category,
       stableBlock: item.stableBlock,
-      quantity: item.quantity,
+      quantity: usableQty,
       reorderLevel: item.reorderLevel || 0,
       dailyUsage,
-      daysLeft: dailyUsage > 0 ? Math.floor(item.quantity / dailyUsage) : null,
+      daysLeft: dailyUsage > 0 ? Math.floor(usableQty / dailyUsage) : null,
       usedBy: u?.usedBy || [],
       lowStockNotifiedAt: item.lowStockNotifiedAt,
     };
@@ -187,4 +304,18 @@ async function itemInUse(itemId) {
   return [...rations.map((r) => r.horse?.name), ...treatments.map((t) => t.horse?.name)].filter(Boolean);
 }
 
-module.exports = { withSupplyStatus, consumeSupplies, recordConsumption, computeForecast, warnLowStock, itemInUse, shortagesFrom, stockMap, LOW_STOCK_DAYS };
+module.exports = {
+  withSupplyStatus,
+  consumeSupplies,
+  recordConsumption,
+  computeForecast,
+  warnLowStock,
+  itemInUse,
+  shortagesFrom,
+  stockMap,
+  isExpiredDate,
+  ensureBatches,
+  syncItemFromBatches,
+  usableQuantityOf,
+  LOW_STOCK_DAYS,
+};

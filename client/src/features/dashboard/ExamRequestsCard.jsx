@@ -35,7 +35,7 @@ export default function ExamRequestsCard() {
 
   return (
     <Card
-      className="shadow-xs border-[#E5DEC9] rounded-xl overflow-hidden"
+      className="shadow-xs rounded-xl overflow-hidden"
       styles={{ title: { whiteSpace: 'normal', overflow: 'visible' }, header: { height: 'auto', whiteSpace: 'normal' } }}
       loading={isLoading}
       title={

@@ -44,7 +44,7 @@ export default function ManagerQueueCard() {
       count: (users.data?.data || []).filter((u) => u.approvalStatus === 'pending').length,
       to: '/admin/users',
       action: 'Duyệt tài khoản',
-      desc: 'Người dùng mới đăng ký cần xét duyệt quyền',
+      desc: 'Nhân viên mới, bác sĩ hoặc chủ ngựa cần cấp quyền',
     },
     {
       key: 'restock',
@@ -55,7 +55,7 @@ export default function ManagerQueueCard() {
       count: requests.filter((r) => r.status === 'pending').length,
       to: '/inventory',
       action: 'Xem đề xuất',
-      desc: 'Yêu cầu nhập thức ăn hoặc vật tư y tế',
+      desc: 'Yêu cầu từ nhân viên chuồng (Groom), HLV & bác sĩ thú y',
     },
     {
       key: 'delivery',
@@ -66,7 +66,7 @@ export default function ManagerQueueCard() {
       count: requests.filter((r) => r.status === 'approved' && r.awaitingDelivery && !r.receivedAt).length,
       to: '/inventory',
       action: 'Nhận hàng',
-      desc: 'Đơn hàng đã về kho cần kiểm đếm và nhập',
+      desc: 'Đơn hàng đã về kho cần kiểm đếm và gắn hạn sử dụng (FEFO)',
     },
     {
       key: 'assignment',
@@ -77,7 +77,7 @@ export default function ManagerQueueCard() {
       count: (checklists.data?.data || []).filter((r) => r.items.some((i) => ASSIGNMENT_KEYS.includes(i.key) && !i.done)).length,
       to: '/horses',
       action: 'Phân công ngay',
-      desc: 'Thiếu chủ ngựa, HLV, bác sĩ hoặc chuồng',
+      desc: 'Thiếu chủ ngựa, HLV, bác sĩ hoặc chuồng chăm sóc',
     },
   ].map((r) => ({ ...r, ...sourceState(r.source) }));
   // Only lists that answered are counted; one that failed is "not checked", never "nothing waiting".
@@ -100,7 +100,7 @@ export default function ManagerQueueCard() {
 
   return (
     <Card
-      className="light-surface-box shadow-xs border-[#E5DEC9] rounded-xl overflow-hidden"
+      className="light-surface-box shadow-xs rounded-xl overflow-hidden"
       styles={{ body: { padding: 0 }, title: { whiteSpace: 'normal', overflow: 'visible' }, header: { height: 'auto' } }}
       title={
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-1">

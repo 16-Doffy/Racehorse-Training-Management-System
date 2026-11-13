@@ -3,25 +3,30 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import loginBg from '../../assets/login-bg.jpg';
 import { ROLES } from '../../constants/roles';
-import { getMenuByRole } from '../../layouts/menuConfig';
 
-// What each step of the trainer's work is for, when the page says nothing itself.
-const STEP_NOTES = {
-  1: 'Rà soát ngựa được giao, kiểm tra tình trạng khám của bác sĩ và mục tiêu thi đấu.',
-  2: 'Thiết lập dinh dưỡng từng bữa theo giai đoạn tập và giao việc chăm sóc dài hạn cho nhân viên.',
-  3: 'Lấy kết quả chạy thử làm bằng chứng để quyết định tham gia hoặc rút lui an toàn.',
-  4: 'Phân kỳ 4 giai đoạn: sức bền, sức mạnh, tốc độ, tinh chỉnh; tự sinh lịch tập tuần.',
-  5: 'Vận hành lịch tuần, kiểm tra sẵn sàng 4 cổng, theo dõi trực tiếp và chấm điểm phong độ.',
+// Contextual subtitle per staff route when a page does not supply a custom subtitle.
+const ROUTE_NOTES = {
+  '/horses': 'Hồ sơ đàn ngựa dùng chung cho Quản lý, HLV, Bác sĩ thú y, Nhân viên chuồng và Chủ ngựa.',
+  '/stable/tasks': 'Giao việc chăm sóc tới App Groom, đồng bộ khẩu phần theo giai đoạn tập và tiếp nhận sự cố chuồng.',
+  '/races': 'Đăng ký giải đấu dựa trên sức khỏe do Bác sĩ duyệt, chốt kèo chạy thử trước khi vào giải chính.',
+  '/training/plans': 'Thiết kế lộ trình phân kỳ theo cự ly giải, đồng bộ giới hạn tập luyện từ Bác sĩ.',
+  '/training/sessions': 'Xếp lịch theo khung giờ bắt đầu–kết thúc, ghép bài tập, kiểm tra 4 cổng và theo dõi cảm biến trực tiếp.',
+  '/admin/users': 'Duyệt tài khoản mới và phân vai trò: Quản lý, HLV Trưởng, Bác sĩ thú y, Nhân viên chuồng (Mobile) và Chủ ngựa.',
+  '/admin/stables': 'Bố trí sơ đồ chuồng trại theo tình trạng y tế và phân công nhân viên chăm sóc phụ trách từng ngựa.',
+  '/admin/reports': 'Tổng hợp kết quả huấn luyện từ HLV và cân đối chi phí vận hành — thưởng giải tự động.',
+  '/inventory': 'Quản lý lô nhập, hạn sử dụng FEFO, duyệt đề xuất vật tư từ Bác sĩ / Groom và tiêu hủy hàng quá hạn.',
+  '/finance': 'Sổ thu chi cấp CLB: nhận tự động tiền thưởng giải và ghi nhận chi phí vận hành đồng bộ sang Chủ ngựa.',
+  '/admin/audit-logs': 'Theo dõi toàn bộ thao tác quan trọng của các vai trò để kiểm soát vận hành minh bạch.',
 };
 
 /**
- * Reusable Hero Banner for Team 8 WDP301.
+ * Reusable Hero Banner for WDP301 Racehorse TMS.
  * - Head Trainer & Club Manager: Split Command Header Card with left gold accent bar,
- *   step indicator badge (1->5), high-contrast title/subtitle, action cluster, and framed KPI strip.
+ *   crisp high-contrast title/subtitle, action cluster, and framed KPI strip.
  * - Horse Owner & other roles: preserves the original atmospheric banner untouched.
  */
 export default function PageHeroBanner({
-  eyebrow = 'TEAM 8 • WDP301 EQUESTRIAN TMS',
+  eyebrow = 'CÂU LẠC BỘ ĐUA NGỰA',
   roleLabel,
   title,
   subtitle,
@@ -33,8 +38,7 @@ export default function PageHeroBanner({
   const userRole = useSelector((state) => state.auth?.user?.role);
   const isStaff = userRole === ROLES.MANAGER || userRole === ROLES.HEAD_TRAINER;
   const { pathname } = useLocation();
-  // The trainer's pages are steps of one job (menuConfig): the header carries the step's number.
-  const step = isStaff ? getMenuByRole(userRole).find((m) => m.step && m.path === pathname)?.step : null;
+  const fallbackSubtitle = isStaff ? ROUTE_NOTES[pathname] : null;
 
   if (!isStaff) {
     return (
@@ -98,15 +102,14 @@ export default function PageHeroBanner({
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <div className="min-w-0 flex-[1_1_320px]">
           <div className="st-hero-banner__eyebrow">
-            {step && <span className="st-hero-banner__step-pill">Bước {step}/5</span>}
             <span>{roleLabel || (userRole === ROLES.HEAD_TRAINER ? 'Huấn luyện viên Trưởng' : 'Quản lý Câu lạc bộ')}</span>
           </div>
           <h1 className="!m-0 !leading-tight text-balance">
             {title}
           </h1>
-          {(subtitle || STEP_NOTES[step]) && (
+          {(subtitle || fallbackSubtitle) && (
             <p className="st-hero-banner__subtitle m-0 mt-1 max-w-3xl">
-              {subtitle || STEP_NOTES[step]}
+              {subtitle || fallbackSubtitle}
             </p>
           )}
         </div>

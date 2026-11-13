@@ -92,6 +92,25 @@ export default function SessionOutcome({ session }) {
         </div>
       )}
 
+      {Array.isArray(outcome?.segmentResults) && outcome.segmentResults.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1 border-t border-gray-100 pt-1.5 text-[11px]">
+          {outcome.segmentResults.map((sr, i) => (
+            <div key={`${sr.kind}-${i}`} className="flex flex-wrap items-center justify-between gap-1.5 text-gray-600">
+              <span className="font-medium text-gray-800">
+                #{i + 1} {sr.label || sr.kind}
+                {sr.recoveryDropBpm > 0 ? <span className="ml-1 text-emerald-700">(hạ -{sr.recoveryDropBpm} bpm)</span> : null}
+              </span>
+              <span className="tabular-nums">
+                {sr.kind !== 'walk' && sr.actualMaxSpeedKmh != null ? `${sr.actualMaxSpeedKmh} km/h · ` : ''}
+                {sr.actualAvgHeartRate != null ? `${Math.round(sr.actualAvgHeartRate)} bpm ` : ''}
+                {sr.met === true && <span className="font-semibold text-emerald-700">✓ Đạt</span>}
+                {sr.met === false && <span className="font-semibold text-rose-600">✗ Chưa đạt</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {videoUrl && (
         <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs mt-1.5">
           <PlayCircleOutlined /> Xem video

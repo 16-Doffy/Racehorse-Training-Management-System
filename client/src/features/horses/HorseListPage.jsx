@@ -495,7 +495,7 @@ export default function HorseListPage() {
   const rows = newestFirst(source.filter(matches).filter((h) => archived || (FOCUS[focus] || FOCUS.all)(h)));
 
   const tiles = [
-    { key: 'all', label: 'Tổng đàn ngựa', value: horses.length, tone: 'text-[#0F5A43]' },
+    { key: 'all', label: 'Tổng đàn ngựa', value: horses.length, tone: 'text-amber-600' },
     { key: 'ready', label: 'Đủ điều kiện tập', value: readyCount, tone: 'text-emerald-700', hint: unexaminedCount ? `${unexaminedCount} ngựa chưa khám` : null },
     { key: 'watch', label: 'Theo dõi y tế', value: watchCount, tone: watchCount ? 'text-amber-700' : 'text-slate-700', hint: restrictedCount ? `${restrictedCount} ngựa bị hạn chế tập` : null },
     { key: 'gap', label: isManager ? 'Khuyết phụ trách' : 'Chưa có kế hoạch', value: gapCount, tone: gapCount ? 'text-rose-600' : 'text-slate-700' },
@@ -630,7 +630,7 @@ export default function HorseListPage() {
         </Text>
       </div>
 
-      <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+      <Card className="!rounded-xl shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
         <Table
           rowKey="_id"
           size="small"

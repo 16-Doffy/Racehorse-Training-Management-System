@@ -100,7 +100,7 @@ export default function MissedMealsCard() {
 
   return (
     <Card
-      className="shadow-xs border-[#E5DEC9] bg-[#FFFDF8] rounded-xl overflow-hidden"
+      className="shadow-xs rounded-xl overflow-hidden"
       styles={{
         title: { whiteSpace: 'normal', overflow: 'visible', padding: '12px 16px' },
         body: { padding: '4px 16px 10px 16px' },

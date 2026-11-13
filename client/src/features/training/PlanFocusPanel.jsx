@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Tag } from 'antd';
 import dayjs from 'dayjs';
 import { PHASE_LABELS, PHASE_DESCRIPTIONS, SESSION_KINDS, WEEK_DAYS, PLAN_STATUS_LABELS, PLAN_STATUS_COLORS } from './trainingVocab';
+import { RaceFormBlock } from './RaceForm';
 
 /** A readable view of one selected plan; all dates and prescriptions come from the API. */
 export default function PlanFocusPanel({ plan }) {
@@ -24,6 +25,11 @@ export default function PlanFocusPanel({ plan }) {
         </div>
         <Link className="st-focus-action" to={`/training/sessions?plan=${plan._id}`}>Mở lịch tập</Link>
       </header>
+      {progress?.form && (
+        <div className="mb-3 rounded-lg border border-black/10 bg-white/80 px-3 py-2.5">
+          <RaceFormBlock form={progress.form} />
+        </div>
+      )}
       {phases.length ? <ol className="st-phase-grid" aria-label="Các giai đoạn của kế hoạch">
         {phases.map((p, i) => {
           const current = i === currentIndex;

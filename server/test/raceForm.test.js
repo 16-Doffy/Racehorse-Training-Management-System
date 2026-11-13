@@ -49,3 +49,20 @@ test('without a race, only the form; a withdrawn race asks for no trial', () => 
   assert.equal(withdrawn.trial, null);
   assert.equal(withdrawn.status, 'ready');
 });
+
+test('trainer avgRating gate requires >= 6.5/10 when rated and exposes 5-gate checks[]', () => {
+  const lowRated = ten.map((s) => ({ ...s, rating: 5 }));
+  const bad = raceForm({ stats: lowRated, trials: [{ at: daysFrom(-1), met: true }], race: race(7), now });
+  assert.equal(bad.status, 'not_ready');
+  assert.equal(bad.avgRating, 5);
+  assert.match(bad.reasons.join(' '), /Điểm phong độ TB 5\/10/);
+  const ratingCheck = bad.checks.find((c) => c.key === 'trainerRating');
+  assert.equal(ratingCheck.ok, false);
+
+  const highRated = ten.map((s) => ({ ...s, rating: 8 }));
+  const good = raceForm({ stats: highRated, trials: [{ at: daysFrom(-1), met: true }], race: race(7), now });
+  assert.equal(good.status, 'ready');
+  assert.equal(good.avgRating, 8);
+  assert.equal(good.checks.length, 5);
+  assert.ok(good.checks.every((c) => c.ok === true));
+});

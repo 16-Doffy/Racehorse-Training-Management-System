@@ -24,6 +24,9 @@ function raceForm({ stats = [], trials = [], race = null, raceBlock = null, now 
   const due = doneList.length + past.filter((s) => ['missed', 'aborted'].includes(s.status)).length;
   const rated = doneList.filter((s) => s.met === true || s.met === false);
   const met = rated.filter((s) => s.met === true).length;
+  const ratingValues = doneList.map((s) => Number(s.rating)).filter((n) => Number.isFinite(n) && n >= 1 && n <= 10);
+  const ratedRatingCount = ratingValues.length;
+  const avgRating = ratedRatingCount ? Math.round((ratingValues.reduce((a, b) => a + b, 0) / ratedRatingCount) * 10) / 10 : null;
 
   const raceOn = race && !['withdrawn', 'completed'].includes(race.status) ? race : null;
   const trialDay = raceOn ? new Date(startOfDay(raceOn.raceDate).getTime() - TRIAL_DAYS_BEFORE_RACE * DAY_MS) : null;
@@ -33,15 +36,78 @@ function raceForm({ stats = [], trials = [], race = null, raceBlock = null, now 
     if (run) trial = run.met === false ? 'failed' : run.met === true ? 'passed' : 'ran';
     else trial = trialDay >= startOfDay(now) ? 'ahead' : 'missing';
   }
-  const result = (status, label, reasons) => ({ status, label, done: doneList.length, due, met, rated: rated.length, trial, trialDay, reasons });
+
+  const doneOk = !due || doneList.length / due >= clubPolicy.raceFormMinDone;
+  const metOk = !rated.length || met / rated.length >= clubPolicy.raceFormMinMet;
+  const ratingOk = !ratedRatingCount || avgRating >= clubPolicy.raceFormMinAvgRating;
+  const trialOk = !raceOn || trial === 'passed' || trial === 'ran';
+
+  const checks = [
+    { key: 'vet', label: 'Y tế bác sĩ', ok: !raceBlock, detail: raceBlock || 'Đủ điều kiện tập' },
+    {
+      key: 'attendance',
+      label: `Chuyên cần ≥ ${percent(clubPolicy.raceFormMinDone)}`,
+      ok: due ? doneOk : null,
+      detail: due ? `${doneList.length}/${due} buổi` : 'Chưa có buổi đến hạn',
+    },
+    {
+      key: 'targetRate',
+      label: `Đạt chỉ tiêu ≥ ${percent(clubPolicy.raceFormMinMet)}`,
+      ok: rated.length ? metOk : null,
+      detail: rated.length ? `${met}/${rated.length} buổi` : 'Chưa có buổi có chỉ tiêu',
+    },
+    {
+      key: 'trainerRating',
+      label: `Điểm HLV ≥ ${clubPolicy.raceFormMinAvgRating}/10`,
+      ok: ratedRatingCount ? ratingOk : null,
+      detail: ratedRatingCount ? `${avgRating}/10 (${ratedRatingCount} buổi)` : 'Chưa chấm điểm',
+    },
+    ...(raceOn
+      ? [
+          {
+            key: 'trial',
+            label: 'Chạy thử giải',
+            ok: trial === 'ahead' ? null : trialOk,
+            detail:
+              trial === 'passed'
+                ? 'Đã đạt'
+                : trial === 'ran'
+                  ? 'Đã chạy thử'
+                  : trial === 'ahead'
+                    ? `Lịch ${ddmm(trialDay)}`
+                    : trial === 'failed'
+                      ? 'Chưa đạt'
+                      : `Quá hạn ${ddmm(trialDay)}`,
+          },
+        ]
+      : []),
+  ];
+
+  const result = (status, label, reasons) => ({
+    status,
+    label,
+    done: doneList.length,
+    due,
+    met,
+    rated: rated.length,
+    avgRating,
+    ratedRatingCount,
+    trial,
+    trialDay,
+    checks,
+    reasons,
+  });
 
   if (raceBlock) return result('blocked', 'Không đủ điều kiện', [raceBlock]);
   const reasons = [];
-  if (due && doneList.length / due < clubPolicy.raceFormMinDone) {
+  if (due && !doneOk) {
     reasons.push(`Mới tập ${doneList.length}/${due} buổi đến hạn (cần từ ${percent(clubPolicy.raceFormMinDone)}).`);
   }
-  if (rated.length && met / rated.length < clubPolicy.raceFormMinMet) {
+  if (rated.length && !metOk) {
     reasons.push(`Đạt chỉ tiêu ${met}/${rated.length} buổi đã tập (cần từ ${percent(clubPolicy.raceFormMinMet)}).`);
+  }
+  if (ratedRatingCount && !ratingOk) {
+    reasons.push(`Điểm phong độ TB ${avgRating}/10 (cần từ ${clubPolicy.raceFormMinAvgRating}/10).`);
   }
   if (trial === 'failed') reasons.push('Chạy thử cho giải chưa đạt chỉ tiêu.');
   if (trial === 'missing') reasons.push(`Chưa chạy thử cho giải (lịch chạy thử ${ddmm(trialDay)} đã qua).`);

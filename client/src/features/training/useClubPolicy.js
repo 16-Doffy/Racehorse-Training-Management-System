@@ -22,6 +22,7 @@ export const DEFAULT_POLICY = {
   mealMinGapHours: 3,
   raceFormMinDone: 0.8,
   raceFormMinMet: 0.7,
+  raceFormMinAvgRating: 6.5,
 };
 
 /** The club's training and care policy, so every screen words the rules the same way the server applies them. */

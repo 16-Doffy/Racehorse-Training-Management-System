@@ -29,6 +29,7 @@ import {
   PLAN_STATUS_LABELS,
   PLAN_STATUS_COLORS,
   sessionTimeLabel,
+  formFigures,
 } from './trainingVocab';
 import { newestFirst } from '../../utils/newestFirst';
 import { fold } from '../../utils/fold';
@@ -250,6 +251,22 @@ export default function TrainingPlanPage() {
       },
     },
     {
+      title: 'Điều kiện dự giải',
+      key: 'raceForm',
+      render: (_, r) => {
+        const form = r.progress?.form;
+        if (!form) return <Text type="secondary">Chưa đánh giá</Text>;
+        return (
+          <div className="flex max-w-[230px] flex-col gap-0.5 text-xs">
+            <RaceFormTag form={form} />
+            <span className="truncate tabular-nums text-gray-600" title={formFigures(form)}>
+              {formFigures(form)}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
       title: '',
       key: 'actions',
       render: (_, r) => {
@@ -336,8 +353,8 @@ export default function TrainingPlanPage() {
 
   const totalActive = active.length;
   const lockedCount = active.filter((p) => lockedHorseIds.has(p.horse?._id)).length;
+  const raceReadyCount = active.filter((p) => p.progress?.form?.status === 'ready').length;
   const targetRaceCount = active.filter((p) => p.targetRace).length;
-  const avgKm = active.length ? Math.round(active.reduce((acc, p) => acc + (p.weeklyVolumeKm || 0), 0) / active.length) : 0;
 
   return (
     <div>
@@ -347,9 +364,9 @@ export default function TrainingPlanPage() {
         title="Kế hoạch huấn luyện"
         stats={[
           { label: 'Đang huấn luyện', value: `${totalActive} ngựa` },
-          { label: 'Khóa y tế', value: <span className={lockedCount > 0 ? 'text-rose-300' : ''}>{lockedCount} ngựa</span> },
+          { label: 'Đủ điều kiện dự giải', value: <span className={raceReadyCount > 0 ? 'text-emerald-700 font-semibold' : ''}>{raceReadyCount}/{totalActive} ngựa</span> },
+          { label: 'Khóa y tế', value: <span className={lockedCount > 0 ? 'text-rose-700 font-semibold' : ''}>{lockedCount} ngựa</span> },
           { label: 'Có giải mục tiêu', value: `${targetRaceCount} kế hoạch` },
-          { label: 'Tải trọng trung bình', value: `${avgKm} km/tuần` },
         ]}
         actionButton={
           <Button
@@ -415,7 +432,7 @@ export default function TrainingPlanPage() {
           <Title level={5} className="!mt-8 !mb-2">
             Kế hoạch nháp, đã xong hoặc đã hủy
           </Title>
-          <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+          <Card className="!rounded-xl shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
             <Table
               rowKey="_id"
               size="small"

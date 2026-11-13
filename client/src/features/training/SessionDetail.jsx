@@ -1,7 +1,7 @@
 import { Typography } from 'antd';
 import { CheckOutlined, CloseOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { SESSION_KINDS, OBJECTIVE_LABELS, ABORT_CATEGORY_LABELS, DONE_STATUSES } from './trainingVocab';
+import { SESSION_KINDS, OBJECTIVE_LABELS, ABORT_CATEGORY_LABELS, DONE_STATUSES, plannedEndAt } from './trainingVocab';
 import { SESSION_STATUS_LABELS } from './sessionStatus';
 import { buildRows } from './sessionResult';
 
@@ -67,10 +67,10 @@ function plannedFacts(p = {}) {
 /** Each target against what was measured; ticks only once the run has been closed normally. */
 function ResultTable({ rows, judged }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-[#E5DEC9]">
+    <div className="overflow-hidden rounded-lg border border-slate-200">
       <table className="w-full border-collapse text-[13px]">
         <thead>
-          <tr className="bg-[#FAF7F0] text-[11px] text-gray-500">
+          <tr className="bg-slate-50 text-[11px] text-gray-500">
             <th className="px-2.5 py-1.5 text-left font-medium">Chỉ số</th>
             <th className="px-2.5 py-1.5 text-right font-medium">Mục tiêu</th>
             <th className="px-2.5 py-1.5 text-right font-medium">Thực tế</th>
@@ -111,6 +111,8 @@ export default function SessionDetail({ session, statusLabel, notes, actions }) 
   const kind = SESSION_KINDS[session.kind];
   const title = kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập';
   const at = dayjs(session.scheduledAt);
+  const endAt = plannedEndAt(session);
+  const segments = Array.isArray(session.segments) ? session.segments.filter((s) => s?.kind) : [];
   const ran = Boolean(session.actualStartAt);
   const finished = DONE_STATUSES.includes(session.status) || session.status === 'aborted';
   const rows = buildRows(session);
@@ -119,7 +121,7 @@ export default function SessionDetail({ session, statusLabel, notes, actions }) 
   const evaluated = session.performanceRating != null || session.trainerComment || session.videoUrl;
 
   return (
-    <div className="flex w-[min(340px,calc(100vw-48px))] flex-col gap-3">
+    <div className="flex w-[min(360px,calc(100vw-48px))] flex-col gap-3">
       <header className="flex flex-col gap-0.5">
         <div className="flex items-start justify-between gap-2">
           <span className="text-[15px] font-semibold leading-tight text-gray-900">{title}</span>
@@ -127,8 +129,9 @@ export default function SessionDetail({ session, statusLabel, notes, actions }) 
             {statusLabel || SESSION_STATUS_LABELS[session.status] || session.status}
           </span>
         </div>
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-gray-500 tabular-nums">
           {WEEKDAY[at.day()]}, {at.format('DD/MM')} · lịch {at.format('HH:mm')}
+          {endAt ? `–${dayjs(endAt).format('HH:mm')}` : ''}
         </span>
         {session.raceEntry?.raceName && (
           <span className="text-xs text-gray-600">
@@ -136,6 +139,45 @@ export default function SessionDetail({ session, statusLabel, notes, actions }) 
           </span>
         )}
       </header>
+
+      {segments.length > 0 && (
+        <Section title={`Lộ trình trong buổi (${segments.length} bài)`}>
+          <div className="flex flex-col gap-1.5 rounded-lg border border-amber-200/70 bg-amber-50/50 p-2 text-xs">
+            {segments.map((seg, idx) => {
+              const segRes = session.outcome?.segmentResults?.[idx];
+              return (
+                <div key={`${seg.kind}-${idx}`} className="flex flex-col gap-0.5 border-b border-amber-200/40 pb-1 last:border-b-0 last:pb-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-gray-900">
+                      <span className="mr-1 text-amber-700">#{idx + 1}</span>
+                      {SESSION_KINDS[seg.kind]?.short || seg.kind}
+                      {seg.note ? <span className="font-normal text-gray-600"> · {seg.note}</span> : null}
+                    </span>
+                    <span className="flex items-center gap-1.5 shrink-0 tabular-nums text-gray-600">
+                      <span>{[seg.durationMinutes ? `${seg.durationMinutes} ph` : null, seg.distanceM ? `${num(seg.distanceM)} m` : null].filter(Boolean).join(' · ') || '—'}</span>
+                      {segRes?.met === true && <span className="rounded bg-emerald-100 px-1 py-px text-[10px] font-semibold text-emerald-700">Đạt</span>}
+                      {segRes?.met === false && <span className="rounded bg-rose-100 px-1 py-px text-[10px] font-semibold text-rose-700">Chưa đạt</span>}
+                    </span>
+                  </div>
+                  {segRes && (segRes.actualMaxSpeedKmh != null || segRes.actualAvgHeartRate != null || segRes.recoveryDropBpm != null) && (
+                    <div className="flex flex-wrap gap-x-2 text-[11px] tabular-nums text-gray-600">
+                      {segRes.actualMaxSpeedKmh != null && seg.kind !== 'walk' && (
+                        <span>Tốc độ {segRes.actualMaxSpeedKmh}/{segRes.targetSpeedKmh} km/h</span>
+                      )}
+                      {segRes.actualAvgHeartRate != null && (
+                        <span>Tim TB {Math.round(segRes.actualAvgHeartRate)}/{segRes.targetHeartRateMax} bpm</span>
+                      )}
+                      {segRes.recoveryDropBpm > 0 && (
+                        <span className="font-medium text-emerald-700">Hạ nhịp -{segRes.recoveryDropBpm} bpm</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
 
       {ran && (
         <Section title="Thời gian thực tế">

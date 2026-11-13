@@ -1,13 +1,26 @@
 import { Link } from 'react-router-dom';
 import { Button, Card, Tag } from 'antd';
+import { WarningOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import dayjs from 'dayjs';
 import { inventoryApi } from '../inventory/inventoryApi';
 import QuietCard from './QuietCard';
 import { useFirst } from './useFirst';
 
 // Worth a look: out, at or under the level set for reordering, or under a week left at today's use.
 const WEEK = 7;
+const EXPIRY_SOON_DAYS = 14;
 const isShort = (f) => f.quantity <= 0 || (f.reorderLevel > 0 && f.quantity <= f.reorderLevel) || (f.daysLeft != null && f.daysLeft < WEEK);
+
+function countExpiringOrExpired(items) {
+  const soonCutoff = dayjs().startOf('day').add(EXPIRY_SOON_DAYS, 'day');
+  return items.filter((item) => {
+    if (item.isActive === false) return false;
+    const itemExp = item.expiryDate && !dayjs(item.expiryDate).startOf('day').isAfter(soonCutoff);
+    const batchExp = (item.batches || []).some((b) => b.qty > 0 && b.expiryDate && !dayjs(b.expiryDate).startOf('day').isAfter(soonCutoff));
+    return itemExp || batchExp;
+  }).length;
+}
 
 function StockTag({ item }) {
   if (item.quantity <= 0) return <Tag color="error" className="!m-0 shrink-0 !text-[11px]">Đã hết</Tag>;
@@ -27,16 +40,18 @@ function StockTag({ item }) {
  */
 export default function StockWatchCard() {
   const { data, isLoading } = useQuery({ queryKey: ['inventory-forecast'], queryFn: () => inventoryApi.forecast() });
+  const { data: invData } = useQuery({ queryKey: ['inventory'], queryFn: () => inventoryApi.list() });
   const items = (data?.data || [])
     .filter(isShort)
     .sort((a, b) => (a.quantity <= 0 ? -1 : 0) - (b.quantity <= 0 ? -1 : 0) || (a.daysLeft ?? Infinity) - (b.daysLeft ?? Infinity) || a.name.localeCompare(b.name, 'vi'));
+  const expiringCount = countExpiringOrExpired(invData?.data || []);
   const [shown, more] = useFirst(items, 5);
 
-  if (!isLoading && !items.length) return <QuietCard title="Kho cần chú ý">Không có vật tư nào sắp hết</QuietCard>;
+  if (!isLoading && !items.length && expiringCount === 0) return <QuietCard title="Kho cần chú ý">Không có vật tư nào sắp hết</QuietCard>;
 
   return (
     <Card
-      className="shadow-xs border-[#E5DEC9] rounded-xl"
+      className="shadow-xs rounded-xl"
       loading={isLoading}
       styles={{ title: { whiteSpace: 'normal' }, body: { padding: '4px 16px 12px' } }}
       title={
@@ -66,6 +81,18 @@ export default function StockWatchCard() {
         ))}
       </ul>
       {more}
+      {expiringCount > 0 && (
+        <Link
+          to="/inventory?status=expiry"
+          className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-100 transition-colors"
+        >
+          <span className="flex items-center gap-1.5">
+            <WarningOutlined />
+            {expiringCount} vật tư hết hạn / sắp hết hạn (FEFO)
+          </span>
+          <span className="shrink-0 font-semibold">Kiểm tra kho →</span>
+        </Link>
+      )}
     </Card>
   );
 }

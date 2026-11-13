@@ -7,7 +7,7 @@ import { message } from '../../lib/antdStatic';
 import dayjs from 'dayjs';
 import { getSocket } from '../../lib/socket';
 import { trainingSessionApi } from './trainingApi';
-import { SESSION_KINDS, OBJECTIVE_LABELS, sessionTargets } from './trainingVocab';
+import { SESSION_KINDS, OBJECTIVE_LABELS, segmentAtDistance, sessionTargets } from './trainingVocab';
 import { FOREST, STATUS_TONES } from '../../layouts/forestTheme';
 import MovingHorse3D from '../horses/horse3d/MovingHorse3D';
 import Telemetry from './Telemetry';
@@ -20,19 +20,44 @@ const KEEP = 40;
 // Readings outlive this screen while the browser tab is open: going to another page and back
 // keeps the chart instead of starting it again (the server also hands back its last readings).
 const liveCache = new Map();
-const toPoint = (r) => ({ hr: r.hr ?? r.heartRate, speed: r.speed, distance: r.distance, targetDistance: r.targetDistance });
+const toPoint = (r) => ({
+  hr: r.hr ?? r.heartRate,
+  speed: r.speed,
+  distance: r.distance,
+  targetDistance: r.targetDistance,
+  segmentIndex: r.segmentIndex,
+  segmentCount: r.segmentCount,
+  segmentKind: r.segmentKind,
+  segmentLabel: r.segmentLabel,
+  segmentNote: r.segmentNote,
+});
 const GRID = '#E4DFD3';
 const AXIS = '#8A8578';
 
 /** What a running session shows now: the latest reading, else the last one the server kept. */
 function liveFigures(session, readings) {
-  const target = sessionTargets(session);
+  const baseTarget = sessionTargets(session);
   const last = readings[readings.length - 1];
   const heartRate = last?.hr ?? session.metrics?.lastHeartRate;
   const speed = last?.speed ?? session.metrics?.lastSpeed;
   const distance = last?.distance ?? session.metrics?.distance ?? 0;
-  const targetDistance = last?.targetDistance ?? target.distance;
-  return { target, heartRate, speed, distance, targetDistance, over: heartRate != null && heartRate > target.heartRateMax };
+  const targetDistance = last?.targetDistance ?? baseTarget.distance;
+  const segTarget = segmentAtDistance(session, distance);
+  const target = segTarget
+    ? { heartRateMax: segTarget.heartRateMax, speed: segTarget.speed, distance: targetDistance }
+    : baseTarget;
+  return {
+    target,
+    heartRate,
+    speed,
+    distance,
+    targetDistance,
+    over: heartRate != null && heartRate > target.heartRateMax,
+    segmentIndex: last?.segmentIndex ?? segTarget?.segmentIndex,
+    segmentCount: last?.segmentCount ?? segTarget?.segmentCount,
+    segmentLabel: last?.segmentLabel ?? segTarget?.segmentLabel,
+    segmentNote: last?.segmentNote ?? segTarget?.segmentNote,
+  };
 }
 
 /**
@@ -113,7 +138,7 @@ function LiveCard({ session, readings, horse, surface }) {
   const gridColor = token.colorBorderSecondary || GRID;
   const axisColor = token.colorTextTertiary || AXIS;
   const figures = liveFigures(session, readings);
-  const { target, heartRate, speed, distance, targetDistance, over } = figures;
+  const { target, heartRate, speed, distance, targetDistance, over, segmentIndex, segmentCount, segmentLabel, segmentNote } = figures;
   const data = readings.map((r, i) => ({ i, hr: r.hr, speed: r.speed }));
   // The horse runs as the sensors say: its gait and pace follow the latest speed.
   const motion = motionNow(session, figures, readings) || { clip: 'Idle_Look', label: 'Đã bắt đầu, chờ tín hiệu cảm biến' };
@@ -125,6 +150,12 @@ function LiveCard({ session, readings, horse, surface }) {
       styles={CARD_STYLES}
       title={
         <CardTitle session={session}>
+          {segmentCount > 0 && (
+            <Tag color="gold" className="!m-0 text-xs font-medium">
+              Đoạn {(segmentIndex ?? 0) + 1}/{segmentCount}: {segmentLabel}
+              {segmentNote ? ` · ${segmentNote}` : ''}
+            </Tag>
+          )}
           {over && (
             <Tag color="error" className="!m-0 text-xs font-medium">
               Vượt ngưỡng nhịp tim

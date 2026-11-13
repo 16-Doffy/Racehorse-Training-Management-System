@@ -37,13 +37,88 @@ const GUIDE = {
   },
 };
 
-// The same in every class: what each phase is for and how hard it works.
+// The same in every class: what each phase is for, how hard it works, and recommended parameters.
 export const PHASE_FOCUS = {
-  base_building: { intensity: 'moderate', focus: 'Đi bộ, chạy kiệu, phi chậm dài: nền sức bền tim phổi.' },
-  strength: { intensity: 'high', focus: 'Tập dốc, phi chậm dài hơn, một buổi nhanh mỗi tuần.' },
-  speed: { intensity: 'high', focus: 'Hai buổi phi nhanh mỗi tuần (400–800 m gần tốc độ đua), các ngày khác tập nhẹ.' },
-  peak: { intensity: 'moderate', focus: 'Giảm 30–50% khối lượng, giữ một buổi nhanh ngắn; chạy thử đủ cự ly khoảng 8 ngày trước giải.' },
-  recovery: { intensity: 'light', focus: 'Đi bộ, chạy kiệu nhẹ để hồi phục sau giải.' },
+  base_building: {
+    intensity: 'moderate',
+    sessionsPerWeek: '5–6 buổi',
+    speedKmh: '18–28 km/h',
+    hrMax: 165,
+    durationMin: '40–55 phút',
+    rationHint: 'Cỏ thô ~75–80% + tinh bột vừa; chưa cần tăng năng lượng cao.',
+    focus: 'Đi bộ, chạy kiệu, phi chậm dài: nền sức bền tim phổi.',
+    recommendedWeek: [
+      { day: 1, slot: 'morning', kind: 'trot' },
+      { day: 2, slot: 'morning', kind: 'canter' },
+      { day: 3, slot: 'morning', kind: 'trot' },
+      { day: 4, slot: 'morning', kind: 'canter' },
+      { day: 5, slot: 'morning', kind: 'trot' },
+      { day: 6, slot: 'morning', kind: 'walk' },
+    ],
+  },
+  strength: {
+    intensity: 'high',
+    sessionsPerWeek: '5 buổi',
+    speedKmh: '25–38 km/h',
+    hrMax: 180,
+    durationMin: '35–50 phút',
+    rationHint: 'Tăng tinh bột (yến mạch) + dầu thực vật giữ cơ, điện giải sau buổi dốc.',
+    focus: 'Tập dốc, phi chậm dài hơn, một buổi nhanh mỗi tuần.',
+    recommendedWeek: [
+      { day: 1, slot: 'morning', kind: 'canter' },
+      { day: 2, slot: 'morning', kind: 'hill' },
+      { day: 3, slot: 'morning', kind: 'trot' },
+      { day: 4, slot: 'morning', kind: 'hill' },
+      { day: 5, slot: 'morning', kind: 'breeze' },
+      { day: 6, slot: 'morning', kind: 'walk' },
+    ],
+  },
+  speed: {
+    intensity: 'high',
+    sessionsPerWeek: '4–5 buổi',
+    speedKmh: '45–60 km/h',
+    hrMax: 195,
+    durationMin: '30–40 phút',
+    rationHint: 'Khẩu phần nặng: chia bữa tinh bột sau tập, bắt buộc điện giải + dầu.',
+    focus: 'Hai buổi phi nhanh mỗi tuần (400–800 m gần tốc độ đua), các ngày khác tập nhẹ.',
+    recommendedWeek: [
+      { day: 1, slot: 'morning', kind: 'trot' },
+      { day: 2, slot: 'morning', kind: 'breeze' },
+      { day: 3, slot: 'morning', kind: 'walk' },
+      { day: 4, slot: 'morning', kind: 'canter' },
+      { day: 5, slot: 'morning', kind: 'gallop' },
+      { day: 6, slot: 'morning', kind: 'walk' },
+    ],
+  },
+  peak: {
+    intensity: 'moderate',
+    sessionsPerWeek: '4 buổi',
+    speedKmh: '40–55 km/h',
+    hrMax: 185,
+    durationMin: '25–35 phút',
+    rationHint: 'Giữ năng lượng tinh gọn, giảm cỏ quá nặng sát ngày đua 24–48h.',
+    focus: 'Giảm 30–50% khối lượng, giữ một buổi nhanh ngắn; chạy thử đủ cự ly khoảng 8 ngày trước giải.',
+    recommendedWeek: [
+      { day: 1, slot: 'morning', kind: 'trot' },
+      { day: 2, slot: 'morning', kind: 'breeze' },
+      { day: 4, slot: 'morning', kind: 'canter' },
+      { day: 5, slot: 'morning', kind: 'walk' },
+    ],
+  },
+  recovery: {
+    intensity: 'light',
+    sessionsPerWeek: '3–4 buổi',
+    speedKmh: '12–20 km/h',
+    hrMax: 145,
+    durationMin: '25–35 phút',
+    rationHint: 'Giảm mạnh tinh bột, tăng cỏ thô mát + điện giải hồi phục.',
+    focus: 'Đi bộ, chạy kiệu nhẹ để hồi phục sau giải.',
+    recommendedWeek: [
+      { day: 1, slot: 'morning', kind: 'walk' },
+      { day: 3, slot: 'morning', kind: 'trot' },
+      { day: 5, slot: 'morning', kind: 'walk' },
+    ],
+  },
 };
 
 export const PLAN_RULES = [

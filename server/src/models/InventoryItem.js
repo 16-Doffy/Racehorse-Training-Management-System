@@ -61,6 +61,15 @@ const inventoryItemSchema = new mongoose.Schema(
     // Discontinued items stay on record but can't be put into new rations or prescriptions.
     isActive: { type: Boolean, default: true },
     lastRestockedAt: { type: Date, default: null },
+    // Per-batch stock tracking for FEFO (First Expired, First Out) and expired-stock isolation.
+    batches: [
+      {
+        qty: { type: Number, required: true, min: 0 },
+        expiryDate: { type: Date, default: null },
+        receivedAt: { type: Date, default: Date.now },
+        note: { type: String, trim: true },
+      },
+    ],
     // A new item someone asked the Manager to start stocking. It becomes a regular item when the
     // Manager approves the request that came with it, and disappears if they turn it down.
     isProposed: { type: Boolean, default: false },

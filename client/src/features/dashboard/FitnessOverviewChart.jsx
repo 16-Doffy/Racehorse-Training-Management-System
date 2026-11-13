@@ -285,7 +285,7 @@ export default function FitnessOverviewChart({ sessions }) {
       </div>
 
       {session && (
-        <Card size="small" className="!rounded-xl !border-[#E5DEC9]" title={`Kết quả buổi tập · ${session.horse?.name || ''}`}>
+        <Card size="small" className="!rounded-xl" title={`Kết quả buổi tập · ${session.horse?.name || ''}`}>
           <SessionResult session={session} colors={colors} />
         </Card>
       )}

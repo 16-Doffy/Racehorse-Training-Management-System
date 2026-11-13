@@ -17,7 +17,6 @@ import {
   surfaceOptions,
   layPhases,
   planWarnings,
-  INTENSITY_LABELS,
 } from './trainingVocab';
 import { distanceClass, phaseGuide, midKm, PLAN_RULES } from './planGuide';
 
@@ -155,7 +154,21 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
     setPhases((list) =>
       list.map((p) => {
         const g = phaseGuide(guideDistance, p.key);
-        return g ? { ...p, weeklyVolumeKm: midKm(g.km), intensity: g.intensity } : p;
+        return g
+          ? {
+              ...p,
+              weeklyVolumeKm: midKm(g.km),
+              intensity: g.intensity,
+            }
+          : p;
+      })
+    );
+  const applyRecommendedWeek = (phaseIdx) =>
+    setPhases((list) =>
+      list.map((p, idx) => {
+        if (idx !== phaseIdx) return p;
+        const g = phaseGuide(guideDistance, p.key);
+        return g?.recommendedWeek ? { ...p, week: g.recommendedWeek.map((x) => ({ ...x })) } : p;
       })
     );
   const hasError = warnings.some((w) => w.level === 'error');
@@ -409,8 +422,9 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
                     <th className="py-1 pr-2 font-medium">Giai đoạn</th>
                     <th className="py-1 pr-2 font-medium">Số tuần</th>
                     <th className="py-1 pr-2 font-medium">km/tuần</th>
-                    <th className="py-1 pr-2 font-medium">Cường độ</th>
-                    <th className="py-1 font-medium">Trọng tâm</th>
+                    <th className="py-1 pr-2 font-medium">Buổi/tuần</th>
+                    <th className="py-1 pr-2 font-medium">Tốc độ · HR tối đa · Thời lượng</th>
+                    <th className="py-1 font-medium">Trọng tâm & Khẩu phần</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -418,11 +432,17 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
                     const g = phaseGuide(guideDistance, key);
                     return (
                       <tr key={key} className="border-t border-black/5 align-top">
-                        <td className="py-1 pr-2 whitespace-nowrap">{PHASE_LABELS[key]}</td>
-                        <td className="py-1 pr-2 tabular-nums whitespace-nowrap">{g.weeks[0] === g.weeks[1] ? g.weeks[0] : `${g.weeks[0]}–${g.weeks[1]}`}</td>
-                        <td className="py-1 pr-2 tabular-nums whitespace-nowrap">{g.km[0]}–{g.km[1]}</td>
-                        <td className="py-1 pr-2 whitespace-nowrap">{INTENSITY_LABELS[g.intensity]}</td>
-                        <td className="py-1 text-gray-600">{g.focus}</td>
+                        <td className="py-1.5 pr-2 font-medium whitespace-nowrap">{PHASE_LABELS[key]}</td>
+                        <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap">{g.weeks[0] === g.weeks[1] ? `${g.weeks[0]}t` : `${g.weeks[0]}–${g.weeks[1]}t`}</td>
+                        <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap">{g.km[0]}–{g.km[1]} km</td>
+                        <td className="py-1.5 pr-2 whitespace-nowrap">{g.sessionsPerWeek}</td>
+                        <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap">
+                          {g.speedKmh} · ≤{g.hrMax} bpm · {g.durationMin}
+                        </td>
+                        <td className="py-1.5 text-gray-600">
+                          <div>{g.focus}</div>
+                          <div className="text-[11px] text-amber-800">{g.rationHint}</div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -468,11 +488,30 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
                 {phases.map((p, i) =>
                   SLOTS.map(({ slot, label }, si) => (
                     <tr key={`${i}-${slot}`} className={si === 0 ? 'border-t border-black/5' : ''}>
-                      <td className="py-1 pr-2 whitespace-nowrap font-medium">
+                      <td className="py-1 pr-2 whitespace-nowrap font-medium align-top">
                         {si === 0 && (
-                          <>
-                            {PHASE_LABELS[p.key]} <Text type="secondary">· {p.weeks}t</Text>
-                          </>
+                          <div>
+                            <div>
+                              {PHASE_LABELS[p.key]} <Text type="secondary">· {p.weeks}t</Text>
+                            </div>
+                            {(() => {
+                              const g = phaseGuide(guideDistance, p.key);
+                              return g ? (
+                                <div className="mt-0.5 text-[11px] font-normal text-gray-500 whitespace-normal max-w-[200px]">
+                                  {g.speedKmh} · ≤{g.hrMax} bpm
+                                  <div>
+                                    <button
+                                      type="button"
+                                      onClick={() => applyRecommendedWeek(i)}
+                                      className="text-amber-700 hover:underline bg-transparent border-0 p-0 cursor-pointer text-[11px]"
+                                    >
+                                      Áp dụng tuần mẫu
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : null;
+                            })()}
+                          </div>
                         )}
                       </td>
                       <td className="py-1 pr-2 text-xs text-gray-500">{label}</td>

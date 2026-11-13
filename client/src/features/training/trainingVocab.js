@@ -208,8 +208,121 @@ export const TRAINER_ABORT_OPTIONS = ['health', 'injury', 'behaviour', 'weather'
 // A completed run and an evaluated one are both done work.
 export const DONE_STATUSES = ['completed', 'evaluated'];
 
+/** Planned end timestamp from explicit `endAt`, summed `segments`, or `prescription.durationMinutes`. */
+export function plannedEndAt(session) {
+  if (!session?.scheduledAt) return null;
+  if (session.endAt) {
+    const end = new Date(session.endAt);
+    return Number.isNaN(end.getTime()) ? null : end;
+  }
+  const segs = Array.isArray(session.segments) ? session.segments.filter((s) => s?.kind) : [];
+  if (segs.length > 0) {
+    const mins = segs.reduce((sum, s) => sum + (Number(s.durationMinutes) || SESSION_KINDS[s.kind]?.prescription?.durationMinutes || 15), 0);
+    return mins > 0 ? new Date(new Date(session.scheduledAt).getTime() + mins * 60000) : null;
+  }
+  const mins = Number(session.prescription?.durationMinutes) || SESSION_KINDS[session.kind]?.prescription?.durationMinutes || 0;
+  return mins > 0 ? new Date(new Date(session.scheduledAt).getTime() + mins * 60000) : null;
+}
+
+/** Formats "07:30–08:15" when end time is known, otherwise "07:30". */
+export function sessionWindowLabel(session) {
+  if (!session?.scheduledAt) return '';
+  const start = hhmm(session.scheduledAt);
+  const end = plannedEndAt(session);
+  return end ? `${start}–${hhmm(end)}` : start;
+}
+
+/** Real-world equestrian coaching safety soft warnings when chaining workouts in a single session. */
+export function segmentSafetyWarnings(segments = []) {
+  const list = (segments || []).filter((s) => s?.kind);
+  if (list.length === 0) return [];
+  const warnings = [];
+  const totalMin = list.reduce((sum, s) => sum + (Number(s.durationMinutes) || 0), 0);
+  const heavyIndices = list
+    .map((s, idx) => (['hill', 'breeze', 'trial'].includes(s.kind) ? idx : -1))
+    .filter((i) => i >= 0);
+
+  if (list.length > 5) {
+    warnings.push(`Buổi có ${list.length} đoạn (khuyến nghị tối đa 4–5 đoạn trong 1 buổi để tránh rối nhịp vận động).`);
+  }
+  if (totalMin > 90) {
+    warnings.push(`Tổng thời lượng ${totalMin} phút — vượt ngưỡng 90 phút/buổi dễ gây quá tải gân và tim mạch.`);
+  }
+  if (heavyIndices.length > 1) {
+    warnings.push(`Có ${heavyIndices.length} bài nặng (tập dốc / phi nhanh / chạy thử) trong cùng 1 buổi — thực tế chỉ nên xếp tối đa 1 bài nặng mỗi buổi.`);
+  }
+  if (heavyIndices.length > 0) {
+    if (list[0]?.kind !== 'walk') {
+      warnings.push('Có bài tập nặng nhưng đoạn đầu chưa là "Đi bộ" khởi động làm nóng gân khớp.');
+    }
+    if (list.length >= 2 && list[list.length - 1]?.kind !== 'walk') {
+      warnings.push('Sau bài tập nặng nên có đoạn "Đi bộ" thả lỏng ở cuối để hạ nhịp tim từ từ.');
+    }
+  }
+  return warnings;
+}
+
+/** Active segment target at `coveredDistance` m when `session.segments` is present (matches server targetsOf). */
+export function segmentAtDistance(session, coveredDistance = 0) {
+  if (!Array.isArray(session?.segments) || session.segments.length === 0) return null;
+  let cursor = 0;
+  let maxHr = 120;
+  let peakSpeed = 0;
+  const timeline = [];
+  for (const seg of session.segments) {
+    if (!seg?.kind) continue;
+    const rx = SESSION_KINDS[seg.kind]?.prescription || {};
+    const speed = Number(seg.targetSpeedKmh) || rx.targetSpeedKmh || 35;
+    const hr = Number(seg.targetHeartRateMax) || rx.targetHeartRateMax || 180;
+    const dur = Number(seg.durationMinutes) || rx.durationMinutes || (seg.distanceM ? Math.max(5, Math.round(seg.distanceM / ((speed * 1000) / 60))) : 15);
+    let segDist;
+    if (Number(seg.distanceM) > 0) {
+      segDist = Math.round(Number(seg.distanceM));
+    } else if (rx.distanceM) {
+      segDist = rx.durationMinutes ? Math.max(200, Math.round(rx.distanceM * (dur / rx.durationMinutes))) : rx.distanceM * (rx.reps ?? 1);
+    } else {
+      segDist = Math.max(200, Math.round((speed / 3.6) * dur * 60));
+    }
+    const startDistance = cursor;
+    cursor += segDist;
+    if (hr > maxHr) maxHr = hr;
+    if (speed > peakSpeed) peakSpeed = speed;
+    timeline.push({
+      index: timeline.length,
+      kind: seg.kind,
+      label: SESSION_KINDS[seg.kind]?.short || SESSION_KINDS[seg.kind]?.label || seg.kind,
+      note: seg.note || null,
+      speed,
+      heartRateMax: hr,
+      startDistance,
+      endDistance: cursor,
+      segDist,
+    });
+  }
+  if (!timeline.length) return null;
+  const covered = Math.max(0, Number(coveredDistance) || 0);
+  const active = timeline.find((s) => covered < s.endDistance) || timeline[timeline.length - 1];
+  return {
+    totalDistance: cursor,
+    maxHr,
+    peakSpeed,
+    segmentIndex: active.index,
+    segmentCount: timeline.length,
+    segmentKind: active.kind,
+    segmentLabel: active.label,
+    segmentNote: active.note,
+    speed: active.speed,
+    heartRateMax: active.heartRateMax,
+  };
+}
+
 /** The workout a session is measured against (same fallbacks as the server's sensor simulator). */
 export function sessionTargets(session) {
+  const seg = segmentAtDistance(session, session?.metrics?.distance || 0);
+  if (seg && seg.totalDistance > 0) {
+    return { heartRateMax: seg.maxHr, speed: seg.peakSpeed, distance: seg.totalDistance };
+  }
+
   const kind = SESSION_KINDS[session?.kind]?.prescription || {};
   const p = session?.prescription || {};
   const pick = (f) => p[f] ?? kind[f];
@@ -305,4 +418,17 @@ export function planWarnings(phases, { startDate, raceDate, distance } = {}) {
   }
   if (distance > 3200) out.push({ level: 'warning', text: `Đua phẳng hiếm khi vượt 3200m — kiểm tra lại cự ly ${distance}m.` });
   return out;
+}
+
+const FORM_TRIAL_WORDS = { passed: 'chạy thử đạt', ran: 'đã chạy thử', failed: 'chạy thử chưa đạt', missing: 'chưa chạy thử' };
+
+/** "Tập 9/10 buổi đến hạn · đạt 8/9 · ĐTB 7.5/10 · chạy thử 22/11": numbers behind race-form verdict. */
+export function formFigures(form) {
+  if (!form) return '';
+  const parts = [`Tập ${form.done}/${form.due} buổi đến hạn`];
+  if (form.rated) parts.push(`đạt chỉ tiêu ${form.met}/${form.rated}`);
+  if (form.avgRating != null) parts.push(`ĐTB ${form.avgRating}/10`);
+  if (form.trial === 'ahead') parts.push(`chạy thử ${ddmmOf(form.trialDay)}`);
+  else if (form.trial) parts.push(FORM_TRIAL_WORDS[form.trial]);
+  return parts.join(' · ');
 }

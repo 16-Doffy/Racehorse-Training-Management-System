@@ -471,9 +471,15 @@ const completeTask = asyncHandler(async (req, res) => {
       await task.save({ session });
       const stock = await consumeSupplies(task.supplies, { session });
       if (!stock.ok) {
-        // The groom sees which item and how much is missing, and asks the Manager for it (restock request).
-        const list = stock.missing.map((m) => `${m.name} (cần ${m.needed} ${m.unit}, còn ${m.available} ${m.unit})`).join('; ');
-        throw operationError(409, `Thiếu vật tư: ${list} — hãy gửi đề xuất bổ sung cho Quản lý.`, { missing: stock.missing });
+        // The groom sees which item is expired or missing, and asks the Manager for it (restock request).
+        const list = stock.missing
+          .map((m) =>
+            m.expired
+              ? `${m.name} (đã hết hạn sử dụng — cần ${m.needed} ${m.unit})`
+              : `${m.name} (cần ${m.needed} ${m.unit}, còn ${m.available} ${m.unit})`
+          )
+          .join('; ');
+        throw operationError(409, `Không đủ vật tư hợp lệ: ${list} — hãy gửi đề xuất bổ sung cho Quản lý.`, { missing: stock.missing });
       }
       consumed = stock.consumed;
     }

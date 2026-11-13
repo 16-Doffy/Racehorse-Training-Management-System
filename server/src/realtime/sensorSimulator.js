@@ -4,6 +4,7 @@ const { getIO } = require('./socketServer');
 const { SESSION_KINDS } = require('../constants/training');
 const { autoComplete, stopForSuspectedInjury } = require('../modules/training/trainingSession.service');
 const { pushReading, clearReadings } = require('./liveReadings');
+const { buildSegmentTimeline, FALLBACK } = require('./segmentTimeline');
 
 const TICK_MS = 5000;
 // Each 5-second tick stands for 30 seconds of work, so a 2400 m canter finishes in under a minute
@@ -11,8 +12,6 @@ const TICK_MS = 5000;
 const SIM_SECONDS_PER_TICK = 30;
 // Chance per tick of a reading over the session's heart-rate ceiling, so the alert path still shows.
 const SPIKE_CHANCE = 0.1;
-// Used for a session with no workout and no kind (sessions booked before kinds existed).
-const FALLBACK = { targetSpeedKmh: 35, targetHeartRateMax: 180, distanceM: 2000, reps: 1 };
 
 // How well each running session's horse is going today: some days a horse holds its target pace,
 // some days it doesn't, which is what makes "Đạt / Chưa đạt" mean something. Per process is enough.
@@ -29,8 +28,35 @@ const lameSessions = new Set();
 const jitter = (value, spread) => value * (1 - spread + Math.random() * 2 * spread);
 const round1 = (n) => Math.round(n * 10) / 10;
 
-/** The workout a running session is measured against: its prescription, else its kind's, else a canter. */
-function targetsOf(session) {
+/**
+ * The workout a running session is measured against: when `segments` has items, returns targets for the
+ * segment covering the horse's current distance plus the combined total distance so all segments play out
+ * sequentially; otherwise falls back to `prescription`, then `kind`'s defaults.
+ */
+function targetsOf(session, coveredDistance = session.metrics?.distance || 0) {
+  if (Array.isArray(session.segments) && session.segments.length > 0) {
+    const { timeline, totalDistance, totalDurationMinutes } = buildSegmentTimeline(session.segments);
+    if (timeline.length > 0) {
+      const covered = Math.max(0, Number(coveredDistance) || 0);
+      const active = timeline.find((s) => covered < s.endDistance) || timeline[timeline.length - 1];
+      return {
+        speed: active.speed,
+        heartRateMax: active.heartRateMax,
+        distance: totalDistance,
+        durationMinutes: totalDurationMinutes || null,
+        isSegmented: true,
+        currentSegmentIndex: active.index,
+        segmentCount: timeline.length,
+        segmentKind: active.kind,
+        segmentLabel: active.label,
+        segmentNote: active.note,
+        segmentDistance: Math.max(0, covered - active.startDistance),
+        segmentTargetDistance: active.distance,
+        segments: timeline,
+      };
+    }
+  }
+
   const kind = SESSION_KINDS[session.kind]?.prescription || {};
   const p = session.prescription || {};
   const pick = (f) => p[f] ?? kind[f] ?? FALLBACK[f];
@@ -39,6 +65,8 @@ function targetsOf(session) {
     heartRateMax: pick('targetHeartRateMax'),
     distance: (pick('distanceM') || FALLBACK.distanceM) * (p.reps ?? kind.reps ?? 1),
     durationMinutes: p.durationMinutes ?? kind.durationMinutes ?? null,
+    isSegmented: false,
+    segments: null,
   };
 }
 
@@ -120,7 +148,20 @@ async function simulateTick() {
     m.maxSpeed = Math.max(m.maxSpeed || 0, speed);
     m.distance = Math.min(target.distance, Math.round((m.distance || 0) + (speed / 3.6) * SIM_SECONDS_PER_TICK));
     const elapsedMinutes = (m.sampleCount * SIM_SECONDS_PER_TICK) / 60;
-    const done = m.distance >= target.distance || (target.durationMinutes && elapsedMinutes >= target.durationMinutes);
+    const done = target.isSegmented
+      ? m.distance >= target.distance
+      : m.distance >= target.distance || (target.durationMinutes && elapsedMinutes >= target.durationMinutes);
+    // Re-evaluate segment indicator after advancing distance so UI steps immediately when crossing into the next workout.
+    const nextTarget = target.isSegmented ? targetsOf(session, m.distance) : target;
+    const segmentMeta = nextTarget.isSegmented
+      ? {
+          segmentIndex: nextTarget.currentSegmentIndex,
+          segmentCount: nextTarget.segmentCount,
+          segmentKind: nextTarget.segmentKind,
+          segmentLabel: nextTarget.segmentLabel,
+          segmentNote: nextTarget.segmentNote,
+        }
+      : {};
     // Written only while the run is still on: a reading that lands after the trainer stopped it, or
     // after the vet's lock, must not change what was recorded at that moment.
     // eslint-disable-next-line no-await-in-loop
@@ -136,7 +177,7 @@ async function simulateTick() {
       clearReadings(key);
       continue;
     }
-    pushReading(key, { hr: heartRate, speed, distance: m.distance, targetDistance: target.distance, at: Date.now() });
+    pushReading(key, { hr: heartRate, speed, distance: m.distance, targetDistance: target.distance, ...segmentMeta, at: Date.now() });
 
     const horseId = session.horse._id;
     // Live readings go to people watching this horse: its owner's horse room and the trainer
@@ -148,11 +189,18 @@ async function simulateTick() {
       speed,
       distance: m.distance,
       targetDistance: target.distance,
+      ...segmentMeta,
       timestamp: Date.now(),
     });
 
     // eslint-disable-next-line no-await-in-loop
-    await evaluateMetrics({ horseId, sessionId: session._id, heartRate, speed });
+    await evaluateMetrics({
+      horseId,
+      sessionId: session._id,
+      heartRate,
+      speed,
+      ...(target.isSegmented ? { segmentTarget: { speed: target.speed, heartRateMax: target.heartRateMax } } : {}),
+    });
 
     if (done) {
       formOfSession.delete(key);
@@ -175,4 +223,4 @@ function startSensorSimulator() {
   }, TICK_MS);
 }
 
-module.exports = { startSensorSimulator, simulateTick, targetsOf, SCENARIOS: ['normal', 'tired', 'injury'] };
+module.exports = { startSensorSimulator, simulateTick, targetsOf, buildSegmentTimeline, SCENARIOS: ['normal', 'tired', 'injury'] };

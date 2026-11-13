@@ -77,7 +77,15 @@ function stockText(item, quantity = item.quantity) {
 
 const isLow = (i) => i.isActive !== false && (i.quantity <= 0 || (i.reorderLevel > 0 && i.quantity <= i.reorderLevel));
 const expiryDays = (i) => (i.expiryDate ? dayjs(i.expiryDate).startOf('day').diff(dayjs().startOf('day'), 'day') : null);
-const isExpiring = (i) => i.isActive !== false && expiryDays(i) !== null && expiryDays(i) <= EXPIRY_SOON_DAYS;
+const hasExpiredBatch = (i) => (i.batches || []).some((b) => b.qty > 0 && b.expiryDate && dayjs(b.expiryDate).startOf('day').isBefore(dayjs().startOf('day')));
+const hasSoonBatch = (i) =>
+  (i.batches || []).some((b) => {
+    if (b.qty <= 0 || !b.expiryDate) return false;
+    const d = dayjs(b.expiryDate).startOf('day').diff(dayjs().startOf('day'), 'day');
+    return d <= EXPIRY_SOON_DAYS;
+  });
+const isExpired = (i) => i.isActive !== false && ((expiryDays(i) !== null && expiryDays(i) < 0) || hasExpiredBatch(i));
+const isExpiring = (i) => i.isActive !== false && ((expiryDays(i) !== null && expiryDays(i) <= EXPIRY_SOON_DAYS) || hasSoonBatch(i));
 
 /** The computed status tags of an item: discontinued, out / low / in stock, expired / expiring. */
 function statusTags(item) {
@@ -313,6 +321,52 @@ function ItemModal({ item, category, open, onClose }) {
           )}
         </div>
 
+        {item && Array.isArray(item.batches) && item.batches.some((b) => b.qty > 0) && (
+          <div className="mb-3 rounded-lg border border-slate-200 p-2.5 text-xs">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="font-semibold text-gray-800">Chi tiết các lô tồn kho (ưu tiên xuất theo hạn gần nhất — FEFO)</span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {[...item.batches]
+                .filter((b) => b.qty > 0)
+                .sort((a, b) => {
+                  const ta = a.expiryDate ? new Date(a.expiryDate).getTime() : Number.MAX_SAFE_INTEGER;
+                  const tb = b.expiryDate ? new Date(b.expiryDate).getTime() : Number.MAX_SAFE_INTEGER;
+                  return ta - tb;
+                })
+                .map((b, idx) => {
+                  const expDays = b.expiryDate ? dayjs(b.expiryDate).startOf('day').diff(dayjs().startOf('day'), 'day') : null;
+                  const batchExpired = expDays !== null && expDays < 0;
+                  return (
+                    <div key={`${b._id || idx}`} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold tabular-nums">
+                          {num(b.qty)} {item.unit}
+                        </span>
+                        <span className="tabular-nums text-gray-600">
+                          {b.expiryDate ? `HSD ${dayjs(b.expiryDate).format('DD/MM/YYYY')}` : 'Không HSD'}
+                        </span>
+                        {b.receivedAt && (
+                          <span className="text-gray-400">· nhập {dayjs(b.receivedAt).format('DD/MM/YYYY')}</span>
+                        )}
+                        {b.note && <span className="text-gray-500">· {b.note}</span>}
+                      </div>
+                      {batchExpired ? (
+                        <Tag color="red" className="!m-0">Quá hạn ({Math.abs(expDays)} ngày)</Tag>
+                      ) : expDays !== null && expDays <= EXPIRY_SOON_DAYS ? (
+                        <Tag color="gold" className="!m-0">Ưu tiên xuất · còn {expDays} ngày</Tag>
+                      ) : idx === 0 ? (
+                        <Tag color="blue" className="!m-0">Xuất tiếp theo (FEFO)</Tag>
+                      ) : (
+                        <Tag className="!m-0">Lô dự trữ</Tag>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+
         <div className="inv-summary">
           <Text type="secondary" className="!text-xs">
             Sẽ lưu:{' '}
@@ -333,17 +387,25 @@ function ReceiveModal({ item, request = null, onClose }) {
   const hasPack = Boolean(item?.packUnit && item?.packSize);
   const [mode, setMode] = useState(request ? 'units' : 'packs');
   const [amount, setAmount] = useState(request?.approvedQuantity ?? request?.quantity ?? null);
+  const [expiryDate, setExpiryDate] = useState(null);
   const [note, setNote] = useState('');
   const byPacks = hasPack && mode === 'packs';
   const added = amount ? (byPacks ? amount * item.packSize : amount) : 0;
 
   const receiveMutation = useMutation({
-    mutationFn: () => inventoryApi.receive(item._id, { ...(byPacks ? { packs: amount } : { quantity: amount }), note, ...(request ? { requestId: request.requestId } : {}) }),
+    mutationFn: () =>
+      inventoryApi.receive(item._id, {
+        ...(byPacks ? { packs: amount } : { quantity: amount }),
+        ...(expiryDate ? { expiryDate: expiryDate.toISOString() } : {}),
+        note,
+        ...(request ? { requestId: request.requestId } : {}),
+      }),
     onSuccess: (res) => {
       message.success(res.message || 'Đã nhập kho.');
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['inventory-forecast'] });
       setAmount(null);
+      setExpiryDate(null);
       setNote('');
       onClose();
     },
@@ -364,7 +426,7 @@ function ReceiveModal({ item, request = null, onClose }) {
     >
       {item && (
         <div className="flex flex-col gap-3">
-          <Text type="secondary">Tồn hiện tại: {stockText(item)}</Text>
+          <Text type="secondary">Tồn khả dụng hiện tại: {stockText(item)}</Text>
           {hasPack && (
             <Segmented
               value={mode}
@@ -376,12 +438,27 @@ function ReceiveModal({ item, request = null, onClose }) {
             />
           )}
           <InputNumber min={0} style={{ width: '100%' }} value={amount} onChange={setAmount} suffix={byPacks ? item.packUnit : item.unit} placeholder="Số lượng nhập" />
+          {item.category !== 'equipment' && (
+            <DatePicker
+              value={expiryDate}
+              onChange={setExpiryDate}
+              format="DD/MM/YYYY"
+              style={{ width: '100%' }}
+              disabledDate={(d) => d && d.isBefore(dayjs().startOf('day'))}
+              placeholder="Hạn sử dụng lô mới (tùy chọn)"
+            />
+          )}
           {added > 0 && (
             <Text>
               Sau khi nhập: <b>{stockText(item, item.quantity + added)}</b>
             </Text>
           )}
           <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ghi chú (nhà cung cấp, số phiếu…)" />
+          {item.category !== 'equipment' && (
+            <Text type="secondary" className="!text-xs">
+              Hệ thống tự động xuất theo lô hết hạn gần nhất (FEFO) và chặn cho ăn/dùng thuốc nếu hàng đã quá hạn.
+            </Text>
+          )}
         </div>
       )}
     </Modal>
@@ -402,7 +479,7 @@ export default function InventoryPage() {
 
   const [tab, setTab] = useState('all');
   const [searchParams] = useSearchParams();
-  const [status, setStatus] = useState('all');
+  const [status, setStatus] = useState(() => (['restock', 'expiry', 'expired', 'inactive'].includes(searchParams.get('status')) ? searchParams.get('status') : 'all'));
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState(null); // null = closed, {} = new item, item = edit
   const [receiving, setReceiving] = useState(null);
@@ -417,6 +494,15 @@ export default function InventoryPage() {
     queryClient.invalidateQueries({ queryKey: ['inventory'] });
     queryClient.invalidateQueries({ queryKey: ['inventory-forecast'] });
   };
+
+  const disposeMutation = useMutation({
+    mutationFn: (id) => inventoryApi.disposeExpired(id),
+    onSuccess: (res) => {
+      message.success(res.message || 'Đã tiêu hủy hàng hết hạn.');
+      refresh();
+    },
+    onError: (err) => message.error(err.message || 'Không tiêu hủy được lô hết hạn.'),
+  });
 
   const decideMutation = useMutation({
     mutationFn: ({ itemId, requestId, status: decision, note, approvedQuantity }) => inventoryApi.decideRestock(itemId, requestId, { status: decision, note, approvedQuantity }),
@@ -471,6 +557,7 @@ export default function InventoryPage() {
   const lowCount = stock.filter(isLow).length;
   const outCount = stock.filter((i) => i.isActive !== false && i.quantity <= 0).length;
   const expiringCount = stock.filter(isExpiring).length;
+  const expiredCount = stock.filter(isExpired).length;
   const pendingCount = pendingRequests.filter((r) => r.status === 'pending').length;
   const awaitingCount = pendingRequests.filter((r) => r.status === 'approved').length;
 
@@ -478,6 +565,7 @@ export default function InventoryPage() {
     all: () => true,
     restock: isLow,
     expiry: isExpiring,
+    expired: isExpired,
     inactive: (i) => i.isActive === false,
   };
   const q = fold(search.trim());
@@ -557,6 +645,10 @@ export default function InventoryPage() {
         const usedBy = (f?.usedBy || [])
           .map((u) => (u.kind === 'ration' ? `${u.horse}: ${u.amount} ${r.unit}/bữa` : `${u.horse}: ${u.medicine} ${u.amount} ${r.unit} × ${u.doses}`))
           .join('\n');
+        const activeBatches = (r.batches || []).filter((b) => b.qty > 0);
+        const expiredQty = activeBatches
+          .filter((b) => b.expiryDate && dayjs(b.expiryDate).startOf('day').isBefore(dayjs().startOf('day')))
+          .reduce((s, b) => s + b.qty, 0);
         return (
           <div className="flex flex-wrap gap-1">
             {statusTags(r).map((t) => (
@@ -564,6 +656,11 @@ export default function InventoryPage() {
                 {t.label}
               </Tag>
             ))}
+            {expiredQty > 0 && (
+              <Tag color="red" className="!m-0">
+                Quá hạn: {num(expiredQty)} {r.unit}
+              </Tag>
+            )}
             {r.category !== 'equipment' && f?.dailyUsage ? (
               <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{`Dùng ${f.dailyUsage} ${r.unit}/ngày\n${usedBy}`}</span>}>
                 <Tag className="!m-0" color={f.quantity <= 0 || f.daysLeft < 3 ? 'red' : f.daysLeft < 7 ? 'orange' : 'default'} variant="filled">
@@ -580,18 +677,29 @@ export default function InventoryPage() {
       key: 'facts',
       width: 200,
       render: (_, r) => {
+        const activeBatches = (r.batches || []).filter((b) => b.qty > 0);
+        const batchSummary = activeBatches
+          .map((b) => `${num(b.qty)} ${r.unit} · ${b.expiryDate ? `HSD ${dayjs(b.expiryDate).format('DD/MM/YYYY')}` : 'Không HSD'}`)
+          .join('\n');
         const facts = [
           r.packUnit && r.packSize ? `1 ${r.packUnit} = ${num(r.packSize)} ${r.unit}` : r.category !== 'equipment' ? 'Mua lẻ' : null,
           r.expiryDate ? `HSD ${dayjs(r.expiryDate).format('DD/MM/YYYY')}` : null,
           r.price ? `${vnd(r.price)}/${r.packUnit || r.unit}` : null,
         ].filter(Boolean);
-        return facts.length ? (
+        return facts.length || activeBatches.length > 1 ? (
           <div className="flex flex-col text-[13px] leading-5">
             {facts.map((f) => (
               <span key={f} className="tabular-nums">
                 {f}
               </span>
             ))}
+            {activeBatches.length > 1 && (
+              <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{batchSummary}</span>}>
+                <Text type="secondary" className="!text-xs underline decoration-dotted cursor-help">
+                  {activeBatches.length} lô (xuất FEFO)
+                </Text>
+              </Tooltip>
+            )}
           </div>
         ) : (
           <Text type="secondary">—</Text>
@@ -601,28 +709,44 @@ export default function InventoryPage() {
     {
       title: '',
       key: 'actions',
-      width: 168,
+      width: 196,
       align: 'right',
-      render: (_, r) => (
-        <div className="flex justify-end gap-1.5">
-          <Button size="small" type={isLow(r) ? 'primary' : 'default'} icon={<DatabaseOutlined />} onClick={() => setReceiving(r)}>
-            Nhập kho
-          </Button>
-          <Tooltip title="Sửa">
-            <Button size="small" icon={<EditOutlined />} aria-label={`Sửa ${r.name}`} onClick={() => setEditing(r)} />
-          </Tooltip>
-          <Popconfirm
-            title={`Xoá "${r.name}" khỏi kho?`}
-            description="Không xoá được nếu đang dùng trong khẩu phần hoặc đơn thuốc — khi đó hãy tắt 'Đang sử dụng'."
-            okText="Xoá"
-            cancelText="Huỷ"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => deleteMutation.mutate(r._id)}
-          >
-            <Button size="small" danger icon={<DeleteOutlined />} aria-label={`Xoá ${r.name}`} loading={deleteMutation.isPending && deleteMutation.variables === r._id} />
-          </Popconfirm>
-        </div>
-      ),
+      render: (_, r) => {
+        const hasExpiredBatch = (r.batches || []).some((b) => b.qty > 0 && b.expiryDate && dayjs(b.expiryDate).startOf('day').isBefore(dayjs().startOf('day')));
+        return (
+          <div className="flex flex-wrap justify-end gap-1.5">
+            <Button size="small" type={isLow(r) ? 'primary' : 'default'} icon={<DatabaseOutlined />} onClick={() => setReceiving(r)}>
+              Nhập kho
+            </Button>
+            {hasExpiredBatch && (
+              <Popconfirm
+                title={`Tiêu hủy các lô đã hết hạn của "${r.name}"?`}
+                okText="Tiêu hủy"
+                cancelText="Huỷ"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => disposeMutation.mutate(r._id)}
+              >
+                <Button size="small" danger loading={disposeMutation.isPending && disposeMutation.variables === r._id}>
+                  Hủy hết hạn
+                </Button>
+              </Popconfirm>
+            )}
+            <Tooltip title="Sửa">
+              <Button size="small" icon={<EditOutlined />} aria-label={`Sửa ${r.name}`} onClick={() => setEditing(r)} />
+            </Tooltip>
+            <Popconfirm
+              title={`Xoá "${r.name}" khỏi kho?`}
+              description="Không xoá được nếu đang dùng trong khẩu phần hoặc đơn thuốc — khi đó hãy tắt 'Đang sử dụng'."
+              okText="Xoá"
+              cancelText="Huỷ"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => deleteMutation.mutate(r._id)}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />} aria-label={`Xoá ${r.name}`} loading={deleteMutation.isPending && deleteMutation.variables === r._id} />
+            </Popconfirm>
+          </div>
+        );
+      },
     },
   ];
 
@@ -780,6 +904,7 @@ export default function InventoryPage() {
             { value: 'all', label: 'Mọi tình trạng' },
             { value: 'restock', label: `Cần nhập thêm (${lowCount})` },
             { value: 'expiry', label: `Hết hạn / sắp hết hạn (${expiringCount})` },
+            { value: 'expired', label: `Đã quá hạn (${expiredCount})` },
             { value: 'inactive', label: 'Ngừng sử dụng' },
           ]}
         />
@@ -790,7 +915,7 @@ export default function InventoryPage() {
         </Text>
       )}
 
-      <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+      <Card className="!rounded-xl shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
         <Table
           rowKey="_id"
           size="middle"

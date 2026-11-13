@@ -38,11 +38,19 @@ const SLOTS = ['morning', 'noon', 'evening'];
 const WEIGHT_RANGE = [350, 700];
 const DEFAULT_WEIGHT_KG = 500;
 
+const HIGH_SWEAT_KINDS = new Set(['hill', 'breeze', 'gallop', 'trial']);
+
 // Daily doses by the item's unit; an item counted in another unit (a salt lick in "viên") is left out.
 const SUPPLEMENTS = [
   { key: 'mineral', match: /(khoáng|mineral)/i, dose: { kg: 0.05, g: 50 }, applies: () => true },
   { key: 'oil', match: /(dầu|oil)/i, dose: { 'lít': 0.1, l: 0.1, ml: 100 }, applies: ({ phase }) => phase === 'strength' || phase === 'speed' },
-  { key: 'electrolyte', match: /(điện giải|electrolyte)/i, dose: { kg: 0.05, g: 50 }, applies: ({ work }) => work === 'high' },
+  {
+    key: 'electrolyte',
+    match: /(điện giải|electrolyte)/i,
+    dose: { kg: 0.05, g: 50 },
+    applies: ({ work, phase, sessions = [] }) =>
+      work === 'high' || phase === 'recovery' || sessions.some((s) => HIGH_SWEAT_KINDS.has(s.kind)),
+  },
 ];
 
 const halfKg = (amount) => Math.max(0.5, Math.round(amount * 2) / 2);
@@ -122,26 +130,50 @@ function mixedLines(first, second, total, share) {
  * `feeds` = { forage, concentrate, supplements } as picked above; `clocks` = meal times by slot;
  * `diet` = 'sick' while the horse is injured or isolated (its plan's work does not count then).
  */
-function dayMeals({ weightKg, work, phase, clocks, feeds, diet = 'normal' }) {
+function dayMeals({ weightKg, work, phase, clocks, feeds, diet = 'normal', sessions = [] }) {
   const weight = Number(weightKg) > 0 ? Number(weightKg) : DEFAULT_WEIGHT_KG;
   const sick = diet === 'sick';
+  const phaseKey = phase?.key || null;
   const share = sick ? SHARES.sick : SHARES[work] || SHARES.moderate;
   const split = sick ? SPLITS.sick : SPLITS[work === 'rest' ? 'rest' : 'training'];
+  const hasHardSession = !sick && (sessions || []).some((s) => HIGH_SWEAT_KINDS.has(s.kind));
+  const forageFactor = !sick && phaseKey === 'peak' ? 0.9 : 1;
   return SLOTS.map((slot) => {
     const items = [];
-    if (feeds.forage) items.push(...mixedLines(feeds.forage, feeds.forageMix, halfKg(weight * share.forage * split[slot].forage), MIX.forage));
+    if (feeds.forage) {
+      items.push(...mixedLines(feeds.forage, feeds.forageMix, halfKg(weight * share.forage * forageFactor * split[slot].forage), MIX.forage));
+    }
     if (feeds.concentrate && split[slot].concentrate > 0) {
-      const grain = cappedHalfKg(weight * share.concentrate * split[slot].concentrate, weight * MAX_CONCENTRATE_PER_MEAL);
+      const concFactor = !sick && phaseKey === 'recovery' ? 0.8 : hasHardSession && slot === 'evening' ? 1.1 : 1;
+      const grain = cappedHalfKg(weight * share.concentrate * concFactor * split[slot].concentrate, weight * MAX_CONCENTRATE_PER_MEAL);
       items.push(...mixedLines(feeds.concentrate, feeds.concentrateMix, grain, MIX.concentrate));
     }
     if (slot === 'evening') {
       for (const { rule, item } of feeds.supplements || []) {
         // Sick: no oil (no strength or speed work) and no electrolytes (no hard work); minerals still.
-        if (rule.applies(sick ? { phase: null, work: 'rest' } : { phase: phase?.key, work })) items.push(line(item, rule.dose[unitOf(item)]));
+        if (rule.applies(sick ? { phase: null, work: 'rest', sessions: [] } : { phase: phaseKey, work, sessions })) {
+          items.push(line(item, rule.dose[unitOf(item)]));
+        }
       }
     }
     return { slot, time: clocks[slot], items };
   });
+}
+
+const PHASE_RATION_HINT = {
+  base_building: 'Xây nền: ưu tiên cỏ thô, tinh bột vừa phải',
+  strength: 'Sức mạnh: tăng năng lượng + dầu thực vật giữ cơ',
+  speed: 'Tốc độ: khẩu phần cao năng lượng + dầu & điện giải',
+  peak: 'Về đích: tinh gọn cỏ thô, giữ năng lượng sát giải',
+  recovery: 'Hồi phục: giảm 20% tinh bột, bổ sung điện giải',
+};
+
+function rationBasis(phaseKey, work, sessions = [], diet = 'normal') {
+  if (diet === 'sick') return 'Chế độ bệnh: giảm tinh bột, tăng cỏ thô giữ tiêu hóa';
+  if (work === 'rest') return 'Ngày nghỉ: cân bằng cỏ thô, giảm nhẹ tinh bột buổi tối';
+  const base = PHASE_RATION_HINT[phaseKey] || 'Theo cường độ buổi tập';
+  const hard = (sessions || []).some((s) => HIGH_SWEAT_KINDS.has(s.kind));
+  return hard ? `${base} · Sau bài nặng tăng tinh bột tối + điện giải` : base;
 }
 
 /** Roughly what a week of meals takes of each kind (to prefer an item that lasts the week). */
@@ -153,4 +185,18 @@ function weekNeed(weightKg, kind) {
 module.exports = {
   heavierWork,
   pickSecond,
-  SLOTS, SHARES, SPLITS, SICK_STATUSES, dietOf, weightWarning, trainingDayWork, workOf, pickFeed, pickSupplements, dayMeals, weekNeed, DEFAULT_WEIGHT_KG };
+  SLOTS,
+  SHARES,
+  SPLITS,
+  SICK_STATUSES,
+  dietOf,
+  weightWarning,
+  trainingDayWork,
+  workOf,
+  pickFeed,
+  pickSupplements,
+  dayMeals,
+  rationBasis,
+  weekNeed,
+  DEFAULT_WEIGHT_KG,
+};

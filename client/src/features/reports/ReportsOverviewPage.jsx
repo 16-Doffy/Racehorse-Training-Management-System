@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, Typography, Row, Col, DatePicker, Empty, Segmented, Tag, Table, Alert, Button, theme } from 'antd';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, ResponsiveContainer, Legend } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
@@ -222,9 +223,19 @@ export default function ReportsOverviewPage() {
   return (
     <div>
       <PageHeroBanner
-        eyebrow="Báo cáo tổng hợp"
+        eyebrow="Báo cáo vận hành"
         roleLabel="Quản lý CLB"
-        title="Báo cáo vận hành & tài chính"
+        title="Báo cáo vận hành & hiệu quả CLB"
+        actionButton={
+          <div className="flex flex-wrap gap-2">
+            <Link to="/inventory">
+              <Button size="small">Kho vật tư</Button>
+            </Link>
+            <Link to="/finance">
+              <Button size="small" type="primary">Mở sổ thu chi</Button>
+            </Link>
+          </div>
+        }
       />
 
       {/* Filters in one row above the charts. */}
@@ -263,7 +274,7 @@ export default function ReportsOverviewPage() {
       <div className="st-kpi-grid mb-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))' }}>
         <div className="st-kpi-tile">
           <div className="st-kpi-label">Tổng buổi tập</div>
-          <div className="st-kpi-value text-[#0F5A43] tabular-nums">{training?.totalSessions ?? 0}</div>
+          <div className="st-kpi-value text-amber-600 tabular-nums">{training?.totalSessions ?? 0}</div>
           <div className="st-kpi-sub">buổi trong kỳ</div>
         </div>
         <div className="st-kpi-tile">
@@ -287,7 +298,7 @@ export default function ReportsOverviewPage() {
         </div>
         <div className={`st-kpi-tile ${profit < 0 ? 'is-danger' : ''}`}>
           <div className="st-kpi-label">Lợi nhuận ròng</div>
-          <div className={`st-kpi-value text-base sm:text-lg xl:text-xl tabular-nums break-words leading-snug ${profit >= 0 ? 'text-[#0F5A43] staff-revenue-text' : 'text-rose-600 staff-cost-text'}`}>{formatVnd(profit)}</div>
+          <div className={`st-kpi-value text-base sm:text-lg xl:text-xl tabular-nums break-words leading-snug ${profit >= 0 ? 'text-emerald-700 staff-revenue-text' : 'text-rose-600 staff-cost-text'}`}>{formatVnd(profit)}</div>
           <div className="st-kpi-sub">cân đối thu − chi</div>
         </div>
       </div>

@@ -6,16 +6,13 @@ import {
   TeamOutlined,
   FileTextOutlined,
   ShoppingOutlined,
-  AppleOutlined,
   TrophyOutlined,
   DollarOutlined,
   ProfileOutlined,
   HeartOutlined,
   CalendarOutlined,
   MobileOutlined,
-  AppstoreOutlined,
   CarryOutOutlined,
-  WarningOutlined,
   BarChartOutlined,
   AlertOutlined,
   ToolOutlined,
@@ -27,24 +24,24 @@ import { ROLES } from '../../constants/roles';
 const MENUS = {
   [ROLES.MANAGER]: [
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
-    { key: 'users', icon: <TeamOutlined />, label: 'Quản lý Nhân sự & RBAC', path: '/admin/users' },
+    { key: 'users', icon: <TeamOutlined />, label: 'Nhân sự & Phân quyền', path: '/admin/users' },
     { key: 'horses', icon: <ProfileOutlined />, label: 'Danh mục Ngựa', path: '/horses' },
-    { key: 'stables', icon: <HomeOutlined />, label: 'Chuồng trại & NV chăm sóc', path: '/admin/stables' },
-    { key: 'reports', icon: <BarChartOutlined />, label: 'Báo cáo Tổng quan', path: '/admin/reports' },
+    { key: 'stables', icon: <HomeOutlined />, label: 'Chuồng trại & Giao ca', path: '/admin/stables' },
+    { key: 'reports', icon: <BarChartOutlined />, label: 'Báo cáo Vận hành', path: '/admin/reports' },
     { key: 'inventory', icon: <ShoppingOutlined />, label: 'Kho vật tư', path: '/inventory' },
-    { key: 'finance', icon: <DollarOutlined />, label: 'Báo cáo Tài chính', path: '/finance' },
+    { key: 'finance', icon: <DollarOutlined />, label: 'Thu chi Tài chính', path: '/finance' },
     { key: 'audit', icon: <FileTextOutlined />, label: 'Nhật ký Hệ thống', path: '/admin/audit-logs' },
   ],
-  // The trainer's tabs in the order the work is done, numbered as the steps of TrainerFlowBar: take
+  // The trainer's tabs in the order the work is done, without numbered steps: take
   // the horse on, its ration, the race it aims at, the plan towards that race, then the sessions and
   // their evaluation.
   [ROLES.HEAD_TRAINER]: [
     { key: 'dashboard', icon: <DashboardOutlined />, label: 'Tổng quan', path: '/' },
-    { key: 'horses', icon: <ProfileOutlined />, label: 'Danh sách Ngựa', path: '/horses', step: 1 },
-    { key: 'stable-tasks', icon: <HomeOutlined />, label: 'Khẩu phần & Chăm sóc', path: '/stable/tasks', step: 2 },
-    { key: 'races', icon: <TrophyOutlined />, label: 'Đăng ký Giải đua', path: '/races', step: 3 },
-    { key: 'training-plans', icon: <ScheduleOutlined />, label: 'Kế hoạch Huấn luyện', path: '/training/plans', step: 4 },
-    { key: 'training-sessions', icon: <CalendarOutlined />, label: 'Buổi Tập & Đánh giá', path: '/training/sessions', step: 5 },
+    { key: 'horses', icon: <ProfileOutlined />, label: 'Danh sách Ngựa', path: '/horses' },
+    { key: 'stable-tasks', icon: <HomeOutlined />, label: 'Khẩu phần & Chăm sóc', path: '/stable/tasks' },
+    { key: 'races', icon: <TrophyOutlined />, label: 'Đăng ký Giải đua', path: '/races' },
+    { key: 'training-plans', icon: <ScheduleOutlined />, label: 'Kế hoạch Huấn luyện', path: '/training/plans' },
+    { key: 'training-sessions', icon: <CalendarOutlined />, label: 'Buổi tập & Đánh giá', path: '/training/sessions' },
   ],
   // The vet's day: the queue first, then the horses, and one place each for treatments (the
   // prescription and the training level live in the same form), injuries, routine care and the

@@ -89,6 +89,9 @@ export default function FeedingGroupsTable({ days, onEditMeal, edited = () => fa
                       {g.dates.length === 1 ? WORK_LABELS[g.work] : null}
                       {g.kinds.size > 0 && `${g.dates.length === 1 ? ' · ' : ''}${[...g.kinds].join(', ')}`}
                     </div>
+                    {g.first?.rationNote && (
+                      <div className="mt-0.5 text-[10px] leading-3.5 text-amber-800">{g.first.rationNote}</div>
+                    )}
                     {g.dates.length > 1 && (
                       <Tooltip title={g.dates.map((d) => ddmm(d)).join(', ')}>
                         <div className="mt-0.5 cursor-default text-[10px] leading-4 tabular-nums text-gray-500">

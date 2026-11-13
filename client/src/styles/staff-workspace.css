@@ -1162,3 +1162,70 @@ body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-dra
 .forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-blue-700"], [class~="text-blue-800"], [class~="text-cyan-700"]) {
   color: var(--st-info-ink) !important;
 }
+
+/* Modern Bento Role-Bridge Strip + Polished Command Header Depth (light & dark compatible) */
+.forest-layout.staff-workspace .st-hero-banner {
+  background: linear-gradient(135deg, var(--st-surface) 0%, var(--st-sunk) 100%);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.forest-layout.staff-workspace .st-hero-stat-cell {
+  background: var(--st-surface);
+  transition: transform 150ms ease, border-color 150ms ease;
+}
+
+.forest-layout.staff-workspace .st-hero-stat-cell:hover {
+  border-color: var(--st-primary);
+}
+
+.forest-layout.staff-workspace .st-role-bridge {
+  background: var(--st-surface);
+  border: 1px solid var(--st-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: var(--st-shadow);
+}
+
+.forest-layout.staff-workspace .st-role-bridge__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+  color: var(--st-ink);
+}
+
+.forest-layout.staff-workspace .st-muted-copy {
+  color: var(--st-ink-muted);
+}
+
+.forest-layout.staff-workspace .st-role-bridge__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.forest-layout.staff-workspace .st-role-bridge__item {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--st-border);
+  background: var(--st-sunk);
+  text-decoration: none !important;
+  transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+
+.forest-layout.staff-workspace .st-role-bridge__item:hover {
+  border-color: var(--st-primary);
+  background: var(--st-surface);
+  transform: translateY(-1px);
+}
+
+.forest-layout.staff-workspace .st-bridge-role {
+  color: var(--st-ink);
+}
+
+.forest-layout.staff-workspace .st-bridge-cta {
+  color: var(--st-primary);
+}

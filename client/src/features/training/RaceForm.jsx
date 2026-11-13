@@ -1,20 +1,9 @@
 import { Tag, Tooltip } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
+import { formFigures } from './trainingVocab';
 import { useClubPolicy } from './useClubPolicy';
 
 const FORM_COLORS = { ready: 'green', on_track: 'blue', not_ready: 'orange', blocked: 'red', pending: 'default' };
-const TRIAL_WORDS = { passed: 'chạy thử đạt', ran: 'đã chạy thử', failed: 'chạy thử chưa đạt', missing: 'chưa chạy thử' };
-
-/** "Tập 9/10 buổi đến hạn · đạt 8/9 · chạy thử 22/11": the numbers behind the verdict. */
-function formFigures(form) {
-  if (!form) return '';
-  const parts = [`Tập ${form.done}/${form.due} buổi đến hạn`];
-  if (form.rated) parts.push(`đạt chỉ tiêu ${form.met}/${form.rated}`);
-  if (form.trial === 'ahead') parts.push(`chạy thử ${dayjs(form.trialDay).format('DD/MM')}`);
-  else if (form.trial) parts.push(TRIAL_WORDS[form.trial]);
-  return parts.join(' · ');
-}
 
 /** The plan's verdict on the horse's form for its race (server training/raceForm.js); why, on hover. */
 export function RaceFormTag({ form }) {
@@ -49,12 +38,12 @@ export function RaceFormBlock({ form }) {
   const policy = useClubPolicy();
   if (!form) return null;
   const pct = (share) => `${Math.round(share * 100)}%`;
-  const rule = `Theo quy định CLB: tập từ ${pct(policy.raceFormMinDone)} số buổi đến hạn, đạt chỉ tiêu từ ${pct(policy.raceFormMinMet)} số buổi đã tập, chạy thử cho giải đạt, bác sĩ không khóa tập.`;
+  const rule = `Theo quy định CLB: tập từ ${pct(policy.raceFormMinDone)} số buổi đến hạn, đạt chỉ tiêu từ ${pct(policy.raceFormMinMet)} số buổi đã tập, điểm đánh giá HLV TB từ ${policy.raceFormMinAvgRating}/10, chạy thử cho giải đạt, bác sĩ không khóa tập.`;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-xs font-semibold text-gray-900">Phong độ dự giải</span>
+        <span className="text-xs font-semibold text-gray-900">Điều kiện & phong độ dự giải</span>
         <Tooltip title={rule} trigger={['hover', 'focus']}>
           <span tabIndex={0} role="img" aria-label={rule} className="cursor-help text-[11px] text-gray-400">
             <QuestionCircleOutlined />
@@ -63,6 +52,26 @@ export function RaceFormBlock({ form }) {
         <RaceFormTag form={form} />
         <span className="text-xs tabular-nums text-gray-600">{formFigures(form)}</span>
       </div>
+      {Array.isArray(form.checks) && form.checks.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {form.checks.map((c) => {
+            const cls =
+              c.ok === true
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : c.ok === false
+                  ? 'border-rose-200 bg-rose-50 text-rose-800'
+                  : 'border-gray-200 bg-gray-100 text-gray-700';
+            const icon = c.ok === true ? '✓' : c.ok === false ? '✗' : '•';
+            return (
+              <span key={c.key} className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] leading-tight ${cls}`}>
+                <span aria-hidden="true">{icon}</span>
+                <span className="font-medium">{c.label}:</span>
+                <span className="tabular-nums">{c.detail}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
       {form.reasons.length > 0 && <p className={`m-0 text-xs leading-snug ${form.status === 'blocked' ? 'text-rose-700' : 'text-amber-700'}`}>{form.reasons.join(' ')}</p>}
     </div>
   );

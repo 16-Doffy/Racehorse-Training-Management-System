@@ -192,7 +192,7 @@ export default function TodayBoard({ horses = [], sessions = [], compact = false
 
   return (
     <Card
-      className="st-today-board shadow-xs border-[#E5DEC9] rounded-xl overflow-hidden h-full flex flex-col"
+      className="st-today-board shadow-xs rounded-xl overflow-hidden h-full flex flex-col"
       styles={{
         title: { whiteSpace: 'normal' },
         header: { height: 'auto', paddingBlock: 10 },

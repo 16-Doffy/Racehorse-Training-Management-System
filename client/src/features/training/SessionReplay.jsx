@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Button, Empty, Modal, Segmented, Slider, Spin, Typography } from 'antd';
+import { Button, Empty, Modal, Segmented, Slider, Spin, Tag, Typography } from 'antd';
 import { CaretRightOutlined, PauseOutlined, ReloadOutlined } from '@ant-design/icons';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { trainingSessionApi } from './trainingApi';
-import { SESSION_KINDS, OBJECTIVE_LABELS, sessionTargets } from './trainingVocab';
+import { SESSION_KINDS, OBJECTIVE_LABELS, segmentAtDistance, sessionTargets } from './trainingVocab';
 import { FOREST, STATUS_TONES } from '../../layouts/forestTheme';
 import MovingHorse3D from '../horses/horse3d/MovingHorse3D';
 import { hourOf, liveMotion, surfaceOf } from '../horses/horse3d/horseMotion';
@@ -59,7 +59,7 @@ function RunLine({ data, dataKey, unit, label, target, index, onPick }) {
           <YAxis domain={[0, Math.ceil(top * 1.1)]} tick={{ fontSize: 11, fill: AXIS }} axisLine={false} tickLine={false} width={44} />
           <Tooltip formatter={(v) => [`${v} ${unit}`, label]} labelFormatter={(i) => `Lần đo ${Number(i) + 1}`} />
           {target ? <ReferenceLine y={target} stroke={STATUS_TONES.bad.color} strokeDasharray="4 4" /> : null}
-          <ReferenceLine x={index} stroke={FOREST.primary} strokeWidth={1.5} />
+          <ReferenceLine x={index} stroke="#D4AF37" strokeWidth={2} strokeDasharray="3 3" />
           <Line type="monotone" dataKey={dataKey} stroke={FOREST.primary} strokeWidth={2} dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
@@ -83,6 +83,9 @@ function ReplayBody({ session, readings, horse, plan }) {
 
   const target = sessionTargets(session);
   const r = readings[index];
+  const segTarget = segmentAtDistance(session, r?.distance ?? 0);
+  const activeHrMax = segTarget?.heartRateMax ?? target.heartRateMax;
+  const activeSpeedTarget = segTarget?.speed ?? target.speed;
   const data = readings.map((x, i) => ({ i, hr: x.hr, speed: x.speed }));
   const goTo = (i) => {
     setPlaying(false);
@@ -120,19 +123,27 @@ function ReplayBody({ session, readings, horse, plan }) {
         </div>
       </div>
       <div className="min-w-0 lg:col-span-6">
-        <div className="mb-1 flex items-baseline justify-between gap-2 text-xs text-gray-500">
-          <span>
-            Lần đo <span className="tabular-nums text-gray-700">{index + 1}</span> trên <span className="tabular-nums">{readings.length}</span>
-          </span>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span>
+              Lần đo <span className="tabular-nums text-gray-700">{index + 1}</span> trên <span className="tabular-nums">{readings.length}</span>
+            </span>
+            {segTarget && (
+              <Tag color="gold" className="!m-0 !text-[11px] font-medium">
+                Đoạn {segTarget.segmentIndex + 1}/{segTarget.segmentCount}: {segTarget.segmentLabel}
+                {segTarget.segmentNote ? ` · ${segTarget.segmentNote}` : ''}
+              </Tag>
+            )}
+          </div>
           {r?.at && <span className="tabular-nums">lúc {dayjs(r.at).format('HH:mm:ss')}</span>}
         </div>
-        <Telemetry heartRate={r?.hr} heartRateMax={target.heartRateMax} speed={r?.speed} targetSpeed={target.speed} distance={r?.distance ?? 0} targetDistance={target.distance} />
-        <div className="mt-3 text-xs text-gray-500">Nhịp tim (bpm), vạch đỏ là giới hạn</div>
-        <RunLine data={data} dataKey="hr" unit="bpm" label="Nhịp tim" target={target.heartRateMax} index={index} onPick={goTo} />
-        <div className="mt-2 text-xs text-gray-500">Tốc độ (km/h){target.speed ? ', vạch đỏ là mục tiêu' : ''}</div>
-        <RunLine data={data} dataKey="speed" unit="km/h" label="Tốc độ" target={target.speed} index={index} onPick={goTo} />
+        <Telemetry heartRate={r?.hr} heartRateMax={activeHrMax} speed={r?.speed} targetSpeed={activeSpeedTarget} distance={r?.distance ?? 0} targetDistance={target.distance} />
+        <div className="mt-3 text-xs font-medium text-gray-600">Biểu đồ 1/2 · Nhịp tim (bpm) — nét đứt đỏ: giới hạn, vạch vàng: vị trí đang phát</div>
+        <RunLine data={data} dataKey="hr" unit="bpm" label="Nhịp tim" target={activeHrMax} index={index} onPick={goTo} />
+        <div className="mt-2 text-xs font-medium text-gray-600">Biểu đồ 2/2 · Tốc độ (km/h){activeSpeedTarget ? ' — nét đứt đỏ: mục tiêu' : ''}</div>
+        <RunLine data={data} dataKey="speed" unit="km/h" label="Tốc độ" target={activeSpeedTarget} index={index} onPick={goTo} />
         <Text type="secondary" className="!text-[11px] block mt-1">
-          Bấm vào biểu đồ để tới lần đo đó. Cảm biến gửi một lần đo mỗi 5 giây.
+          Có 2 biểu đồ riêng cho Nhịp tim (trên) và Tốc độ (dưới). Bấm vào bất kỳ điểm nào trên biểu đồ để tua tới lần đo đó (cảm biến gửi mỗi 5 giây).
         </Text>
       </div>
     </div>

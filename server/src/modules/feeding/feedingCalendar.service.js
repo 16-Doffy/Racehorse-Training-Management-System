@@ -16,7 +16,7 @@ const { notifyCaretaker, notifyHorseStaff, pushNotification } = require('../aler
 const { logAction } = require('../audit/audit.service');
 const { SLOT_LABELS, stockFor, readItemsWith, mealSetProblem } = require('./mealInput');
 
-const { SLOTS, SICK_STATUSES, dietOf, weightWarning, trainingDayWork, workOf, heavierWork, pickFeed, pickSecond, pickSupplements, dayMeals, weekNeed } = require('./rationRules');
+const { SLOTS, SICK_STATUSES, dietOf, weightWarning, trainingDayWork, workOf, heavierWork, pickFeed, pickSecond, pickSupplements, dayMeals, rationBasis, weekNeed } = require('./rationRules');
 const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const atDay = (key) => new Date(`${key}T00:00:00`);
 const clockOf = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -91,12 +91,13 @@ async function buildCalendar(plan, { times = {} } = {}) {
     const actual = bookedOn.get(dateKey(cursor)) || [];
     const work = actual.reduce((w, s) => heavierWork(w, SESSION_KINDS[s.kind]?.intensity || 'moderate'), workOf(phase, cursor));
     const dayDiet = cursor < today ? 'normal' : diet;
-    const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks, feeds: { forage, forageMix, concentrate, concentrateMix, supplements }, diet: dayDiet });
     // The day's work beside its meals: the sessions booked that day, else what the plan's week template puts on it.
     const sessions = actual.length
       ? actual.map((s) => ({ kind: s.kind, slot: new Date(s.scheduledAt).getHours() < 12 ? 'morning' : 'afternoon', distanceM: s.prescription?.distanceM || null, at: clockOf(new Date(s.scheduledAt)) }))
       : (phase.week || []).filter((w) => Number(w.day) === cursor.getDay()).map((w) => ({ kind: w.kind, slot: w.slot || 'morning', distanceM: w.distanceM || null }));
-    days.push({ date: dateKey(cursor), phase: phase.key, work, diet: dayDiet, sessions, past: cursor < today, meals });
+    const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks, feeds: { forage, forageMix, concentrate, concentrateMix, supplements }, diet: dayDiet, sessions });
+    const rationNote = rationBasis(phase.key, work, sessions, dayDiet);
+    days.push({ date: dateKey(cursor), phase: phase.key, work, diet: dayDiet, sessions, rationNote, past: cursor < today, meals });
   }
   if (!days.length) problems.push('Kế hoạch không có ngày hợp lệ để xếp lịch ăn.');
   if (end >= start && days.length === 672 && dateKey(end) !== days.at(-1).date) problems.push('Kế hoạch vượt quá 672 ngày.');

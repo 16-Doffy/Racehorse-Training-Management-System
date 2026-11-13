@@ -122,7 +122,7 @@ export default function FeedingDaysTable({ days, phases = [], onEditMeal, edited
                       <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-900">
                         <span>{weekDayOf(d.date)}</span>
                         <span className="tabular-nums">{ddmm(d.date)}</span>
-                        {isToday && <span className="rounded bg-[#0F5A43] px-1 text-[10px] font-semibold text-white">Hôm nay</span>}
+                        {isToday && <span className="rounded bg-amber-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">Hôm nay</span>}
                       </div>
                       <div className="mt-0.5 flex items-start gap-1.5 text-[11px] leading-4 text-gray-600">
                         <span className={`mt-1 inline-block h-2 w-2 shrink-0 rounded-full ${WORK_DOT[work] || 'bg-gray-300'}`} aria-hidden />
@@ -131,6 +131,9 @@ export default function FeedingDaysTable({ days, phases = [], onEditMeal, edited
                           {sessions.length > 0 && ` · ${sessions.join(', ')}`}
                         </span>
                       </div>
+                      {d.rationNote && (
+                        <div className="mt-0.5 text-[10.5px] leading-3.5 text-amber-800">{d.rationNote}</div>
+                      )}
                       {d.stale && (
                         <Tooltip title="Kế hoạch tập đã đổi sau khi xác nhận lịch ăn ngày này.">
                           <Tag color="gold" className="!mt-0.5 !mr-0 !px-1 !text-[10px] !leading-4">

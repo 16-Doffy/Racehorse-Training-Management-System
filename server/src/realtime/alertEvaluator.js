@@ -25,17 +25,18 @@ const lastAlertedAt = new Map();
  * club-wide ceiling. A fixed 180 bpm can't tell the difference between a sprint, where that is
  * the point, and a recovery trot, where it means something is wrong.
  */
-async function evaluateMetrics({ horseId, sessionId, heartRate, speed }) {
+async function evaluateMetrics({ horseId, sessionId, heartRate, speed, segmentTarget }) {
   const session = sessionId
     ? await TrainingSession.findById(sessionId).select('objective prescription kind')
     : null;
 
-  // The heart-rate ceiling is the workout's own; the speed target is a pace to reach, not a limit,
-  // so speed is only flagged well past it (or past the club ceiling, whichever is higher).
+  // The heart-rate ceiling is the workout's own (or the active segment's, when the session
+  // chains multiple workouts); the speed target is a pace to reach, not a limit, so speed is only
+  // flagged well past it (or past the club ceiling, whichever is higher).
   const kindDefaults = SESSION_KINDS[session?.kind]?.prescription || {};
-  const targetSpeed = session?.prescription?.targetSpeedKmh ?? kindDefaults.targetSpeedKmh;
+  const targetSpeed = segmentTarget?.speed ?? session?.prescription?.targetSpeedKmh ?? kindDefaults.targetSpeedKmh;
   const limits = {
-    maxHeartRate: session?.prescription?.targetHeartRateMax ?? kindDefaults.targetHeartRateMax ?? THRESHOLDS.maxHeartRate,
+    maxHeartRate: segmentTarget?.heartRateMax ?? session?.prescription?.targetHeartRateMax ?? kindDefaults.targetHeartRateMax ?? THRESHOLDS.maxHeartRate,
     maxSpeed: Math.max(THRESHOLDS.maxSpeed, targetSpeed ? Math.round(targetSpeed * 1.2) : 0),
   };
 

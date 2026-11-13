@@ -4,7 +4,7 @@ import { Button, Card, Grid, Tag } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { getSocket } from '../../lib/socket';
-import { SESSION_KINDS, OBJECTIVE_LABELS, DONE_STATUSES, sessionTargets } from '../training/trainingVocab';
+import { SESSION_KINDS, OBJECTIVE_LABELS, DONE_STATUSES, sessionTargets, sessionWindowLabel } from '../training/trainingVocab';
 import { SESSION_STATUS_COLORS, SESSION_STATUS_LABELS } from '../training/sessionStatus';
 import { coatFor } from '../horses/horse3d/horseBreeds';
 import Track3D from './track3d/Track3D';
@@ -31,7 +31,20 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
     const socket = getSocket();
     if (!socket) return undefined;
     if (!socket.connected) socket.connect();
-    const onReading = (r) => setLive((prev) => ({ ...prev, [String(r.sessionId)]: { distance: r.distance, targetDistance: r.targetDistance, speed: r.speed, hr: r.heartRate } }));
+    const onReading = (r) =>
+      setLive((prev) => ({
+        ...prev,
+        [String(r.sessionId)]: {
+          distance: r.distance,
+          targetDistance: r.targetDistance,
+          speed: r.speed,
+          hr: r.heartRate,
+          segmentIndex: r.segmentIndex,
+          segmentCount: r.segmentCount,
+          segmentLabel: r.segmentLabel,
+          segmentNote: r.segmentNote,
+        },
+      }));
     const onCompleted = () => queryClient.invalidateQueries({ queryKey: ['training-sessions'] });
     socket.on('sensor:reading', onReading);
     socket.on('session:completed', onCompleted);
@@ -50,6 +63,9 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
     const distance = r.distance ?? s.metrics?.distance ?? 0;
     const course = r.targetDistance || target.distance;
     const hr = r.hr ?? s.metrics?.lastHeartRate;
+    const segmentText = r.segmentCount
+      ? `Đoạn ${(r.segmentIndex ?? 0) + 1}/${r.segmentCount}: ${r.segmentLabel || ''}`
+      : null;
     return {
       s,
       id: horseId(s),
@@ -59,6 +75,7 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
       speed: r.speed ?? s.metrics?.lastSpeed,
       hr,
       over: hr != null && hr > target.heartRateMax,
+      segmentText,
     };
   });
 
@@ -109,7 +126,7 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-xs text-gray-700">
                   <span className={`inline-block h-2 w-2 rounded-full animate-pulse ${x.over ? 'bg-rose-500' : 'bg-emerald-500'}`} />
-                  <span>{kindOf(x.s)}</span>
+                  <span>{x.segmentText || kindOf(x.s)}</span>
                 </div>
                 <Link to={`/training/sessions?horse=${x.id}`} className="block truncate text-[15px] font-semibold">
                   {x.s.horse?.name}
@@ -131,7 +148,7 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
           <div className="st-next-up pointer-events-auto">
             {next ? (
               <Link to={`/training/sessions?horse=${horseId(next)}`} className="min-w-0 font-medium">
-                Buổi kế tiếp <span className="st-figure font-bold text-[#FDE047]">{hhmm(next.scheduledAt)}</span> <strong>{next.horse?.name}</strong> · {kindOf(next).toLowerCase()} (còn {left >= 60 ? `${Math.floor(left / 60)} giờ ` : ''}{left % 60} phút)
+                Buổi kế tiếp <span className="st-figure font-bold text-[#FDE047]">{sessionWindowLabel(next)}</span> <strong>{next.horse?.name}</strong> · {kindOf(next).toLowerCase()} (còn {left >= 60 ? `${Math.floor(left / 60)} giờ ` : ''}{left % 60} phút)
               </Link>
             ) : (
               <span>{loading ? 'Đang tải lịch hôm nay…' : today.length ? 'Không còn buổi nào chờ chạy.' : 'Hôm nay chưa có buổi tập nào.'}</span>
@@ -161,7 +178,7 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
 
   return (
     <Card
-      className="light-surface-box shadow-xs border-[#E5DEC9] rounded-xl"
+      className="light-surface-box shadow-xs rounded-xl"
       styles={{ title: { whiteSpace: 'normal' }, body: { padding: 12 } }}
       title={
         <div className="py-1">
@@ -183,7 +200,7 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
       <div className={compact ? 'grid min-w-0 grid-cols-1 gap-3' : 'grid grid-cols-1 gap-4 lg:grid-cols-3'}>
         <Track3D runners={runners} focus={focus} label={label} height={compact ? 'clamp(260px, 23vw, 340px)' : 'clamp(260px, 27vw, 380px)'} className={compact ? '' : 'lg:col-span-2'} />
 
-        {(rows.length > 0 || !compact || done.length > 0 || missed > 0 || !screens.md) && <div className="light-surface-box min-w-0 space-y-4 rounded-xl border border-[#E5DEC9] bg-[#FAF7F0] p-3 text-sm">
+        {(rows.length > 0 || !compact || done.length > 0 || missed > 0 || !screens.md) && <div className="light-surface-box min-w-0 space-y-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
           {rows.length > 0 && (
             <section className="st-live-section">
               <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
@@ -197,11 +214,11 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
                       <Link to={`/training/sessions?horse=${x.id}`} className="truncate font-semibold" onFocus={() => setFocus(x.id)} onBlur={() => setFocus(null)}>
                         {x.s.horse?.name}
                       </Link>
-                      <span className="shrink-0 text-xs text-gray-500">{kindOf(x.s)}</span>
+                      <span className="shrink-0 text-xs text-gray-500">{x.segmentText || kindOf(x.s)}</span>
                     </div>
                     <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label={`Cự ly đã chạy của ${x.s.horse?.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(x.share * 100)}>
                       <div
-                        className={`h-full rounded-full transition-all ${x.over ? 'bg-rose-500' : 'bg-[#0F5A43]'}`}
+                        className={`h-full rounded-full transition-all ${x.over ? 'bg-rose-500' : 'bg-amber-500'}`}
                         style={{ width: `${Math.round(x.share * 100)}%` }}
                       />
                     </div>
@@ -223,8 +240,8 @@ export default function TrainingTrackCard({ sessions = [], horses = [], compact 
               <ul className="m-0 list-none divide-y divide-gray-100 p-0">
                 {nextShown.map((s) => (
                   <li key={s._id} className="flex items-center gap-2 py-1.5" onMouseEnter={() => setFocus(horseId(s))} onMouseLeave={() => setFocus(null)}>
-                    <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-xs font-semibold tabular-nums text-gray-700 border border-[#E5DEC9]">
-                      {hhmm(s.scheduledAt)}
+                    <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-xs font-semibold tabular-nums text-gray-700 border border-slate-200">
+                      {sessionWindowLabel(s)}
                     </span>
                     <Link to={`/training/sessions?horse=${horseId(s)}`} className="min-w-0 flex-1 truncate font-medium" onFocus={() => setFocus(horseId(s))} onBlur={() => setFocus(null)}>
                       {s.horse?.name}

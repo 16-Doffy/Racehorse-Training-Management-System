@@ -327,7 +327,7 @@ function PlanCalendarEditor({ plan, feedItems, policy, onDone, setDirty, onPropo
         <MealEditModal target={editing} days={draft} feedItems={feedItems} gapHours={policy.mealMinGapHours} onApply={applyMeal} onClose={() => setEditing(null)} onPropose={onPropose} />
       )}
 
-      <div className="light-surface-box sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-[#E5DEC9] bg-[#FAF7F0] px-3 py-2.5 rounded-b-xl">
+      <div className="light-surface-box sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/95 px-3 py-2.5 rounded-b-xl">
         <div className="min-w-0 text-xs">
           {timeProblem ? (
             <Text type="danger">
@@ -511,7 +511,7 @@ function DailyRationEditor({ horse, rations, feedItems, policy, onDone, setDirty
           <StockNeedList rows={totals} />
         </div>
       )}
-      <div className="light-surface-box sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-[#E5DEC9] bg-[#FAF7F0] px-3 py-2.5 rounded-b-xl">
+      <div className="light-surface-box sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/95 px-3 py-2.5 rounded-b-xl">
         <div className="min-w-0 text-xs">{problem ? <Text type="danger">{problem}</Text> : <Text type="secondary">Lưu xong, bữa hôm nay của nhân viên cập nhật ngay (bữa đã cho ăn giữ nguyên).</Text>}</div>
         <div className="flex gap-2">
           <Button onClick={() => (touched ? askToDrop(onDone) : onDone())}>Đóng</Button>
@@ -626,7 +626,7 @@ export default function RationPlanner({ open, horseId, onClose, horses = [], pla
             />
           </label>
           {horse && (
-            <div className="light-surface-box grid flex-1 grid-cols-2 gap-x-6 gap-y-2 rounded-xl border border-[#E5DEC9] bg-[#FAF7F0] px-4 py-2.5 md:grid-cols-4">
+            <div className="light-surface-box grid flex-1 grid-cols-2 gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-slate-50/90 px-4 py-2.5 md:grid-cols-4">
               <Fact label="Cân nặng">{horse.weightKg ? `${amountText(horse.weightKg)} kg` : <Text type="warning">Chưa nhập</Text>}</Fact>
               <Fact label="Người cho ăn">
                 {assignment?.assignedCaretaker?.name ? (

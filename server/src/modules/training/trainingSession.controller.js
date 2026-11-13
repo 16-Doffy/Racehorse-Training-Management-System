@@ -40,7 +40,66 @@ const { ROLES } = require('../../constants/roles');
 // What the trainer describes when booking a session. Status, metrics, rating, outcome and the
 // readiness snapshot are all server-owned or set through their own endpoints — accepting them
 // here let a client create a session that was already "completed" with a made-up result.
-const PLAN_FIELDS = ['kind', 'sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'scheduledAt', 'assignedTo', 'raceEntry'];
+const PLAN_FIELDS = ['kind', 'sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'scheduledAt', 'endAt', 'segments', 'assignedTo', 'raceEntry'];
+
+const SEGMENT_RANK = { walk: 1, canter: 2, hill: 3, breeze: 4, trial: 5 };
+
+/**
+ * Normalizes `segments` and planned `endAt` on create/update:
+ * - If `segments` is non-empty, validates each segment and rolls up total duration & distance
+ *   while defaulting `kind` to the heaviest segment if omitted.
+ * - Ensures `endAt` > `scheduledAt` if provided, or auto-computes `endAt` from `durationMinutes`.
+ */
+function normalizeSegmentsAndEndAt(body) {
+  if (Array.isArray(body.segments) && body.segments.length > 0) {
+    const cleaned = [];
+    for (const seg of body.segments) {
+      if (!seg?.kind || !SEGMENT_RANK[seg.kind]) {
+        return 'Mỗi hạng mục bài tập phải có loại bài tập hợp lệ.';
+      }
+      if (seg.durationMinutes !== undefined && seg.durationMinutes !== null && !(Number(seg.durationMinutes) > 0)) {
+        return 'Thời lượng từng hạng mục phải lớn hơn 0 phút.';
+      }
+      cleaned.push({
+        kind: seg.kind,
+        ...(seg.durationMinutes ? { durationMinutes: Number(seg.durationMinutes) } : {}),
+        ...(seg.distanceM ? { distanceM: Number(seg.distanceM) } : {}),
+        ...(seg.targetSpeedKmh ? { targetSpeedKmh: Number(seg.targetSpeedKmh) } : {}),
+        ...(seg.targetHeartRateMax ? { targetHeartRateMax: Number(seg.targetHeartRateMax) } : {}),
+        ...(seg.restMinutes !== undefined && seg.restMinutes !== null ? { restMinutes: Number(seg.restMinutes) } : {}),
+        ...(typeof seg.note === 'string' && seg.note.trim() ? { note: seg.note.trim() } : {}),
+      });
+    }
+    body.segments = cleaned;
+    if (!body.kind) {
+      body.kind = [...cleaned].sort((a, b) => (SEGMENT_RANK[b.kind] || 0) - (SEGMENT_RANK[a.kind] || 0))[0].kind;
+    }
+    const totalMin = cleaned.reduce((s, x) => s + (x.durationMinutes || 0), 0);
+    const totalDist = cleaned.reduce((s, x) => s + (x.distanceM || 0), 0);
+    body.prescription = body.prescription || {};
+    if (totalMin > 0 && !body.prescription.durationMinutes) body.prescription.durationMinutes = totalMin;
+    if (totalDist > 0 && !body.prescription.distanceM) body.prescription.distanceM = totalDist;
+  }
+
+  if (body.scheduledAt) {
+    const start = new Date(body.scheduledAt);
+    if (body.endAt !== undefined && body.endAt !== null && body.endAt !== '') {
+      const end = new Date(body.endAt);
+      if (Number.isNaN(end.getTime()) || end <= start) {
+        return 'Giờ kết thúc dự kiến phải sau giờ bắt đầu.';
+      }
+      body.endAt = end;
+      const diffMin = Math.round((end.getTime() - start.getTime()) / 60000);
+      if (diffMin > 0) {
+        body.prescription = body.prescription || {};
+        if (!body.prescription.durationMinutes) body.prescription.durationMinutes = diffMin;
+      }
+    } else if (body.prescription?.durationMinutes > 0) {
+      body.endAt = new Date(start.getTime() + Number(body.prescription.durationMinutes) * 60000);
+    }
+  }
+  return null;
+}
 
 const isTrial = (s) => s.kind === 'trial' || s.sessionType === 'trial_run';
 
@@ -309,6 +368,7 @@ const createSession = asyncHandler(async (req, res) => {
     return fail(res, 'Chọn giờ tập ở tương lai.', 400);
   }
   const problem =
+    normalizeSegmentsAndEndAt(body) ||
     applyKind(body) ||
     rangeProblem(body.prescription, PRESCRIPTION_RANGES) ||
     kindSpeedProblem(body.kind, body.prescription?.targetSpeedKmh) ||
@@ -801,7 +861,7 @@ const deleteSession = asyncHandler(async (req, res) => {
 });
 
 // What a booking is, without its outcome: copied when a missed session is booked again.
-const BOOKING_FIELDS = ['kind', 'sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'assignedTo', 'trainingPlan', 'horse', 'raceEntry'];
+const BOOKING_FIELDS = ['kind', 'sessionType', 'objective', 'intensity', 'prescription', 'segments', 'endAt', 'coachNote', 'assignedTo', 'trainingPlan', 'horse', 'raceEntry'];
 
 /**
  * POST /training/sessions/:id/reschedule { scheduledAt } — books a missed session again at a new

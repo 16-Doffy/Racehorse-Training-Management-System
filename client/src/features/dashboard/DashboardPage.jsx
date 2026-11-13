@@ -200,6 +200,7 @@ export default function DashboardPage() {
             <div className="st-bento-grid st-safety-grid">
               {restrictedCard}
               <MissedMealsCard />
+              <ExamRequestsCard />
               <OpenIncidentsCard />
               <CareOrdersCard />
             </div>
@@ -208,11 +209,42 @@ export default function DashboardPage() {
         </>
       )}
 
+      {/* Compact cross-department handoff strip linking Manager / Head Trainer with Vet, Groom Mobile, and Owner */}
+      <section className="st-role-bridge" aria-label="Liên kết vận hành giữa các bộ phận">
+        <div className="st-role-bridge__head">
+          <span className="font-semibold text-[13px]">Luồng phối hợp liên bộ phận</span>
+          <span className="text-xs st-muted-copy">Dữ liệu tự động đồng bộ giữa web quản trị, bác sĩ thú y, chủ ngựa và app nhân viên chuồng</span>
+        </div>
+        <div className="st-role-bridge__grid">
+          {(isHeadTrainer
+            ? [
+                { role: 'Bác sĩ thú y', desc: 'Cấp giấy khám, khóa tập và nhận yêu cầu khám gấp khi chấn thương.', to: '/horses', cta: 'Xem tình trạng y tế' },
+                { role: 'Nhân viên chuồng (App Mobile)', desc: 'Thực hiện khẩu phần theo giai đoạn, chấm ăn xong và gửi báo cáo sự cố.', to: '/stable/tasks', cta: 'Khẩu phần & Chăm sóc' },
+                { role: 'Chủ ngựa', desc: 'Theo dõi kết quả chạy thử, lịch thi đấu và nhận xét phong độ từ HLV.', to: '/races', cta: 'Giải đấu & Đánh giá' },
+              ]
+            : [
+                { role: 'HLV Trưởng', desc: 'Xếp lịch tập tuần, đăng ký giải đấu và gửi đề xuất phát sinh.', to: '/admin/reports', cta: 'Báo cáo Vận hành' },
+                { role: 'Bác sĩ thú y', desc: 'Khóa/mở tập theo bệnh án, đề xuất nhập thuốc và dụng cụ y tế.', to: '/inventory', cta: 'Kho & Đề xuất' },
+                { role: 'Nhân viên chuồng (App Mobile)', desc: 'Phụ trách cho ăn theo ca, dọn chuồng và báo cáo thiếu vật tư.', to: '/admin/stables', cta: 'Chuồng trại & Giao ca' },
+                { role: 'Chủ ngựa', desc: 'Xem báo cáo tài chính minh bạch, thưởng giải tự động và hồ sơ ngựa.', to: '/finance', cta: 'Thu chi Tài chính' },
+              ]
+          ).map((item) => (
+            <Link key={item.role} to={item.to} className="st-role-bridge__item">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-[13px] st-bridge-role">{item.role}</span>
+                <span className="text-[11px] font-semibold st-bridge-cta">{item.cta} →</span>
+              </div>
+              <p className="m-0 mt-1 text-xs st-muted-copy leading-relaxed">{item.desc}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
       {/* Trainer Fitness Overview: under both columns, the width of the page, so its charts have room
           and neither column runs on alone beside an empty one. */}
       {isHeadTrainer && (
         <Card
-          className="shadow-xs border-[#E5DEC9] rounded-xl"
+          className="shadow-xs rounded-xl"
           title={
             <div>
               <span className="font-semibold text-gray-900 text-[15px]">Biểu đồ thể lực tổng quan</span>

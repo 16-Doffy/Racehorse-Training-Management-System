@@ -285,7 +285,7 @@ export default function AuditLogPage() {
         />
       )}
 
-      <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+      <Card className="!rounded-xl shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
         <Table
           rowKey="_id"
           columns={columns}

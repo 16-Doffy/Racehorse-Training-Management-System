@@ -8,7 +8,7 @@ const crudFactory = require('../../utils/crudFactory');
 const InventoryItem = require('../../models/InventoryItem');
 const { pushNotification } = require('../alerts/notification.service');
 const DailyTask = require('../../models/DailyTask');
-const { computeForecast, itemInUse } = require('./stock.service');
+const { computeForecast, itemInUse, isExpiredDate, ensureBatches, syncItemFromBatches } = require('./stock.service');
 const { logAction } = require('../audit/audit.service');
 const { canAccessHorse } = require('../../utils/horseScope');
 const { FEED_TYPES } = require('./feedType');
@@ -89,7 +89,14 @@ const ctrl = crudFactory(InventoryItem, {
   validate: checkItem,
   // A new item is news to the grooms who use it; an edit only reloads the open screens (broadcastWrites).
   afterWrite: async (item, _req, existing) => {
-    if (!existing) await announceNewItem(item);
+    if (!existing) {
+      if (item.quantity > 0 && (!item.batches || item.batches.length === 0)) {
+        item.batches = [{ qty: item.quantity, expiryDate: item.expiryDate || null, receivedAt: new Date() }];
+        syncItemFromBatches(item);
+        await item.save();
+      }
+      await announceNewItem(item);
+    }
   },
 });
 
@@ -255,16 +262,38 @@ const receiveStock = asyncHandler(async (req, res) => {
   const { quantity, error } = toUnits(item, body);
   if (error) return fail(res, error, 400);
 
+  let parsedExpiry = null;
+  if (req.body?.expiryDate !== undefined && req.body?.expiryDate !== null && req.body?.expiryDate !== '') {
+    parsedExpiry = new Date(req.body.expiryDate);
+    if (Number.isNaN(parsedExpiry.getTime())) return fail(res, 'Hạn sử dụng lô mới không hợp lệ.', 400);
+    if (isExpiredDate(parsedExpiry)) return fail(res, 'Hạn sử dụng lô mới không được nhỏ hơn hôm nay.', 400);
+  }
+
   const now = new Date();
+  ensureBatches(item);
+  item.batches.push({
+    qty: quantity,
+    expiryDate: parsedExpiry,
+    receivedAt: now,
+    note: typeof req.body?.note === 'string' && req.body.note.trim() ? req.body.note.trim() : undefined,
+  });
+  syncItemFromBatches(item, now);
+
+  const sharedSet = {
+    batches: item.batches,
+    quantity: item.quantity,
+    expiryDate: item.expiryDate,
+    lastRestockedAt: now,
+    isProposed: false,
+  };
+
   const updated = request
     ? // One atomic claim on the request: two clicks or a retry receive it once.
       await InventoryItem.findOneAndUpdate(
         { _id: item._id, restockRequests: { $elemMatch: { _id: request._id, status: 'approved', awaitingDelivery: true, receivedAt: null } } },
         {
-          $inc: { quantity },
           $set: {
-            lastRestockedAt: now,
-            isProposed: false,
+            ...sharedSet,
             'restockRequests.$.status': 'received',
             'restockRequests.$.receivedAt': now,
             'restockRequests.$.receivedQty': quantity,
@@ -273,7 +302,7 @@ const receiveStock = asyncHandler(async (req, res) => {
         },
         { new: true }
       )
-    : await InventoryItem.findOneAndUpdate({ _id: item._id }, { $inc: { quantity }, $set: { lastRestockedAt: now, isProposed: false } }, { new: true });
+    : await InventoryItem.findOneAndUpdate({ _id: item._id }, { $set: sharedSet }, { new: true });
   if (!updated) return fail(res, 'Đề xuất vừa được nhận hàng ở nơi khác — tải lại để xem.', 409);
 
   await logAction({
@@ -281,7 +310,7 @@ const receiveStock = asyncHandler(async (req, res) => {
     action: 'inventory.receive',
     targetModel: 'InventoryItem',
     targetId: item._id,
-    metadata: { quantity, unit: item.unit, note: req.body.note, request: request?._id || null },
+    metadata: { quantity, unit: item.unit, expiryDate: parsedExpiry, note: req.body.note, request: request?._id || null },
   });
   if (request) {
     await pushNotification({
@@ -293,6 +322,27 @@ const receiveStock = asyncHandler(async (req, res) => {
   }
   await announceDelivery(item, quantity, updated.quantity);
   return ok(res, updated, `Đã nhập thêm ${quantity} ${item.unit}${packNote(item, quantity)}${request ? ' theo đề xuất' : ''}.`);
+});
+
+const disposeExpired = asyncHandler(async (req, res) => {
+  const item = await InventoryItem.findById(req.params.id);
+  if (!item) return fail(res, 'Inventory item not found.', 404);
+  const now = new Date();
+  ensureBatches(item);
+  const expired = item.batches.filter((b) => b.qty > 0 && isExpiredDate(b.expiryDate, now));
+  if (expired.length === 0) return fail(res, 'Không có lô hết hạn nào cần tiêu hủy.', 400);
+  const disposedQty = expired.reduce((sum, b) => sum + b.qty, 0);
+  item.batches = item.batches.filter((b) => b.qty > 0 && !isExpiredDate(b.expiryDate, now));
+  syncItemFromBatches(item, now);
+  await item.save();
+  await logAction({
+    actorId: req.user._id,
+    action: 'inventory.dispose_expired',
+    targetModel: 'InventoryItem',
+    targetId: item._id,
+    metadata: { disposedQty, unit: item.unit, batchCount: expired.length },
+  });
+  return ok(res, item, `Đã tiêu hủy ${disposedQty} ${item.unit} hết hạn (${expired.length} lô).`);
 });
 
 router.use(protect);
@@ -316,6 +366,7 @@ router.delete('/:id', authorize(ROLES.MANAGER), refuseItemInUse, ctrl.removeOne)
 router.post('/proposals', authorize(ROLES.GROOM, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN), proposeItem);
 router.post('/:id/restock-request', authorize(ROLES.GROOM, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN), requestRestock);
 router.post('/:id/receive', authorize(ROLES.MANAGER), receiveStock);
+router.post('/:id/dispose-expired', authorize(ROLES.MANAGER), disposeExpired);
 router.patch('/:id/restock-requests/:reqId', authorize(ROLES.MANAGER), reviewRestockRequest);
 
 module.exports = router;

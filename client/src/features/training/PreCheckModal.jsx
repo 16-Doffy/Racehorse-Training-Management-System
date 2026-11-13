@@ -106,7 +106,7 @@ export default function PreCheckModal({ session, open, onClose, onDone, onReques
             onRequestExam={onRequestExam}
           />
           <Form form={form} layout="vertical" onFinish={submit} className="!mt-3">
-            <div className="light-surface-box rounded-xl border border-[#E5DEC9] bg-[#FAF7F0] p-3 mb-3">
+            <div className="light-surface-box rounded-xl border border-slate-200 bg-slate-50/80 p-3 mb-3">
               <Row gutter={12}>
                 <Col xs={24} sm={8}>
                   <Form.Item name="bodyTempC" label="Nhiệt độ cơ thể (°C)" extra="Bình thường 37,2–38,3 °C" className="!mb-0">
