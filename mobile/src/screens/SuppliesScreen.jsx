@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, SectionList, StyleSheet, View } from 'react-native';
+import { Text } from '../components/AppText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
 import RestockSheet from '../components/RestockSheet';
 import ProposeItemSheet from '../components/ProposeItemSheet';
 import { Badge, Button, Card, ChipRow, EmptyState, IconButton, LoadError, Loading, Row, SearchInput, Sheet } from '../components/ui';
+import { EXPIRY_TONE } from '../components/CareKit';
 import { useAuth } from '../auth/AuthContext';
 import { useInventory, useRefreshAll, useStableOverview } from '../hooks/useGroomData';
 import {
@@ -14,11 +16,14 @@ import {
   approvedOf,
   areaKey,
   deliveryBlocks,
+  expiryDaysText,
+  expiryOf,
   formatDate,
   formatDateTime,
   formatDays,
   isOpenRequest,
   levelOf,
+  lotsOf,
   matchesSearch,
   packsText,
   parseStableBlock,
@@ -292,6 +297,8 @@ function ItemRow({ item, request, onRestock, last }) {
   const status = request ? restockState(request) : null;
   const packs = packsText(item);
   const days = item.dailyUsage ? (item.daysLeft != null ? formatDays(item.daysLeft) : null) : null;
+  const lots = lotsOf(item);
+  const expiry = expiryOf(item);
 
   // Two touch targets side by side, never nested: the line opens the item, the button asks for more.
   return (
@@ -324,7 +331,16 @@ function ItemRow({ item, request, onRestock, last }) {
       <Row style={styles.rowFoot}>
         <Row style={{ flex: 1, gap: 6, flexWrap: 'wrap' }}>
           {days ? <Badge label={`Đủ ${days}`} color={item.daysLeft < 3 ? colors.red : colors.textMuted} bg={item.daysLeft < 3 ? colors.redSoft : colors.graySoft} /> : null}
-          {item.expiryDate ? <Badge label={`HSD ${formatDate(item.expiryDate)}`} color={level.key === 'expired' || level.key === 'expiring' ? level.color : colors.textMuted} bg={level.key === 'expired' || level.key === 'expiring' ? level.bg : colors.graySoft} /> : null}
+          {/* The lot to use first and how soon it expires; several lots and expired stock said too. */}
+          {expiry ? (
+            <Badge
+              label={`${expiry.label}${expiry.tone !== 'ok' ? ` · ${expiry.days <= 0 ? 'hôm nay' : `${expiry.days} ngày`}` : ''}`}
+              color={EXPIRY_TONE[expiry.tone].fg}
+              bg={EXPIRY_TONE[expiry.tone].bg}
+            />
+          ) : null}
+          {lots.usable.length > 1 ? <Badge label={`${lots.usable.length} lô`} color={colors.textMuted} bg={colors.graySoft} /> : null}
+          {lots.expired.length ? <Badge label={`${lots.expired.length} lô hết hạn`} color={colors.red} bg={colors.redSoft} /> : null}
           {status ? (
             <Badge
               label={`${status.key === 'approved' ? 'Chờ hàng về' : request.priority === 'urgent' ? 'Đã xin khẩn' : 'Đã xin'} +${status.key === 'approved' ? approvedOf(request) : request.quantity} ${item.unit}`}

@@ -388,7 +388,7 @@ function layPhases(startDate, phases) {
   let cursor = first.getTime();
   return phases.map((p) => {
     const start = new Date(cursor);
-    cursor += (Number(p.weeks) || 0) * 7 * DAY_MS;
+    cursor += Math.max(1, (Number(p.weeks) || 0) * 7 + (Number(p.extraDays) || 0)) * DAY_MS;
     return { key: p.key, weeks: Number(p.weeks) || 0, start, end: new Date(cursor - 1) };
   });
 }

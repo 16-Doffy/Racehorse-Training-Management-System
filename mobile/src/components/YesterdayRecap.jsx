@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from './AppText';
 import Icon from './Icon';
 import { Row } from './ui';
 import { addDays, isSameDay, taskState } from '../utils/groom';

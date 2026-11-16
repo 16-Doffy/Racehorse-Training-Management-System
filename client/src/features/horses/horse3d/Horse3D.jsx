@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { breedOf, coatFor } from './horseBreeds';
 import { HORSE_MODEL, loadModelViewer, paintCoat } from './modelViewer';
+import ModelCredit from './ModelCredit';
 
 const STAGE_BG =
   'radial-gradient(90% 70% at 50% 28%, rgba(16,120,86,.55) 0%, rgba(2,44,34,0) 60%), radial-gradient(120% 90% at 50% 100%, #03251c 0%, #01110c 70%)';
@@ -160,9 +161,7 @@ export default function Horse3D({ breed, color, height = 280, compact = false, c
             Không tải được mô hình 3D — cần kết nối mạng để tải trình xem.
           </div>
         )}
-      </div>
-      <div className="text-right text-gray-400 mt-1 truncate" style={{ fontSize: 10 }} title={HORSE_MODEL.credit}>
-        {HORSE_MODEL.credit}
+        <ModelCredit lines={[HORSE_MODEL.credit]} />
       </div>
     </div>
   );

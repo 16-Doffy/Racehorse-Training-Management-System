@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { AlertOutlined, CalendarOutlined, FileSearchOutlined, HeartOutlined, LineChartOutlined, MedicineBoxOutlined } from '@ant-design/icons';
+import { useSearchParams } from 'react-router-dom';
+import { AlertOutlined, CalendarOutlined, FileSearchOutlined, LineChartOutlined, MedicineBoxOutlined } from '@ant-design/icons';
 import { Segmented } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -11,10 +12,10 @@ import CareBodyMap from '../horses/CareBodyMap';
 import CareHistoryCard from '../horses/CareHistoryCard';
 import { horsesApi } from '../horses/horsesApi';
 import { TRAINING_LEVEL_META } from '../../constants/health';
-import { Card, ClearancePill, DateChip, EmptyNote, Facts, HealthPill, MoreButton, Pill, Row } from './kit';
+import { Card, ClearancePill, DateChip, EmptyNote, MoreButton, Pill, Row } from './kit';
 import { VitalsMultiples } from './charts';
 import { CareSchedule } from './lists';
-import { capFirst, clearanceOf, fmtDate, fmtDateTime, fmtShort, healthOf, idOf } from './ownerFormat';
+import { capFirst, clearanceOf, fmtDate, fmtDateTime, fmtShort, healthOf, idOf, relDay } from './ownerFormat';
 import { useHealthRecords, useInjuries, useTreatments } from './useOwnerData';
 
 const VITALS = [
@@ -27,16 +28,22 @@ const vitalsText = (v) =>
     .map(([key, , unit]) => `${v[key]} ${unit}`)
     .join(' · ');
 
+const TABS = ['treatments', 'injuries', 'exams', 'care'];
+
 /**
- * One horse's health as the owner follows it: how it is now and why, routine care, treatments and
- * prescriptions, injuries (on the horse in 3D), the vital signs over the exams and every exam.
- * Read-only: the vet writes all of it.
+ * One horse's health as the owner follows it. On top, how it is now and why: the vet's conclusion and any
+ * limit on its training, the last exam and its vital signs, what it eats while unwell and the follow-up.
+ * Then a tab each for the treatments, the injuries (on the horse in 3D), the exams over time and the
+ * routine care. Read-only: the vet writes all of it.
  */
 export default function HealthDetail({ horse, examined = true }) {
   const id = idOf(horse);
   const { records } = useHealthRecords();
   const { treatments } = useTreatments();
   const { injuries } = useInjuries();
+  // A reminder of a care visit opens on the routine care (?tab=care).
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(() => (TABS.includes(params.get('tab')) ? params.get('tab') : null));
   const [examsShown, setExamsShown] = useState(6);
   const [bodyLayer, setBodyLayer] = useState(null); // 'injury' | 'care'; until chosen, injuries if any are open
   // The same request as the care history table below, so the two share one fetch.
@@ -54,10 +61,14 @@ export default function HealthDetail({ horse, examined = true }) {
   );
   const marks = useMemo(() => injuries.filter((i) => idOf(i.horse) === id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)), [injuries, id]);
   const open = marks.filter(isActiveInjury);
+  const ongoing = plans.filter((t) => t.status === 'ongoing');
   const bodyShown = bodyLayer || (open.length > 0 || careEvents.length === 0 ? 'injury' : 'care');
   const showBody = open.length > 0 || careEvents.length > 0;
   const latest = exams[0];
   const clearance = clearanceOf(horse);
+  const health = healthOf(horse.healthStatus);
+  const diet = horse.feedingDiet;
+  const followUp = horse.careSchedule?.nextExamDue;
   const vitalSeries = useMemo(() => {
     const withVitals = exams.filter((r) => VITALS.some(([key]) => r.vitalSigns?.[key])).slice(0, 20).reverse();
     return VITALS.map(([key, name, unit]) => ({
@@ -68,44 +79,80 @@ export default function HealthDetail({ horse, examined = true }) {
     }));
   }, [exams]);
   const showVitals = vitalSeries.some((s) => s.points.length >= 2);
+  // The tab that matters first: what is going on now, else the exams.
+  const shownTab = tab || (ongoing.length ? 'treatments' : open.length ? 'injuries' : 'exams');
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="own-grid-2">
-        <Card title="Tình trạng hiện tại" icon={<HeartOutlined />}>
-          <div className="flex flex-col gap-3">
-            <div className="own-hero-pills">
-              <HealthPill status={horse.healthStatus} examined={examined} />
-              <ClearancePill horse={horse} />
-            </div>
-            {clearance.restricted && (
-              <div className={`own-note${clearance.level === 'none' ? ' is-bad' : ''}`}>
-                {capFirst(clearance.label)}
-                {clearance.reason ? ` — ${clearance.reason}` : ''}
-                {horse.trainingClearance?.prescribedBy ? ` · theo ${horse.trainingClearance.prescribedBy}` : ''}
-                {horse.trainingClearance?.since ? ` từ ${fmtShort(horse.trainingClearance.since)}` : ''}. Hết hạn chế khi bác sĩ nâng mức hoặc kết thúc điều trị.
-              </div>
-            )}
-            {latest ? (
-              <Facts
-                items={[
-                  ['Lần khám gần nhất', `${fmtDate(latest.date)}${latest.examinedBy?.name ? ` · ${latest.examinedBy.name}` : ''}`],
-                  ['Kết luận', healthOf(latest.resultStatus).label],
-                  ['Chẩn đoán', latest.diagnosis],
-                  ...VITALS.map(([key, label, unit]) => [label, latest.vitalSigns?.[key] ? `${latest.vitalSigns[key]} ${unit}` : '—']),
-                  latest.notes && ['Ghi chú', latest.notes],
-                ]}
-              />
-            ) : (
-              <EmptyNote>Chưa có lần khám nào. Tình trạng trên là mặc định khi nhập ngựa, chưa phải kết luận của bác sĩ.</EmptyNote>
-            )}
+      <section className={`own-card own-hh is-${examined ? health.tone : 'neutral'}`} aria-label="Tình trạng hiện tại">
+        <div className="own-hh-status">
+          <span className="own-hh-label">Tình trạng hiện tại</span>
+          <span className="own-hh-value">{examined ? health.label : 'Chưa khám'}</span>
+          <div className="own-hero-pills">
+            <ClearancePill horse={horse} />
+            {ongoing.length > 0 && <Pill tone="info">{ongoing.length} phác đồ đang điều trị</Pill>}
+            {open.length > 0 && <Pill tone="bad">{open.length} chấn thương chưa khỏi</Pill>}
           </div>
-        </Card>
-        <Card title="Chăm sóc định kỳ" icon={<CalendarOutlined />} flush>
-          <CareSchedule horse={horse} />
-        </Card>
+        </div>
+        <div className="own-hh-body">
+          {latest ? (
+            <>
+              <div className="own-hh-exam">
+                <span className="own-faint">
+                  Lần khám gần nhất · {fmtDate(latest.date)} ({relDay(latest.date)}){latest.examinedBy?.name ? ` · BS ${latest.examinedBy.name}` : ''}
+                </span>
+                <b>{latest.diagnosis}</b>
+              </div>
+              <div className="own-hh-vitals">
+                {VITALS.map(([key, label, unit]) => (
+                  <div key={key}>
+                    <span>{label}</span>
+                    <b>{latest.vitalSigns?.[key] ? `${latest.vitalSigns[key]} ${unit}` : '—'}</b>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="own-muted">Chưa có lần khám nào: tình trạng trên là mặc định khi nhập ngựa, chưa phải kết luận của bác sĩ.</div>
+          )}
+          {clearance.restricted && (
+            <div className={`own-note${clearance.level === 'none' ? ' is-bad' : ''}`}>
+              {capFirst(clearance.label)}
+              {clearance.reason ? ` — ${clearance.reason}` : ''}. Hết hạn chế khi bác sĩ nâng mức hoặc kết thúc điều trị.
+            </div>
+          )}
+          {(diet || followUp) && (
+            <div className="own-hh-extra">
+              {diet && (
+                <span>
+                  <b>Ăn uống:</b> {diet.diet === 'sick' ? `chế độ bệnh "${diet.label}"` : diet.label}
+                  {diet.note ? ` — ${diet.note}` : ''}
+                </span>
+              )}
+              {followUp && (
+                <span>
+                  <b>Tái khám:</b> {fmtDate(followUp)} ({relDay(followUp)})
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div>
+        <Segmented
+          value={shownTab}
+          onChange={setTab}
+          options={[
+            { value: 'treatments', label: `Điều trị (${plans.length})` },
+            { value: 'injuries', label: `Chấn thương (${marks.length})` },
+            { value: 'exams', label: `Lịch sử khám (${exams.length})` },
+            { value: 'care', label: 'Chăm sóc định kỳ' },
+          ]}
+        />
       </div>
 
+      {shownTab === 'treatments' && (
       <Card title="Điều trị & đơn thuốc" icon={<MedicineBoxOutlined />} flush extra={plans.some((t) => t.status === 'ongoing') && <Pill tone="info">{plans.filter((t) => t.status === 'ongoing').length} đang điều trị</Pill>}>
         {plans.length === 0 ? (
           <EmptyNote>Ngựa chưa có phác đồ điều trị nào.</EmptyNote>
@@ -141,7 +188,9 @@ export default function HealthDetail({ horse, examined = true }) {
           </ul>
         )}
       </Card>
+      )}
 
+      {shownTab === 'injuries' && (
       <Card title="Chấn thương" icon={<AlertOutlined />} flush extra={open.length > 0 && <Pill tone="bad">{open.length} chưa khỏi</Pill>}>
         {showBody && (
           // The horse in 3D, look only: where the vet marked the injuries still open, or where routine care was done.
@@ -188,13 +237,15 @@ export default function HealthDetail({ horse, examined = true }) {
           </ul>
         )}
       </Card>
+      )}
 
-      {showVitals && (
+      {shownTab === 'exams' && showVitals && (
         <Card title="Chỉ số sinh tồn qua các lần khám" icon={<LineChartOutlined />}>
           <VitalsMultiples series={vitalSeries} />
         </Card>
       )}
 
+      {shownTab === 'exams' && (
       <Card title="Lịch sử khám" icon={<FileSearchOutlined />} flush extra={exams.length > 0 && <span className="own-faint text-xs">{exams.length} lần khám</span>}>
         {exams.length === 0 ? (
           <EmptyNote>Chưa có lần khám nào.</EmptyNote>
@@ -221,8 +272,16 @@ export default function HealthDetail({ horse, examined = true }) {
           </>
         )}
       </Card>
+      )}
 
-      <CareHistoryCard horseId={id} />
+      {shownTab === 'care' && (
+        <>
+          <Card title="Lịch hẹn của bác sĩ" icon={<CalendarOutlined />} flush>
+            <CareSchedule horse={horse} />
+          </Card>
+          <CareHistoryCard horseId={id} />
+        </>
+      )}
     </div>
   );
 }

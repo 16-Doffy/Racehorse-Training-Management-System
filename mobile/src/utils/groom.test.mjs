@@ -353,3 +353,82 @@ test('isolation and recovery zones are told apart, and a stall kept for a horse 
   assert.equal(stallState(stall('A', 'standard')).key, 'empty');
   assert.equal(stallState(stall('A', 'standard', { reservedFor: { horse: { name: 'Dembele' }, now: 'R-02' } })).key, 'reserved');
 });
+
+// ── Expiry: which lot to use first ──────────────────────────────────────────────────────────────
+import { expiryOf, lotsOf, takeFromLots, useFirstItems } from './groom.js';
+
+const inDays = (n) => {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() + n);
+  return d.toISOString();
+};
+
+test('lots go out expiring first, undated last, expired ones apart', () => {
+  const item = { batches: [{ qty: 5, expiryDate: inDays(30) }, { qty: 3, expiryDate: null }, { qty: 2, expiryDate: inDays(4) }, { qty: 9, expiryDate: inDays(-2) }, { qty: 0, expiryDate: inDays(1) }] };
+  const { usable, expired } = lotsOf(item);
+  assert.deepEqual(usable.map((l) => l.qty), [2, 5, 3]);
+  assert.deepEqual(expired.map((l) => l.qty), [9]);
+  // An item from before lots: its quantity and expiry are one lot.
+  assert.deepEqual(lotsOf({ quantity: 7, expiryDate: inDays(10) }).usable.map((l) => l.qty), [7]);
+});
+
+test('the next lot to use says how soon it expires', () => {
+  assert.equal(expiryOf({ batches: [{ qty: 2, expiryDate: inDays(2) }] }).tone, 'urgent');
+  assert.equal(expiryOf({ batches: [{ qty: 2, expiryDate: inDays(10) }] }).tone, 'soon');
+  const far = expiryOf({ batches: [{ qty: 2, expiryDate: inDays(60) }] });
+  assert.equal(far.tone, 'ok');
+  assert.equal(far.days, 60);
+  assert.match(far.label, /^HSD \d{2}\/\d{2}$/);
+  assert.equal(expiryOf({ batches: [{ qty: 2, expiryDate: null }] }), null);
+});
+
+test('an amount is taken lot by lot, as the store gives them out', () => {
+  const item = { batches: [{ qty: 1.5, expiryDate: inDays(3) }, { qty: 10, expiryDate: inDays(20) }] };
+  const { plan, short } = takeFromLots(item, 3.5);
+  assert.deepEqual(plan.map((p) => p.take), [1.5, 2]);
+  assert.equal(short, 0);
+  assert.equal(takeFromLots(item, 20).short, 8.5);
+});
+
+test('what to use first: soon-expiring stock of the kind, the ones in use marked', () => {
+  const inventory = [
+    { _id: 'oats', category: 'feed', batches: [{ qty: 20, expiryDate: inDays(5) }] },
+    { _id: 'hay', category: 'feed', batches: [{ qty: 80, expiryDate: inDays(2) }] },
+    { _id: 'fresh', category: 'feed', batches: [{ qty: 80, expiryDate: inDays(90) }] },
+    { _id: 'bute', category: 'medicine', batches: [{ qty: 8, expiryDate: inDays(1) }] },
+  ];
+  const list = useFirstItems(inventory, 'feed', new Set(['oats']));
+  assert.deepEqual(list.map((x) => x.item._id), ['hay', 'oats']);
+  assert.deepEqual(list.map((x) => x.inUse), [false, true]);
+});
+
+// ── Notifications ───────────────────────────────────────────────────────────────────────────────
+import { foldNotifications, notificationGroup, notificationTarget, splitMessage } from './groom.js';
+
+test('a notification says what it is about and where it leads', () => {
+  const meal = { type: 'task_assigned', message: 'Đến giờ bữa chiều 17:00 của Orion. Mở mục Cho ăn để ghi nhận.' };
+  assert.equal(notificationGroup(meal), 'feed');
+  assert.deepEqual(notificationTarget(meal), { screen: 'Chăm sóc', params: { segment: 'feeding' } });
+  assert.equal(notificationGroup({ type: 'task_assigned', message: 'HLV giao vệ sinh chuồng A-01' }), 'work');
+  assert.equal(notificationGroup({ type: 'care_order', message: 'Bác sĩ kê toa' }), 'med');
+  assert.deepEqual(notificationTarget({ type: 'low_stock', message: 'Kho sắp hết' }), { screen: 'Kho' });
+  assert.deepEqual(notificationTarget({ type: 'injury_lock', horse: { _id: 'h1', name: 'Orion' }, message: 'Khóa tập' }), { screen: 'HorseDetail', params: { horseId: 'h1', name: 'Orion' } });
+  assert.deepEqual(splitMessage('Đến giờ bữa chiều 17:00 của Orion. Mở mục Cho ăn.'), { title: 'Đến giờ bữa chiều 17:00 của Orion', body: 'Mở mục Cho ăn.' });
+  assert.deepEqual(splitMessage('Kho sắp hết'), { title: 'Kho sắp hết', body: '' });
+  assert.deepEqual(splitMessage('📋 HLV giao việc mới: tắm rửa cho Sao Mai lúc 18:47 — Tắm nước ấm.'), { title: 'HLV giao việc mới: tắm rửa cho Sao Mai lúc 18:47', body: 'Tắm nước ấm.' });
+  assert.deepEqual(splitMessage('⚠️ Ánh Dương đang hồi phục. Chỉ tập nhẹ.'), { title: 'Ánh Dương đang hồi phục', body: 'Chỉ tập nhẹ.' });
+});
+
+test('the same message about different horses at the same minute folds into one', () => {
+  const at = '2026-11-16T10:00:12.000Z';
+  const meal = (id, name, isRead = false) => ({ _id: id, type: 'task_assigned', createdAt: at, isRead, horse: { _id: `h-${id}`, name }, message: `Đến giờ bữa chiều 17:00 của ${name}. Mở mục Cho ăn để ghi nhận.` });
+  const list = [meal('1', 'Pegasus'), meal('2', 'Orion', true), meal('3', 'Arrow'), { _id: '4', type: 'low_stock', createdAt: at, isRead: true, message: 'Cỏ khô sắp hết.' }];
+  const folded = foldNotifications(list);
+  assert.equal(folded.length, 2);
+  assert.deepEqual(folded[0].ids, ['1', '2', '3']);
+  assert.equal(folded[0].title, 'Đến giờ bữa chiều 17:00 của 3 ngựa');
+  assert.match(folded[0].body, /^Pegasus, Orion, Arrow · Mở mục Cho ăn/);
+  assert.equal(folded[0].unread, true);
+  assert.equal(folded[1].unread, false);
+});

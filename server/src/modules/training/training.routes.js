@@ -16,6 +16,8 @@ router.post('/plans', authorize(ROLES.HEAD_TRAINER), planCtrl.createPlan);
 router.put('/plans/:id', authorize(ROLES.HEAD_TRAINER), planCtrl.updatePlan);
 // Books the plan's normal week as sessions: { weekStart? } (next week by default).
 router.post('/plans/:id/generate-week', authorize(ROLES.HEAD_TRAINER), planCtrl.generateWeek);
+// The trainer's end-of-phase checkpoint: { decision: 'pass' | 'extend', note? }.
+router.post('/plans/:id/checkpoint', authorize(ROLES.HEAD_TRAINER), planCtrl.checkpointPlan);
 router.delete('/plans/:id', authorize(ROLES.HEAD_TRAINER), planCtrl.deletePlan);
 
 // Training sessions.

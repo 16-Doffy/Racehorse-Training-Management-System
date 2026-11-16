@@ -28,6 +28,8 @@ const {
 } = require('../../constants/training');
 
 const { phasesOf, currentPhaseIndex } = TrainingPlan;
+const { checkpointView, decideCheckpoint } = require('./planProgress.service');
+const { clearanceMap } = require('../health/trainingClearance');
 
 // What a client may set. createdBy is the caller; the horse can't be swapped on an existing plan,
 // since every session under it was planned for that horse.
@@ -59,6 +61,11 @@ function normalizePhases(list) {
     if (!PHASE_KEYS.includes(p.key)) return { error: `${label}: loại giai đoạn không hợp lệ.` };
     const weeks = Number(p.weeks);
     if (!Number.isInteger(weeks) || weeks < 1 || weeks > 12) return { error: `${label}: số tuần phải từ 1 đến 12.` };
+    // Days the phase runs beyond its weeks (an illness, a week more after its checkpoint): kept as they are.
+    const extraDays = p.extraDays === undefined || p.extraDays === null || p.extraDays === '' ? undefined : Number(p.extraDays);
+    if (extraDays !== undefined && !(Number.isInteger(extraDays) && extraDays >= -77 && extraDays <= 180 && weeks * 7 + extraDays >= 1)) {
+      return { error: `${label}: số ngày thêm không hợp lệ.` };
+    }
     if (p.intensity && !INTENSITIES.includes(p.intensity)) return { error: `${label}: cường độ không hợp lệ.` };
     if (p.surface && !SURFACES.includes(p.surface)) return { error: `${label}: mặt sân không hợp lệ.` };
     const distance = p.distanceTarget === '' || p.distanceTarget == null ? undefined : Number(p.distanceTarget);
@@ -98,6 +105,7 @@ function normalizePhases(list) {
     phases.push({
       key: p.key,
       weeks,
+      ...(extraDays !== undefined ? { extraDays } : {}),
       distanceTarget: distance,
       weeklyVolumeKm: volume ?? PHASE_DEFAULTS[p.key].weeklyVolumeKm,
       intensity: p.intensity || PHASE_DEFAULTS[p.key].intensity,
@@ -213,7 +221,9 @@ function withProgress(plan, stats, upcoming, form = {}) {
     week, // 0 = not started yet
     totalWeeks,
     phaseIndex: i,
-    phaseWeek: Math.max(0, Math.min(current.weeks, Math.floor((startOfDay(now) - current.startDate) / (7 * DAY_MS)) + 1)),
+    phaseWeek: Math.max(0, Math.min(Math.ceil((current.weeks * 7 + (current.extraDays || 0)) / 7), Math.floor((startOfDay(now) - current.startDate) / (7 * DAY_MS)) + 1)),
+    // The phase's own length, its weeks and the days added for an illness or a checkpoint.
+    phaseWeeks: Math.ceil((current.weeks * 7 + (current.extraDays || 0)) / 7),
     started: now >= start,
     ended: now > phases[phases.length - 1].endDate,
     phaseSessions: {
@@ -225,6 +235,8 @@ function withProgress(plan, stats, upcoming, form = {}) {
     raceInDays: raceDate ? Math.ceil((startOfDay(raceDate) - startOfDay(now)) / DAY_MS) : null,
     upcoming: upcoming || [],
     form: raceForm({ stats, trials: form.trials, race: json.targetRace, raceBlock: form.raceBlock, now }),
+    // The current phase's end-of-phase checkpoint as it stands (planProgress.service.js).
+    checkpoint: checkpointView(plan, stats || [], { clearance: form.clearance || null, now }),
   };
   return json;
 }
@@ -247,12 +259,15 @@ async function formByPlan(plans) {
   const checked = (p) => p.status === 'active' && p.targetRace && new Date(p.targetRace.raceDate) >= today;
   const horses = [...new Set(plans.filter(checked).map(horseOf))];
   const blocks = new Map(await Promise.all(horses.map(async (h) => [h, await getRaceBlock(h)])));
+  const active = [...new Set(plans.filter((p) => p.status === 'active').map(horseOf))];
+  const clearances = active.length ? await clearanceMap(active) : new Map();
   return new Map(
     plans.map((p) => [
       String(p._id),
       {
         trials: trials.filter((t) => String(t.raceEntry) === String(p.targetRace?._id)).map((t) => ({ at: t.scheduledAt, met: t.outcome?.met ?? null })),
         raceBlock: checked(p) ? blocks.get(horseOf(p)) || null : null,
+        clearance: clearances.get(horseOf(p)) || null,
       },
     ])
   );
@@ -400,6 +415,11 @@ const updatePlan = asyncHandler(async (req, res) => {
   }
   const phaseError = await preparePhases(changes);
   if (phaseError) return fail(res, phaseError, 400);
+  // A phase sent back without its added days keeps those it has (they come from the horse's illness and
+  // its checkpoints, not from the week editor).
+  if (changes.phases) {
+    changes.phases = changes.phases.map((p, i) => (p.extraDays === undefined && plan.phases[i]?.key === p.key ? { ...p, extraDays: plan.phases[i].extraDays || 0 } : p));
+  }
   // The phases are only re-judged when they, the start or the race change: ending an old plan must
   // not be refused over rules it was created before.
   const invalid = await validatePlan(
@@ -447,6 +467,21 @@ const updatePlan = asyncHandler(async (req, res) => {
   return ok(res, plan, 'Training plan updated.');
 });
 
+/**
+ * POST /training/plans/:id/checkpoint { decision: 'pass' | 'extend', note? } — the trainer's own checkpoint
+ * on the current phase, in its last days or while it runs a week more (planProgress.service.js).
+ */
+const checkpointPlan = asyncHandler(async (req, res) => {
+  const plan = await TrainingPlan.findById(req.params.id);
+  if (!plan) return fail(res, 'Training plan not found.', 404);
+  if (!(await canAccessHorse(req.user, plan.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+  const result = await decideCheckpoint({ plan, user: req.user, decision: req.body?.decision, note: req.body?.note });
+  if (result.error) return fail(res, result.error, result.status);
+  const fresh = await withRefs(TrainingPlan.findById(plan._id));
+  const [{ stats, upcoming }, forms] = await Promise.all([sessionsByPlan([fresh._id]), formByPlan([fresh])]);
+  return ok(res, { plan: withProgress(fresh, stats.get(String(fresh._id)), upcoming.get(String(fresh._id)), forms.get(String(fresh._id))), result: result.result, withdrawn: result.withdrawn, cuts: result.cuts }, 'Checkpoint recorded.');
+});
+
 /** POST /training/plans/:id/generate-week { weekStart? } — see generatePlanWeek (trainingPlan.service.js). */
 const generateWeek = asyncHandler(async (req, res) => {
   const plan = await TrainingPlan.findById(req.params.id).populate('targetRace', 'raceName raceDate distance status').populate('horse', 'name');
@@ -476,4 +511,4 @@ const deletePlan = asyncHandler(async (req, res) => {
   return ok(res, null, 'Training plan deleted.');
 });
 
-module.exports = { listPlans, getPlan, suggestPlan, createPlan, updatePlan, generateWeek, deletePlan };
+module.exports = { listPlans, getPlan, suggestPlan, createPlan, updatePlan, generateWeek, deletePlan, checkpointPlan };

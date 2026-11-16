@@ -15,8 +15,16 @@ const { ROLES } = require('../../constants/roles');
 const { BODY_AREAS, EXAM_PRIORITIES, EXAM_SYMPTOMS, fmtWhen, knownKeys, ruleOf, scheduleProblem } = require('../../constants/examRequest');
 const pick = require('../../utils/pick');
 const { saveFile } = require('../../utils/fileStore');
+const { DIET_KINDS, SICK_STATUSES, DIET_NOTE_MAX } = require('../feeding/dietOrder');
+const { answersDue } = require('../horses/careEvent.controller');
 
-const RECORD_FIELDS = ['horse', 'date', 'diagnosis', 'history', 'vitalSigns', 'clinical', 'resultStatus', 'notes', 'clearedLevel'];
+const RECORD_FIELDS = ['horse', 'date', 'diagnosis', 'history', 'vitalSigns', 'clinical', 'resultStatus', 'notes', 'clearedLevel', 'dietPlan', 'followUpAt'];
+// A follow-up is booked from tomorrow to half a year ahead.
+const FOLLOW_UP_MAX_DAYS = 180;
+
+// How hard a horse may work under each conclusion: fit means it trains (maybe still limited on its way
+// back); an injured or isolated horse is not trained at all (readiness.service.js blocks it by its status).
+const LEVELS_FOR = { eligible: ['light', 'moderate', 'high'], monitoring: ['none', 'light', 'moderate', 'high'], injured: ['none'], quarantined: ['none'] };
 
 /** The horse's weight follows the newest exam that weighed it (the horse page shows Horse.weightKg). */
 async function keepWeight(record) {
@@ -33,6 +41,39 @@ function clearedLevelProblem(body) {
     return null;
   }
   if (body.clearedLevel !== undefined && !LEVELS.includes(body.clearedLevel)) return 'Mức vận động được phép không hợp lệ (none, light, moderate, high).';
+  return null;
+}
+
+/**
+ * The parts of an exam that follow from its conclusion, made to agree with it: the training level allowed
+ * (LEVELS_FOR) and the diet (feeding/dietOrder.js) — none once the horse is fit, a sick diet while it is
+ * injured or isolated, either under monitoring. Normalises body.dietPlan. Returns an error message or null.
+ */
+function conclusionProblem(body) {
+  const status = body.resultStatus;
+  if (body.clearedLevel && LEVELS_FOR[status] && !LEVELS_FOR[status].includes(body.clearedLevel)) {
+    return `Kết luận "${CONCLUSION_LABELS[status]}" không đi cùng mức vận động "${LEVEL_LABELS[body.clearedLevel]}".`;
+  }
+  if (body.followUpAt === '' || body.followUpAt === null || body.followUpAt === undefined) body.followUpAt = null;
+  else {
+    const at = new Date(body.followUpAt);
+    const tomorrow = new Date();
+    tomorrow.setHours(24, 0, 0, 0);
+    if (!Number.isFinite(at.getTime())) return 'Ngày tái khám không hợp lệ.';
+    if (at < tomorrow) return 'Ngày tái khám phải từ ngày mai trở đi.';
+    if (at - tomorrow > FOLLOW_UP_MAX_DAYS * 86400000) return `Hẹn tái khám trong vòng ${FOLLOW_UP_MAX_DAYS} ngày.`;
+    body.followUpAt = at;
+  }
+  const plan = body.dietPlan;
+  if (plan === undefined || plan === null || plan === '' || status === 'eligible') {
+    body.dietPlan = null;
+    return null;
+  }
+  if (typeof plan !== 'object' || Array.isArray(plan) || !DIET_KINDS[plan.kind]) return 'Chế độ ăn không hợp lệ.';
+  if (plan.kind === 'plan' && SICK_STATUSES.includes(status)) return 'Ngựa chấn thương hoặc cách ly không được tập: chọn một chế độ ăn khi bệnh.';
+  const note = typeof plan.note === 'string' ? plan.note.trim() : '';
+  if (note.length > DIET_NOTE_MAX) return `Lời dặn về ăn uống tối đa ${DIET_NOTE_MAX} ký tự.`;
+  body.dietPlan = { kind: plan.kind, note };
   return null;
 }
 
@@ -125,7 +166,7 @@ async function isLatestRecord(record) {
 // status board (eligible / monitoring / injured / quarantined) and the training readiness gates.
 const createRecord = asyncHandler(async (req, res) => {
   const body = pick(req.body, RECORD_FIELDS);
-  const levelProblem = clearedLevelProblem(body);
+  const levelProblem = clearedLevelProblem(body) || conclusionProblem(body);
   if (levelProblem) return fail(res, levelProblem, 400);
   if (!(await canAccessHorse(req.user, body.horse))) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
 
@@ -133,10 +174,20 @@ const createRecord = asyncHandler(async (req, res) => {
   if (record.resultStatus && record.resultStatus !== 'eligible') {
     await flagConfirmedEntries(record.horse, `bác sĩ kết luận "${CONCLUSION_LABELS[record.resultStatus] || record.resultStatus}"${record.diagnosis ? ` — ${record.diagnosis}` : ''}`);
   }
-  const statusBefore = (await Horse.findById(record.horse).select('healthStatus').lean())?.healthStatus;
+  const before = await Horse.findById(record.horse).select('healthStatus careSchedule.nextExamDue').lean();
+  const statusBefore = before?.healthStatus;
   // A back-dated entry for an old exam must not overwrite the conclusion of a newer one.
   if (await isLatestRecord(record)) {
-    await Horse.findByIdAndUpdate(record.horse, { healthStatus: record.resultStatus });
+    const update = { healthStatus: record.resultStatus };
+    // The vet's diet order stands while the horse is not fit and ends once it is (feeding/dietOrder.js);
+    // an exam that orders none (a level check) leaves the one in force.
+    if (record.resultStatus === 'eligible') update.vetDiet = null;
+    else if (record.dietPlan?.kind) update.vetDiet = { kind: record.dietPlan.kind, note: record.dietPlan.note || '', record: record._id, setAt: new Date() };
+    // The follow-up booked here is the horse's next exam due; the care scheduler reminds of it afresh.
+    // With none booked, this exam is the follow-up that was due (or nearly), and that reminder ends.
+    if (record.followUpAt) Object.assign(update, { 'careSchedule.nextExamDue': record.followUpAt, 'careSchedule.examNotifiedAt': null });
+    else if (answersDue(before?.careSchedule?.nextExamDue, record.date || new Date())) Object.assign(update, { 'careSchedule.nextExamDue': null, 'careSchedule.examNotifiedAt': null });
+    await Horse.findByIdAndUpdate(record.horse, update);
   }
   await keepWeight(record);
 
@@ -159,6 +210,8 @@ const createRecord = asyncHandler(async (req, res) => {
   if (record.resultStatus === 'quarantined' && !placed) await askToIsolate(record.horse);
   // The meals follow too: the sick diet while injured or isolated, the usual ones once fit.
   await require('../feeding/feedingCalendar.service').followHealthDiet(record.horse);
+  // And its training plan: paused while it is stopped, the days made up once it is back.
+  await require('../training/planProgress.service').followPlanOf(record.horse);
   // The same exam answers whatever the groom reported about this horse.
   await resolveIncidentsWithRecord(record, req.user);
 

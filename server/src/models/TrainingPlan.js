@@ -42,6 +42,9 @@ const phaseSchema = new mongoose.Schema(
   {
     key: { type: String, enum: PHASES, required: true },
     weeks: { type: Number, min: 1, max: 12, required: true },
+    // Days the phase runs beyond its weeks (time lost to an illness, a week more after a checkpoint not
+    // met), or fewer when it was shortened to keep the race (training/planProgress.js).
+    extraDays: { type: Number, default: 0, min: -77, max: 180 },
     startDate: { type: Date }, // set from the plan's start and the phases before it
     endDate: { type: Date },
     distanceTarget: { type: Number }, // meters
@@ -82,6 +85,38 @@ const trainingPlanSchema = new mongoose.Schema(
     afternoonTime: { type: String, default: () => clubPolicy.afternoonTime, match: /^([01]\d|2[0-3]):[0-5]\d$/ },
     notes: { type: String },
     status: { type: String, enum: ['draft', 'active', 'completed', 'cancelled'], default: 'draft' },
+    // Stopped by the vet (a lock, an injury, isolation): since when, in which phase, why. The phase waits
+    // and runs longer once the horse is back at work (training/planProgress.js).
+    pause: {
+      type: new mongoose.Schema({ since: Date, phaseIndex: Number, reason: String }, { _id: false }),
+      default: null,
+    },
+    // Each stop once over: how long, and how many days its phase got for it.
+    pauses: [
+      new mongoose.Schema(
+        { since: Date, until: Date, days: Number, phaseIndex: Number, phaseKey: String, addedDays: Number, reason: String },
+        { _id: false }
+      ),
+    ],
+    // The end-of-phase checkpoints: whether the horse moved on to the next phase, ran a week more, or
+    // failed — by the system from the phase's sessions, or by the trainer.
+    checkpoints: [
+      new mongoose.Schema(
+        {
+          phaseIndex: Number,
+          phaseKey: String,
+          at: Date,
+          result: { type: String, enum: ['passed', 'extended', 'failed'] },
+          auto: { type: Boolean, default: true },
+          by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+          note: String,
+          reasons: [String],
+          extendedDays: Number,
+          metrics: { due: Number, done: Number, rated: Number, met: Number, avgRating: Number },
+        },
+        { _id: false }
+      ),
+    ],
   },
   { timestamps: true }
 );
@@ -130,7 +165,7 @@ trainingPlanSchema.pre('validate', function layOutPhases() {
   let cursor = startOfDay(this.startDate).getTime();
   for (const p of this.phases) {
     p.startDate = new Date(cursor);
-    cursor += p.weeks * 7 * DAY_MS;
+    cursor += Math.max(1, p.weeks * 7 + (p.extraDays || 0)) * DAY_MS;
     p.endDate = new Date(cursor - 1);
     if (p.distanceTarget == null) p.distanceTarget = this.distanceTarget;
     if (!p.surface) p.surface = this.surface;

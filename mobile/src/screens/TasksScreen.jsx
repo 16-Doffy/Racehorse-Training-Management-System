@@ -1,15 +1,14 @@
 import { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScrollView, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon';
-import AppHeader from '../components/AppHeader';
 import CompleteTaskModal from '../components/CompleteTaskModal';
 import IncidentModal from '../components/IncidentModal';
 import NotDoneModal from '../components/NotDoneModal';
 import TaskDetailSheet from '../components/TaskDetailSheet';
 import RestockSheet from '../components/RestockSheet';
-import { Badge, Banner, Button, ChipRow, EmptyState, IconButton, LoadError, Loading, ProgressBar, Row, Segments, StallPlate } from '../components/ui';
+import { Badge, ChipGroup, EmptyState, IconButton, LoadError, Loading, Row } from '../components/ui';
+import { CareFrame, DayPicker, DoneMark, FilterTabs, IconLead, MoreMark, Notice, StallTag, SummaryCard, ToggleChip, WorkGroup, WorkRow, rowAction } from '../components/CareKit';
 import { useFeedings, useInventory, useRefreshAll, useStableOverview, useTasks } from '../hooks/useGroomData';
 import { taskApi } from '../api/endpoints';
 import {
@@ -20,7 +19,6 @@ import {
   addDays,
   describeTask,
   formatDate,
-  formatDayLabel,
   formatTime,
   isSameDay,
   isToday,
@@ -36,18 +34,18 @@ import {
   taskState,
   weekdayShort,
 } from '../utils/groom';
-import { colors, font, radius, spacing } from '../theme';
+import { colors, spacing } from '../theme';
 
 // Meals live on "Cho ăn" and doses on "Thuốc", where the ration and the prescription are. This tab
 // is the stable work itself — mucking out, washing, icing, hooves and whatever else the trainer
 // assigns ("Việc khác") — which is what a groom means by "việc chuồng".
 
 /**
- * The day's stable work. "Cần làm" first (late, then now, then later), each line with a "Xong"
- * button when it can be ticked; "Đã xong" holds what is recorded or reported. The list groups by
- * horse — the groom walks stall to stall — or by job, to muck out every stall in one round. Earlier
- * work still open carries over and is offered from today. The detail sheet holds every action
- * (acknowledge, can't do it, report an incident, ask for supplies).
+ * The day's stable work. The summary counts the day's chores done and holds the day picker; the tabs
+ * are "Cần làm" (late, then now, then later), "Đã xong" and "Tất cả", and the jobs of the day narrow
+ * them further. The list groups by horse — the groom walks stall to stall — or by job, to muck out
+ * every stall in one round. Earlier work still open carries over and is offered from today. The detail
+ * sheet holds every action (acknowledge, can't do it, report an incident, ask for supplies).
  */
 export default function TasksScreen({ navigation, segments }) {
   const [day, setDay] = useState(() => startOfDay(new Date()));
@@ -86,6 +84,7 @@ export default function TasksScreen({ navigation, segments }) {
   const percent = planned.length ? Math.round((doneCount / planned.length) * 100) : 0;
   const todoAll = dayTasks.filter((t) => needsAction(t, ctx));
   const doneAll = dayTasks.filter((t) => !needsAction(t, ctx));
+  const lateNow = todoAll.some((t) => ['late', 'missed', 'blocked'].includes(taskState(t, ctx)?.key));
 
   const typeChips = useMemo(() => {
     const counts = new Map();
@@ -130,116 +129,60 @@ export default function TasksScreen({ navigation, segments }) {
     setRefreshing(false);
   };
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <AppHeader
-        title="Việc chuồng"
-        subtitle={planned.length ? `${isToday(day) ? 'Hôm nay' : formatDayLabel(day)}: ${doneCount}/${planned.length} việc xong${todoAll.length ? ` · còn ${todoAll.length}` : ''}` : 'Vệ sinh · tắm · ngâm chân · móng · việc khác'}
-        right={<IconButton icon="warning" label="Báo cáo sự cố" onPress={() => navigation?.navigate('Incidents')} />}
+  const dayShort = `${weekdayShort(day)} ${formatDate(day).slice(0, 5)}`;
+  const summary = (
+    <SummaryCard
+      done={doneCount}
+      total={planned.length || null}
+      label={planned.length ? 'việc đã xong' : 'Không có việc nào'}
+      note={planned.length ? (todoAll.length ? `Còn ${todoAll.length} việc cần làm` : 'Đã xong hết') : 'Vệ sinh · tắm · ngâm chân · móng · việc khác'}
+      alert={lateNow}
+      right={
+        <DayPicker
+          label={isToday(day) ? 'Hôm nay' : dayShort}
+          hint={isToday(day) ? dayShort : 'về hôm nay'}
+          onPrev={() => setDay((d) => addDays(d, -1))}
+          onNext={() => setDay((d) => addDays(d, 1))}
+          onToday={() => setDay(startOfDay(new Date()))}
+        />
+      }
+      progress={planned.length ? percent : null}
+    />
+  );
+
+  const filters = (
+    <>
+      <FilterTabs
+        value={view}
+        onChange={setView}
+        options={[
+          { value: 'todo', label: 'Cần làm', sub: `${todoAll.length} việc`, alert: lateNow },
+          { value: 'done', label: 'Đã xong', sub: `${doneAll.length} việc` },
+          { value: 'all', label: 'Tất cả', sub: `${dayTasks.length} việc` },
+        ]}
       />
-
-      {segments}
-
-      <View style={styles.toolbar}>
-        <Row style={styles.dayRow}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Ngày trước" onPress={() => setDay((d) => addDays(d, -1))} hitSlop={8} style={styles.dayNav}>
-            <Icon name="chevronLeft" size={18} color={colors.forest} />
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Về hôm nay" style={{ flex: 1, alignItems: 'center' }} onPress={() => setDay(startOfDay(new Date()))}>
-            <Text style={styles.dayLabel}>
-              {formatDayLabel(day)}
-              {isToday(day) ? ` · ${weekdayShort(day)} ${formatDate(day).slice(0, 5)}` : ''}
-            </Text>
-            {!isToday(day) ? <Text style={styles.dayHint}>Chạm để về hôm nay</Text> : null}
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Ngày sau" onPress={() => setDay((d) => addDays(d, 1))} hitSlop={8} style={styles.dayNav}>
-            <Icon name="chevronRight" size={18} color={colors.forest} />
-          </Pressable>
-        </Row>
-        {planned.length > 0 ? <ProgressBar percent={percent} tint={colors.green} track={colors.graySoft} height={5} /> : null}
+      {dayTasks.length > 0 ? (
         <Row style={{ gap: spacing.sm }}>
-          <View style={{ flex: 1 }}>
-            <Segments
-              options={[
-                { value: 'todo', label: 'Cần làm', count: todoAll.length },
-                { value: 'done', label: `Đã xong (${doneAll.length})` },
-                { value: 'all', label: 'Tất cả' },
-              ]}
-              value={view}
-              onChange={setView}
-            />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            {typeChips.length > 2 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <ChipGroup options={typeChips} value={type} onChange={setType} size="sm" />
+              </ScrollView>
+            ) : null}
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={groupBy === 'horse' ? 'Đang nhóm theo ngựa, chạm để nhóm theo việc' : 'Đang nhóm theo việc, chạm để nhóm theo ngựa'}
+          <ToggleChip
+            icon={groupBy === 'horse' ? 'stall' : 'tasks'}
+            label={groupBy === 'horse' ? 'Theo ngựa' : 'Theo việc'}
+            a11y={groupBy === 'horse' ? 'Đang nhóm theo ngựa, chạm để nhóm theo việc' : 'Đang nhóm theo việc, chạm để nhóm theo ngựa'}
             onPress={() => setGroupBy((g) => (g === 'horse' ? 'type' : 'horse'))}
-            style={({ pressed }) => [styles.groupToggle, pressed && { opacity: 0.7 }]}
-          >
-            <Icon name={groupBy === 'horse' ? 'stall' : 'tasks'} size={16} color={colors.forest} />
-            <Text style={styles.groupToggleText}>{groupBy === 'horse' ? 'Theo ngựa' : 'Theo việc'}</Text>
-          </Pressable>
+          />
         </Row>
-        {typeChips.length > 2 ? <ChipRow options={typeChips} value={type} onChange={setType} size="sm" /> : null}
-      </View>
+      ) : null}
+    </>
+  );
 
-      <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}>
-        {overdue.length > 0 && isToday(day) ? (
-          <Banner tone="warning" style={{ paddingVertical: spacing.sm }}>
-            <Row style={{ gap: spacing.sm }}>
-              <Icon name="clock" size={17} color={colors.orange} />
-              <Text style={[font.small, { flex: 1, color: colors.text }]}>
-                <Text style={{ fontWeight: '700' }}>{overdue.length} việc hôm trước</Text> chưa xong — vẫn làm được.
-              </Text>
-              <Button title="Xem" size="sm" variant="ghost" onPress={() => setDay(startOfDay(overdue[overdue.length - 1].scheduledDate))} />
-            </Row>
-          </Banner>
-        ) : null}
-
-        {isLoading ? (
-          <Loading />
-        ) : isError ? (
-          <LoadError text="Không tải được danh sách việc" onRetry={() => refetch()} />
-        ) : groups.length === 0 ? (
-          view === 'todo' && dayTasks.length > 0 && type === 'all' ? (
-            <Banner tone="success" style={{ paddingVertical: spacing.sm }}>
-              <Row style={{ gap: spacing.sm }}>
-                <Icon name="checkCircle" size={18} color={colors.green} />
-                <Text style={[font.body, { flex: 1, fontWeight: '700' }]}>Xong hết việc chuồng {isToday(day) ? 'hôm nay' : 'ngày này'}</Text>
-              </Row>
-            </Banner>
-          ) : (
-            <View style={styles.list}>
-              <EmptyState
-                icon={dayTasks.length ? 'search' : 'empty'}
-                text={dayTasks.length ? 'Không có việc nào ở mục này' : `Không có việc nào ${isToday(day) ? 'hôm nay' : 'vào ngày này'}`}
-              />
-            </View>
-          )
-        ) : (
-          groups.map(({ key, items }) => (
-            <View key={key} style={styles.list}>
-              {groupBy === 'horse' ? (
-                <HorseHead horse={horseById.get(key) || items[0].horse} stall={stallOf(key)} items={items} />
-              ) : (
-                <TypeHead type={key} items={items} />
-              )}
-              {items.map((task) => (
-                <ChoreRow
-                  key={task._id}
-                  task={task}
-                  ctx={ctx}
-                  schedules={schedulesFor(refId(task.horse))}
-                  label={groupBy === 'type' ? task.horse?.name : null}
-                  stall={groupBy === 'type' ? stallOf(refId(task.horse)) : null}
-                  onOpen={() => setDetail(task)}
-                  onAct={() => act(task)}
-                />
-              ))}
-            </View>
-          ))
-        )}
-      </ScrollView>
-
+  const overlays = (
+    <>
       {/* The list stays short; the sheet carries the detail and every action. */}
       <TaskDetailSheet
         task={detail}
@@ -271,7 +214,6 @@ export default function TasksScreen({ navigation, segments }) {
           setReporting(task);
         }}
       />
-
       <CompleteTaskModal
         task={completing}
         schedules={completing ? schedulesFor(refId(completing.horse)) : []}
@@ -282,137 +224,146 @@ export default function TasksScreen({ navigation, segments }) {
       <IncidentModal task={reporting} visible={!!reporting} onClose={() => setReporting(null)} />
       <NotDoneModal task={notDone} visible={!!notDone} initialReason={notDoneReason} onClose={() => setNotDone(null)} />
       <RestockSheet request={restock} visible={!!restock} onClose={() => setRestock(null)} />
-    </SafeAreaView>
+    </>
   );
-}
 
-function HorseHead({ horse, stall, items }) {
-  const health = horse?.healthStatus && horse.healthStatus !== 'eligible' ? HEALTH_STATUS[horse.healthStatus] : null;
-  const done = items.filter((t) => t.status === 'completed').length;
   return (
-    <Row style={styles.head}>
-      <StallPlate code={stall} name={horse?.name} size="sm" />
-      <Text style={styles.headTitle} numberOfLines={1}>
-        {horse?.name || 'Không rõ ngựa'}
-      </Text>
-      {health ? <Badge label={health.label} color={health.color} bg={health.bg} dot /> : null}
-      <Text style={styles.headCount}>
-        {done}/{items.length}
-      </Text>
-    </Row>
+    <CareFrame
+      subtitle={`Hôm nay · ${weekdayShort(new Date())} ${formatDate(new Date()).slice(0, 5)}`}
+      right={<IconButton icon="warning" label="Báo cáo sự cố" onPress={() => navigation?.navigate('Incidents')} />}
+      segments={segments}
+      summary={summary}
+      filters={filters}
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      overlays={overlays}
+    >
+      {overdue.length > 0 && isToday(day) ? (
+        <Notice
+          tone="warning"
+          icon="clock"
+          title={`${overdue.length} việc hôm trước`}
+          text="chưa xong — vẫn làm được."
+          action="Xem"
+          onAction={() => setDay(startOfDay(overdue[overdue.length - 1].scheduledDate))}
+        />
+      ) : null}
+
+      {isLoading ? (
+        <Loading />
+      ) : isError ? (
+        <LoadError text="Không tải được danh sách việc" onRetry={() => refetch()} />
+      ) : groups.length === 0 ? (
+        view === 'todo' && dayTasks.length > 0 && type === 'all' ? (
+          <Notice tone="success" icon="checkCircle" title="Xong hết việc chuồng" text={isToday(day) ? 'hôm nay.' : 'ngày này.'} />
+        ) : (
+          <WorkGroup>
+            <EmptyState icon={dayTasks.length ? 'search' : 'empty'} text={dayTasks.length ? 'Không có việc nào ở mục này' : `Không có việc nào ${isToday(day) ? 'hôm nay' : 'vào ngày này'}`} />
+          </WorkGroup>
+        )
+      ) : (
+        groups.map(({ key, items }) => {
+          const done = items.filter((t) => t.status === 'completed').length;
+          if (groupBy === 'horse') {
+            const horse = horseById.get(key) || items[0].horse;
+            const health = horse?.healthStatus && horse.healthStatus !== 'eligible' ? HEALTH_STATUS[horse.healthStatus] : null;
+            return (
+              <WorkGroup
+                key={key}
+                variant="horse"
+                lead={<StallTag code={stallOf(key)} name={horse?.name} />}
+                title={horse?.name || 'Không rõ ngựa'}
+                meta={
+                  <>
+                    {health ? `${health.label} · ` : ''}
+                    {done}/{items.length}
+                  </>
+                }
+              >
+                {items.map((task) => (
+                  <ChoreRow key={task._id} task={task} ctx={ctx} schedules={schedulesFor(refId(task.horse))} onOpen={() => setDetail(task)} onAct={() => act(task)} />
+                ))}
+              </WorkGroup>
+            );
+          }
+          const cfg = TASK_CONFIG[key] || TASK_CONFIG.other;
+          return (
+            <WorkGroup key={key} variant="horse" lead={<IconLead icon={cfg.icon} color={cfg.color} bg={cfg.bg} />} title={cfg.label} meta={`${done}/${items.length} ngựa`}>
+              {items.map((task) => (
+                <ChoreRow
+                  key={task._id}
+                  task={task}
+                  ctx={ctx}
+                  schedules={schedulesFor(refId(task.horse))}
+                  horseName={task.horse?.name}
+                  stall={stallOf(refId(task.horse))}
+                  onOpen={() => setDetail(task)}
+                  onAct={() => act(task)}
+                />
+              ))}
+            </WorkGroup>
+          );
+        })
+      )}
+    </CareFrame>
   );
 }
-
-function TypeHead({ type, items }) {
-  const cfg = TASK_CONFIG[type] || TASK_CONFIG.other;
-  const done = items.filter((t) => t.status === 'completed').length;
-  return (
-    <Row style={styles.head}>
-      <View style={[styles.typeIcon, { backgroundColor: cfg.bg }]}>
-        <Icon name={cfg.icon} size={17} color={cfg.color} />
-      </View>
-      <Text style={styles.headTitle} numberOfLines={1}>
-        {cfg.label}
-      </Text>
-      <Text style={styles.headCount}>
-        {done}/{items.length} ngựa
-      </Text>
-    </Row>
-  );
-}
-
-const ACTIONS = {
-  complete: { title: 'Xong', icon: 'check', variant: 'primary' },
-  late: { title: 'Quên ghi', icon: 'clock', variant: 'subtle' },
-  restock: { title: 'Xin kho', icon: 'plus', variant: 'danger' },
-  notDone: { title: 'Báo', icon: 'block', variant: 'ghost' },
-};
 
 /**
- * One chore: what (or, grouped by job, which horse), when and how it stands, with its one button.
- * The line opens the detail; the button never sits inside it.
+ * One chore: what it is (or, grouped by job, which horse), when and how it stands, with its one button.
  */
-function ChoreRow({ task, ctx, schedules, label, stall, onOpen, onAct }) {
+function ChoreRow({ task, ctx, schedules, horseName, stall, onOpen, onAct }) {
   const info = describeTask(task, schedules);
   const state = taskState(task, ctx);
   const action = primaryAction(task, ctx);
-  const button = action ? ACTIONS[action.key] : null;
+  const button = action ? { ...rowAction(action.key, { complete: 'Xong', notDone: 'Báo' }), onPress: onAct } : null;
   const finished = task.status === 'completed';
   const vet = task.source === 'vet';
   const late = !isToday(task.scheduledDate) && state?.open;
 
   let status = state?.label;
-  if (finished) status = `Xong ${formatTime(task.completedAt)}`;
-  else if (task.status === 'skipped') status = state?.key === 'cancelled' ? 'HLV cho bỏ qua' : `Không làm được: ${task.skipReason || '—'}`;
-  else if (state?.key === 'blocked' || state?.key === 'upcoming') status = state.reason || state.label;
+  let tone = state?.color || colors.textMuted;
+  if (finished) {
+    status = `Xong ${formatTime(task.completedAt)}`;
+    tone = colors.green;
+  } else if (task.status === 'skipped') status = state?.key === 'cancelled' ? 'HLV cho bỏ qua' : `Không làm được: ${task.skipReason || '—'}`;
+  // Ready: the button says it. Not time yet: the hour is on the line already.
+  else if (state?.key === 'ready' || state?.key === 'upcoming') status = null;
+  else if (state?.key === 'blocked') status = state.reason || state.label;
+  if (late && !finished) status = `Từ ${formatDate(task.scheduledDate).slice(0, 5)} · ${status}`;
+
+  // The when, and what the trainer or vet asked: one line.
+  const detail = [info.time, task.note && task.taskType !== 'other' && !finished ? `${vet ? 'BS dặn' : 'HLV dặn'}: ${task.note}` : null].filter(Boolean).join(' · ');
 
   return (
-    <View style={[styles.row, vet && task.status === 'pending' && styles.rowVet]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${info.label} — ${task.horse?.name || ''}`} onPress={onOpen} style={({ pressed }) => [styles.rowMain, pressed && { opacity: 0.7 }]}>
-        {label ? (
-          <StallPlate code={stall} name={label} size="sm" />
+    <WorkRow
+      lead={
+        horseName ? (
+          <StallTag code={stall} name={horseName} />
+        ) : finished ? (
+          <IconLead icon="check" color={colors.green} bg={colors.greenSoft} />
         ) : (
-          <View style={[styles.typeIcon, { backgroundColor: finished ? colors.greenSoft : info.bg }]}>
-            <Icon name={finished ? 'check' : info.icon} size={17} color={finished ? colors.green : info.color} />
-          </View>
-        )}
-        <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
-          <Text style={[styles.title, finished && styles.doneText]} numberOfLines={1}>
-            {label || info.label}
-          </Text>
-          <Row style={{ gap: 6, flexWrap: 'wrap' }}>
-            {info.time ? <Text style={styles.time}>{info.time}</Text> : null}
-            {late ? <Text style={[styles.status, { color: colors.orange }]}>từ {formatDate(task.scheduledDate).slice(0, 5)}</Text> : null}
-            {status ? (
-              <Text style={[styles.status, { color: finished ? colors.green : state?.color || colors.textMuted }]} numberOfLines={1}>
-                {status}
-              </Text>
-            ) : null}
-            {vet ? <Badge label="Y lệnh" color={colors.red} bg={colors.redSoft} /> : null}
-            {task.incidentReport ? <Icon name="warning" size={13} color={colors.orange} /> : null}
-            {task.status === 'pending' && task.acknowledgedAt ? <Icon name="thumb" size={13} color={colors.green} /> : null}
-          </Row>
-          {task.note && task.taskType !== 'other' && !finished ? (
-            <Text style={styles.note} numberOfLines={1}>
-              {vet ? 'BS dặn' : 'HLV dặn'}: {task.note}
-            </Text>
-          ) : null}
-        </View>
-      </Pressable>
-      {button ? (
-        <Button title={button.title} icon={button.icon} variant={button.variant} size="sm" style={styles.action} onPress={onAct} />
-      ) : finished ? (
-        <Icon name="checkCircle" size={26} color={colors.green} />
-      ) : (
-        <Icon name="chevronRight" size={16} color={colors.textFaint} />
-      )}
-    </View>
+          <IconLead icon={info.icon} color={info.color} bg={info.bg} />
+        )
+      }
+      title={horseName || info.label}
+      label={`${info.label} — ${task.horse?.name || ''}`}
+      tags={
+        <>
+          {vet ? <Badge label="Y lệnh" color={colors.red} bg={colors.redSoft} /> : null}
+          {task.incidentReport ? <Icon name="warning" size={13} color={colors.orange} /> : null}
+          {task.status === 'pending' && task.acknowledgedAt ? <Icon name="thumb" size={13} color={colors.green} /> : null}
+        </>
+      }
+      detail={detail || null}
+      status={status}
+      statusTone={tone}
+      action={button}
+      trailing={finished ? <DoneMark /> : <MoreMark />}
+      done={finished}
+      accent={vet && task.status === 'pending' ? colors.red : null}
+      onPress={onOpen}
+    />
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.cream },
-  toolbar: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, gap: spacing.sm, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
-  dayRow: { gap: spacing.sm },
-  dayNav: { width: 36, height: 36, borderRadius: radius.pill, backgroundColor: colors.graySoft, alignItems: 'center', justifyContent: 'center' },
-  dayLabel: { ...font.h3, color: colors.forest },
-  dayHint: { fontSize: 11, color: colors.textMuted },
-  groupToggle: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white },
-  groupToggleText: { fontSize: 12.5, fontWeight: '700', color: colors.forest },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  list: { backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSoft, overflow: 'hidden' },
-  head: { gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: colors.cream },
-  headTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: colors.forest },
-  headCount: { fontSize: 12.5, fontWeight: '700', color: colors.textMuted },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.borderSoft },
-  // A vet's order is not a chore: a red edge so it reads differently in a long list.
-  rowVet: { borderLeftWidth: 3, borderLeftColor: colors.red },
-  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, minWidth: 0 },
-  typeIcon: { width: 38, height: 38, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 15, fontWeight: '700', color: colors.text },
-  doneText: { color: colors.textMuted, textDecorationLine: 'line-through' },
-  time: { fontSize: 12.5, fontWeight: '800', color: colors.forest },
-  status: { fontSize: 12, fontWeight: '600' },
-  note: { fontSize: 12, color: colors.forestLight },
-  action: { minWidth: 80 },
-});

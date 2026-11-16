@@ -38,6 +38,22 @@ const horseSchema = new mongoose.Schema(
       enum: ['eligible', 'monitoring', 'injured', 'quarantined'],
       default: 'eligible',
     },
+    // The diet the vet ordered on the newest exam while the horse is not fit (feeding/dietOrder.js): a sick
+    // diet, or 'plan' (eat as the training plan says) under monitoring. Cleared once the horse is fit.
+    vetDiet: {
+      type: new mongoose.Schema(
+        {
+          kind: { type: String, enum: ['plan', 'rest', 'colic', 'laminitis', 'respiratory', 'ulcer'], required: true },
+          note: { type: String, trim: true, maxlength: 300 },
+          record: { type: mongoose.Schema.Types.ObjectId, ref: 'HealthRecord' },
+          setAt: { type: Date },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
+    // The day the horse came off a sick diet: its concentrate builds back up over a week from then (dietOrder.js RAMP).
+    backToFeedAt: { type: Date, default: null },
     weightKg: { type: Number },
     // Identity papers, kept by the Manager: sex, the implanted microchip and the stud-book number.
     sex: { type: String, enum: HORSE_SEXES, set: blankToUndefined },
@@ -68,6 +84,17 @@ const horseSchema = new mongoose.Schema(
       dewormingNotifiedAt: { type: Date, default: null },
       farrierNotifiedAt: { type: Date, default: null },
       examNotifiedAt: { type: Date, default: null },
+      // The due date each reminder went out for, so the owner (1–2 days before) and the trainer (a
+      // follow-up exam on its day) are told once per date; a new date is a new reminder.
+      ownerRemindedFor: {
+        vaccination: { type: Date, default: null },
+        deworming: { type: Date, default: null },
+        farrier: { type: Date, default: null },
+        exam: { type: Date, default: null },
+      },
+      trainerRemindedFor: {
+        exam: { type: Date, default: null },
+      },
     },
   },
   { timestamps: true }

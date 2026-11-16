@@ -123,7 +123,7 @@ test('moves and meals that follow health say so when they cannot, and try again'
   await hayOn();
   await retryHealthDiets();
   assert.equal(await dietAhead(hungry), 'sick', 'changed once there is forage');
-  assert.ok(await models.Notification.exists({ horse: hungry._id, recipientUser: users.trainer.id, message: /đã chuyển sang chế độ ăn khi bệnh/ }));
+  assert.ok(await models.Notification.exists({ horse: hungry._id, recipientUser: users.trainer.id, message: /khẩu phần từ hôm nay theo chế độ "Nghỉ chuồng"/ }));
 
   // The same for a horse on daily rations: its own meals stay, nothing is half done.
   const daily = await place('TEST No Hay Daily');
@@ -138,7 +138,8 @@ test('moves and meals that follow health say so when they cannot, and try again'
   await retryHealthDiets();
   assert.ok((await rations()).every((r) => r.healthyItems?.length === 1 && r.items.some((i) => /hay/.test(i.type))));
   await exam(daily, 'eligible');
-  assert.ok((await rations()).every((r) => r.items.length === 1 && r.items[0].amount === 2 && !r.healthyItems?.length));
+  // Its own meals back, half the grain on the first day of the week back (dietOrder.js RAMP).
+  assert.ok((await rations()).every((r) => r.items.length === 1 && r.items[0].amount === 1 && r.fullItems?.[0]?.amount === 2 && !r.healthyItems?.length));
 });
 
 test('what the trainer changed on the calendar comes back after an illness, and a fresh start drops it', { skip: !process.env.TEST_MONGO_URI }, async (t) => {
@@ -146,6 +147,7 @@ test('what the trainer changed on the calendar comes back after an illness, and 
   t.after(() => ctx.close());
   const { api, models } = ctx;
   const { dateKey } = require('../../src/modules/feeding/feedingCalendar.service');
+  const { rampFactor } = require('../../src/modules/feeding/dietOrder');
   await api('manager', 'POST', '/inventory', { name: 'TEST edits hay', category: 'feed', unit: 'kg', quantity: 5000, feedType: 'forage' }, 201);
   const oats = await api('manager', 'POST', '/inventory', { name: 'TEST edits oats', category: 'feed', unit: 'kg', quantity: 5000, feedType: 'concentrate' }, 201);
   const { horse } = await intake(ctx, 'TEST Edits Survive');
@@ -190,7 +192,10 @@ test('what the trainer changed on the calendar comes back after an illness, and 
   await exam('eligible');
   const backA = await day(dayA.date);
   assert.equal(backA.diet, 'normal');
-  assert.equal(oatsIn(evening(backA)), plannedOats + 1, 'the extra oats are back');
+  // The extra oats are back, with the day's part of the grain on the week back after the illness.
+  const partOn = (date) => rampFactor(new Date(), new Date(`${date}T00:00:00`));
+  assert.ok(partOn(dayA.date) < 1);
+  assert.equal(oatsIn(evening(backA)), Math.max(0.5, Math.round((plannedOats + 1) * partOn(dayA.date) * 2) / 2), 'the extra oats are back, built up over the week');
   assert.equal(evening(backA).edited, true);
   assert.equal(backA.healthy, null);
   const backB = await day(dayB.date);
@@ -207,7 +212,10 @@ test('what the trainer changed on the calendar comes back after an illness, and 
   assert.equal((await day(dayA.date)).healthy, null);
   await exam('eligible');
   const clean = await day(dayA.date);
-  assert.equal(oatsIn(evening(clean)), plannedOats, 'the plan\'s meal, as the trainer asked');
+  const rules = (await api('trainer', 'GET', route)).days.find((d) => d.date === dayA.date).suggested;
+  assert.equal(oatsIn(evening(clean)), oatsIn(rules.find((m) => m.slot === 'evening')), 'the plan\'s meal, as the trainer asked');
+  const dayOats = (d) => d.meals.reduce((n, m) => n + (oatsIn(m) || 0), 0);
+  assert.ok(dayOats(clean) < dayOats(dayA), 'on the week back again');
   assert.equal(evening(clean).edited, false);
   assert.deepEqual((await day(dayB.date)).removedSlots, []);
 });

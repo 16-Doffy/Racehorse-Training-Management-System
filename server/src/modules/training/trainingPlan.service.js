@@ -206,6 +206,8 @@ async function rebookAfterClearance(horseId) {
     .populate('targetRace', 'raceName raceDate distance status')
     .populate('horse', 'name isArchived');
   if (!plan || !plan.horse || plan.horse.isArchived) return 0;
+  // Back at work: the phase it stopped in makes up the days lost before the weeks are booked (planProgress.service.js).
+  await require('./planProgress.service').followPlan(plan).catch((err) => console.error('[plan-progress] resume failed:', err.message));
   return (await scheduleAhead(plan)).created || 0;
 }
 
@@ -217,6 +219,9 @@ async function scheduleActivePlans() {
   let created = 0;
   for (const plan of plans) {
     if (!plan.horse || plan.horse.isArchived) continue;
+    // Paused, made up, or at the end of a phase's checkpoint first (planProgress.service.js).
+    // eslint-disable-next-line no-await-in-loop
+    await require('./planProgress.service').followPlan(plan).catch((err) => console.error('[plan-progress] follow failed:', err.message));
     // eslint-disable-next-line no-await-in-loop
     created += (await scheduleAhead(plan)).created;
   }

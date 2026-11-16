@@ -30,6 +30,8 @@ const raceEntrySchema = new mongoose.Schema(
       trialSession: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingSession', default: null },
       trialMet: { type: Boolean, default: null },
       exception: { type: Boolean, default: false }, // confirmed without a trial that was run
+      // Withdrawn by the system: the horse could not be ready in time (training/planProgress.service.js).
+      auto: { type: Boolean, default: false },
       reason: { type: String, trim: true },
     },
     // Set when the horse's health changed after it was confirmed; cleared by a new decision.

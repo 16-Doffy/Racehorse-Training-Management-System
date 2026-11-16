@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from './AppText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from './Icon';
 import Horse360View from './Horse360View';
@@ -30,6 +31,7 @@ export default function HorseStage({ name, subtitle, badges = [], markers = [], 
   const [fullscreen, setFullscreen] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [selected, setSelected] = useState(null);
+  const [creditOpen, setCreditOpen] = useState(false);
 
   const injuries = useMemo(() => activeInjuries(markers), [markers]);
   const hotspots = useMemo(
@@ -113,25 +115,48 @@ export default function HorseStage({ name, subtitle, badges = [], markers = [], 
         ) : null}
 
         {showViewer ? (
-          <View style={styles.bottom} pointerEvents="none">
-            {status === 'loading' ? (
-              <Text style={styles.hint}>Đang tải mô hình 3D… {Math.round(progress * 100)}%</Text>
-            ) : (
-              <Row style={{ gap: 6 }}>
-                <Icon name="rotate360" size={14} color="rgba(255,255,255,0.75)" />
-                <Text style={styles.hint}>Kéo ngang để xoay · chụm để phóng to</Text>
-              </Row>
-            )}
-            {injuries.length ? (
-              <View style={styles.injuryChip}>
-                <Text style={styles.injuryChipText}>{injuries.length} vị trí chấn thương</Text>
-              </View>
-            ) : null}
+          <View style={styles.bottom} pointerEvents="box-none">
+            <View style={{ flexShrink: 1 }} pointerEvents="none">
+              {status === 'loading' ? (
+                <Text style={styles.hint}>Đang tải mô hình 3D… {Math.round(progress * 100)}%</Text>
+              ) : (
+                <Row style={{ gap: 6 }}>
+                  <Icon name="rotate360" size={14} color="rgba(255,255,255,0.75)" />
+                  <Text style={[styles.hint, { flexShrink: 1 }]} numberOfLines={1}>
+                    Kéo ngang để xoay · chụm để phóng to
+                  </Text>
+                </Row>
+              )}
+            </View>
+            <Row style={{ gap: 6 }}>
+              {injuries.length ? (
+                <View style={styles.injuryChip} pointerEvents="none">
+                  <Text style={styles.injuryChipText}>{injuries.length} vị trí chấn thương</Text>
+                </View>
+              ) : null}
+              {/* The model's author (its CC BY-NC licence asks for it) behind an "i", not a line under the stage. */}
+              {HORSE_MODEL.credit ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Nguồn mô hình 3D"
+                  accessibilityState={{ expanded: creditOpen }}
+                  onPress={() => setCreditOpen((open) => !open)}
+                  hitSlop={10}
+                  style={({ pressed }) => [styles.creditButton, creditOpen && styles.creditButtonOpen, pressed && { opacity: 0.7 }]}
+                >
+                  <Icon name="info" size={15} color={colors.white} />
+                </Pressable>
+              ) : null}
+            </Row>
           </View>
         ) : null}
-      </View>
 
-      {HORSE_MODEL.credit && showViewer ? <Text style={styles.credit}>{HORSE_MODEL.credit}</Text> : null}
+        {showViewer && creditOpen ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Đóng nguồn mô hình 3D" onPress={() => setCreditOpen(false)} style={styles.creditNote}>
+            <Text style={styles.creditText}>{HORSE_MODEL.credit}</Text>
+          </Pressable>
+        ) : null}
+      </View>
 
       {/* The same injuries as a list: tapping one flies the camera to it. */}
       {injuries.length ? (
@@ -260,7 +285,11 @@ const styles = StyleSheet.create({
   hint: { color: 'rgba(255,255,255,0.75)', fontSize: 11 },
   injuryChip: { backgroundColor: 'rgba(239,68,68,0.18)', borderColor: '#ef4444', borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3 },
   injuryChipText: { color: '#fecaca', fontSize: 11, fontWeight: '700' },
-  credit: { ...font.small, fontSize: 10, textAlign: 'right', marginTop: -spacing.sm },
+  creditButton: { ...glass, width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  creditButtonOpen: { borderColor: 'rgba(255,255,255,0.55)' },
+  // Clear of the control column on the right (38 wide, spacing.sm in).
+  creditNote: { ...glass, position: 'absolute', left: spacing.md, right: spacing.sm + 38 + spacing.sm, bottom: spacing.md + 36, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  creditText: { color: 'rgba(255,255,255,0.88)', fontSize: 11, lineHeight: 16 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.xxl },
   emptyGlow: { position: 'absolute', width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(16,120,86,0.35)' },
   emptyTitle: { color: colors.white, fontWeight: '700', fontSize: 15, marginTop: spacing.md },

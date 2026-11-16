@@ -401,7 +401,7 @@ export default function CareModal({ horse, kind, initialMode = 'record', onHide,
                 update({ nextDue: e.target.value });
               }}
             />
-            <div className="vet-small mt-1">{form.nextDue ? whenText(form.nextDue) : <span className="vet-faint">Không hẹn lần tới.</span>}</div>
+            <div className="vet-small mt-1">{form.nextDue ? whenText(form.nextDue) : <span className="vet-faint">Không hẹn lần tới: lịch đang đến hạn của việc này được tính là đã làm.</span>}</div>
             <QuickDates
               presets={presets}
               from={fromInputDate(form.date) || new Date()}

@@ -1,0 +1,839 @@
+/* Role homes (dashKit.jsx): on the owner kit's tokens, so light and dark come with them. */
+
+/* ---------- Hero band ---------- */
+.own-ui .dk-hero {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 20px 28px;
+  padding: 26px 28px;
+  overflow: hidden;
+  border-radius: 18px;
+  background: radial-gradient(120% 140% at 100% 0%, #1b7558 0%, rgba(27, 117, 88, 0) 55%), linear-gradient(135deg, #0f5a43 0%, #0b4634 55%, #082f23 100%);
+  color: #fff;
+  box-shadow: 0 18px 36px -22px rgba(8, 47, 35, 0.75);
+}
+body.wdp-dark-portals .own-ui .dk-hero {
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  background: radial-gradient(120% 140% at 100% 0%, rgba(212, 175, 55, 0.16) 0%, rgba(212, 175, 55, 0) 50%), linear-gradient(135deg, #133b2d 0%, #0d2a20 60%, #091f17 100%);
+  box-shadow: none;
+}
+.own-ui .dk-hero-art {
+  position: absolute;
+  right: -40px;
+  bottom: -60px;
+  width: 520px;
+  height: auto;
+  pointer-events: none;
+}
+.own-ui .dk-hero-art ellipse {
+  fill: none;
+  stroke: rgba(246, 213, 122, 0.16);
+  stroke-width: 1.5;
+}
+.own-ui .dk-hero-main {
+  position: relative;
+  flex: 1 1 420px;
+  min-width: 0;
+}
+.own-ui .dk-hero-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f6d57a;
+}
+.own-ui .dk-hero-title {
+  margin: 6px 0 6px;
+  font-family: 'Lora', Georgia, serif;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: #fff;
+}
+.own-ui .dk-hero-sub {
+  max-width: 640px;
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.82);
+}
+.own-ui .dk-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+/* antd buttons on the band: a glass one and a gold one. */
+.own-ui .dk-hero-actions .ant-btn {
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+/* The staff workspace paints every default button white with !important: these win by specificity. */
+body .own-ui .dk-hero .dk-hero-actions .ant-btn.ant-btn-default {
+  border-color: rgba(246, 213, 122, 0.55) !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: #f8e7b2 !important;
+}
+body .own-ui .dk-hero .dk-hero-actions .ant-btn.ant-btn-default:not(.ant-btn-dangerous):hover:not(:disabled) {
+  border-color: rgba(246, 213, 122, 0.85) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #fff !important;
+}
+body .own-ui .dk-hero .dk-hero-actions .ant-btn.ant-btn-primary {
+  border-color: #e0b84a !important;
+  background: #e0b84a !important;
+  color: #1b1406 !important;
+  box-shadow: none !important;
+}
+body .own-ui .dk-hero .dk-hero-actions .ant-btn.ant-btn-primary:not(.ant-btn-dangerous):hover:not(:disabled) {
+  border-color: #ecc965 !important;
+  background: #ecc965 !important;
+  color: #1b1406 !important;
+}
+.own-ui .dk-hero-figure {
+  position: relative;
+  flex: 0 1 280px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-width: 220px;
+  padding: 18px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(4px);
+}
+.own-ui .dk-hero-figure-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+}
+.own-ui .dk-hero-figure-value {
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+.own-ui .dk-hero-figure-value small {
+  margin-left: 2px;
+  font-size: 22px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.6);
+}
+.own-ui .dk-hero-figure-sub {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.75);
+}
+.own-ui .dk-hero-meter {
+  display: block;
+  height: 8px;
+  margin-top: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+.own-ui .dk-hero-meter i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #f6d57a;
+}
+
+/* ---------- Figure tiles ---------- */
+.own-ui .dk-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.own-ui .dk-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--o-border);
+  border-radius: 16px;
+  background: var(--o-card);
+  box-shadow: var(--o-shadow);
+  color: inherit;
+  text-decoration: none;
+}
+.own-ui a.dk-kpi:hover {
+  border-color: var(--o-primary);
+}
+.own-ui .dk-kpi-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.own-ui .dk-kpi-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--o-info-bg);
+  color: var(--o-info);
+  font-size: 16px;
+}
+.own-ui .dk-kpi-icon.is-good {
+  background: var(--o-good-bg);
+  color: var(--o-good);
+}
+.own-ui .dk-kpi-icon.is-watch {
+  background: var(--o-watch-bg);
+  color: var(--o-watch);
+}
+.own-ui .dk-kpi-icon.is-bad {
+  background: var(--o-bad-bg);
+  color: var(--o-bad);
+}
+.own-ui .dk-kpi-icon.is-brass {
+  background: var(--o-brass-bg);
+  color: var(--o-brass);
+}
+.own-ui .dk-kpi-icon.is-quar {
+  background: var(--o-quar-bg);
+  color: var(--o-quar);
+}
+.own-ui .dk-kpi-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--o-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.own-ui .dk-delta {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.own-ui .dk-delta.is-good {
+  background: var(--o-good-bg);
+  color: var(--o-good);
+}
+.own-ui .dk-delta.is-bad {
+  background: var(--o-bad-bg);
+  color: var(--o-bad);
+}
+.own-ui .dk-kpi-value {
+  margin-top: 6px;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--o-ink);
+  white-space: nowrap;
+}
+.own-ui .dk-kpi-value small {
+  margin-left: 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--o-faint);
+}
+.own-ui .dk-kpi-sub {
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--o-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.own-ui .dk-kpi .dk-spark {
+  height: 44px;
+  margin: 4px -6px -4px;
+}
+.own-ui .dk-kpi .dk-meter,
+.own-ui .dk-kpi .dk-split {
+  margin-top: 10px;
+}
+.own-ui .dk-spark .dk-spark-area .recharts-area-area {
+  fill: var(--o-series-1);
+  fill-opacity: 0.12;
+}
+.own-ui .dk-spark .dk-spark-area .recharts-area-curve {
+  stroke: var(--o-series-1);
+  stroke-width: 2px;
+}
+.own-ui .dk-spark .dk-spark-end {
+  fill: var(--o-series-1);
+  stroke: var(--o-card);
+  stroke-width: 2px;
+}
+
+/* ---------- Meters ---------- */
+.own-ui .dk-meter {
+  --tone: var(--o-info);
+  --track: var(--o-info-bg);
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--track);
+}
+.own-ui .dk-meter i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--tone);
+}
+.own-ui .dk-meter.is-good {
+  --tone: var(--o-good);
+  --track: var(--o-good-bg);
+}
+.own-ui .dk-meter.is-watch {
+  --tone: var(--o-watch);
+  --track: var(--o-watch-bg);
+}
+.own-ui .dk-meter.is-bad {
+  --tone: var(--o-bad);
+  --track: var(--o-bad-bg);
+}
+.own-ui .dk-meter.is-series {
+  --tone: var(--o-series-1);
+  --track: var(--o-info-bg);
+}
+
+/* ---------- Charts ---------- */
+.own-ui .dk-area .dk-area-series .recharts-area-area {
+  fill: var(--o-series-1);
+  fill-opacity: 0.1;
+}
+.own-ui .dk-area .dk-area-series .recharts-area-curve {
+  stroke: var(--o-series-1);
+  stroke-width: 2px;
+}
+.own-ui .dk-area .dk-area-series .recharts-area-dot,
+.own-ui .dk-area .dk-area-series .recharts-dot {
+  fill: var(--o-series-1);
+  stroke: var(--o-card);
+  stroke-width: 2px;
+}
+.own-ui .dk-area .recharts-tooltip-cursor {
+  fill: none;
+  stroke: var(--o-axis);
+  stroke-width: 1px;
+}
+.own-ui .own-swatch.is-line {
+  width: 12px;
+  height: 3px;
+  margin-bottom: 3px;
+  border-radius: 2px;
+}
+.own-ui .dk-chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+.own-ui .dk-chart-head b {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--o-ink);
+}
+.own-ui .dk-chart-head span {
+  font-size: 13px;
+  color: var(--o-muted);
+}
+
+/* Ranked bars and meter lists: a name, a bar, a figure per row, bars aligned. */
+.own-ui .dk-rank,
+.own-ui .dk-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.own-ui .dk-rank-row,
+.own-ui .dk-meters-row {
+  display: grid;
+  grid-template-columns: minmax(0, 38%) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+.own-ui a.dk-rank-row:hover,
+.own-ui a.dk-meters-row:hover,
+.own-ui .dk-rank-row:hover {
+  background: var(--o-hover);
+}
+.own-ui .dk-rank-name,
+.own-ui .dk-meters-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.own-ui .dk-rank-label,
+.own-ui .dk-meters-label {
+  overflow: hidden;
+  font-weight: 600;
+  color: var(--o-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.own-ui .dk-rank-sub,
+.own-ui .dk-meters-sub {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--o-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.own-ui .dk-rank-track {
+  display: block;
+  height: 14px;
+}
+.own-ui .dk-rank-track i {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--o-series-1);
+}
+.own-ui .dk-rank-track i.is-2 {
+  background: var(--o-series-2);
+}
+.own-ui .dk-rank-row:hover .dk-rank-track i {
+  filter: brightness(1.12);
+}
+.own-ui .dk-rank-value,
+.own-ui .dk-meters-value {
+  min-width: 48px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--o-ink);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The segmented bar: one whole, a 2px gap between parts. */
+.own-ui .dk-split-bar {
+  display: flex;
+  gap: 2px;
+  height: 28px;
+}
+.own-ui .dk-split.is-thin .dk-split-bar {
+  height: 8px;
+}
+.own-ui .dk-split-bar i {
+  display: flex;
+  align-items: center;
+  flex-basis: 0;
+  min-width: 6px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+.own-ui .dk-split.is-thin .dk-split-bar i {
+  padding: 0;
+  border-radius: 999px;
+}
+.own-ui .dk-split-bar i.is-good,
+.own-ui .dk-split-legend i.is-good {
+  background: var(--o-good);
+}
+.own-ui .dk-split-bar i.is-watch,
+.own-ui .dk-split-legend i.is-watch {
+  background: var(--o-watch);
+}
+.own-ui .dk-split-bar i.is-bad,
+.own-ui .dk-split-legend i.is-bad {
+  background: var(--o-bad);
+}
+.own-ui .dk-split-bar i.is-quar,
+.own-ui .dk-split-legend i.is-quar {
+  background: var(--o-quar);
+}
+.own-ui .dk-split-bar i.is-empty {
+  background: var(--o-card-2);
+}
+/* The dark canvas's status steps are light: the share on them reads in near-black. */
+body.wdp-dark-portals .own-ui .dk-split-bar i {
+  color: #0d211a;
+}
+.own-ui .dk-split-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .dk-split-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.own-ui .dk-split-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.own-ui .dk-split-legend b {
+  color: var(--o-ink);
+}
+
+/* ---------- Today's sessions as a timeline ---------- */
+.own-ui .dk-timeline {
+  position: relative;
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+}
+.own-ui .dk-timeline::before {
+  content: '';
+  position: absolute;
+  top: 18px;
+  bottom: 18px;
+  left: 59px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--o-border-soft);
+}
+.own-ui .dk-tl-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px 9px 0;
+  color: inherit;
+  text-decoration: none;
+}
+.own-ui a.dk-tl-row:hover {
+  background: var(--o-hover);
+}
+.own-ui .dk-tl-time {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--o-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .dk-tl-dot {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--o-neutral);
+  box-shadow: 0 0 0 3px var(--o-card);
+}
+.own-ui .dk-tl-dot.is-info {
+  background: var(--o-info);
+}
+.own-ui .dk-tl-dot.is-good {
+  background: var(--o-good);
+}
+.own-ui .dk-tl-dot.is-watch {
+  background: var(--o-watch);
+}
+.own-ui .dk-tl-dot.is-bad {
+  background: var(--o-bad);
+}
+.own-ui .dk-tl-dot.is-live::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border: 2px solid var(--o-bad);
+  border-radius: 999px;
+  animation: dk-pulse 1.6s ease-out infinite;
+}
+@keyframes dk-pulse {
+  from {
+    opacity: 0.9;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .own-ui .dk-tl-dot.is-live::after {
+    animation: none;
+  }
+}
+.own-ui .dk-tl-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.own-ui .dk-tl-main > div {
+  min-width: 0;
+}
+
+/* ---------- Layout ---------- */
+.own-ui .dk-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.own-ui .dk-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.own-ui .dk-card-fill {
+  height: 100%;
+}
+
+@media (max-width: 1180px) {
+  .own-ui .dk-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .own-ui .dk-grid-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .own-ui .dk-hero {
+    padding: 20px 18px;
+  }
+  .own-ui .dk-hero-title {
+    font-size: 24px;
+  }
+  .own-ui .dk-hero-figure {
+    flex-basis: 100%;
+  }
+  .own-ui .dk-hero-figure-value {
+    font-size: 36px;
+  }
+  .own-ui .dk-kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .own-ui .dk-rank-row,
+  .own-ui .dk-meters-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .own-ui .dk-rank-track,
+  .own-ui .dk-meters-row .dk-meter {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  /* The rows in the staff homes' queues keep their count beside the title. */
+  .own-ui .own-row.own-mq {
+    display: flex;
+  }
+}
+
+/* ---------- Figure tiles, with the chart that explains them ---------- */
+.own-ui .dk-kpi-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+.own-ui .dk-kpi-meter {
+  margin-top: 12px;
+}
+.own-ui .dk-kpi-meter .dk-meter {
+  height: 10px;
+}
+.own-ui .dk-kpi-meter-caption {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--o-faint);
+}
+.own-ui .dk-kpi .dk-split {
+  margin-top: 12px;
+}
+.own-ui .dk-kpi .dk-split.is-thin .dk-split-bar {
+  height: 10px;
+}
+.own-ui .dk-kpi .dk-split-legend {
+  gap: 4px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.own-ui .dk-mini {
+  margin: 8px -4px -6px;
+}
+.own-ui .dk-mini-caption {
+  margin: 0 4px 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--o-faint);
+}
+.own-ui .own-chart .dk-cap {
+  fill: var(--o-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-chart .dk-mini-base line {
+  stroke: var(--o-border);
+}
+.own-ui .own-chart .recharts-tooltip-cursor.dk-mini-cursor,
+.own-ui .own-chart .dk-mini-cursor {
+  fill: var(--o-hover);
+}
+.own-ui .dk-mini .recharts-cartesian-axis-tick-value {
+  font-size: 10px;
+}
+.own-ui .dk-split-bar i.is-neutral,
+.own-ui .dk-split-legend i.is-neutral {
+  background: var(--o-neutral);
+}
+.own-ui .dk-split-bar i.is-info,
+.own-ui .dk-split-legend i.is-info {
+  background: var(--o-info);
+}
+
+/* ---------- Paging through a long list in a card ---------- */
+.own-ui .dk-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--o-border-soft);
+}
+.own-ui .own-card:not(.is-flush) .dk-pager {
+  margin: 12px -18px -16px;
+}
+.own-ui .dk-pager-count {
+  font-size: 12.5px;
+  color: var(--o-faint);
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .dk-pager-pages {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.own-ui .dk-pager button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--o-border);
+  border-radius: 8px;
+  background: var(--o-card);
+  color: var(--o-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.own-ui .dk-pager button:hover:not(:disabled) {
+  border-color: var(--o-primary);
+  color: var(--o-link);
+}
+.own-ui .dk-pager button.is-active {
+  border-color: var(--o-primary);
+  background: var(--o-primary);
+  color: var(--o-primary-ink);
+}
+.own-ui .dk-pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.own-ui .dk-pager button:focus-visible {
+  outline: 3px solid var(--o-ring);
+  outline-offset: 1px;
+}
+.own-ui .dk-pager-gap {
+  padding: 0 2px;
+  color: var(--o-faint);
+}
+
+/* ---------- The figures under a chart ---------- */
+.own-ui .dk-table-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+  border: 1px solid var(--o-border-soft);
+  border-radius: 10px;
+}
+.own-ui .dk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .dk-table th,
+.own-ui .dk-table td {
+  padding: 7px 10px;
+  text-align: right;
+  white-space: nowrap;
+}
+.own-ui .dk-table thead th {
+  background: var(--o-card-2);
+  font-weight: 600;
+  color: var(--o-muted);
+}
+.own-ui .dk-table tbody th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--o-ink);
+}
+.own-ui .dk-table tbody th .own-swatch {
+  margin-right: 6px;
+}
+.own-ui .dk-table tbody td {
+  color: var(--o-ink);
+}
+.own-ui .dk-table tbody tr + tr {
+  border-top: 1px solid var(--o-border-soft);
+}
+.own-ui .dk-table tr.is-extra td,
+.own-ui .dk-table tr.is-extra th {
+  font-weight: 700;
+}
+.own-ui .dk-table td.own-good {
+  color: var(--o-good);
+}
+.own-ui .dk-table td.own-bad {
+  color: var(--o-bad);
+}
+/* A tile's line under its figure may take two lines rather than lose its end. */
+.own-ui .dk-kpi-sub {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+/* Today's sessions: the time column clear of the card's edge. */
+.own-ui .dk-tl-row {
+  padding-left: 14px;
+}
+.own-ui .dk-timeline::before {
+  left: 73px;
+}
+/* The see-through column that carries a stacked column's total. */
+.own-ui .own-chart .dk-cap-bar .recharts-rectangle {
+  fill: transparent;
+  stroke: none;
+  pointer-events: none;
+}

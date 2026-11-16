@@ -39,6 +39,10 @@ export function notificationTarget(n, role) {
   if (role === ROLES.OWNER) {
     if (RACES.includes(n.type)) return '/owner/races';
     if (['injury_lock', 'training_restricted', 'training_unlocked', 'exam_request'].includes(n.type)) return '/owner/health';
+    // A care visit coming up opens the horse's routine care.
+    if (VET_CARE.includes(n.type)) return horse ? `/owner/health?horse=${horse}&tab=care` : '/owner/health';
+    // A finished run opens on its video (TrainingDetail ?session=).
+    if (n.type === 'session_completed' && session) return `/owner/training?session=${session}`;
     if (n.type.startsWith('session_') || n.type === 'fitness_alert') return '/owner/training';
     return horse ? `/horses/${horse}` : null;
   }

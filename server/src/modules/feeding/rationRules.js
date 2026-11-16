@@ -12,12 +12,15 @@
  * - From stock, for each kind: the item the horse already eats, else one with enough for the coming
  *   week, expiring first, then the fullest.
  * - A horse injured or in isolation is not worked, whatever its plan says: its days take the sick diet
- *   (`diet: 'sick'`) — forage as on a rest day, the least concentrate (none at lunch), minerals only.
+ *   (`diet: 'sick'`) the vet ordered on the exam (dietOrder.js): box rest by default — forage as on a rest
+ *   day, the least concentrate (none at lunch), minerals only — or one fitted to the illness (colic,
+ *   laminitis, a cough, ulcers). Back on its feet, its concentrate builds back up over a week (`ramp`).
  * - The main hay and the main grain stay the same every day (a sudden change upsets the gut); what is
  *   mixed in with them follows the day's work (`dayFocus`, `focusFeeds`): grass hay and a mash on a
  *   rest day, alfalfa for the protein after hill work, an energy grain on a speed day.
  */
 const { feedTypeOf } = require('../inventory/feedType');
+const { DIET_KINDS, SICK_STATUSES } = require('./dietOrder');
 
 const SHARES = {
   rest: { forage: 0.02, concentrate: 0.0025 },
@@ -32,8 +35,21 @@ const SPLITS = {
   rest: { morning: { forage: 0.3, concentrate: 0.35 }, noon: { forage: 0.2, concentrate: 0.25 }, evening: { forage: 0.5, concentrate: 0.4 } },
   sick: { morning: { forage: 0.3, concentrate: 0.5 }, noon: { forage: 0.25, concentrate: 0 }, evening: { forage: 0.45, concentrate: 0.5 } },
 };
-// The health states that put a horse on the sick diet (Horse.healthStatus).
-const SICK_STATUSES = ['injured', 'quarantined'];
+// The meals spread evenly: small meals, the gut never long empty (concentrate, if any, morning and evening).
+const EVEN = { morning: { forage: 0.34, concentrate: 0.5 }, noon: { forage: 0.33, concentrate: 0 }, evening: { forage: 0.33, concentrate: 0.5 } };
+// Each sick diet the vet can order (dietOrder.js): its daily shares of body weight and their split over the meals.
+const SICK_RATIONS = {
+  rest: { shares: SHARES.sick, split: SPLITS.sick },
+  // After colic: less hay, spread thin, no grain until the vet says so.
+  colic: { shares: { forage: 0.015, concentrate: 0 }, split: EVEN },
+  // Laminitis: hay low in sugar and no grain at all.
+  laminitis: { shares: { forage: 0.018, concentrate: 0 }, split: EVEN },
+  // A cough: the box-rest amounts, the hay damped (the groom's note).
+  respiratory: { shares: SHARES.sick, split: SPLITS.sick },
+  // Ulcers: forage spread over the day, the little grain after it.
+  ulcer: { shares: SHARES.sick, split: EVEN },
+};
+const sickRation = (kind) => SICK_RATIONS[kind] || SICK_RATIONS.rest;
 const dietOf = (healthStatus) => (SICK_STATUSES.includes(healthStatus) ? 'sick' : 'normal');
 const MAX_CONCENTRATE_PER_MEAL = 0.005;
 const SLOTS = ['morning', 'noon', 'evening'];
@@ -141,6 +157,22 @@ const FOCUS = {
     forage: { prefer: [ALFALFA], share: 0.3, why: 'giàu canxi, đệm dạ dày' },
     concentrate: { prefer: [ENERGY_GRAIN], share: 0.5, why: 'nhiều năng lượng' },
   },
+  // The sick diets that ask for a particular hay (the others eat as on a rest day).
+  sick_colic: {
+    label: 'Đau bụng',
+    forage: { prefer: [GRASS_HAY], share: 0.5, why: 'dễ tiêu' },
+    concentrate: { prefer: [MASH], share: 0.4 },
+  },
+  sick_laminitis: {
+    label: 'Viêm móng',
+    forage: { prefer: [GRASS_HAY], share: 0.5, why: 'ít đường' },
+    concentrate: { prefer: [MASH], share: 0.4 },
+  },
+  sick_ulcer: {
+    label: 'Dạ dày',
+    forage: { prefer: [ALFALFA], share: 0.4, why: 'đệm dạ dày' },
+    concentrate: { prefer: [MASH, PELLET], share: 0.4 },
+  },
 };
 const FOCUS_OF_KIND = { walk: 'easy', canter: 'aerobic', hill: 'strength', breeze: 'speed', gallop: 'speed', trial: 'speed' };
 const FOCUS_RANK = { rest: 0, easy: 1, aerobic: 2, strength: 3, speed: 4 };
@@ -149,9 +181,9 @@ const MAIN_FITS_SHARE = 0.2;
 // "Cỏ khô Timothy (Timothy Hay)" → "Cỏ khô Timothy": the note stays one line.
 const shortName = (item) => String(item.name).replace(/\s*\([^)]*\)\s*$/, '') || item.name;
 
-/** What the day's work asks of the feed: its hardest session's (rest when it has none, or the horse is sick). */
-function dayFocus(sessions = [], diet = 'normal') {
-  if (diet === 'sick') return 'rest';
+/** What the day's work asks of the feed: its hardest session's (rest when it has none); a sick horse's, its diet's. */
+function dayFocus(sessions = [], diet = 'normal', sickKind = 'rest') {
+  if (diet === 'sick') return FOCUS[`sick_${sickKind}`] ? `sick_${sickKind}` : 'rest';
   return (sessions || []).reduce((f, s) => {
     const of = FOCUS_OF_KIND[s.kind] || 'aerobic';
     return FOCUS_RANK[of] > FOCUS_RANK[f] ? of : f;
@@ -216,14 +248,16 @@ function mixedLines(first, second, total, share) {
 /**
  * The three meals of one day: [{ slot, time, items: [{ inventoryItem, name, amount, unit }] }].
  * `feeds` = { forage, concentrate, supplements } as picked above; `clocks` = meal times by slot;
- * `diet` = 'sick' while the horse is injured or isolated (its plan's work does not count then).
+ * `diet` = 'sick' while the horse is injured or isolated (its plan's work does not count then), `sickKind`
+ * the sick diet the vet ordered (dietOrder.js); `ramp` the part of the concentrate it gets on its way back
+ * to the training ration after an illness (1 = all of it).
  */
-function dayMeals({ weightKg, work, phase, clocks, feeds, diet = 'normal', sessions = [] }) {
+function dayMeals({ weightKg, work, phase, clocks, feeds, diet = 'normal', sickKind = 'rest', ramp = 1, sessions = [] }) {
   const weight = Number(weightKg) > 0 ? Number(weightKg) : DEFAULT_WEIGHT_KG;
   const sick = diet === 'sick';
   const phaseKey = phase?.key || null;
-  const share = sick ? SHARES.sick : SHARES[work] || SHARES.moderate;
-  const split = sick ? SPLITS.sick : SPLITS[work === 'rest' ? 'rest' : 'training'];
+  const share = sick ? sickRation(sickKind).shares : SHARES[work] || SHARES.moderate;
+  const split = sick ? sickRation(sickKind).split : SPLITS[work === 'rest' ? 'rest' : 'training'];
   const hasHardSession = !sick && (sessions || []).some((s) => HIGH_SWEAT_KINDS.has(s.kind));
   const forageFactor = !sick && phaseKey === 'peak' ? 0.9 : 1;
   return SLOTS.map((slot) => {
@@ -231,9 +265,10 @@ function dayMeals({ weightKg, work, phase, clocks, feeds, diet = 'normal', sessi
     if (feeds.forage) {
       items.push(...mixedLines(feeds.forage, feeds.forageMix, halfKg(weight * share.forage * forageFactor * split[slot].forage), feeds.forageShare ?? MIX.forage));
     }
-    if (feeds.concentrate && split[slot].concentrate > 0) {
+    if (feeds.concentrate && share.concentrate > 0 && split[slot].concentrate > 0) {
       const concFactor = !sick && phaseKey === 'recovery' ? 0.8 : hasHardSession && slot === 'evening' ? 1.1 : 1;
-      const grain = cappedHalfKg(weight * share.concentrate * concFactor * split[slot].concentrate, weight * MAX_CONCENTRATE_PER_MEAL);
+      const back = sick ? 1 : Math.min(1, Math.max(0, Number(ramp) || 1));
+      const grain = cappedHalfKg(weight * share.concentrate * concFactor * back * split[slot].concentrate, weight * MAX_CONCENTRATE_PER_MEAL);
       items.push(...mixedLines(feeds.concentrate, feeds.concentrateMix, grain, feeds.concentrateShare ?? MIX.concentrate));
     }
     if (slot === 'evening') {
@@ -256,14 +291,28 @@ const PHASE_RATION_HINT = {
   recovery: 'Hồi phục: giảm 20% tinh bột, bổ sung điện giải',
 };
 
-/** Why the day eats what it eats, in a line: the phase, a hard session, and what the day's work mixes in (`mixNotes`). */
-function rationBasis(phaseKey, work, sessions = [], diet = 'normal', mixNotes = []) {
-  if (diet === 'sick') return 'Chế độ bệnh: giảm tinh bột, tăng cỏ thô giữ tiêu hóa';
-  if (work === 'rest') return `Ngày nghỉ: cân bằng cỏ thô, giảm nhẹ tinh bột buổi tối${mixNotes.length ? ` · ${mixNotes.join(', ')}` : ''}`;
+// What each sick diet does to the meals, in a few words.
+const SICK_BASIS = {
+  rest: 'nhiều cỏ thô giữ tiêu hóa, rất ít tinh bột',
+  colic: 'ít cỏ chia đều 3 bữa, không thức ăn tinh',
+  laminitis: 'cỏ ít đường chia đều, không thức ăn tinh',
+  respiratory: 'cỏ nhúng ướt hết bụi, rất ít tinh bột',
+  ulcer: 'cỏ chia đều cả ngày, rất ít tinh bột',
+};
+
+/**
+ * Why the day eats what it eats, in a line: the phase, a hard session, and what the day's work mixes in
+ * (`mixNotes`); a sick horse's diet; the week back to the training ration after an illness (`ramp` < 1).
+ */
+function rationBasis(phaseKey, work, sessions = [], diet = 'normal', mixNotes = [], { sickKind = 'rest', ramp = 1 } = {}) {
+  const mixes = mixNotes.length ? ` · ${mixNotes.join(', ')}` : '';
+  if (diet === 'sick') return `Chế độ bệnh · ${DIET_KINDS[sickKind]?.label || DIET_KINDS.rest.label}: ${SICK_BASIS[sickKind] || SICK_BASIS.rest}${mixes}`;
+  const back = ramp < 1 ? `Tập ăn lại sau bệnh: thức ăn tinh ${Math.round(ramp * 100)}% · ` : '';
+  if (work === 'rest') return `${back}Ngày nghỉ: cân bằng cỏ thô, giảm nhẹ tinh bột buổi tối${mixes}`;
   const base = PHASE_RATION_HINT[phaseKey] || 'Theo cường độ buổi tập';
   const hard = (sessions || []).some((s) => HIGH_SWEAT_KINDS.has(s.kind));
   const mixed = mixNotes.length ? ` · ${FOCUS[dayFocus(sessions, diet)].label}: ${mixNotes.join(', ')}` : '';
-  return `${base}${hard ? ' · Sau bài nặng tăng tinh bột tối + điện giải' : ''}${mixed}`;
+  return `${back}${base}${hard ? ' · Sau bài nặng tăng tinh bột tối + điện giải' : ''}${mixed}`;
 }
 
 /** Roughly what a week of meals takes of each kind (to prefer an item that lasts the week). */
@@ -281,6 +330,7 @@ module.exports = {
   SLOTS,
   SHARES,
   SPLITS,
+  SICK_RATIONS,
   SICK_STATUSES,
   dietOf,
   weightWarning,

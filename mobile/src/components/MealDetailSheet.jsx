@@ -1,7 +1,9 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from './AppText';
 import Icon from './Icon';
 import { Badge, Button, Card, DataRow, HorseAvatar, Row, Sheet } from './ui';
 import SupplyShortage from './SupplyShortage';
+import { DietNote, LotsLine } from './CareKit';
 import {
   EATEN_OPTIONS,
   MEAL_CONFIG,
@@ -69,6 +71,9 @@ export default function MealDetailSheet({ meal, visible, onClose, onComplete, on
           <HorseAvatar name={horse?.name} size={40} />
         </Row>
 
+        {/* A sick diet the vet ordered, or the week back after one: read before filling the bucket. */}
+        {!fed ? <DietNote diet={horse?.feedingDiet} /> : null}
+
         {/* The ration itself, each line with what the store has of that feed. */}
         <Card>
           <Text style={[font.tiny, { marginBottom: spacing.sm }]}>Khẩu phần cho bữa này</Text>
@@ -90,6 +95,8 @@ export default function MealDetailSheet({ meal, visible, onClose, onComplete, on
                         {stock ? `Kho còn ${stock.quantity} ${stock.unit} · ${stock.level.label}` : 'Chưa có trong kho'}
                         {stock && !line.linked ? ' (món cùng tên — khẩu phần chưa gắn kho, không tự trừ)' : ''}
                       </Text>
+                      {/* Which lot to take off the shelf: the one expiring first — the store takes it first too. */}
+                      {stock?.linked && !fed ? <LotsLine item={stock.items[0]} amount={item.amount} unit={stock.unit} /> : null}
                     </View>
                     <Text style={styles.qty}>{line.amount}</Text>
                   </Row>

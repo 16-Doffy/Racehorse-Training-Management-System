@@ -1,7 +1,9 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from './AppText';
 import Icon from './Icon';
 import { Badge, Button, Card, DataRow, HorseAvatar, Row, Sheet } from './ui';
 import SupplyShortage from './SupplyShortage';
+import { LotsLine, LotsList } from './CareKit';
 import {
   MEDICATION_ROUTE,
   canCompleteTask,
@@ -78,6 +80,9 @@ export default function DoseDetailSheet({ dose, visible, onClose, onComplete, on
                 </Row>
                 <Badge label={stock.level.label} color={stock.level.color} bg={stock.level.bg} style={{ marginTop: spacing.sm, alignSelf: 'flex-start' }} />
                 {perDose ? <DataRow label="Mỗi liều lấy ra" value={perDose} /> : null}
+                {/* The lot to give from — the one expiring first, which the store takes first — and every lot on the shelf. */}
+                {stock.linked ? <LotsLine item={stock.items[0]} amount={medication.amount} unit={stock.unit} /> : null}
+                {stock.linked ? <LotsList item={stock.items[0]} /> : null}
                 {daily && stock.unit ? <DataRow label="Cần mỗi ngày" value={`${daily} ${stock.unit}`} /> : null}
                 {!stock.linked ? (
                   <Text style={[font.small, { marginTop: spacing.sm }]}>

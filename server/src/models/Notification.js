@@ -45,6 +45,8 @@ const notificationSchema = new mongoose.Schema(
         'incident_update',
         // To the trainer: a horse's plan moves to its next phase soon; its suggested ration waits for a click.
         'ration_review',
+        // To the trainer: a plan paused or moved back for the horse's health, a phase's end-of-phase checkpoint.
+        'plan_checkpoint',
         'system',
       ],
       required: true,

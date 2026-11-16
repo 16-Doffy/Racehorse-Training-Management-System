@@ -1407,3 +1407,2043 @@ body.wdp-dark-portals .own-ui {
 .own-ui .own-link-btn:hover {
   text-decoration: underline;
 }
+
+/* ---------- Training: the week's timetable, a session opened, the running plan, a run watched live ---------- */
+.own-ui .own-tt-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.own-ui .own-tt-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.own-ui .own-tt-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.own-ui .own-tt-step,
+.own-ui .own-tt-today {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  min-width: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--o-border);
+  border-radius: 8px;
+  background: var(--o-card);
+  color: var(--o-ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.own-ui .own-tt-step:hover,
+.own-ui .own-tt-today:hover {
+  background: var(--o-hover);
+}
+.own-ui .own-tt-today {
+  color: var(--o-link);
+  font-weight: 600;
+}
+.own-ui .own-tt-range {
+  min-width: 150px;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-tt-summary {
+  font-size: 13px;
+  color: var(--o-muted);
+}
+
+/* The timetable: a column a day, a row for the morning and the afternoon. */
+.own-ui .own-tt {
+  display: grid;
+  grid-template-columns: 64px repeat(7, minmax(0, 1fr));
+  border: 1px solid var(--o-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--o-card);
+}
+.own-ui .own-tt-corner,
+.own-ui .own-tt-head {
+  background: var(--o-card-2);
+  border-bottom: 1px solid var(--o-border);
+}
+.own-ui .own-tt-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  border-left: 1px solid var(--o-border-soft);
+}
+.own-ui .own-tt-dow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--o-faint);
+}
+.own-ui .own-tt-date {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-tt-head.is-today {
+  background: var(--o-brass-bg);
+  box-shadow: inset 0 -3px 0 var(--o-brass);
+}
+.own-ui .own-tt-head.is-today .own-tt-dow,
+.own-ui .own-tt-head.is-today .own-tt-date {
+  color: var(--o-brass);
+}
+.own-ui .own-tt-slot {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 10px 4px;
+  background: var(--o-card-2);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--o-muted);
+}
+.own-ui .own-tt-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 104px;
+  padding: 6px;
+  border-left: 1px solid var(--o-border-soft);
+}
+/* The afternoon under the morning. */
+.own-ui .own-tt-slot.is-afternoon,
+.own-ui .own-tt-cell.is-afternoon {
+  border-top: 1px solid var(--o-border-soft);
+}
+.own-ui .own-tt-cell.is-today {
+  background: color-mix(in srgb, var(--o-brass-bg) 45%, transparent);
+}
+.own-ui .own-tt-rest {
+  margin: auto;
+  font-size: 12px;
+  color: var(--o-faint);
+}
+
+/* A session on the timetable. */
+.own-ui .own-tt-chip {
+  --tone: var(--o-neutral);
+  --tone-bg: var(--o-neutral-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-left: 3px solid var(--tone);
+  border-radius: 8px;
+  background: var(--tone-bg);
+  color: var(--o-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.own-ui .own-tt-chip:hover,
+.own-ui .own-tt-chip:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.35);
+  outline: none;
+  border-color: var(--tone);
+  border-left-width: 3px;
+}
+.own-ui .own-tt-chip.is-good {
+  --tone: var(--o-good);
+  --tone-bg: var(--o-good-bg);
+}
+.own-ui .own-tt-chip.is-watch {
+  --tone: var(--o-watch);
+  --tone-bg: var(--o-watch-bg);
+}
+.own-ui .own-tt-chip.is-bad,
+.own-ui .own-tt-chip.is-live {
+  --tone: var(--o-bad);
+  --tone-bg: var(--o-bad-bg);
+}
+.own-ui .own-tt-chip.is-info {
+  --tone: var(--o-info);
+  --tone-bg: var(--o-info-bg);
+}
+.own-ui .own-tt-chip.is-neutral {
+  opacity: 0.8;
+}
+.own-ui .own-tt-chip.is-off .own-tt-kind {
+  text-decoration: line-through;
+}
+.own-ui .own-tt-chip-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.own-ui .own-tt-time {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--tone);
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-tt-video {
+  font-size: 12px;
+  color: var(--o-ink);
+  opacity: 0.75;
+}
+.own-ui .own-tt-kind {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+/* Several horses: the horse leads the session. */
+.own-ui .own-tt-who {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.own-ui .own-tt-who .own-avatar {
+  flex: none;
+  box-shadow: 0 0 0 1.5px var(--o-card);
+}
+.own-ui .own-tt-who-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--o-ink);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.own-ui .own-tt-line {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--o-muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.own-ui .own-tt-chip.has-horse {
+  gap: 3px;
+}
+.own-ui .own-tt-horse {
+  font-size: 12px;
+  color: var(--o-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.own-ui .own-tt-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--tone);
+  font-weight: 600;
+}
+.own-ui .own-tt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 12px;
+  color: var(--o-muted);
+}
+.own-ui .own-tt-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.own-ui .own-tt-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--o-neutral-bg);
+  box-shadow: inset 3px 0 0 var(--o-neutral);
+}
+.own-ui .own-tt-swatch.is-good {
+  background: var(--o-good-bg);
+  box-shadow: inset 3px 0 0 var(--o-good);
+}
+.own-ui .own-tt-swatch.is-watch {
+  background: var(--o-watch-bg);
+  box-shadow: inset 3px 0 0 var(--o-watch);
+}
+.own-ui .own-tt-swatch.is-bad {
+  background: var(--o-bad-bg);
+  box-shadow: inset 3px 0 0 var(--o-bad);
+}
+.own-ui .own-tt-swatch.is-info {
+  background: var(--o-info-bg);
+  box-shadow: inset 3px 0 0 var(--o-info);
+}
+/* A narrow screen: the days stack (the timetable is for wider ones). */
+.own-ui .own-tt-list {
+  display: none;
+  flex-direction: column;
+  border: 1px solid var(--o-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.own-ui .own-tt-day + .own-tt-day {
+  border-top: 1px solid var(--o-border-soft);
+}
+.own-ui .own-tt-day-head {
+  padding: 6px 12px;
+  background: var(--o-card-2);
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .own-tt-day.is-today .own-tt-day-head {
+  background: var(--o-brass-bg);
+  color: var(--o-brass);
+}
+.own-ui .own-tt-day-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  padding: 8px 12px;
+}
+.own-ui .own-tt-day-body .own-tt-rest {
+  margin: 0;
+}
+
+/* A session opened (SessionDetail). */
+.own-ui .own-sd {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.own-ui .own-sd-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 32px;
+}
+.own-ui .own-sd-kind {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--o-ink);
+}
+.own-ui .own-sd-when {
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .own-sd-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+.own-ui .own-sd-note {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  background: var(--o-card-2);
+  color: var(--o-muted);
+}
+.own-ui .own-sd-note.is-good {
+  background: var(--o-good-bg);
+  color: var(--o-good);
+}
+.own-ui .own-sd-note.is-watch {
+  background: var(--o-watch-bg);
+  color: var(--o-watch);
+}
+.own-ui .own-sd-note.is-bad {
+  background: var(--o-bad-bg);
+  color: var(--o-bad);
+}
+.own-ui .own-sd-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.own-ui .own-sd-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--o-faint);
+}
+.own-ui .own-sd-empty {
+  padding: 18px;
+  border: 1px dashed var(--o-border);
+  border-radius: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .own-sd-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.own-ui .own-sd-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.own-ui .own-sd-parts > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.own-ui .own-sd-part-n {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--o-card-2);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--o-muted);
+}
+.own-ui .own-sd-part-kind {
+  font-weight: 600;
+}
+.own-ui .own-sd-part-sub {
+  font-size: 12.5px;
+  color: var(--o-muted);
+}
+.own-ui .own-row-video {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--o-faint);
+}
+.own-ui .own-video-facts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--o-border-soft);
+  border-radius: 12px;
+  background: var(--o-card-2);
+}
+.own-ui .own-video-fact-label {
+  font-size: 12px;
+  color: var(--o-faint);
+}
+.own-ui .own-video-fact-value {
+  font-weight: 600;
+  color: var(--o-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A running plan in a few lines. */
+.own-ui .own-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.own-ui .own-grid-2 > .own-plan {
+  padding: 14px;
+  border: 1px solid var(--o-border-soft);
+  border-radius: 12px;
+  background: var(--o-card-2);
+}
+.own-ui .own-plan-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.own-ui .own-plan-title {
+  font-weight: 600;
+  color: var(--o-ink);
+}
+.own-ui .own-plan-sub {
+  font-size: 12.5px;
+  color: var(--o-muted);
+}
+.own-ui .own-plan-side {
+  margin-left: auto;
+  flex: none;
+}
+.own-ui .own-plan-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12.5px;
+  color: var(--o-muted);
+}
+
+/* A run watched live. */
+.own-ui .own-live-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #e5484d;
+  animation: own-live 1.6s infinite;
+}
+.own-ui .own-live-dot.is-small {
+  width: 7px;
+  height: 7px;
+}
+@keyframes own-live {
+  0% {
+    box-shadow: 0 0 0 0 rgba(229, 72, 77, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(229, 72, 77, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(229, 72, 77, 0);
+  }
+}
+.own-ui .own-live section[aria-label] {
+  margin-bottom: 0;
+}
+
+@media (max-width: 1100px) {
+  .own-ui .own-video-facts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 900px) {
+  .own-ui .own-tt {
+    display: none;
+  }
+  .own-ui .own-tt-list {
+    display: flex;
+  }
+  .own-ui .own-sd-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .own-ui .own-video-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .own-ui .own-sd-head {
+    flex-wrap: wrap;
+  }
+}
+
+/* ---------- Races: the next one large, then tidy tables (RaceDetail) ---------- */
+.own-ui .own-race-hero {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  grid-template-areas:
+    'count main'
+    'steps steps';
+  gap: 16px 22px;
+  padding: 20px 22px;
+}
+.own-ui .own-race-count {
+  grid-area: count;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 10px;
+  border-radius: 14px;
+  background: var(--o-primary);
+  color: var(--o-primary-ink);
+  text-align: center;
+}
+.own-ui .own-race-count-n {
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-race-count-unit {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.own-ui .own-race-count-date {
+  margin-top: 8px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+.own-ui .own-race-main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+.own-ui .own-race-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--o-brass);
+}
+.own-ui .own-race-name {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--o-ink);
+}
+.own-ui .own-race-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  font-size: 13.5px;
+}
+.own-ui .own-race-where {
+  color: var(--o-muted);
+}
+.own-ui .own-race-decision {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 13px;
+}
+/* The road to the race: entered, the trial, the trainer's decision, race day. */
+.own-ui .own-race-steps {
+  grid-area: steps;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--o-border-soft);
+  list-style: none;
+}
+.own-ui .own-race-steps > li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  padding-right: 12px;
+}
+.own-ui .own-race-steps > li + li::before {
+  content: '';
+  position: absolute;
+  top: 13px;
+  right: calc(100% - 4px);
+  width: calc(100% - 44px);
+  height: 2px;
+  background: var(--o-border);
+  transform: translateX(-100%);
+  display: none;
+}
+.own-ui .own-race-step-dot {
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 2px solid var(--o-border);
+  background: var(--o-card);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--o-faint);
+}
+.own-ui .own-race-step-label {
+  font-size: 12px;
+  color: var(--o-faint);
+}
+.own-ui .own-race-step-value {
+  font-weight: 600;
+  color: var(--o-ink);
+  font-size: 13.5px;
+}
+.own-ui .own-race-steps > li.is-done .own-race-step-dot {
+  border-color: var(--o-good);
+  background: var(--o-good);
+  color: #fff;
+}
+.own-ui .own-race-steps > li.is-current .own-race-step-dot {
+  border-color: var(--o-watch);
+  background: var(--o-watch-bg);
+  color: var(--o-watch);
+  box-shadow: 0 0 0 4px var(--o-watch-bg);
+}
+.own-ui .own-race-steps > li.is-current .own-race-step-value {
+  color: var(--o-watch);
+}
+.own-ui .own-race-steps > li.is-bad .own-race-step-dot {
+  border-color: var(--o-bad);
+  background: var(--o-bad-bg);
+  color: var(--o-bad);
+}
+.own-ui .own-race-steps > li.is-bad .own-race-step-value {
+  color: var(--o-bad);
+}
+
+/* A table of races: a header, a row a race; cards on a phone. */
+.own-ui .own-rt {
+  --rt-cols: 110px minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 1.3fr);
+  display: flex;
+  flex-direction: column;
+}
+.own-ui .own-rt.is-coming.is-multi {
+  --rt-cols: 110px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr);
+}
+.own-ui .own-rt.is-results {
+  --rt-cols: 90px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1fr);
+}
+.own-ui .own-rt.is-results.is-multi {
+  --rt-cols: 90px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1fr);
+}
+.own-ui .own-rt.is-withdrawn {
+  --rt-cols: 90px minmax(0, 1.6fr) minmax(0, 2fr);
+}
+.own-ui .own-rt.is-withdrawn.is-multi {
+  --rt-cols: 90px minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 2fr);
+}
+.own-ui .own-rt-head,
+.own-ui .own-rt-row {
+  display: grid;
+  grid-template-columns: var(--rt-cols);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+}
+.own-ui .own-rt-head {
+  background: var(--o-card-2);
+  border-bottom: 1px solid var(--o-border-soft);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--o-faint);
+}
+.own-ui .own-rt-row + .own-rt-row {
+  border-top: 1px solid var(--o-border-soft);
+}
+.own-ui .own-rt-row:hover {
+  background: var(--o-hover);
+}
+.own-ui .own-rt-date,
+.own-ui .own-rt-race {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.own-ui .own-rt-date b {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-rt-date span,
+.own-ui .own-rt-race span {
+  font-size: 12.5px;
+  color: var(--o-muted);
+}
+.own-ui .own-rt-race b {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.own-ui .own-rt-horse {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 600;
+}
+.own-ui .own-rt-trial {
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .own-rt-trial.is-done {
+  color: var(--o-good);
+  font-weight: 600;
+}
+.own-ui .own-rt-trial.is-bad {
+  color: var(--o-bad);
+  font-weight: 600;
+}
+.own-ui .own-rt-num {
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-rt-reason {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .own-rt-who {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--o-ink);
+}
+.own-ui .own-rt-who.is-auto {
+  color: var(--o-bad);
+}
+.own-ui .own-place {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.own-ui .own-place-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--o-neutral-bg);
+  color: var(--o-neutral);
+  font-size: 12px;
+  font-weight: 800;
+}
+.own-ui .own-place.is-1 .own-place-n {
+  background: linear-gradient(135deg, #f6d57a, #c99a1e);
+  color: #3b2a00;
+}
+.own-ui .own-place.is-2 .own-place-n {
+  background: linear-gradient(135deg, #e5e7eb, #9ca3af);
+  color: #1f2937;
+}
+.own-ui .own-place.is-3 .own-place-n {
+  background: linear-gradient(135deg, #e7b98a, #a86b35);
+  color: #2b1605;
+}
+@media (max-width: 900px) {
+  .own-ui .own-race-hero {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'count' 'main' 'steps';
+  }
+  .own-ui .own-race-count {
+    flex-direction: row;
+    gap: 8px;
+    justify-content: flex-start;
+    padding: 10px 14px;
+  }
+  .own-ui .own-race-count-n {
+    font-size: 28px;
+  }
+  .own-ui .own-race-count-date {
+    margin: 0 0 0 auto;
+  }
+  .own-ui .own-race-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 12px;
+  }
+  .own-ui .own-rt-head {
+    display: none;
+  }
+  .own-ui .own-rt-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .own-ui .own-rt-row .text-right {
+    text-align: left;
+  }
+}
+
+/* ---------- The horses as a list (HorseList) ---------- */
+.own-ui .own-hl {
+  --hl-cols: minmax(0, 1.6fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.3fr) 18px;
+  display: flex;
+  flex-direction: column;
+}
+.own-ui .own-hl.is-compact {
+  --hl-cols: minmax(0, 1.6fr) minmax(0, 1.2fr) minmax(0, 1.4fr) 18px;
+}
+.own-ui .own-hl-head,
+.own-ui .own-hl-row {
+  display: grid;
+  grid-template-columns: var(--hl-cols);
+  align-items: center;
+  gap: 14px;
+  padding: 10px 18px;
+}
+.own-ui .own-hl-head {
+  background: var(--o-card-2);
+  border-bottom: 1px solid var(--o-border-soft);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--o-faint);
+}
+.own-ui .own-hl-row {
+  color: inherit;
+  text-decoration: none;
+}
+.own-ui .own-hl-row + .own-hl-row {
+  border-top: 1px solid var(--o-border-soft);
+}
+.own-ui .own-hl-row:hover {
+  background: var(--o-hover);
+}
+.own-ui .own-hl-horse {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.own-ui .own-hl-horse > span {
+  display: flex;
+  flex-direction: column;
+}
+.own-ui .own-hl-horse b {
+  font-size: 15px;
+  color: var(--o-ink);
+}
+.own-ui .own-hl-horse span span,
+.own-ui .own-hl-cell span {
+  font-size: 12.5px;
+  color: var(--o-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.own-ui .own-hl-health {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+.own-ui .own-hl-note {
+  font-size: 12px;
+  color: var(--o-muted);
+}
+.own-ui .own-hl-note.is-bad {
+  color: var(--o-bad);
+}
+.own-ui .own-hl-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13px;
+}
+.own-ui .own-hl-cell b {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.own-ui .own-hl-race {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.own-ui .own-hl-go {
+  font-size: 12px;
+  color: var(--o-faint);
+}
+
+/* ---------- Health: the four states as filters, a horse's status on top (OwnerHealth, HealthDetail) ---------- */
+.own-ui .own-hs-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.own-ui .own-hs-tile {
+  --tone: var(--o-neutral);
+  --tone-bg: var(--o-neutral-bg);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--o-border);
+  border-radius: 14px;
+  background: var(--o-card);
+  box-shadow: var(--o-shadow);
+  color: var(--o-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.own-ui .own-hs-tile.is-good {
+  --tone: var(--o-good);
+  --tone-bg: var(--o-good-bg);
+}
+.own-ui .own-hs-tile.is-watch {
+  --tone: var(--o-watch);
+  --tone-bg: var(--o-watch-bg);
+}
+.own-ui .own-hs-tile.is-bad {
+  --tone: var(--o-bad);
+  --tone-bg: var(--o-bad-bg);
+}
+.own-ui .own-hs-tile:hover {
+  border-color: var(--tone);
+}
+.own-ui .own-hs-tile.is-active {
+  border-color: var(--tone);
+  background: var(--tone-bg);
+  box-shadow: inset 0 0 0 1px var(--tone);
+}
+.own-ui .own-hs-tile-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 8px;
+  border-radius: 12px;
+  background: var(--tone-bg);
+  color: var(--tone);
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-hs-tile-label {
+  font-weight: 600;
+  line-height: 1.25;
+}
+.own-ui .own-hs-row {
+  align-items: center;
+}
+.own-ui .own-hs-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.own-ui .own-hh {
+  --tone: var(--o-neutral);
+  --tone-bg: var(--o-neutral-bg);
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  overflow: hidden;
+}
+.own-ui .own-hh.is-good {
+  --tone: var(--o-good);
+  --tone-bg: var(--o-good-bg);
+}
+.own-ui .own-hh.is-watch {
+  --tone: var(--o-watch);
+  --tone-bg: var(--o-watch-bg);
+}
+.own-ui .own-hh.is-bad,
+.own-ui .own-hh.is-quar {
+  --tone: var(--o-bad);
+  --tone-bg: var(--o-bad-bg);
+}
+.own-ui .own-hh-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  background: var(--tone-bg);
+  border-right: 1px solid var(--o-border-soft);
+}
+.own-ui .own-hh-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--o-faint);
+}
+.own-ui .own-hh-value {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--tone);
+}
+.own-ui .own-hh-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  min-width: 0;
+}
+.own-ui .own-hh-exam {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.own-ui .own-hh-exam b {
+  font-size: 16px;
+  color: var(--o-ink);
+}
+.own-ui .own-hh-vitals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.own-ui .own-hh-vitals > div {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--o-card-2);
+}
+.own-ui .own-hh-vitals span {
+  font-size: 12px;
+  color: var(--o-faint);
+}
+.own-ui .own-hh-vitals b {
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-hh-extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  font-size: 13px;
+  color: var(--o-muted);
+}
+
+/* ---------- Money: what is left this year, then tidy tables (OwnerFinance) ---------- */
+.own-ui .own-fin {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 24px;
+  padding: 20px 22px;
+  align-items: center;
+}
+.own-ui .own-fin-net {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.own-ui .own-fin-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--o-faint);
+}
+.own-ui .own-fin-big {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-fin-flows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.own-ui .own-fin-flow {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .own-fin-flow b {
+  font-variant-numeric: tabular-nums;
+  color: var(--o-ink);
+}
+.own-ui .own-fin-track {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--o-card-2);
+  overflow: hidden;
+}
+.own-ui .own-fin-track i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+.own-ui .own-fin-flow.is-in .own-fin-track i {
+  background: var(--o-series-1);
+}
+.own-ui .own-fin-flow.is-out .own-fin-track i {
+  background: var(--o-series-2);
+}
+.own-ui .own-ft {
+  --ft-cols: 70px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
+}
+.own-ui .own-ft.is-ledger.is-one {
+  --ft-cols: 70px minmax(0, 2fr) minmax(0, 1fr);
+}
+.own-ui .own-ft.is-horses {
+  --ft-cols: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+.own-ui .own-ft-head,
+.own-ui .own-ft-row {
+  display: grid;
+  grid-template-columns: var(--ft-cols);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+}
+.own-ui .own-ft-head {
+  background: var(--o-card-2);
+  border-bottom: 1px solid var(--o-border-soft);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--o-faint);
+}
+.own-ui .own-ft-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.own-ui button.own-ft-row {
+  cursor: pointer;
+}
+.own-ui .own-ft-row + .own-ft-row {
+  border-top: 1px solid var(--o-border-soft);
+}
+.own-ui .own-ft-row:hover {
+  background: var(--o-hover);
+}
+.own-ui .own-ft-what {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.own-ui .own-ft-what b {
+  font-weight: 600;
+}
+.own-ui .own-ft-what span {
+  font-size: 12.5px;
+  color: var(--o-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .own-ui .own-hl {
+    --hl-cols: minmax(0, 1.6fr) minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 1.3fr) 18px;
+  }
+  .own-ui .own-hl:not(.is-compact) .own-hl-head > span:nth-child(3),
+  .own-ui .own-hl:not(.is-compact) .own-hl-row > span:nth-child(3) {
+    display: none;
+  }
+  .own-ui .own-hs-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 900px) {
+  .own-ui .own-hl-head,
+  .own-ui .own-ft-head {
+    display: none;
+  }
+  .own-ui .own-hl-row {
+    grid-template-columns: minmax(0, 1fr) 18px;
+    gap: 6px 12px;
+  }
+  .own-ui .own-hl-row > :not(.own-hl-horse):not(.own-hl-go) {
+    grid-column: 1;
+    padding-left: 50px;
+  }
+  .own-ui .own-hl-go {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .own-ui .own-hh,
+  .own-ui .own-fin {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .own-ui .own-hh-status {
+    border-right: 0;
+    border-bottom: 1px solid var(--o-border-soft);
+  }
+}
+@media (max-width: 560px) {
+  .own-ui .own-hh-vitals {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .own-ui .own-ft-row {
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+  }
+  .own-ui .own-ft.is-ledger:not(.is-one) .own-ft-row > :nth-child(3) {
+    display: none;
+  }
+}
+
+/* ---------- Races, race first: the list of races and the picked one (RaceDetail) ---------- */
+.own-ui .own-rl-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.6fr);
+  gap: 16px;
+  align-items: start;
+}
+.own-ui .own-rl-list .own-card-head {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.own-ui .own-rl {
+  display: flex;
+  flex-direction: column;
+  max-height: 640px;
+  overflow-y: auto;
+}
+.own-ui .own-rl-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.own-ui .own-rl-row + .own-rl-row {
+  border-top: 1px solid var(--o-border-soft);
+}
+.own-ui .own-rl-row:hover {
+  background: var(--o-hover);
+}
+.own-ui .own-rl-row.is-active {
+  background: var(--o-hover);
+  border-left-color: var(--o-primary);
+}
+.own-ui .own-rl-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0;
+  border-radius: 10px;
+  background: var(--o-card-2);
+  line-height: 1.1;
+}
+.own-ui .own-rl-date b {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-rl-date span {
+  font-size: 11px;
+  color: var(--o-faint);
+}
+.own-ui .own-rl-row.is-active .own-rl-date {
+  background: var(--o-primary);
+  color: var(--o-primary-ink);
+}
+.own-ui .own-rl-row.is-active .own-rl-date span {
+  color: inherit;
+  opacity: 0.8;
+}
+.own-ui .own-rl-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.own-ui .own-rl-main b {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.own-ui .own-rl-main > span {
+  font-size: 12.5px;
+  color: var(--o-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.own-ui .own-rl-main .own-rl-horses {
+  color: var(--o-faint);
+}
+.own-ui .own-rl-side {
+  flex: none;
+}
+.own-ui .own-rd-head {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--o-border-soft);
+}
+.own-ui .own-rd-count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 8px;
+  border-radius: 14px;
+  background: var(--o-primary);
+  color: var(--o-primary-ink);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+.own-ui .own-rd-count-n {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-rd-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .own-rd-facts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.own-ui .own-rd-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 22px 20px;
+}
+.own-ui .own-rd-sub {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--o-faint);
+}
+.own-ui .own-re {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--o-border-soft);
+  border-radius: 12px;
+  background: var(--o-card-2);
+}
+.own-ui .own-re-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.own-ui .own-re-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+}
+.own-ui .own-re-note {
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .own-re-note.is-bad {
+  color: var(--o-bad);
+}
+.own-ui .own-re-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .own-re-figures b {
+  margin-left: 4px;
+  color: var(--o-ink);
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-race-steps.is-small {
+  padding-top: 10px;
+}
+.own-ui .own-race-steps.is-small .own-race-step-dot {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
+.own-ui .own-race-steps.is-small > li {
+  grid-template-columns: 24px minmax(0, 1fr);
+}
+.own-ui .own-race-steps.is-small .own-race-step-value {
+  font-size: 13px;
+}
+@media (max-width: 1000px) {
+  .own-ui .own-rl-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .own-ui .own-rl {
+    max-height: 360px;
+  }
+}
+@media (max-width: 560px) {
+  .own-ui .own-rd-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .own-ui .own-rd-count {
+    flex-direction: row;
+    gap: 6px;
+    justify-content: flex-start;
+  }
+}
+
+/* ---------- The ledger first (OwnerFinance) ---------- */
+.own-ui .own-sum {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.own-ui .own-sum-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 22px;
+  border-right: 1px solid var(--o-border-soft);
+}
+.own-ui .own-sum-cell.is-net {
+  background: var(--o-card-2);
+}
+.own-ui .own-sum-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--o-faint);
+}
+.own-ui .own-sum-value {
+  font-size: 24px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.own-ui .own-sum-pick {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+}
+.own-ui .own-fin-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(280px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.own-ui .own-ledger-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--o-border-soft);
+}
+.own-ui .own-lg {
+  --lg-cols: 58px minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
+}
+.own-ui .own-lg.is-one {
+  --lg-cols: 58px minmax(0, 2.6fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+.own-ui .own-lg-head,
+.own-ui .own-lg-row {
+  display: grid;
+  grid-template-columns: var(--lg-cols);
+  align-items: center;
+  gap: 12px;
+  padding: 9px 18px;
+}
+.own-ui .own-lg-head {
+  background: var(--o-card-2);
+  border-bottom: 1px solid var(--o-border-soft);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--o-faint);
+}
+.own-ui .own-lg-month {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px 6px;
+  border-top: 1px solid var(--o-border);
+  background: color-mix(in srgb, var(--o-card-2) 60%, transparent);
+}
+.own-ui .own-lg-month:first-of-type {
+  border-top: 0;
+}
+.own-ui .own-lg-month b {
+  font-size: 13.5px;
+}
+.own-ui .own-lg-month .own-faint {
+  font-size: 12px;
+}
+.own-ui .own-lg-month-sum {
+  display: inline-flex;
+  gap: 12px;
+  margin-left: auto;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-lg-row + .own-lg-row {
+  border-top: 1px solid var(--o-border-soft);
+}
+.own-ui .own-lg-row:hover {
+  background: var(--o-hover);
+}
+.own-ui .own-lg-what {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.own-ui .own-lg-what b {
+  font-weight: 600;
+}
+.own-ui .own-lg-what span {
+  font-size: 12.5px;
+  color: var(--o-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.own-ui .own-lg-horse {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+.own-ui .own-lg-total {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 18px;
+  border-top: 2px solid var(--o-border);
+  background: var(--o-card-2);
+  font-weight: 700;
+}
+.own-ui .own-bar-btn {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 2px 0;
+}
+@media (max-width: 1100px) {
+  .own-ui .own-fin-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .own-ui .own-sum {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .own-ui .own-sum-pick {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    border-top: 1px solid var(--o-border-soft);
+  }
+}
+@media (max-width: 700px) {
+  .own-ui .own-sum {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .own-ui .own-sum-cell {
+    border-right: 0;
+    border-bottom: 1px solid var(--o-border-soft);
+  }
+  .own-ui .own-lg-head {
+    display: none;
+  }
+  .own-ui .own-lg-row,
+  .own-ui .own-lg.is-one .own-lg-row {
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+  }
+  .own-ui .own-lg-row > .own-lg-horse {
+    display: none;
+  }
+  .own-ui .own-lg-row > .own-num:empty {
+    display: none;
+  }
+}
+
+/* ---------- The ledger, made pleasant (OwnerFinance) ---------- */
+.own-ui .own-fin-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.own-ui .own-sum {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.own-ui .own-sum-tile {
+  --tone: var(--o-good);
+  --tone-bg: var(--o-good-bg);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid var(--o-border);
+  border-radius: 16px;
+  background: var(--o-card);
+  box-shadow: var(--o-shadow);
+}
+.own-ui .own-sum-tile.is-out {
+  --tone: var(--o-bad);
+  --tone-bg: var(--o-bad-bg);
+}
+.own-ui .own-sum-tile > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.own-ui .own-sum-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: var(--tone-bg);
+  color: var(--tone);
+  font-size: 20px;
+}
+.own-ui .own-sum-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--o-muted);
+}
+.own-ui .own-sum-value {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--tone);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.own-ui .own-sum-sub {
+  font-size: 12px;
+  color: var(--o-faint);
+}
+/* What is left: the tile that matters, on the club's green. */
+.own-ui .own-sum-tile.is-net {
+  border-color: transparent;
+  background: linear-gradient(135deg, #0f5a43, #0b4634);
+  color: #fff;
+}
+.own-ui .own-sum-tile.is-net.is-loss {
+  background: linear-gradient(135deg, #8f2a22, #6f1f19);
+}
+.own-ui .own-sum-tile.is-net .own-sum-icon {
+  background: rgba(255, 255, 255, 0.14);
+  color: #f6d57a;
+}
+.own-ui .own-sum-tile.is-net .own-sum-label,
+.own-ui .own-sum-tile.is-net .own-sum-sub {
+  color: rgba(255, 255, 255, 0.78);
+}
+.own-ui .own-sum-tile.is-net .own-sum-value {
+  color: #fff;
+}
+.own-ui .own-lg {
+  --lg-cols: 58px minmax(0, 2.2fr) minmax(0, 1.1fr) minmax(0, 1fr);
+}
+.own-ui .own-lg.is-one {
+  --lg-cols: 58px minmax(0, 2.6fr) minmax(0, 1fr);
+}
+.own-ui .own-lg-row {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+.own-ui .own-lg-what {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.own-ui .own-lg-what > .min-w-0 {
+  display: flex;
+  flex-direction: column;
+}
+.own-ui .own-lg-what b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.own-ui .own-lg-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+.own-ui .own-lg-icon.is-in {
+  background: var(--o-good-bg);
+  color: var(--o-good);
+}
+.own-ui .own-lg-icon.is-out {
+  background: var(--o-bad-bg);
+  color: var(--o-bad);
+}
+.own-ui .own-lg-auto {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--o-info-bg);
+  color: var(--o-info);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.own-ui .own-lg-month {
+  padding: 10px 18px;
+  background: var(--o-card-2);
+  border-top: 1px solid var(--o-border-soft);
+  border-bottom: 1px solid var(--o-border-soft);
+}
+.own-ui .own-lg-month-chip {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--o-primary);
+  color: var(--o-primary-ink);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.own-ui .own-lg-month-sum {
+  gap: 16px;
+  font-weight: 500;
+  color: var(--o-faint);
+}
+.own-ui .own-lg-month-sum b {
+  margin-left: 4px;
+}
+.own-ui .own-lg-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 22px;
+  font-weight: 500;
+  color: var(--o-muted);
+}
+.own-ui .own-lg-total > b:first-child {
+  margin-right: auto;
+  color: var(--o-ink);
+}
+.own-ui .own-lg-total span b {
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-hbar {
+  height: 5px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--o-card-2);
+  overflow: hidden;
+}
+.own-ui .own-hbar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+.own-ui .own-hbar i.is-in {
+  background: var(--o-good);
+}
+.own-ui .own-hbar i.is-out {
+  background: var(--o-bad);
+}
+@media (max-width: 900px) {
+  .own-ui .own-sum {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 700px) {
+  .own-ui .own-lg-row,
+  .own-ui .own-lg.is-one .own-lg-row {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+  }
+}
+
+/* ---------- Staff homes: Head Trainer (TrainerHome) and Club Manager (ManagerHome) ---------- */
+.own-ui .own-th-time {
+  --tone: var(--o-neutral);
+  --tone-bg: var(--o-neutral-bg);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  padding: 5px 0;
+  border-radius: 10px;
+  background: var(--tone-bg);
+  color: var(--tone);
+  font-size: 13.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-th-time.is-info {
+  --tone: var(--o-info);
+  --tone-bg: var(--o-info-bg);
+}
+.own-ui .own-th-time.is-good {
+  --tone: var(--o-good);
+  --tone-bg: var(--o-good-bg);
+}
+.own-ui .own-th-time.is-watch {
+  --tone: var(--o-watch);
+  --tone-bg: var(--o-watch-bg);
+}
+.own-ui .own-th-time.is-bad {
+  --tone: var(--o-bad);
+  --tone-bg: var(--o-bad-bg);
+}
+.own-ui .own-th-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--o-neutral);
+  box-shadow: 0 0 0 4px var(--o-neutral-bg);
+}
+.own-ui .own-th-dot.is-bad {
+  background: var(--o-bad);
+  box-shadow: 0 0 0 4px var(--o-bad-bg);
+}
+.own-ui .own-th-dot.is-watch {
+  background: var(--o-watch);
+  box-shadow: 0 0 0 4px var(--o-watch-bg);
+}
+.own-ui .own-th-dot.is-info {
+  background: var(--o-info);
+  box-shadow: 0 0 0 4px var(--o-info-bg);
+}
+.own-ui .own-th-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px 18px 14px;
+  color: inherit;
+  text-decoration: none;
+}
+.own-ui a.own-th-plan:hover {
+  background: var(--o-hover);
+}
+.own-ui .own-th-plan-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.own-ui .own-mq {
+  align-items: center;
+}
+.own-ui .own-mq-count {
+  flex: none;
+  min-width: 34px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--o-good-bg);
+  color: var(--o-good);
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-mq-count.is-bad {
+  background: var(--o-bad-bg);
+  color: var(--o-bad);
+}
+.own-ui .own-mq-count.is-watch {
+  background: var(--o-watch-bg);
+  color: var(--o-watch);
+}
+.own-ui .own-mq-count.is-info {
+  background: var(--o-info-bg);
+  color: var(--o-info);
+}
+/* The herd as one bar, each health status its share. */
+.own-ui .own-hm {
+  display: flex;
+  gap: 3px;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--o-card-2);
+}
+.own-ui .own-hm i {
+  display: block;
+  flex-basis: 0;
+  min-width: 6px;
+}
+.own-ui .own-hm i.is-good,
+.own-ui .own-hm-legend i.is-good {
+  background: var(--o-good);
+}
+.own-ui .own-hm i.is-watch,
+.own-ui .own-hm-legend i.is-watch {
+  background: var(--o-watch);
+}
+.own-ui .own-hm i.is-bad,
+.own-ui .own-hm-legend i.is-bad {
+  background: var(--o-bad);
+}
+.own-ui .own-hm i.is-quar,
+.own-ui .own-hm-legend i.is-quar {
+  background: var(--o-quar);
+}
+.own-ui .own-hm-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 13px;
+  color: var(--o-muted);
+}
+.own-ui .own-hm-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.own-ui .own-hm-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+.own-ui .own-hm-legend b {
+  color: var(--o-ink);
+  font-variant-numeric: tabular-nums;
+}
+.own-ui .own-list-inset {
+  margin: 4px -18px -16px;
+  border-top: 1px solid var(--o-border-soft);
+}
+.own-ui .own-list-inset .own-row {
+  align-items: center;
+}

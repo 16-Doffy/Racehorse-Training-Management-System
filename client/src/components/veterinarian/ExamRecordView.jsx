@@ -31,6 +31,7 @@ import {
 } from './vetFormat';
 import { message } from '../../lib/antdStatic';
 import { fileHref } from '../../lib/files';
+import { DIET_KINDS } from '../../constants/diet';
 import { useCareOrders, useInjuries, useTreatments, useVetHorse, useVetRefresh } from '../../hooks/useVetData';
 
 const MAX_FILES = 10; // per exam (server: healthRecord.controller.js MAX_ATTACHMENTS)
@@ -171,7 +172,19 @@ export default function ExamRecordView({ id, inDrawer = false }) {
                 Không đánh giá mức tập
               </Pill>
             )}
+            {record.dietPlan?.kind && DIET_KINDS[record.dietPlan.kind] && (
+              <Pill tone={record.dietPlan.kind === 'plan' ? 'neutral' : 'watch'} icon={DIET_KINDS[record.dietPlan.kind].icon}>
+                Ăn uống: {DIET_KINDS[record.dietPlan.kind].label.toLowerCase()}
+              </Pill>
+            )}
           </div>
+          {record.dietPlan?.note && <div className="vet-small vet-muted mt-2">Dặn về ăn uống: {record.dietPlan.note}</div>}
+          {record.followUpAt && (
+            <div className="vet-small vet-muted mt-1">
+              <i className="bi bi-calendar-check me-1" aria-hidden="true" />
+              Hẹn tái khám: {fmtDate(record.followUpAt)}
+            </div>
+          )}
         </div>
       </section>
 

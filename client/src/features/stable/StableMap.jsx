@@ -18,13 +18,17 @@ const LEGEND = ['ok', 'watch', 'bad', 'taken', 'empty', 'reserved', 'maint'];
  * `canSelect(stall)`: which stalls can be picked (the Owner picks only those of their horses); the rest
  * are shown faded.
  */
-export default function StableMap({ stalls, zoneKey, onZoneChange, selectedCode, onSelect, compact = false, canSelect = () => true }) {
+// `aisle`: lay the zone out in its two rows facing the aisle (a whole zone); off, the stalls given are
+// shown as one grid (a few stalls picked out of a zone, which face no aisle together). `legend`: the states
+// the key under the map explains.
+export default function StableMap({ stalls, zoneKey, onZoneChange, selectedCode, onSelect, compact = false, canSelect = () => true, aisle = true, legend: legendKeys = LEGEND }) {
   const zones = groupZones(stalls);
   const zone = zones.find((z) => z.key === zoneKey) || zones[0];
   if (!zone) return null;
   const items = zone.stalls;
-  const perRow = items.length > 2 ? Math.ceil(items.length / 2) : items.length;
-  const rows = items.length > 2 ? [items.slice(0, perRow), items.slice(perRow)] : [items];
+  const split = aisle && items.length > 2;
+  const perRow = split ? Math.ceil(items.length / 2) : items.length;
+  const rows = split ? [items.slice(0, perRow), items.slice(perRow)] : [items];
   const taken = items.filter((s) => s.occupied).length;
 
   const tile = (s) => {
@@ -77,7 +81,7 @@ export default function StableMap({ stalls, zoneKey, onZoneChange, selectedCode,
   );
   const legend = (
     <div className={`flex flex-wrap gap-x-3 gap-y-1 ${compact ? 'text-[10.5px]' : 'text-[11px]'} text-gray-600`}>
-      {LEGEND.map((k) => (
+      {legendKeys.map((k) => (
         <span key={k} className="inline-flex items-center gap-1.5">
           <span className="inline-block h-2 w-2 rounded-full" style={{ background: STALL_STATES[k].color }} />
           {STALL_STATES[k].label}

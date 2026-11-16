@@ -105,7 +105,8 @@ function DecisionCell({ entry, form }) {
       </Tag>
       {d?.at && (
         <Text type="secondary" className="!text-xs line-clamp-3" title={d.reason || undefined}>
-          {d.by?.name || 'HLV'} · {dayjs(d.at).format('DD/MM HH:mm')}
+          {/* Withdrawn by the system: the horse could not be ready in time (server: planProgress.service.js). */}
+          {d.auto ? 'Hệ thống tự rút' : d.by?.name || 'HLV'} · {dayjs(d.at).format('DD/MM HH:mm')}
           {d.status === 'confirmed' ? (d.exception ? ' · ngoại lệ, chưa chạy thử' : d.trialMet === false ? ' · chạy thử chưa đạt' : ' · dựa trên chạy thử') : ''}
           {d.reason ? ` — ${d.reason}` : ''}
         </Text>

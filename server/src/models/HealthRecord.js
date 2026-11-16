@@ -33,7 +33,22 @@ const healthRecordSchema = new mongoose.Schema(
     // none, light, moderate, high. Empty for an exam that says nothing about training. The newest one
     // caps the training level until a later assessment raises it.
     clearedLevel: { type: String, enum: ['none', 'light', 'moderate', 'high', null], default: null },
+    // What the horse eats from this exam while it is not fit (feeding/dietOrder.js): a sick diet fitted to
+    // the illness, or 'plan' under monitoring, with the vet's own words for the groom. None when it is fit.
+    dietPlan: {
+      type: new mongoose.Schema(
+        {
+          kind: { type: String, enum: ['plan', 'rest', 'colic', 'laminitis', 'respiratory', 'ulcer'], required: true },
+          note: { type: String, trim: true, maxlength: 300 },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
     notes: { type: String },
+    // The follow-up the vet booked on this exam: it becomes the horse's next exam due (careSchedule.nextExamDue),
+    // which the care scheduler reminds the vet of.
+    followUpAt: { type: Date, default: null },
     // X-rays, lab results, scanned prescriptions (stored in GridFS, see utils/fileStore.js).
     attachments: [
       {

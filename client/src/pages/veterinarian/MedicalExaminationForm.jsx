@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import dayjs from 'dayjs';
 import { Button, Col, Form, Row } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -18,7 +19,6 @@ import {
   HYDRATION,
   LAMENESS_GRADES,
   LEVEL_META,
-  LEVEL_ORDER,
   LIMBS,
   MUCOUS_MEMBRANES,
   SEVERITY_META,
@@ -27,16 +27,15 @@ import {
   clearanceOf,
   errorText,
   fmtDateTime,
-  fromInputDate,
   horseFacts,
   idOf,
   isActiveInjury,
   recoveryMeta,
   shortBodyPart,
-  toInputDate,
   vitalOff,
 } from '../../components/veterinarian/vetFormat';
 import { areasText, symptomsText } from '../../constants/examRequest';
+import { DIET_KINDS, DIET_NOTE_MAX, RAMP_TEXT, SICK_DIET_ORDER } from '../../constants/diet';
 import { message } from '../../lib/antdStatic';
 import { useExamRequests, useIncidents, useInjuries, useInventory, useRxTemplates, useVetHorse, useVetRefresh } from '../../hooks/useVetData';
 
@@ -74,11 +73,57 @@ function historyFrom(requests, incidents) {
   return lines.join('\n');
 }
 
+// How hard the horse may work under each conclusion (server: healthRecord.controller.js LEVELS_FOR): fit means
+// it trains, maybe still limited on its way back; an injured or isolated horse is not trained at all (its status
+// blocks every session, readiness.service.js) — walking it by hand is a care order.
+const LEVELS_FOR = { eligible: ['light', 'moderate', 'high'], monitoring: ['none', 'light', 'moderate', 'high'], injured: ['none'], quarantined: ['none'] };
+const SICK = ['injured', 'quarantined'];
+// What each conclusion sets off, under the choice.
+const STATUS_HINT = {
+  eligible: 'Ngựa tập được: mức tập theo đánh giá bên dưới, khẩu phần về lại theo kế hoạch tập.',
+  monitoring: 'Ngựa cần theo dõi thêm: chọn mức tập và chế độ ăn cho thời gian này.',
+  injured: 'Ngựa nghỉ tập và ăn chế độ bệnh. HLV và nhân viên chăm sóc được báo ngay khi lưu.',
+  quarantined: 'Ngựa chuyển sang chuồng cách ly, không tập và ăn chế độ bệnh. Quản lý được báo để xếp chuồng.',
+};
+
+// When to see the horse again, by conclusion (days from today); fit: no follow-up unless the vet books one.
+const FOLLOW_UP_DAYS = { eligible: 0, monitoring: 7, injured: 7, quarantined: 7 };
+const FOLLOW_UP_CHOICES = [3, 7, 14, 30];
+// An exam answers the exam that was due on or before it, or within these days after (the server's
+// answersDue): saving without a new date ends that reminder.
+const ANSWERS_DAYS = 3;
+
+/** What saving does to the exam the horse already has booked. */
+function examDueNote(due, followUp) {
+  if (!due) return '';
+  const when = dayjs(due).format('DD/MM');
+  if (followUp) return ` Lịch đang hẹn ${when} sẽ được thay bằng ngày mới.`;
+  return dayjs(due).isAfter(dayjs().add(ANSWERS_DAYS, 'day').endOf('day')) ? ` Lịch khám ${when} vẫn giữ nguyên.` : ` Lịch tái khám ${when} được tính là đã khám bằng phiếu này.`;
+}
+const dayFromToday = (days) => (days ? dayjs().add(days, 'day').format('YYYY-MM-DD') : '');
+
+/** A numbered part of the exam: what was found, the conclusion, what follows from it. */
+function Step({ n, title, sub, tone, extra }) {
+  return (
+    <div className="vet-exam-step">
+      <span className={`vet-exam-step-n${tone ? ` vet-tone-${tone}` : ''}`}>{n}</span>
+      <div style={{ minWidth: 0 }}>
+        <div className="vet-exam-step-title">{title}</div>
+        {sub && <div className="vet-exam-step-sub">{sub}</div>}
+      </div>
+      {extra && <div className="ms-auto">{extra}</div>}
+    </div>
+  );
+}
+
 /**
  * The exam form, once the horse is loaded. A filed exam is not edited — a later finding is a new exam.
- * A new exam is the vet's whole
- * answer to a request in one save: what was found (history, vital signs, clinical findings), the
- * conclusion, the injuries found — saved against this exam — and, when needed, the prescription.
+ * A new exam is the vet's whole answer to a request in one save, in the order it is made:
+ *   1. what was found — history, vital signs, clinical findings, the injuries found, the files;
+ *   2. the conclusion — diagnosis and health status;
+ *   3. what follows from it — how hard the horse may work, what it eats, the prescription — each offering
+ *      only what agrees with the status (an injured horse is not cleared to train, an isolated one eats a
+ *      sick diet), and set to fit when the status changes.
  */
 function ExamForm({ horse, presetLevel }) {
   const navigate = useNavigate();
@@ -91,18 +136,40 @@ function ExamForm({ horse, presetLevel }) {
   const stockQ = useInventory();
   const templatesQ = useRxTemplates();
   const fileInput = useRef(null);
-  const today = toInputDate(new Date());
   const clearance = clearanceOf(horse);
+  // What the horse eats now (GET /horses feedingDiet): a sick diet, the week back after one, or as planned.
+  const eatsNow = horse.feedingDiet || null;
+  const sickNow = eatsNow?.diet === 'sick' ? eatsNow.kind : null;
 
-  const [date, setDate] = useState(today);
+  const initialStatus = HEALTH_META[horse.healthStatus] ? horse.healthStatus : 'eligible';
+  /** The level a conclusion starts with: the strictest it allows when the horse is not fit, else what it has now. */
+  const levelFor = (status, withRx) => {
+    if (SICK.includes(status)) return 'none';
+    const allowed = LEVELS_FOR[status];
+    if (status === 'eligible') return clearance.restricted || withRx ? 'high' : '';
+    if (clearance.restricted && allowed.includes(clearance.level)) return clearance.level;
+    return withRx ? 'high' : '';
+  };
+  /** The diet a conclusion starts with: the one the horse is on when it stays unwell, box rest when it falls ill. */
+  const dietFor = (status) => (status === 'eligible' ? '' : SICK.includes(status) ? sickNow || 'rest' : sickNow || 'plan');
+
   const [history, setHistory] = useState('');
   const [vitals, setVitals] = useState(() => Object.fromEntries(VITALS.map((v) => [v.key, ''])));
   const [weight, setWeight] = useState('');
   const [clinical, setClinical] = useState(() => blankClinical());
   const [diagnosis, setDiagnosis] = useState('');
-  const [resultStatus, setResultStatus] = useState(horse.healthStatus || 'eligible');
-  const [clearedLevel, setClearedLevel] = useState(() => (LEVEL_META[presetLevel] ? presetLevel : ''));
+  const [resultStatus, setResultStatus] = useState(initialStatus);
+  const [level, setLevel] = useState(() => (LEVELS_FOR[initialStatus].includes(presetLevel) ? presetLevel : levelFor(initialStatus, false)));
+  const [dietKind, setDietKind] = useState(() => dietFor(initialStatus));
+  const [dietNote, setDietNote] = useState(() => horse.vetDiet?.note || '');
   const [notes, setNotes] = useState('');
+  // The follow-up: set from the conclusion until the vet picks one.
+  const [followUp, setFollowUp] = useState(() => dayFromToday(FOLLOW_UP_DAYS[initialStatus]));
+  const followPicked = useRef(false);
+  const pickFollowUp = (value) => {
+    followPicked.current = true;
+    setFollowUp(value);
+  };
   const [files, setFiles] = useState([]);
   const [injuries, setInjuries] = useState([]); // drafts: { _id: 'draft-n', bodyPart, severity, … }
   const [injuryDialog, setInjuryDialog] = useState(null); // { draft? }
@@ -116,6 +183,44 @@ function ExamForm({ horse, presetLevel }) {
 
   const catalog = prescribableCatalog(stockQ.data);
   const rx = usePrescription({ catalog, customTemplates: templatesQ.data || [], userId: user?._id, confirm });
+  const allowedLevels = LEVELS_FOR[resultStatus];
+
+  // The prescription's level is the exam's: one place to set it. A template that brings its own keeps it
+  // when the conclusion allows it; otherwise the exam's level stands.
+  const rxLevelSet = useRef(null);
+  useEffect(() => {
+    if (!prescribing || !level || rx.level === level) return;
+    if (rx.level !== rxLevelSet.current && allowedLevels.includes(rx.level)) {
+      rxLevelSet.current = rx.level;
+      setLevel(rx.level);
+      return;
+    }
+    rxLevelSet.current = level;
+    rx.setLevel(level);
+  }, [prescribing, level, rx, allowedLevels]);
+
+  const pickStatus = (status) => {
+    setResultStatus(status);
+    if (!followPicked.current) setFollowUp(dayFromToday(FOLLOW_UP_DAYS[status]));
+    // What follows from the conclusion is set to agree with it; what still agrees is left as chosen.
+    setLevel((prev) => (LEVELS_FOR[status].includes(prev) || (prev === '' && !prescribing && !SICK.includes(status)) ? prev : levelFor(status, prescribing)));
+    setDietKind((prev) => {
+      if (status === 'eligible') return '';
+      if (SICK.includes(status)) return SICK_DIET_ORDER.includes(prev) ? prev : dietFor(status);
+      return prev || dietFor(status);
+    });
+  };
+  const startPrescribing = () => {
+    const first = level || levelFor(resultStatus, true);
+    rxLevelSet.current = first;
+    rx.setLevel(first);
+    setLevel(first);
+    setPrescribing(true);
+  };
+  const stopPrescribing = () => {
+    setPrescribing(false);
+    if (level === 'high' && !clearance.restricted && resultStatus !== 'eligible') setLevel('');
+  };
 
   const openRequests = (requestsQ.data || []).filter((r) => idOf(r.horse) === horse._id);
   const openIncidents = (incidentsQ.data || []).filter((t) => idOf(t.horse) === horse._id);
@@ -130,10 +235,12 @@ function ExamForm({ horse, presetLevel }) {
   const activeInjuries = (injuriesQ.data || []).filter(isActiveInjury);
   const back = `/veterinarian/horses/${horse._id}`;
   const severe = injuries.some((d) => d.severity === 'severe');
-  // An exam that finds the horse fit for full work closes what was being tracked — the vet confirms it.
-  const clears = !prescribing && resultStatus === 'eligible' && clearedLevel === 'high' && activeInjuries.length > 0;
-  const setClinicalField = (key, value) => setClinical((c) => ({ ...c, [key]: value }));
+  const vitalsOff = VITALS.filter((v) => vitalOff(v, vitals[v.key]));
   const lameness = LAMENESS_GRADES.find((g) => String(g.value) === clinical.lamenessGrade);
+  // An exam that finds the horse fit for full work closes what was being tracked — the vet confirms it.
+  const clears = !prescribing && resultStatus === 'eligible' && level === 'high' && activeInjuries.length > 0;
+  const setClinicalField = (key, value) => setClinical((c) => ({ ...c, [key]: value }));
+  const statusMeta = HEALTH_META[resultStatus];
 
   const addFiles = (list) => {
     const picked = Array.from(list || []);
@@ -155,12 +262,14 @@ function ExamForm({ horse, presetLevel }) {
     });
 
   const save = async () => {
-    if (!diagnosis.trim()) return setError('Nhập chẩn đoán / kết luận của lần khám.');
-    if (!date || date > today) return setError('Ngày khám không được ở tương lai.');
+    if (!diagnosis.trim()) return setError('Nhập chẩn đoán ở phần Kết luận.');
     if (clinical.capillaryRefillSec !== '' && (Number(clinical.capillaryRefillSec) < 0 || Number(clinical.capillaryRefillSec) > 10)) return setError('Thời gian đổ đầy mao mạch (CRT) từ 0 đến 10 giây.');
     if (weight !== '' && !(Number(weight) > 0)) return setError('Cân nặng phải lớn hơn 0.');
+    if (level && !allowedLevels.includes(level)) return setError(`Kết luận "${statusMeta.label}" không đi cùng mức "${LEVEL_META[level].label.toLowerCase()}".`);
+    if (resultStatus !== 'eligible' && !DIET_KINDS[dietKind]) return setError('Chọn chế độ ăn ở phần Chỉ định.');
+    if (followUp && !dayjs(followUp).isAfter(dayjs(), 'day')) return setError('Ngày tái khám phải từ ngày mai trở đi.');
     if (prescribing) {
-      const problem = rx.problem();
+      const problem = rx.problem({ fallbackReason: diagnosis });
       if (problem) return setError(`Đơn thuốc: ${problem}`);
     }
     // Filed is final: the exam, its injuries and its prescription are not edited afterwards.
@@ -186,18 +295,24 @@ function ExamForm({ horse, presetLevel }) {
       lamenessGrade: grade,
       lamenessLimb: grade ? clinical.lamenessLimb || null : null,
     };
-    const when = date === today ? new Date() : fromInputDate(date, '09:00');
+    // Dated the moment it is saved.
+    const when = new Date();
     const payload = {
       horse: horse._id,
       date: when,
       diagnosis: diagnosis.trim(),
       history: history.trim(),
       resultStatus,
-      // While a prescription is written here, its level is the one that counts.
-      clearedLevel: prescribing ? null : clearedLevel || null,
+      // While a prescription is written here, its level is the one that counts; injured or isolated, the status
+      // itself stops all training until a vet clears the horse.
+      clearedLevel: prescribing || SICK.includes(resultStatus) ? null : level || null,
+      // Fit: it eats as its plan says (the server builds the week back up); otherwise the vet's diet.
+      dietPlan: resultStatus === 'eligible' ? null : { kind: dietKind, note: dietNote.trim() },
       vitalSigns,
       clinical: clinicalBody,
       notes: notes.trim(),
+      // The follow-up becomes the horse's next exam due, with its reminder.
+      followUpAt: followUp ? dayjs(`${followUp}T08:00`).toDate() : null,
     };
     try {
       // Saved already by a try that failed later on: the exam stays as filed, the rest is finished.
@@ -232,7 +347,7 @@ function ExamForm({ horse, presetLevel }) {
         done.current.injuries.add(_id);
       }
       if (prescribing && !done.current.treatment) {
-        await vetApi.createTreatment({ horse: horse._id, healthRecord: recordId, status: 'ongoing', ...rx.payload() });
+        await vetApi.createTreatment({ horse: horse._id, healthRecord: recordId, status: 'ongoing', ...rx.payload({ fallbackReason: diagnosis }) });
         done.current.treatment = true;
       }
       await refresh();
@@ -248,7 +363,24 @@ function ExamForm({ horse, presetLevel }) {
   };
 
   const answers = [openRequests.length && `${openRequests.length} yêu cầu khám`, openIncidents.length && `${openIncidents.length} sự cố`].filter(Boolean);
-  const saveLabel = `Lưu phiếu khám${injuries.length ? ` · ${injuries.length} chấn thương` : ''}${prescribing ? ' · đơn thuốc' : ''}`;
+
+  // ---- 3. What follows from the conclusion ----
+  const levelOptions = [
+    ...(!prescribing && !SICK.includes(resultStatus) ? [{ value: '', label: 'Không đổi' }] : []),
+    ...allowedLevels.map((key) => ({ value: key, label: LEVEL_META[key].label, tone: LEVEL_META[key].tone, icon: LEVEL_META[key].icon })),
+  ];
+  const levelHint = !level
+    ? clearance.restricted
+      ? `Giữ mức hiện tại: ${LEVEL_META[clearance.level].label.toLowerCase()}.`
+      : 'Không đổi mức tập của ngựa.'
+    : `${LEVEL_META[level].desc} ${prescribing ? 'Áp dụng trong thời gian điều trị theo đơn bên dưới.' : 'Áp dụng ngay khi lưu: buổi tập vượt mức bị hủy, HLV được báo.'}`;
+  const dietOptions = (SICK.includes(resultStatus) ? SICK_DIET_ORDER : ['plan', ...SICK_DIET_ORDER]).map((key) => ({ value: key, label: DIET_KINDS[key].label, icon: DIET_KINDS[key].icon, tone: key === 'plan' ? 'good' : 'watch' }));
+  const dietSummary =
+    resultStatus === 'eligible'
+      ? sickNow
+        ? 'Ăn lại theo kế hoạch, tăng dần'
+        : null
+      : DIET_KINDS[dietKind]?.label;
 
   return (
     <div className="vet-ui" style={{ maxWidth: 980 }}>
@@ -261,6 +393,11 @@ function ExamForm({ horse, presetLevel }) {
             {horse.weightKg ? <span className="vet-muted">· {horse.weightKg} kg</span> : null}
             <HealthPill status={horse.healthStatus} />
             {clearance.restricted && <LevelPill level={clearance.level} short />}
+            {sickNow && (
+              <Pill tone="watch" icon={DIET_KINDS[sickNow]?.icon}>
+                Đang ăn: {DIET_KINDS[sickNow]?.label.toLowerCase()}
+              </Pill>
+            )}
           </span>
         }
       />
@@ -292,23 +429,27 @@ function ExamForm({ horse, presetLevel }) {
           save();
         }}
       >
-        <section className="vet-card">
+        <section className="vet-card vet-exam">
           <div className="vet-card-body">
-            <Section title="Lần khám">
-              <Row className="g-3 align-items-end">
-                <Col sm={5} md={4}>
-                  <Field label="Ngày khám" required>
-                    <Form.Control type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} />
-                  </Field>
-                </Col>
-                <Col sm={7} md={8}>
-                  <div className="vet-muted pb-2">
+            {/* ---------- 1. What was found ---------- */}
+            <Step
+              n={1}
+              title="Khám"
+              sub="Bệnh sử, chỉ số, lâm sàng và chấn thương tìm thấy"
+              extra={
+                <div className="d-flex align-items-center gap-2 vet-small">
+                  <span className="vet-muted text-nowrap">
                     <i className="bi bi-person-badge me-1" aria-hidden="true" />
-                    Bác sĩ khám: {user?.name || '—'}
-                  </div>
-                </Col>
-              </Row>
-            </Section>
+                    {user?.name || '—'}
+                  </span>
+                  {/* The exam is dated when it is saved: the day it is filled in, never another one. */}
+                  <span className="vet-muted text-nowrap" title="Ngày giờ khám ghi nhận lúc lưu phiếu">
+                    <i className="bi bi-calendar3 me-1" aria-hidden="true" />
+                    {new Date().toLocaleDateString('vi-VN')} · ghi nhận khi lưu
+                  </span>
+                </div>
+              }
+            />
 
             <Section
               title="Lý do khám & bệnh sử"
@@ -405,74 +546,6 @@ function ExamForm({ horse, presetLevel }) {
               </div>
             </Section>
 
-            <Section title="Kết luận">
-              <div className="d-flex flex-column gap-3">
-                <Field label="Chẩn đoán" required>
-                  <Form.Control value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} placeholder="VD: Viêm gân gấp nông chân trước trái" autoFocus />
-                </Field>
-                <Field label="Tình trạng sức khỏe">
-                  <Choices
-                    value={resultStatus}
-                    onChange={setResultStatus}
-                    label="Tình trạng sức khỏe"
-                    options={HEALTH_ORDER.map((key) => ({ value: key, label: HEALTH_META[key].label, tone: HEALTH_META[key].tone, icon: HEALTH_META[key].icon }))}
-                  />
-                </Field>
-                {severe && resultStatus !== 'injured' && resultStatus !== 'quarantined' && (
-                  <Callout
-                    tone="watch"
-                    icon="bi-bandaid-fill"
-                    action={
-                      <Button size="sm" variant="vet-outline" onClick={() => setResultStatus('injured')}>
-                        Đặt “Chấn thương”
-                      </Button>
-                    }
-                  >
-                    Phiếu có chấn thương nặng: khi lưu, ngựa được tính là “Chấn thương” theo chấn thương đó.
-                  </Callout>
-                )}
-                {prescribing ? (
-                  <Field label="Mức vận động cho phép từ nay">
-                    <div className="vet-muted">
-                      Theo đơn kê bên dưới: <LevelPill level={rx.level} short /> — áp dụng trong thời gian điều trị.
-                    </div>
-                  </Field>
-                ) : (
-                  <Field
-                    label="Mức vận động cho phép từ nay"
-                    hint={
-                      clearedLevel
-                        ? `Áp dụng ngay: buổi tập vượt mức bị hủy, HLV được báo. Giữ tới lần đánh giá sau.`
-                        : clearance.restricted
-                          ? `Ngựa đang bị hạn chế (${LEVEL_META[clearance.level].label.toLowerCase()}). Chọn một mức nếu lần khám này cho ngựa tập lại.`
-                          : 'Bỏ trống nếu lần khám này không đánh giá mức tập.'
-                    }
-                  >
-                    <Choices
-                      value={clearedLevel}
-                      onChange={setClearedLevel}
-                      label="Mức vận động cho phép"
-                      options={[{ value: '', label: 'Không đánh giá' }, ...LEVEL_ORDER.map((key) => ({ value: key, label: LEVEL_META[key].label, tone: LEVEL_META[key].tone, icon: LEVEL_META[key].icon }))]}
-                    />
-                  </Field>
-                )}
-                {clears && (
-                  <Form.Check
-                    id="heal-old-injuries"
-                    type="checkbox"
-                    checked={healOld}
-                    onChange={(e) => setHealOld(e.target.checked)}
-                    label={`Đánh dấu đã khỏi: ${activeInjuries.map((m) => shortBodyPart(m.bodyPart)).join(', ')}`}
-                  />
-                )}
-                {!prescribing && resultStatus === 'eligible' && !clearedLevel && clearance.restricted && (
-                  <Callout tone="watch" icon="bi-exclamation-triangle-fill">
-                    Kết luận “đủ điều kiện” nhưng chưa chọn mức vận động — ngựa vẫn giữ mức “{LEVEL_META[clearance.level].label.toLowerCase()}”.
-                  </Callout>
-                )}
-              </div>
-            </Section>
-
             <Section
               title={`Chấn thương phát hiện (${injuries.length})`}
               extra={
@@ -522,39 +595,6 @@ function ExamForm({ horse, presetLevel }) {
             </Section>
 
             <Section
-              title="Kê đơn"
-              extra={
-                prescribing ? (
-                  <Button size="sm" variant="vet-ghost" className="vet-text-bad" onClick={() => setPrescribing(false)} disabled={busy}>
-                    Bỏ đơn
-                  </Button>
-                ) : null
-              }
-            >
-              {prescribing ? (
-                stockQ.isLoading || templatesQ.isLoading ? (
-                  <LoadingBlock rows={2} height={56} />
-                ) : (
-                  <div className="vet-subtle p-3">
-                    <PrescriptionFields rx={rx} catalog={catalog} hasCustomTemplates={(templatesQ.data || []).length > 0} busy={busy} compact onTemplateApplied={() => setError(null)} />
-                    {dailyLoadText(rx) && <div className="vet-small vet-muted vet-rx-foot">{dailyLoadText(rx)}</div>}
-                  </div>
-                )
-              ) : (
-                <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <span className="vet-small vet-faint">Thuốc và y lệnh chăm sóc thành việc hằng ngày của nhân viên chăm sóc; đơn gắn với phiếu khám này.</span>
-                  <Button size="sm" variant="vet-outline" onClick={() => setPrescribing(true)} disabled={busy}>
-                    <i className="bi bi-capsule" aria-hidden="true" /> Kê đơn trong phiếu này
-                  </Button>
-                </div>
-              )}
-            </Section>
-
-            <Section title="Ghi chú & chỉ định">
-              <Form.Control as="textarea" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Chỉ định thêm, xét nghiệm cần làm, hẹn tái khám…" />
-            </Section>
-
-            <Section
               title={`Tệp đính kèm (${files.length}/${MAX_FILES})`}
               extra={
                 <Button size="sm" variant="vet-outline" onClick={() => fileInput.current?.click()} disabled={files.length >= MAX_FILES}>
@@ -583,6 +623,184 @@ function ExamForm({ horse, presetLevel }) {
               )}
             </Section>
 
+            {/* ---------- 2. The conclusion ---------- */}
+            <Step n={2} title="Kết luận" sub="Chẩn đoán và tình trạng sức khỏe — phần chỉ định bên dưới đi theo tình trạng này" />
+
+            <div className="d-flex flex-column gap-3">
+              <Field label="Chẩn đoán" required>
+                <Form.Control value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} placeholder="VD: Viêm gân gấp nông chân trước trái" />
+              </Field>
+              <Field label="Tình trạng sức khỏe" hint={STATUS_HINT[resultStatus]}>
+                <Choices
+                  value={resultStatus}
+                  onChange={pickStatus}
+                  label="Tình trạng sức khỏe"
+                  options={HEALTH_ORDER.map((key) => ({ value: key, label: HEALTH_META[key].label, tone: HEALTH_META[key].tone, icon: HEALTH_META[key].icon }))}
+                />
+              </Field>
+              {severe && !SICK.includes(resultStatus) && (
+                <Callout
+                  tone="watch"
+                  icon="bi-bandaid-fill"
+                  action={
+                    <Button size="sm" variant="vet-outline" onClick={() => pickStatus('injured')}>
+                      Đặt “Chấn thương”
+                    </Button>
+                  }
+                >
+                  Phiếu có chấn thương nặng: khi lưu, ngựa được tính là “Chấn thương” theo chấn thương đó.
+                </Callout>
+              )}
+              {resultStatus === 'eligible' && !severe && (vitalsOff.length > 0 || Number(clinical.lamenessGrade) >= 2) && (
+                <Callout
+                  tone="watch"
+                  icon="bi-exclamation-triangle-fill"
+                  action={
+                    <Button size="sm" variant="vet-outline" onClick={() => pickStatus('monitoring')}>
+                      Đặt “Cần theo dõi”
+                    </Button>
+                  }
+                >
+                  {Number(clinical.lamenessGrade) >= 2 ? `Ngựa què độ ${clinical.lamenessGrade}` : `${vitalsOff.map((v) => v.label.toLowerCase()).join(', ')} ngoài ngưỡng`} nhưng kết luận “Đủ điều kiện”.
+                </Callout>
+              )}
+            </div>
+
+            {/* ---------- 3. What follows from it ---------- */}
+            <Step n={3} tone={statusMeta.tone} title={`Chỉ định · ${statusMeta.label}`} sub="Vận động, ăn uống và đơn thuốc cho thời gian tới" />
+
+            <Section title="Vận động">
+              {SICK.includes(resultStatus) ? (
+                <div className="d-flex flex-wrap align-items-center gap-2">
+                  <LevelPill level="none" />
+                  <span className="vet-small vet-muted">
+                    Ngựa {resultStatus === 'quarantined' ? 'cách ly' : 'chấn thương'} không tập: mọi buổi tập bị hủy cho tới khi bác sĩ cho tập lại. Dắt đi bộ, chườm… ghi trong y lệnh chăm sóc của đơn thuốc.
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <Choices value={level} onChange={setLevel} label="Mức vận động cho phép" options={levelOptions} />
+                  <div className="vet-choice-hint">{levelHint}</div>
+                </>
+              )}
+              {prescribing && level && level !== 'high' && !SICK.includes(resultStatus) && (
+                <Form.Control
+                  className="mt-2"
+                  value={rx.reason}
+                  onChange={(e) => rx.setReason(e.target.value)}
+                  placeholder={level === 'none' ? 'Lý do khóa tập — để trống thì dùng chẩn đoán' : 'Chỉ dẫn vận động — VD: chỉ đi bộ thả lỏng 20–30 phút/ngày'}
+                  aria-label="Lý do / chỉ dẫn vận động"
+                />
+              )}
+              {clears && (
+                <Form.Check
+                  className="mt-2"
+                  id="heal-old-injuries"
+                  type="checkbox"
+                  checked={healOld}
+                  onChange={(e) => setHealOld(e.target.checked)}
+                  label={`Đánh dấu đã khỏi: ${activeInjuries.map((m) => shortBodyPart(m.bodyPart)).join(', ')}`}
+                />
+              )}
+            </Section>
+
+            <Section title="Ăn uống">
+              {resultStatus === 'eligible' ? (
+                sickNow ? (
+                  <Callout tone="good" icon="bi-arrow-up-right-circle-fill">
+                    Ngựa đang ăn chế độ “{DIET_KINDS[sickNow]?.label.toLowerCase()}”. Khi lưu, khẩu phần về lại theo kế hoạch tập, {RAMP_TEXT} cho dạ dày quen lại.
+                  </Callout>
+                ) : (
+                  <div className="vet-small vet-muted">
+                    {eatsNow?.diet === 'ramp' ? `Ngựa đang tập ăn lại sau bệnh (ngày ${eatsNow.day}/${eatsNow.days}) — giữ nguyên.` : 'Ăn theo kế hoạch tập, không đổi.'}
+                  </div>
+                )
+              ) : (
+                <>
+                  <Choices value={dietKind} onChange={setDietKind} label="Chế độ ăn" options={dietOptions} />
+                  {DIET_KINDS[dietKind] && <div className="vet-choice-hint">{DIET_KINDS[dietKind].does}{dietKind !== 'plan' ? ' HLV vẫn chỉnh được lượng trong Khẩu phần ăn.' : ''}</div>}
+                  {/* When it starts and when it ends: what the vet is told before choosing. */}
+                  <div className="vet-small vet-faint mt-1">
+                    <i className="bi bi-clock-history me-1" aria-hidden="true" />
+                    {dietKind === 'plan'
+                      ? 'Từ bữa kế tiếp sau khi lưu, ngựa ăn theo khẩu phần của kế hoạch tập.'
+                      : `Áp dụng từ bữa kế tiếp sau khi lưu, tới khi bác sĩ kết luận “Đủ điều kiện” (hoặc “Cần theo dõi” với “Theo kế hoạch tập”); khi đó khẩu phần về lại theo kế hoạch tập, ${RAMP_TEXT}.`}
+                  </div>
+                  {dietKind && dietKind !== 'plan' && (
+                    <Form.Control
+                      className="mt-2"
+                      as="textarea"
+                      rows={2}
+                      maxLength={DIET_NOTE_MAX}
+                      value={dietNote}
+                      onChange={(e) => setDietNote(e.target.value)}
+                      placeholder="Dặn thêm nhân viên chăm sóc — VD: ngâm cỏ 30 phút, cho uống nước ấm, theo dõi phân"
+                      aria-label="Dặn về ăn uống"
+                    />
+                  )}
+                </>
+              )}
+            </Section>
+
+            <Section
+              title="Kê đơn"
+              extra={
+                prescribing ? (
+                  <Button size="sm" variant="vet-ghost" className="vet-text-bad" onClick={stopPrescribing} disabled={busy}>
+                    Bỏ đơn
+                  </Button>
+                ) : null
+              }
+            >
+              {prescribing ? (
+                stockQ.isLoading || templatesQ.isLoading ? (
+                  <LoadingBlock rows={2} height={56} />
+                ) : (
+                  <div className="vet-subtle p-3">
+                    <PrescriptionFields rx={rx} catalog={catalog} hasCustomTemplates={(templatesQ.data || []).length > 0} busy={busy} compact withLevel={false} onTemplateApplied={() => setError(null)} />
+                    {dailyLoadText(rx) && <div className="vet-small vet-muted vet-rx-foot">{dailyLoadText(rx)}</div>}
+                  </div>
+                )
+              ) : (
+                <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                  <span className="vet-small vet-faint">Thuốc và y lệnh chăm sóc thành việc hằng ngày của nhân viên chăm sóc; mức vận động theo mục Vận động ở trên.</span>
+                  <Button size="sm" variant="vet-outline" onClick={startPrescribing} disabled={busy}>
+                    <i className="bi bi-capsule" aria-hidden="true" /> Kê đơn trong phiếu này
+                  </Button>
+                </div>
+              )}
+            </Section>
+
+            <Section title="Hẹn tái khám">
+              <div className="d-flex flex-wrap align-items-center gap-2">
+                <Form.Control
+                  type="date"
+                  value={followUp}
+                  min={dayFromToday(1)}
+                  max={dayFromToday(180)}
+                  onChange={(e) => pickFollowUp(e.target.value)}
+                  aria-label="Ngày tái khám"
+                  style={{ width: 170 }}
+                />
+                <Choices
+                  value={FOLLOW_UP_CHOICES.find((n) => dayFromToday(n) === followUp)?.toString() ?? (followUp ? 'other' : '')}
+                  onChange={(v) => pickFollowUp(v === '' ? '' : dayFromToday(Number(v)))}
+                  label="Hẹn tái khám sau"
+                  options={[...FOLLOW_UP_CHOICES.map((n) => ({ value: String(n), label: `${n} ngày` })), { value: '', label: 'Không hẹn' }]}
+                />
+              </div>
+              <div className="vet-choice-hint">
+                {followUp
+                  ? `Tái khám ${dayjs(followUp).format('DD/MM/YYYY')} (sau ${dayjs(followUp).diff(dayjs().startOf('day'), 'day')} ngày): bạn và HLV được nhắc vào ngày đó, chủ ngựa được báo trước 2 ngày, ngựa hiện trong Lịch chăm sóc.`
+                  : 'Không hẹn tái khám.'}
+                {examDueNote(horse.careSchedule?.nextExamDue, followUp)}
+              </div>
+            </Section>
+
+            <Section title="Ghi chú & chỉ định thêm">
+              <Form.Control as="textarea" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Chỉ định thêm, xét nghiệm cần làm…" />
+            </Section>
+
             {error && (
               <Callout tone="bad" icon="bi-exclamation-circle-fill" className="mt-3">
                 {error}
@@ -590,11 +808,25 @@ function ExamForm({ horse, presetLevel }) {
             )}
           </div>
           <div className="vet-form-footer">
-            <Button variant="vet-ghost" className="me-auto" onClick={() => navigate(back)} disabled={busy}>
+            <Button variant="vet-ghost" onClick={() => navigate(back)} disabled={busy}>
               Hủy
             </Button>
+            {/* What saving does, in a line: the conclusion and everything that follows from it. */}
+            <div className="vet-exam-outcome" aria-label="Khi lưu">
+              <span className="vet-faint">Khi lưu:</span>
+              <HealthPill status={resultStatus} />
+              {SICK.includes(resultStatus) || level ? <LevelPill level={SICK.includes(resultStatus) ? 'none' : level} short /> : null}
+              {dietSummary && (
+                <Pill tone={resultStatus === 'eligible' || dietKind === 'plan' ? 'good' : 'watch'} icon="bi-basket2">
+                  {dietSummary}
+                </Pill>
+              )}
+              {injuries.length > 0 && <Pill tone="bad" icon="bi-bandaid">{injuries.length} chấn thương</Pill>}
+              {prescribing && <Pill tone="info" icon="bi-capsule">Đơn thuốc</Pill>}
+              {followUp && <Pill tone="neutral" icon="bi-calendar-check">Tái khám {dayjs(followUp).format('DD/MM')}</Pill>}
+            </div>
             <BusyButton type="submit" busy={busy} disabled={busy}>
-              {saveLabel}
+              Lưu phiếu khám
             </BusyButton>
           </div>
         </section>

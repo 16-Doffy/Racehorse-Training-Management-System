@@ -10,6 +10,8 @@ export const trainingPlanApi = {
   suggest: (params) => axiosClient.get('/training/plans/suggest', { params }),
   /** Book a week of the plan as sessions: { weekStart? } (next week by default). */
   generateWeek: (id, payload) => axiosClient.post(`/training/plans/${id}/generate-week`, payload || {}),
+  /** The trainer's end-of-phase checkpoint: { decision: 'pass' | 'extend', note? }. */
+  checkpoint: (id, payload) => axiosClient.post(`/training/plans/${id}/checkpoint`, payload),
 };
 
 export const trainingSessionApi = {

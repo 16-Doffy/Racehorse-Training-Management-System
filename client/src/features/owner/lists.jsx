@@ -3,23 +3,29 @@ import { AlertOutlined, CalendarOutlined, FlagOutlined, MedicineBoxOutlined, Saf
 import { DateChip, EmptyNote, MoreButton, Pill, Row } from './kit';
 import { RACE_STATUS, SESSION_STATUS_LABELS, SESSION_TONES, daysFromToday, fmtDate, fmtTime, relDay, weekday } from './ownerFormat';
 import { horseName } from './ownerInsights';
+import { usePager } from '../dashboard/dashKit';
 
 const ATTENTION_ICONS = { exam: <SafetyCertificateOutlined />, health: <MedicineBoxOutlined />, care: <CalendarOutlined />, race: <FlagOutlined /> };
 
-/** The "needs a look" list (ownerInsights.attentionItems): the most serious first, six at a time. */
-export function AttentionList({ items, emptyText = 'Không có gì cần bạn để ý — các chiến mã đều ổn.' }) {
+/**
+ * The "needs a look" list (ownerInsights.attentionItems): the most serious first, six at a time, or in
+ * pages of `pageSize` (the home's card keeps its height).
+ */
+export function AttentionList({ items, pageSize, emptyText = 'Không có gì cần bạn để ý — các chiến mã đều ổn.' }) {
   const [shown, setShown] = useState(6);
+  const paged = usePager(items, pageSize || items.length || 1);
   if (!items.length) return <EmptyNote>{emptyText}</EmptyNote>;
+  const rows = pageSize ? paged.rows : items.slice(0, shown);
   return (
     <>
       <ul className="own-list">
-        {items.slice(0, shown).map((it) => (
+        {rows.map((it) => (
           <li key={it.key}>
             <Row to={it.to} lead={<span className={`own-icon is-${it.tone === 'neutral' ? 'brass' : it.tone}`}>{ATTENTION_ICONS[it.kind] || <AlertOutlined />}</span>} title={it.title} sub={it.sub} />
           </li>
         ))}
       </ul>
-      <MoreButton shown={shown} total={items.length} onMore={() => setShown((n) => n + 6)} />
+      {pageSize ? paged.pager : <MoreButton shown={shown} total={items.length} onMore={() => setShown((n) => n + 6)} />}
     </>
   );
 }
@@ -56,31 +62,35 @@ export function CareSchedule({ horse }) {
 }
 
 /** Coming sessions and races (ownerInsights.agendaItems), each with its day, time and status. */
-export function AgendaList({ items, horsesById, showHorse = true, emptyText = 'Chưa có buổi tập hay giải đua nào sắp tới.' }) {
+export function AgendaList({ items, horsesById, showHorse = true, pageSize, emptyText = 'Chưa có buổi tập hay giải đua nào sắp tới.' }) {
+  const paged = usePager(items, pageSize || items.length || 1);
   if (!items.length) return <EmptyNote>{emptyText}</EmptyNote>;
   return (
-    <ul className="own-list">
-      {items.map((it) => {
-        const race = it.kind === 'race';
-        const status = race ? RACE_STATUS[it.status] : { label: SESSION_STATUS_LABELS[it.status] || it.status, tone: SESSION_TONES[it.status] };
-        const when = race ? relDay(it.at) : `${fmtTime(it.at)} · ${relDay(it.at)}`;
-        return (
-          <li key={it.key}>
-            <Row
-              to={it.to}
-              lead={<DateChip date={it.at} sub={weekday(it.at)} />}
-              title={
-                <span className="inline-flex items-center gap-1.5">
-                  {race && <TrophyOutlined className="own-watch" />}
-                  {it.title}
-                </span>
-              }
-              sub={[showHorse ? horseName(it.horse, horsesById) : null, race ? it.venue || 'Giải đua' : 'Buổi tập', when].filter(Boolean).join(' · ')}
-              side={status && <Pill tone={status.tone}>{status.label}</Pill>}
-            />
-          </li>
-        );
-      })}
-    </ul>
+    <>
+      <ul className="own-list">
+        {(pageSize ? paged.rows : items).map((it) => {
+          const race = it.kind === 'race';
+          const status = race ? RACE_STATUS[it.status] : { label: SESSION_STATUS_LABELS[it.status] || it.status, tone: SESSION_TONES[it.status] };
+          const when = race ? relDay(it.at) : `${fmtTime(it.at)} · ${relDay(it.at)}`;
+          return (
+            <li key={it.key}>
+              <Row
+                to={it.to}
+                lead={<DateChip date={it.at} sub={weekday(it.at)} />}
+                title={
+                  <span className="inline-flex items-center gap-1.5">
+                    {race && <TrophyOutlined className="own-watch" />}
+                    {it.title}
+                  </span>
+                }
+                sub={[showHorse ? horseName(it.horse, horsesById) : null, race ? it.venue || 'Giải đua' : 'Buổi tập', when].filter(Boolean).join(' · ')}
+                side={status && <Pill tone={status.tone}>{status.label}</Pill>}
+              />
+            </li>
+          );
+        })}
+      </ul>
+      {pageSize ? paged.pager : null}
+    </>
   );
 }

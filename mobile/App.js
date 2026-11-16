@@ -1,4 +1,7 @@
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
+import { useFonts, BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold, BeVietnamPro_700Bold } from '@expo-google-fonts/be-vietnam-pro';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/auth/AuthContext';
@@ -16,7 +19,18 @@ const queryClient = new QueryClient({
   },
 });
 
+// The launch screen stays until the typeface is ready, so no text shows in a fallback font first.
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
 export default function App() {
+  const [fontsLoaded, fontError] = useFonts({ BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold, BeVietnamPro_700Bold });
+  const ready = fontsLoaded || !!fontError;
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
+  // A font that fails to load is not a reason to keep the groom out: the system font stands in.
+  if (!ready) return null;
+
   return (
     // Without initialMetrics the provider renders nothing until it has measured the window,
     // which shows up as a black screen on launch in Expo Go.

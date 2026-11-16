@@ -46,22 +46,22 @@ export default function usePrescription({ from = null, catalog = [], customTempl
     return undefined;
   };
 
-  /** What stops the prescription from being saved, or null. */
-  const problem = () => {
+  /** What stops the prescription from being saved, or null. `fallbackReason`: the reason for a lock when none was written (the exam's diagnosis). */
+  const problem = ({ fallbackReason = '' } = {}) => {
     if (empty) return 'Thêm ít nhất một thuốc, một y lệnh chăm sóc, hoặc chọn mức hạn chế tập.';
     const medError = medProblem(named);
     if (medError) return medError;
-    if (level === 'none' && !reason.trim()) return 'Ghi lý do khóa tập — HLV và nhân viên chăm sóc nhận được lý do này.';
+    if (level === 'none' && !reason.trim() && !fallbackReason.trim()) return 'Ghi lý do khóa tập — HLV và nhân viên chăm sóc nhận được lý do này.';
     if (end && end < start) return 'Ngày kết thúc phải sau ngày bắt đầu.';
     return null;
   };
 
   /** The Treatment body (without horse and exam). */
-  const payload = () => ({
+  const payload = ({ fallbackReason = '' } = {}) => ({
     startDate: fromInputDate(start),
     endDate: end ? fromInputDate(end, '23:59') : undefined,
     trainingLevel: level,
-    lockReason: level === 'high' ? '' : reason.trim(),
+    lockReason: level === 'high' ? '' : reason.trim() || fallbackReason.trim(),
     medications: named.map(medToPayload),
     careInstructions: care.trim(),
   });

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { SectionList, StyleSheet, Text, View } from 'react-native';
+import { SectionList, StyleSheet, View } from 'react-native';
+import { Text } from './AppText';
 import Icon from './Icon';
 import { Badge, ChipRow, EmptyState, Row, Sheet } from './ui';
 import {

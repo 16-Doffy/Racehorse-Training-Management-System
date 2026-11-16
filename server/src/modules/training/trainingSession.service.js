@@ -210,6 +210,9 @@ async function createPostSessionCare(session) {
   return createdCount;
 }
 
+// A run the sensors followed can be watched again as a video (client: SessionVideo): sent to the owner with the news.
+const hasVideo = (session) => Boolean(session.actualStartAt) && session.metrics?.lastSpeed != null;
+
 /** Everything that follows a session reaching "completed" for the first time. */
 async function onCompleted(session, user) {
   const careTasksCreated = await createPostSessionCare(session);
@@ -227,7 +230,7 @@ async function onCompleted(session, user) {
       severity: 'info',
       message: `🏇 ${horse.name} đã hoàn thành buổi tập "${OBJECTIVE_LABELS[session.objective] || 'huấn luyện'}".${
         session.outcome?.met === null || session.outcome?.met === undefined ? '' : ` ${session.outcome.summary}`
-      }`,
+      }${hasVideo(session) ? ' 🎬 Video buổi tập đã sẵn sàng — bấm để xem.' : ''}`,
     });
   }
   return careTasksCreated;
@@ -344,7 +347,7 @@ async function onAborted(session, actor) {
       trainingSession: session._id,
       type: 'session_completed',
       severity: 'warning',
-      message: `⏹ ${horse.name} dừng buổi ${what} giữa chừng${ran} — ${why}.`,
+      message: `⏹ ${horse.name} dừng buổi ${what} giữa chừng${ran} — ${why}.${hasVideo(session) ? ' 🎬 Xem video tới lúc dừng.' : ''}`,
     });
   }
   if (['medical_lock', 'horse_left'].includes(session.abortCategory)) {

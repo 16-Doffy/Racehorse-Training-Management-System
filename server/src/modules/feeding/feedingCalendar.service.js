@@ -16,6 +16,8 @@ const { notifyCaretaker, notifyHorseStaff, pushNotification } = require('../aler
 const { logAction } = require('../audit/audit.service');
 const { SLOT_LABELS, stockFor, readItemsWith, mealSetProblem, minutesOf } = require('./mealInput');
 
+const { DIET_KINDS, SICK_DIET_KINDS, RAMP, rampFactor, sickKindOf } = require('./dietOrder');
+const { feedTypeOf } = require('../inventory/feedType');
 const { SLOTS, SICK_STATUSES, dietOf, weightWarning, trainingDayWork, workOf, heavierWork, pickFeed, pickSecond, pickSupplements, dayMeals, rationBasis, weekNeed, dayFocus, focusFeeds } = require('./rationRules');
 const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const atDay = (key) => new Date(`${key}T00:00:00`);
@@ -26,15 +28,27 @@ const bySlotOrder = (a, b) => SLOTS.indexOf(a.slot) - SLOTS.indexOf(b.slot);
 const plainMeal = (m) => ({ slot: m.slot, time: m.time, items: (m.items || []).map((i) => ({ inventoryItem: i.inventoryItem, name: i.name, amount: i.amount, unit: i.unit })), edited: Boolean(m.edited) });
 
 /**
- * The diet the horse is on now: sick while injured or isolated, normal once the vet finds it fit. Under
- * monitoring it keeps the diet it is on — back to normal only when it is fit (`plan`: its plan in use,
- * whose days ahead say; `rations`: its daily rations, which keep their healthy items while it is sick).
+ * The diet the horse is on now, { diet, kind }: sick while injured or isolated — the sick diet the vet
+ * ordered on the exam (`kind`, dietOrder.js), box rest when none was — normal once the vet finds it fit.
+ * Under monitoring, what the vet ordered on the exam; without an order, the diet it is on (`plan`: its
+ * plan in use, whose days ahead say; `rations`: its daily rations, which keep their healthy items while
+ * it is sick). `horse` needs healthStatus and vetDiet.
  */
-async function dietNow(horse, { plan, rations } = {}) {
-  if (horse?.healthStatus !== 'monitoring') return dietOf(horse?.healthStatus);
-  if (plan && (await FeedingCalendarDay.exists({ plan: plan._id, date: { $gte: dateKey(new Date()) }, diet: 'sick' }))) return 'sick';
-  return (rations || []).some((r) => r.healthyItems?.length) ? 'sick' : 'normal';
+async function healthDiet(horse, { plan, rations } = {}) {
+  const ordered = horse?.vetDiet?.kind;
+  if (horse?.healthStatus !== 'monitoring') return dietOf(horse?.healthStatus) === 'sick' ? { diet: 'sick', kind: sickKindOf(horse) } : { diet: 'normal', kind: null };
+  if (ordered === 'plan') return { diet: 'normal', kind: null };
+  if (SICK_DIET_KINDS.includes(ordered)) return { diet: 'sick', kind: ordered };
+  if (plan) {
+    const day = await FeedingCalendarDay.findOne({ plan: plan._id, date: { $gte: dateKey(new Date()) }, diet: 'sick' }).select('sickKind').lean();
+    if (day) return { diet: 'sick', kind: day.sickKind || 'rest' };
+  }
+  const sickRation = (rations || []).find((r) => r.healthyItems?.length);
+  return sickRation ? { diet: 'sick', kind: sickRation.sickKind || 'rest' } : { diet: 'normal', kind: null };
 }
+
+// One key for a day's diet and which sick diet, to tell whether its meals have to change.
+const dietKey = (d) => ((d?.diet || 'normal') === 'sick' ? `sick:${d.sickKind || 'rest'}` : 'normal');
 
 const clockAt = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 const partsMinutes = (segments = []) => (segments || []).reduce((n, x) => n + (Number(x.durationMinutes) || 0), 0);
@@ -85,13 +99,13 @@ function fitMealClocks(base, sessions) {
 
 async function buildCalendar(plan, { times = {} } = {}) {
   const [horse, stock, rations, assignment] = await Promise.all([
-    Horse.findById(plan.horse).select('name weightKg isArchived healthStatus'),
+    Horse.findById(plan.horse).select('name weightKg isArchived healthStatus vetDiet backToFeedAt'),
     InventoryItem.find({ category: 'feed', isActive: { $ne: false } }).select('name quantity unit feedType expiryDate isActive'),
-    FeedingSchedule.find({ horse: plan.horse }).select('mealTime timeOfDay items healthyItems'),
+    FeedingSchedule.find({ horse: plan.horse }).select('mealTime timeOfDay items healthyItems sickKind'),
     StableAssignment.findOne({ horse: plan.horse }).populate('assignedCaretaker', 'name isActive'),
   ]);
-  // An injured or isolated horse is not worked: its days from today take the sick diet.
-  const diet = await dietNow(horse, { plan, rations });
+  // An injured or isolated horse is not worked: its days from today take the sick diet the vet ordered.
+  const { diet, kind: sickKind } = await healthDiet(horse, { plan, rations });
   const problems = [];
   if (!horse || horse.isArchived) problems.push('Ngựa không còn được quản lý.');
   if (!horse?.weightKg || horse.weightKg <= 0) problems.push('Chưa có cân nặng của ngựa để tính khẩu phần.');
@@ -140,6 +154,8 @@ async function buildCalendar(plan, { times = {} } = {}) {
     const actual = bookedOn.get(dateKey(cursor)) || [];
     const work = actual.reduce((w, s) => heavierWork(w, SESSION_KINDS[s.kind]?.intensity || 'moderate'), workOf(phase, cursor));
     const dayDiet = cursor < today ? 'normal' : diet;
+    // Back from an illness: the concentrate builds back up over a week (dietOrder.js RAMP).
+    const ramp = dayDiet === 'normal' && cursor >= today ? rampFactor(horse?.backToFeedAt, cursor) : 1;
     // The day's work beside its meals: the sessions booked that day, else what the plan's week template puts on it.
     // Each with its hours: a booked one from its time and length, the template's at the plan's session times.
     const sessions = actual.length
@@ -157,14 +173,14 @@ async function buildCalendar(plan, { times = {} } = {}) {
             return { kind: w.kind, slot, distanceM: w.distanceM || null, at: start, until: clockAt(Math.min(minutesOf(start) + minutes, 1439)) };
           });
     // What is mixed in with the main hay and grain follows the day's own work (rationRules.js).
-    const focus = dayFocus(sessions, dayDiet);
+    const focus = dayFocus(sessions, dayDiet, sickKind);
     if (!mixByFocus.has(focus)) mixByFocus.set(focus, focusFeeds(stock, { forage, concentrate }, focus, { weekNeed: needs, day: today0 }));
     const mix = mixByFocus.get(focus);
     // The meals around the day's sessions: digested before, cooled down after (sick: not worked, usual clocks).
     const fitted = dayDiet === 'sick' ? { clocks, notes: [] } : fitMealClocks(clocks, sessions);
-    const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks: fitted.clocks, feeds: { forage, concentrate, supplements, ...mix }, diet: dayDiet, sessions });
-    const rationNote = [rationBasis(phase.key, work, sessions, dayDiet, mix.notes), fitted.notes.length ? `Giờ ăn theo giờ tập: ${fitted.notes.join(', ')}` : null].filter(Boolean).join(' · ');
-    days.push({ date: dateKey(cursor), phase: phase.key, work, diet: dayDiet, sessions, rationNote, past: cursor < today, meals });
+    const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks: fitted.clocks, feeds: { forage, concentrate, supplements, ...mix }, diet: dayDiet, sickKind, ramp, sessions });
+    const rationNote = [rationBasis(phase.key, work, sessions, dayDiet, mix.notes, { sickKind, ramp }), fitted.notes.length ? `Giờ ăn theo giờ tập: ${fitted.notes.join(', ')}` : null].filter(Boolean).join(' · ');
+    days.push({ date: dateKey(cursor), phase: phase.key, work, diet: dayDiet, sickKind: dayDiet === 'sick' ? sickKind : null, ramp, sessions, rationNote, past: cursor < today, meals });
   }
   if (!days.length) problems.push('Kế hoạch không có ngày hợp lệ để xếp lịch ăn.');
   if (end >= start && days.length === 672 && dateKey(end) !== days.at(-1).date) problems.push('Kế hoạch vượt quá 672 ngày.');
@@ -173,6 +189,7 @@ async function buildCalendar(plan, { times = {} } = {}) {
   return {
     horse,
     diet,
+    sickKind: diet === 'sick' ? sickKind : null,
     caretaker: assignment?.assignedCaretaker || null,
     stall: assignment?.stableBlock || null,
     clocks,
@@ -206,23 +223,30 @@ async function lockedToday(horseId) {
  *   this plan (`fresh` drops those: everything back to the rules);
  * - today, a meal already given, skipped or missed stays as it happened.
  * A horse that falls ill has the day as it stood kept aside (`healthy`), and takes it back once fit: what the
- * trainer changed for it is not lost to an illness. `fresh` drops that too.
- * Each day: { date, phase, work, sessions, meals, removedSlots, healthy, suggested }, `suggested` being the rules' meals.
+ * trainer changed for it is not lost to an illness. `fresh` drops that too. On the week back to the training
+ * ration (`ramp` < 1) such a meal comes back with the day's part of its concentrate, like the rules' meals.
+ * Each day: { date, phase, work, diet, sickKind, ramp, sessions, meals, removedSlots, healthy, suggested }, `suggested` being the rules' meals.
  */
 function mergeDays({ preview, saved, plan, times = {}, overrides = new Map(), fresh = false, locked = new Map(), refresh = new Set() }) {
   const todayKey = dateKey(new Date());
   const withTime = (m) => (times[m.slot] ? { ...m, time: times[m.slot] } : m);
+  // A meal with `factor` of its concentrate (the week back after an illness), half a kilo at least.
+  const concentrate = new Set((preview.stock || []).filter((i) => feedTypeOf(i) === 'concentrate').map((i) => String(i._id)));
+  const ramped = (meal, factor) =>
+    factor < 1
+      ? { ...meal, items: meal.items.map((i) => (concentrate.has(String(i.inventoryItem)) && String(i.unit).toLowerCase() === 'kg' ? { ...i, amount: Math.max(0.5, Math.round(i.amount * factor * 2) / 2) } : i)) }
+      : meal;
   return preview.days.filter((d) => !d.past).map((day) => {
     const stored = saved.get(day.date);
     // Fit again: the day as it was before the horse fell ill, read as an earlier confirmation of this plan.
     const beforeIllness = day.diet === 'normal' && stored?.diet === 'sick' && stored.healthy
-      ? { ...stored, meals: stored.healthy.meals, removedSlots: stored.healthy.removedSlots, diet: 'normal', approvedPlanUpdatedAt: new Date(0) }
+      ? { ...stored, meals: stored.healthy.meals, removedSlots: stored.healthy.removedSlots, diet: 'normal', sickKind: null, approvedPlanUpdatedAt: new Date(0) }
       : null;
     const old = fresh ? null : beforeIllness || stored;
     const fellIll = day.diet === 'sick' && stored && (stored.diet || 'normal') !== 'sick';
     const healthy = fresh || day.diet !== 'sick' ? null : fellIll ? { meals: stored.meals.map(plainMeal), removedSlots: stored.removedSlots || [] } : stored?.healthy || null;
     const samePlan = Boolean(old) && String(old.plan) === String(plan._id);
-    const sameDiet = (old?.diet || 'normal') === day.diet;
+    const sameDiet = dietKey(old) === dietKey(day);
     // `refresh`: days whose sessions changed since they were confirmed take the rules' meals for their new work.
     const current = !refresh.has(day.date) && samePlan && sameDiet && new Date(old.approvedPlanUpdatedAt) >= new Date(plan.updatedAt);
     const ruled = (slot) => day.meals.find((m) => m.slot === slot);
@@ -242,7 +266,8 @@ function mergeDays({ preview, saved, plan, times = {}, overrides = new Map(), fr
         .filter((m) => !removedSlots.includes(m.slot))
         .map((m) => {
           const edited = samePlan && sameDiet ? old.meals.find((o) => o.slot === m.slot && o.edited) : null;
-          return edited ? withTime(plainMeal(edited)) : { ...m, edited: false };
+          // Brought back from before the illness: on the week back, with the day's part of its concentrate.
+          return edited ? withTime(ramped(plainMeal(edited), beforeIllness && !fresh ? day.ramp ?? 1 : 1)) : { ...m, edited: false };
         });
     }
     if (day.date === todayKey) {
@@ -255,7 +280,7 @@ function mergeDays({ preview, saved, plan, times = {}, overrides = new Map(), fr
         removedSlots = removedSlots.filter((s) => s !== slot);
       }
     }
-    return { date: day.date, phase: day.phase, work: day.work, diet: day.diet, sessions: day.sessions, rationNote: day.rationNote, meals: meals.sort(bySlotOrder), removedSlots, healthy, suggested: day.meals };
+    return { date: day.date, phase: day.phase, work: day.work, diet: day.diet, sickKind: day.sickKind || null, ramp: day.ramp ?? 1, sessions: day.sessions, rationNote: day.rationNote, meals: meals.sort(bySlotOrder), removedSlots, healthy, suggested: day.meals };
   });
 }
 
@@ -276,7 +301,7 @@ function stockWarnings(days, stock) {
 async function calendarView(plan) {
   const preview = await buildCalendar(plan);
   const [saved, locked] = await Promise.all([
-    FeedingCalendarDay.find({ horse: plan.horse }).select('plan date meals removedSlots diet healthy approvedPlanUpdatedAt').lean(),
+    FeedingCalendarDay.find({ horse: plan.horse }).select('plan date meals removedSlots diet sickKind healthy approvedPlanUpdatedAt').lean(),
     lockedToday(plan.horse),
   ]);
   const savedByDate = new Map(saved.map((d) => [d.date, d]));
@@ -286,8 +311,9 @@ async function calendarView(plan) {
   return {
     plan: { _id: plan._id, horse: plan.horse, status: plan.status, updatedAt: plan.updatedAt, startDate: plan.startDate, endDate: plan.endDate, goal: plan.goal || null, sessionTime: plan.sessionTime || null },
     horse: preview.horse ? { _id: preview.horse._id, name: preview.horse.name, weightKg: preview.horse.weightKg, healthStatus: preview.horse.healthStatus } : null,
-    // 'sick': the days from today take the sick diet (the horse is injured or isolated).
+    // 'sick': the days from today take the sick diet (the horse is injured or isolated), `sickKind` the one the vet ordered.
     diet: preview.diet,
+    sickKind: preview.sickKind,
     caretaker: preview.caretaker ? { _id: preview.caretaker._id, name: preview.caretaker.name } : null,
     stall: preview.stall,
     clocks: preview.clocks,
@@ -387,12 +413,12 @@ async function saveDays({ plan, preview, actor, times, overrides = new Map(), fr
   const saveable = (meals) => meals.map(({ slot, time, items, edited }) => ({ slot, time, items, edited: Boolean(edited) }));
   const changed = effective.filter((d) => {
     const old = previousByDate.get(d.date);
-    return !old || old.plan.toString() !== String(plan._id) || old.phase !== d.phase || old.work !== d.work || (old.diet || 'normal') !== d.diet || signature(old.meals) !== signature(d.meals);
+    return !old || old.plan.toString() !== String(plan._id) || old.phase !== d.phase || old.work !== d.work || dietKey(old) !== dietKey(d) || signature(old.meals) !== signature(d.meals);
   });
   const ops = effective.map((day) => ({
     updateOne: {
       filter: { horse: plan.horse, date: day.date },
-      update: { $set: { plan: plan._id, phase: day.phase, work: day.work, diet: day.diet, meals: saveable(day.meals), removedSlots: day.removedSlots, healthy: day.healthy, approvedBy: actor._id, approvedPlanUpdatedAt: plan.updatedAt } },
+      update: { $set: { plan: plan._id, phase: day.phase, work: day.work, diet: day.diet, sickKind: day.sickKind || null, meals: saveable(day.meals), removedSlots: day.removedSlots, healthy: day.healthy, approvedBy: actor._id, approvedPlanUpdatedAt: plan.updatedAt } },
       upsert: true,
     },
   }));
@@ -443,14 +469,14 @@ async function followSessions(horseId, dates = []) {
       .filter((d) => targets.has(d.date))
       .filter((d) => {
         const old = savedByDate.get(d.date);
-        return old.work !== d.work || old.phase !== d.phase || (old.diet || 'normal') !== d.diet || signature(old.meals) !== signature(d.meals);
+        return old.work !== d.work || old.phase !== d.phase || dietKey(old) !== dietKey(d) || signature(old.meals) !== signature(d.meals);
       });
     if (!changed.length) return null;
     await FeedingCalendarDay.bulkWrite(
       changed.map((day) => ({
         updateOne: {
           filter: { horse: horseId, date: day.date },
-          update: { $set: { phase: day.phase, work: day.work, diet: day.diet, meals: day.meals.map(({ slot, time, items, edited }) => ({ slot, time, items, edited: Boolean(edited) })), removedSlots: day.removedSlots } },
+          update: { $set: { phase: day.phase, work: day.work, diet: day.diet, sickKind: day.sickKind || null, meals: day.meals.map(({ slot, time, items, edited }) => ({ slot, time, items, edited: Boolean(edited) })), removedSlots: day.removedSlots } },
         },
       })),
       { ordered: false }
@@ -482,10 +508,12 @@ async function followTodayRations(horseId, rations) {
 
 /**
  * The horse's meals follow its health (the club's choice of 01/11/2026). Injured or isolated, it is not
- * worked, so from today it eats the sick diet (rationRules.js): its plan's calendar days ahead are
- * written again for it, or its daily rations take the sick meals and keep their healthy items aside.
- * Found fit again, the calendar goes back to the plan's meals and the daily rations get their items
- * back. Under monitoring nothing changes. The trainer and the groom are told. Returns { diet } or null.
+ * worked, so from today it eats the sick diet the vet ordered on the exam (dietOrder.js; box rest when
+ * none was): its plan's calendar days ahead are written again for it, or its daily rations take the
+ * sick meals and keep their healthy items aside. Found fit again, the calendar goes back to the plan's
+ * meals and the daily rations get their items back, the concentrate building back up over a week.
+ * Under monitoring, what the vet ordered on the exam; without an order nothing changes. The trainer and
+ * the groom are told. Returns { diet, kind } or null.
  * When the meals cannot change yet (no forage in the store, …) the trainer and the Manager hear why and
  * the hourly run tries again. It never fails the caller, whose own work is done (the vet's exam is saved).
  */
@@ -518,34 +546,74 @@ async function tellDietStuck(horse, diet, why) {
 
 /** Hourly: the horses whose meals may still have to follow their health are tried again. */
 async function retryHealthDiets() {
-  const [sick, onSickDays, onSickRations] = await Promise.all([
+  const [sick, onSickDays, onSickRations, onTheWayBack, ordered] = await Promise.all([
     Horse.distinct('_id', { healthStatus: { $in: SICK_STATUSES }, isArchived: { $ne: true } }),
     FeedingCalendarDay.distinct('horse', { diet: 'sick', date: { $gte: dateKey(new Date()) } }),
     FeedingSchedule.distinct('horse', { 'healthyItems.0': { $exists: true } }),
+    // Daily rations on the week back to the whole ration: a step more of the concentrate each day.
+    FeedingSchedule.distinct('horse', { 'fullItems.0': { $exists: true } }),
+    // A horse under monitoring the vet put on a sick diet.
+    Horse.distinct('_id', { 'vetDiet.kind': { $in: SICK_DIET_KINDS }, isArchived: { $ne: true } }),
   ]);
-  for (const id of new Set([...sick, ...onSickDays, ...onSickRations].map(String))) {
+  for (const id of new Set([...sick, ...onSickDays, ...onSickRations, ...onTheWayBack, ...ordered].map(String))) {
     // eslint-disable-next-line no-await-in-loop
     await followHealthDiet(id);
   }
 }
 
+// "Cỏ ngâm ướt, …" → "cỏ ngâm ướt, …": the vet's care line inside a sentence.
+const lowerFirst = (s) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+const RAMP_TEXT = `thức ăn tinh tăng dần trong ${RAMP.length} ngày (${[...new Set(RAMP.map((f) => `${Math.round(f * 100)}%`))].join(' → ')} → 100%) cho dạ dày quen lại`;
+
+/** The sick diet in a line for a message: "Đau bụng (colic): cỏ ngâm ướt, … Bác sĩ dặn: …". */
+function sickDietText(kind, note) {
+  const meta = DIET_KINDS[kind] || DIET_KINDS.rest;
+  return `chế độ "${meta.label}"${meta.care ? ` — ${lowerFirst(meta.care.replace(/\.$/, ''))}` : ''}.${note ? ` Bác sĩ dặn: ${note.replace(/\.?$/, '.')}` : ''}`;
+}
+
+/**
+ * A daily ration's lines with `factor` of each concentrate (rounded to half a kilo, half a kilo at least):
+ * the week back to the whole ration after an illness. Hay and supplements stay whole.
+ */
+async function rampedItems(items, factor) {
+  const ids = items.map((i) => i.inventoryItem).filter(Boolean);
+  const stock = await InventoryItem.find({ _id: { $in: ids } }).select('name category feedType unit');
+  const concentrate = new Set(stock.filter((s) => feedTypeOf(s) === 'concentrate').map((s) => String(s._id)));
+  return items.map((i) => {
+    const plain = typeof i.toObject === 'function' ? i.toObject() : { ...i };
+    if (!concentrate.has(String(i.inventoryItem)) || !(i.amount > 0) || String(i.unit).toLowerCase() !== 'kg') return plain;
+    const amount = Math.max(0.5, Math.round(i.amount * factor * 2) / 2);
+    return { ...plain, amount, quantity: `${amount} ${i.unit}` };
+  });
+}
+
 async function applyHealthDiet(horseId) {
-  const horse = await Horse.findById(horseId).select('name healthStatus isArchived');
+  const horse = await Horse.findById(horseId).select('name healthStatus isArchived vetDiet backToFeedAt');
   if (!horse || horse.isArchived) return null;
+  // Fit again: the vet's order for the illness is over.
+  if (horse.healthStatus === 'eligible' && horse.vetDiet) await Horse.updateOne({ _id: horse._id }, { vetDiet: null });
   const plan = await TrainingPlan.findOne({ horse: horseId, status: 'active' });
   const rations = await FeedingSchedule.find({ horse: horseId });
-  const diet = await dietNow(horse, { plan, rations });
-  const ahead = plan ? await FeedingCalendarDay.find({ plan: plan._id, date: { $gte: dateKey(new Date()) } }).select('diet approvedBy').lean() : [];
+  const { diet, kind } = await healthDiet(horse, { plan, rations });
+  const ahead = plan ? await FeedingCalendarDay.find({ plan: plan._id, date: { $gte: dateKey(new Date()) } }).select('diet sickKind approvedBy').lean() : [];
+  const wasSick = ahead.length ? ahead.some((d) => d.diet === 'sick') : rations.some((r) => r.healthyItems?.length);
+  // Back on its feet, the week its concentrate builds back up starts today; ill again, that week is off.
+  const today = dayBounds(new Date()).start;
+  const backFrom = diet === 'normal' && wasSick ? today : diet === 'sick' ? null : horse.backToFeedAt;
+  if (String(backFrom) !== String(horse.backToFeedAt)) await Horse.updateOne({ _id: horse._id }, { backToFeedAt: backFrom });
+  const how = horse.healthStatus === 'quarantined' ? 'cách ly' : horse.healthStatus === 'injured' ? 'chấn thương' : 'được bác sĩ theo dõi';
+  const note = horse.vetDiet?.note || '';
+  const backText = horse.healthStatus === 'eligible' ? `${horse.name} đã đủ điều kiện` : `Bác sĩ cho ${horse.name} ăn lại theo kế hoạch tập`;
   if (ahead.length) {
-    if (ahead.every((d) => (d.diet || 'normal') === diet)) return null;
+    if (ahead.every((d) => dietKey(d) === dietKey({ diet, sickKind: kind }))) return null;
     const preview = await buildCalendar(plan);
     if (preview.problems.length) {
       await tellDietStuck(horse, diet, preview.problems.join(' '));
       return null;
     }
     const notice = diet === 'sick'
-      ? `🍽️ ${horse.name} đang ${horse.healthStatus === 'quarantined' ? 'cách ly' : 'chấn thương'}: từ hôm nay khẩu phần chuyển sang chế độ ăn khi bệnh (nhiều cỏ, ít thức ăn tinh, không điện giải hay dầu). Xem bữa hôm nay trong mục Cho ăn.`
-      : `🍽️ ${horse.name} đã đủ điều kiện: khẩu phần về lại theo kế hoạch tập từ hôm nay. Xem bữa hôm nay trong mục Cho ăn.`;
+      ? `🍽️ ${horse.name} đang ${how}: từ hôm nay ăn ${sickDietText(kind, note)} Xem bữa hôm nay trong mục Cho ăn.`
+      : `🍽️ ${backText}: khẩu phần về lại theo kế hoạch tập từ hôm nay, ${RAMP_TEXT}. Xem bữa hôm nay trong mục Cho ăn.`;
     const saved = await saveDays({ plan, preview, actor: { _id: ahead[0].approvedBy }, system: true, notice });
     if (saved.error) {
       await tellDietStuck(horse, diet, saved.error);
@@ -555,7 +623,8 @@ async function applyHealthDiet(horseId) {
     if (!rations.length) return null;
     const onSick = rations.some((r) => r.healthyItems?.length);
     if (diet === 'sick') {
-      const toChange = rations.filter((r) => r.items?.length && !r.healthyItems?.length);
+      // Not yet on it, or on another sick diet than the vet now orders.
+      const toChange = rations.filter((r) => r.items?.length && (!r.healthyItems?.length || (r.sickKind || 'rest') !== kind));
       if (!toChange.length) return null;
       const { meals, daily } = await suggestMeal({ horseId });
       // The sick diet is forage first: without any, the horse keeps the meals it has for now.
@@ -566,23 +635,50 @@ async function applyHealthDiet(horseId) {
       for (const r of toChange) {
         const meal = meals.find((m) => m.slot === r.mealTime);
         if (!meal?.items.length) continue;
-        r.healthyItems = r.items;
+        // Ill again on the week back: the whole ration is the one to give back.
+        if (!r.healthyItems?.length) r.healthyItems = r.fullItems?.length ? r.fullItems : r.items;
+        r.fullItems = undefined;
         r.items = meal.items.map(asRationItem);
+        r.sickKind = kind;
         // eslint-disable-next-line no-await-in-loop
         await r.save();
       }
     } else if (diet === 'normal' && onSick) {
+      // Fit: the ration as it was before, with part of its concentrate for the first days.
       for (const r of rations) {
         if (!r.healthyItems?.length) continue;
-        r.items = r.healthyItems;
+        r.fullItems = r.healthyItems;
+        // eslint-disable-next-line no-await-in-loop
+        r.items = await rampedItems(r.healthyItems, rampFactor(backFrom, today));
         r.healthyItems = undefined;
+        r.sickKind = null;
         // eslint-disable-next-line no-await-in-loop
         await r.save();
       }
+    } else if (diet === 'normal' && rations.some((r) => r.fullItems?.length)) {
+      // A day further on the week back (the hourly run): more of the concentrate, the whole ration at the end.
+      const factor = rampFactor(backFrom, today);
+      let changed = 0;
+      for (const r of rations) {
+        if (!r.fullItems?.length) continue;
+        // eslint-disable-next-line no-await-in-loop
+        const next = factor < 1 ? await rampedItems(r.fullItems, factor) : r.fullItems;
+        const done = factor >= 1;
+        if (!done && sameItems(next, r.items)) continue;
+        r.items = next;
+        if (done) r.fullItems = undefined;
+        changed += 1;
+        // eslint-disable-next-line no-await-in-loop
+        await r.save();
+      }
+      if (!changed) return null;
+      await followTodayRations(horseId, rations);
+      if (factor >= 1) await notifyCaretaker({ horse: horse._id, type: 'task_assigned', severity: 'info', message: `🍽️ ${horse.name} đã ăn lại đủ khẩu phần tập.` });
+      return { diet };
     } else return null;
     await followTodayRations(horseId, rations);
     await notifyCaretaker({ horse: horse._id, type: 'task_assigned', severity: 'info',
-      message: diet === 'sick' ? `🍽️ ${horse.name} đang bệnh: từ hôm nay khẩu phần chuyển sang chế độ ăn khi bệnh. Xem bữa hôm nay trong mục Cho ăn.` : `🍽️ ${horse.name} đã đủ điều kiện: khẩu phần về lại như trước khi bệnh.` });
+      message: diet === 'sick' ? `🍽️ ${horse.name} đang ${how}: từ hôm nay ăn ${sickDietText(kind, note)} Xem bữa hôm nay trong mục Cho ăn.` : `🍽️ ${backText}: khẩu phần về lại như trước khi bệnh, ${RAMP_TEXT}.` });
   }
   await notifyHorseStaff({
     staff: 'trainer',
@@ -590,10 +686,10 @@ async function applyHealthDiet(horseId) {
     type: 'ration_review',
     severity: diet === 'sick' ? 'warning' : 'info',
     message: diet === 'sick'
-      ? `🍽️ ${horse.name} đang ${horse.healthStatus === 'quarantined' ? 'cách ly' : 'chấn thương'}: khẩu phần từ hôm nay đã chuyển sang chế độ ăn khi bệnh (nhiều cỏ, ít thức ăn tinh, không điện giải hay dầu). Vẫn sửa được trong Khẩu phần ăn; khỏi bệnh thì tự về như cũ.`
-      : `🍽️ ${horse.name} đã đủ điều kiện: khẩu phần ${ahead.length ? 'về lại theo kế hoạch tập' : 'về lại như trước khi bệnh'} từ hôm nay.`,
+      ? `🍽️ ${horse.name} đang ${how}: khẩu phần từ hôm nay theo ${sickDietText(kind, note)} Vẫn sửa được trong Khẩu phần ăn; khỏi bệnh thì tự về như cũ.`
+      : `🍽️ ${backText}: khẩu phần ${ahead.length ? 'về lại theo kế hoạch tập' : 'về lại như trước khi bệnh'} từ hôm nay, ${RAMP_TEXT}.`,
   });
-  return { diet };
+  return { diet, kind };
 }
 
 /**
@@ -604,12 +700,12 @@ async function applyHealthDiet(horseId) {
  */
 async function suggestMeal({ horseId, slot }) {
   const [horse, plan, stock, rations] = await Promise.all([
-    Horse.findById(horseId).select('name weightKg healthStatus'),
+    Horse.findById(horseId).select('name weightKg healthStatus vetDiet'),
     TrainingPlan.findOne({ horse: horseId, status: 'active' }),
     InventoryItem.find({ category: 'feed', isActive: { $ne: false } }).select('name quantity unit feedType expiryDate isActive'),
-    FeedingSchedule.find({ horse: horseId }).select('mealTime timeOfDay items healthyItems'),
+    FeedingSchedule.find({ horse: horseId }).select('mealTime timeOfDay items healthyItems sickKind'),
   ]);
-  const diet = await dietNow(horse, { plan, rations });
+  const { diet, kind: sickKind } = await healthDiet(horse, { plan, rations });
   const today = dayBounds(new Date()).start;
   const phase = plan ? TrainingPlan.phasesOf(plan).find((p) => today >= dayBounds(p.startDate).start && today <= dayBounds(p.endDate).start) || null : null;
   const work = trainingDayWork(phase);
@@ -622,13 +718,16 @@ async function suggestMeal({ horseId, slot }) {
   feeds.forageMix = pickSecond(stock, 'forage', feeds.forage, { weekNeed: weekNeed(horse?.weightKg, 'forage'), day: today });
   feeds.concentrateMix = pickSecond(stock, 'concentrate', feeds.concentrate, { weekNeed: weekNeed(horse?.weightKg, 'concentrate'), day: today });
   const clocks = Object.fromEntries(SLOTS.map((s) => [s, rations.find((r) => r.mealTime === s)?.timeOfDay || DEFAULT_MEAL_TIMES[s]]));
-  const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks, feeds, diet });
+  // What the sick diet mixes in (a grass hay for laminitis, alfalfa for ulcers); a standing ration has no week back (ramp).
+  if (diet === 'sick') Object.assign(feeds, focusFeeds(stock, feeds, dayFocus([], diet, sickKind), { weekNeed: { forage: weekNeed(horse?.weightKg, 'forage'), concentrate: weekNeed(horse?.weightKg, 'concentrate') }, day: today }));
+  const meals = dayMeals({ weightKg: horse?.weightKg, work, phase, clocks, feeds, diet, sickKind });
   const lines = meals.flatMap((m) => m.items);
   const perDay = (item) => (item ? Math.round(lines.filter((i) => String(i.inventoryItem) === String(item._id)).reduce((n, i) => n + i.amount, 0) * 10) / 10 : 0);
   return {
     phase: phase?.key || null,
     work,
     diet,
+    sickKind: diet === 'sick' ? sickKind : null,
     weightKg: horse?.weightKg || null,
     warning: weightWarning(horse?.weightKg),
     sessionTime: plan?.sessionTime || null,

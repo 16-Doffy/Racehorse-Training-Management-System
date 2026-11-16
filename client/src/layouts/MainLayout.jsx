@@ -209,7 +209,7 @@ export default function MainLayout() {
               <div className="flex flex-col min-w-0">
                 <span className="st-brand-name truncate">Racehorse TMS</span>
                 <span className="st-brand-role truncate">
-                  {user?.role === ROLES.HEAD_TRAINER ? 'Huấn luyện viên Trưởng' : 'Quản lý Câu lạc bộ'}
+                  {ROLE_LABELS[user?.role] || 'Câu lạc bộ'}
                 </span>
               </div>
             ) : isStaff ? (
@@ -218,7 +218,7 @@ export default function MainLayout() {
                   Racehorse TMS
                 </span>
                 <span className="text-[11px] font-medium text-[#A7C4B5] truncate mt-0.5">
-                  {user?.role === ROLES.HEAD_TRAINER ? 'Huấn luyện viên Trưởng' : 'Quản lý Câu lạc bộ'}
+                  {ROLE_LABELS[user?.role] || 'Câu lạc bộ'}
                 </span>
               </div>
             ) : canvas ? (

@@ -54,6 +54,8 @@ function WeekTemplateModal({ plan, startPhase = 0, onClose }) {
     (plan.phases || []).map((p) => ({
       key: p.key,
       weeks: p.weeks,
+      // Days added for an illness or a checkpoint (or taken off to keep the race) stay as they are.
+      extraDays: p.extraDays || 0,
       weeklyVolumeKm: p.weeklyVolumeKm,
       intensity: p.intensity,
       surface: p.surface,
@@ -216,7 +218,7 @@ export default function TrainingPlanPage() {
         </div>
       ),
     },
-    { title: 'Lộ trình', key: 'phases', render: (_, r) => <div className="w-64"><PlanTimeline phases={r.phases} raceDate={r.targetRace?.raceDate} compact /></div> },
+    { title: 'Lộ trình', key: 'phases', render: (_, r) => <div className="w-64"><PlanTimeline phases={r.phases} raceDate={r.targetRace?.raceDate} mini /></div> },
     {
       title: 'Thời gian',
       key: 'dates',

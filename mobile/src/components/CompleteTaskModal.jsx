@@ -1,20 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from './AppText';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { taskApi } from '../api/endpoints';
 import Icon from './Icon';
 import { Button, ChipGroup, Row } from './ui';
+import { LotsLine } from './CareKit';
+import { useInventory } from '../hooks/useGroomData';
 import {
   EATEN_OPTIONS,
   MANURE_OPTIONS,
@@ -163,6 +155,12 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
 
   const info = task ? describeTask(task, schedules) : null;
   const issued = describeSupplies(task?.supplies);
+  // The lots each supply comes from: the ones expiring first, as the store takes them.
+  const { items: inventory } = useInventory();
+  const lotLines = (task?.supplies || [])
+    .filter((s) => s.inventoryItem && s.amount > 0)
+    .map((s) => ({ supply: s, item: inventory.find((i) => String(i._id) === String(s.inventoryItem?._id || s.inventoryItem)) }))
+    .filter((x) => x.item);
 
   return (
     <Modal
@@ -199,6 +197,9 @@ export default function CompleteTaskModal({ task, schedules = [], visible, onClo
                 {route ? <Text style={styles.issued}>Đường dùng: {route}</Text> : null}
                 {/* What recording this takes out of stock — issued, which is not the same as eaten. */}
                 {issued ? <Text style={styles.issued}>Xuất kho: {issued}</Text> : null}
+                {lotLines.map(({ supply, item }) => (
+                  <LotsLine key={String(item._id)} item={item} amount={supply.amount} unit={supply.unit} prefix={supply.name || item.name} />
+                ))}
               </View>
             ) : null}
 

@@ -17,6 +17,18 @@ const CARE_DUE = {
 };
 const KIND_LABELS = { vaccination: 'tiêm phòng', deworming: 'tẩy giun', farrier: 'đóng móng' };
 const DELETE_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Care done on a day answers a due date up to this many days after it (the vet's queue shows care that
+// many days ahead): an exam or a vaccination done early still ends that reminder.
+const ANSWERS_DAYS = 3;
+
+/** Whether care done at `when` answers the due date `due` (due already, or due within ANSWERS_DAYS). */
+function answersDue(due, when) {
+  if (!due) return false;
+  const limit = new Date(when);
+  limit.setHours(23, 59, 59, 999);
+  limit.setDate(limit.getDate() + ANSWERS_DAYS);
+  return new Date(due) <= limit;
+}
 
 /** Sets a care due date and clears its reminder mark, so the care scheduler reminds again for the new date. */
 function setCareDue(horse, kind, due) {
@@ -90,8 +102,14 @@ const createCareEvent = asyncHandler(async (req, res) => {
   if (error) return fail(res, error, 400);
 
   const event = await CareEvent.create({ horse: horse._id, kind, date: when, product, batchNumber, dose, note, ...details, nextDue: due, performedBy: req.user._id });
+  // The next date the vet booked replaces the reminder; with none, the reminder this care answered ends
+  // (it used to stay, overdue, and the vet was reminded every day of care already done). A date further
+  // ahead than this care could answer is left as it is.
   if (due) {
     setCareDue(horse, kind, due);
+    await horse.save();
+  } else if (answersDue(horse.careSchedule?.[CARE_DUE[kind][0]], when)) {
+    setCareDue(horse, kind, null);
     await horse.save();
   }
   await logAction({ actorId: req.user._id, action: 'careEvent.create', targetModel: 'CareEvent', targetId: event._id, metadata: { horse: horse.name, kind, product, nextDue: due } });
@@ -113,4 +131,4 @@ const deleteCareEvent = asyncHandler(async (req, res) => {
   return ok(res, { _id: event._id }, 'Care event deleted.');
 });
 
-module.exports = { listCareEvents, createCareEvent, deleteCareEvent, setCareDue, CARE_DUE };
+module.exports = { listCareEvents, createCareEvent, deleteCareEvent, setCareDue, answersDue, CARE_DUE };

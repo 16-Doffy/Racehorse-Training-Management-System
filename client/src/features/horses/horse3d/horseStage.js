@@ -671,11 +671,12 @@ export const boneNamed = (root, prefix) => {
 /**
  * Builds the stage on a canvas. Returns { ready (a promise), setCoat, setMotion, setSurface, resize,
  * dispose }. `view`: 'side' (side on, drag to look around) or 'turntable' (turns by itself).
+ * `recordable`: each frame stays readable after it is shown, so it can be copied into a video (SessionVideo).
  */
-export function createHorseStage(canvas, { view = 'side' } = {}) {
+export function createHorseStage(canvas, { view = 'side', recordable = false } = {}) {
   // Light on purpose: several cards can run at once. No real-time shadows (they draw the skinned horse
   // a second time), at most 1.5x the screen's pixels, at most FPS frames a second.
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: recordable });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;

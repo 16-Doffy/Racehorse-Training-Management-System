@@ -12,9 +12,10 @@ const templateSummary = (t) =>
  * The body of a prescription (usePrescription): template, period, training level, medicines and care
  * orders. `onDeleteTemplate(template)` offers to delete the vet's own template once it is picked.
  * `compact`: the same fields packed tighter, without section headings, for inside another form (the
- * exam form); the prescription page shows each in its own section.
+ * exam form); the prescription page shows each in its own section. `withLevel`: false when the form
+ * around sets the training level itself (the exam form, from its conclusion).
  */
-export default function PrescriptionFields({ rx, catalog, hasCustomTemplates, busy = false, compact = false, onTemplateApplied, onDeleteTemplate }) {
+export default function PrescriptionFields({ rx, catalog, hasCustomTemplates, busy = false, compact = false, withLevel = true, onTemplateApplied, onDeleteTemplate }) {
   const { chosen, templates } = rx;
 
   const templateSelect = (
@@ -116,12 +117,14 @@ export default function PrescriptionFields({ rx, catalog, hasCustomTemplates, bu
           </span>
         </div>
 
-        <div className="vet-rx-block">
-          <div className="vet-rx-label">Mức vận động trong thời gian điều trị</div>
-          {levelPicker}
-          <div className="vet-small vet-muted mt-1">{LEVEL_META[rx.level].desc}</div>
-          {rx.level !== 'high' && <div className="mt-2">{reasonInput}</div>}
-        </div>
+        {withLevel && (
+          <div className="vet-rx-block">
+            <div className="vet-rx-label">Mức vận động trong thời gian điều trị</div>
+            {levelPicker}
+            <div className="vet-small vet-muted mt-1">{LEVEL_META[rx.level].desc}</div>
+            {rx.level !== 'high' && <div className="mt-2">{reasonInput}</div>}
+          </div>
+        )}
 
         <div className="vet-rx-block">
           <div className="d-flex align-items-center justify-content-between gap-2">

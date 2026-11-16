@@ -6,7 +6,7 @@ Cách nối mô hình vào app nằm trong `src/three/horseModel.js`.
 Mô hình đang dùng: **HORSE – Realistic 3D Model (DEMO FREE)** của WildMesh 3D trên Sketchfab
 (https://sketchfab.com/3d-models/horse-realistic-3d-model-demo-free-65d6a70a6721495f938c93e80a5998e4).
 
-- Giấy phép: CC BY-NC 4.0. Phải ghi công tác giả (app hiện dòng ghi công dưới khung 3D) và
+- Giấy phép: CC BY-NC 4.0. Phải ghi công tác giả (app để dòng ghi công sau nút ⓘ ở góc khung 3D) và
   **không dùng cho mục đích thương mại**.
 - Muốn dùng thương mại thì đổi sang mô hình mua bản quyền, cùng tên file `horse.glb`.
 
@@ -31,6 +31,6 @@ Web dùng bản sao của file này ở `client/public/models/horse.glb`. Thay m
 ## Bản không yên cương cho bác sĩ
 Bản đồ chấn thương 3D của bác sĩ (web) dùng `client/public/models/horse-bare.glb`: chính mô hình này đã
 bỏ yên và dây cương (vật liệu `M_Saddle1`, `M_Saddle2`), giữ nguyên khung xương, hoạt ảnh và đơn vị — để
-khám và đánh dấu được vùng lưng, đầu. Dòng ghi công trên web ghi rõ "bản đã bỏ yên cương" (CC BY-NC
+khám và đánh dấu được vùng lưng, đầu. Ghi công trên web (nút ⓘ ở góc khung 3D) ghi rõ "bản đã bỏ yên cương" (CC BY-NC
 yêu cầu nêu việc chỉnh sửa). Thay `horse.glb` thì tạo lại bản này bằng `tools/horse-model/strip-tack.mjs`
 (hướng dẫn chạy ở đầu file).

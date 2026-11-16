@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Tooltip } from 'antd';
-import { InfoCircleOutlined } from '@ant-design/icons';
+import { Button } from 'antd';
 import { MOVING_HORSE } from '../../horses/horse3d/horseMotion';
+import ModelCredit from '../../horses/horse3d/ModelCredit';
 
 const GLASS = { background: 'rgba(15, 23, 42, 0.78)', border: '1px solid rgba(255,255,255,.18)', backdropFilter: 'blur(8px)' };
 const VIEW_PRESETS = [
@@ -121,16 +121,7 @@ export default function Track3D({ runners, focus = null, height = 360, label, cl
             Kéo để xoay sân
           </div>
         )}
-        <Tooltip trigger={['hover', 'focus', 'click']} placement="topRight" title={<div className="text-xs leading-snug">{MOVING_HORSE.credit}</div>}>
-          <button
-            type="button"
-            aria-label="Nguồn mô hình 3D"
-            className="absolute bottom-2 right-2 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full p-0 text-[12px] text-white"
-            style={GLASS}
-          >
-            <InfoCircleOutlined />
-          </button>
-        </Tooltip>
+        <ModelCredit lines={[MOVING_HORSE.credit]} style={GLASS} />
         {children}
       </div>
     </div>

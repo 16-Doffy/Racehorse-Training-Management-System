@@ -28,6 +28,10 @@ const feedingScheduleSchema = new mongoose.Schema(
     // The daily ration as it was before the horse went on the sick diet: given back when it is fit
     // again (feedingCalendar.service.js followHealthDiet). Empty while the horse is well.
     healthyItems: { type: [feedingItemSchema], default: undefined },
+    // On the sick diet: which one (feeding/dietOrder.js), so a change of the vet's order changes the meals.
+    sickKind: { type: String, enum: ['rest', 'colic', 'laminitis', 'respiratory', 'ulcer', null], default: null },
+    // Back from an illness: the whole ration, while `items` carry part of its concentrate for a week (dietOrder.js RAMP).
+    fullItems: { type: [feedingItemSchema], default: undefined },
     upcoming: {
       type: new mongoose.Schema(
         {

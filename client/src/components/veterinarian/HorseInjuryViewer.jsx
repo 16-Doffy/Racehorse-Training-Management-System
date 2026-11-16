@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { coatFor } from '../../features/horses/horse3d/horseBreeds';
 import { HORSE_MODEL, loadModelViewer, paintCoat } from '../../features/horses/horse3d/modelViewer';
+import ModelCredit from '../../features/horses/horse3d/ModelCredit';
 import { INTERNAL_PARTS, bodyFrame, coordinatesFor, frameFromCoordinates, pointOnMidline, regionAt } from './horseRegions';
 import { SEVERITY_META, recoveryMeta, shortBodyPart } from './vetFormat';
 
 // The horse of every other screen without its saddle and bridle (same rig and units), so the back and
 // the head can be examined and marked.
 const BARE_MODEL = `${import.meta.env.BASE_URL}models/horse-bare.glb`;
-const CREDIT = `${HORSE_MODEL.credit} · bản đã bỏ yên cương`;
 const VIEWS = [
   { key: 'left', label: 'Trái', orbit: '90deg 80deg 105%' },
   { key: 'right', label: 'Phải', orbit: '-90deg 80deg 105%' },
@@ -337,9 +337,7 @@ export default function HorseInjuryViewer({ horse, injuries = [], interactive = 
             <div>Không tải được mô hình 3D — cần kết nối mạng để tải trình xem.{interactive ? ' Vẫn có thể gõ vị trí tổn thương.' : ''}</div>
           </div>
         )}
-      </div>
-      <div className="vet-3d-credit" title={CREDIT}>
-        {CREDIT}
+        <ModelCredit lines={[HORSE_MODEL.credit, 'Bản đã bỏ yên cương']} style={{ right: 10, bottom: 10 }} />
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import {
   FullscreenExitOutlined,
   FullscreenOutlined,
   GatewayOutlined,
+  InfoCircleOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   QuestionCircleOutlined,
@@ -270,6 +271,9 @@ export default function Stall3D({ stalls = [], focusCode, onSelect, height = 380
                 />
               </Tooltip>
             )}
+            <Tooltip trigger={['hover', 'focus', 'click']} placement="topRight" title={HORSE_MODEL.credit}>
+              <Button size="small" className="pointer-events-auto shadow-sm" icon={<InfoCircleOutlined />} aria-label="Nguồn mô hình 3D" />
+            </Tooltip>
             <Popover content={help} placement="topRight" trigger="click">
               <Button size="small" className="pointer-events-auto shadow-sm" icon={<QuestionCircleOutlined />} aria-label="Cách điều khiển" />
             </Popover>
@@ -318,7 +322,6 @@ export default function Stall3D({ stalls = [], focusCode, onSelect, height = 380
           </div>
         )}
       </div>
-      <p className="mt-1.5 text-[11px] text-gray-500">{HORSE_MODEL.credit}. Chuồng, nhân viên và trang trại vẽ bằng code.</p>
     </div>
   );
 }

@@ -567,6 +567,73 @@ body[data-bs-theme='dark'] .vet-menu .dropdown-item.is-danger {
   border-radius: 0 0 14px 14px;
 }
 
+/* ---------- The exam form in three parts: found, concluded, ordered (MedicalExaminationForm) ---------- */
+.vet-ui .vet-exam-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 28px -18px 18px;
+  padding: 12px 18px;
+  background: var(--vet-card-2);
+  border-top: 1px solid var(--vet-border-soft);
+  border-bottom: 1px solid var(--vet-border-soft);
+}
+.vet-ui .vet-exam-step:first-child {
+  margin-top: -16px;
+  border-top: 0;
+  border-radius: 14px 14px 0 0;
+}
+.vet-ui .vet-exam-step-n {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--vet-primary-ink);
+  background: var(--vet-primary);
+}
+/* Part 3 takes the colour of the conclusion it follows from. */
+.vet-ui .vet-exam-step-n.vet-tone-good {
+  color: #fff;
+  background: var(--vet-good);
+}
+.vet-ui .vet-exam-step-n.vet-tone-watch {
+  color: #fff;
+  background: var(--vet-watch);
+}
+.vet-ui .vet-exam-step-n.vet-tone-bad {
+  color: #fff;
+  background: var(--vet-bad);
+}
+.vet-ui .vet-exam-step-n.vet-tone-quar {
+  color: #fff;
+  background: var(--vet-quar);
+}
+.vet-ui .vet-exam-step-title {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.vet-ui .vet-exam-step-sub {
+  font-size: 12.5px;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-exam-outcome {
+  flex: 1 1 260px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
+}
+
 /* ---------- Choice pills (radio-like) ---------- */
 .vet-ui .vet-choices {
   display: flex;
@@ -1517,7 +1584,7 @@ body[data-bs-theme='dark'] .vet-ui .vet-due:hover {
   gap: 6px;
 }
 .vet-ui .vet-3d-hint {
-  right: 10px;
+  right: 42px;
 }
 .vet-ui .vet-3d-legend {
   left: 10px;
@@ -1560,15 +1627,6 @@ body[data-bs-theme='dark'] .vet-ui .vet-due:hover {
   height: 100%;
   background: linear-gradient(90deg, #eab308, #fde68a);
   transition: width 0.2s;
-}
-.vet-ui .vet-3d-credit {
-  margin-top: 4px;
-  font-size: 10.5px;
-  color: var(--vet-faint);
-  text-align: right;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .vet-ui .vet-hs {
   position: relative;
@@ -2065,5 +2123,174 @@ body[data-bs-theme='dark'] .vet-ui.vet-drawer .btn-close {
 @media (max-width: 991px) {
   .vet-ui .vet-hide-md {
     display: none !important;
+  }
+}
+
+/* ---------- The vet's home (VeterinarianDashboard) ---------- */
+.vet-ui .vet-home-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.vet-ui .vet-home-head .vet-title {
+  margin: 2px 0 4px;
+  font-size: 26px;
+}
+.vet-ui .vet-home-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vet-brass);
+}
+.vet-ui .vet-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.vet-ui .vet-kpi {
+  --tone: var(--vet-neutral);
+  --tone-bg: var(--vet-neutral-bg);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--vet-border);
+  border-radius: 14px;
+  background: var(--vet-card);
+  box-shadow: var(--vet-shadow);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.vet-ui .vet-kpi.is-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.vet-ui .vet-kpi.is-clickable:hover {
+  border-color: var(--tone);
+  transform: translateY(-1px);
+}
+.vet-ui .vet-kpi.is-clickable:focus-visible {
+  outline: 3px solid var(--vet-focus);
+  outline-offset: 2px;
+}
+.vet-ui .vet-kpi.is-active {
+  border-color: var(--tone);
+  box-shadow: 0 0 0 1px var(--tone) inset, var(--vet-shadow);
+}
+.vet-ui .vet-kpi-good {
+  --tone: var(--vet-good);
+  --tone-bg: var(--vet-good-bg);
+}
+.vet-ui .vet-kpi-watch {
+  --tone: var(--vet-watch);
+  --tone-bg: var(--vet-watch-bg);
+}
+.vet-ui .vet-kpi-bad {
+  --tone: var(--vet-bad);
+  --tone-bg: var(--vet-bad-bg);
+}
+.vet-ui .vet-kpi-info {
+  --tone: var(--vet-info);
+  --tone-bg: var(--vet-info-bg);
+}
+.vet-ui .vet-kpi-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--tone-bg);
+  color: var(--tone);
+  font-size: 20px;
+}
+.vet-ui .vet-kpi-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vet-ui .vet-kpi-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-kpi-value {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--vet-ink);
+  font-variant-numeric: tabular-nums;
+}
+.vet-ui .vet-kpi-sub {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--vet-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The herd as one bar, each health status its share. */
+.vet-ui .vet-herd {
+  display: flex;
+  gap: 3px;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--vet-card-2);
+}
+.vet-ui .vet-herd i {
+  display: block;
+  flex-basis: 0;
+  min-width: 6px;
+}
+.vet-ui .vet-herd-good {
+  background: var(--vet-good);
+}
+.vet-ui .vet-herd-watch {
+  background: var(--vet-watch);
+}
+.vet-ui .vet-herd-bad {
+  background: var(--vet-bad);
+}
+.vet-ui .vet-herd-quar {
+  background: var(--vet-quar);
+}
+.vet-ui .vet-herd-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-herd-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.vet-ui .vet-herd-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+.vet-ui .vet-herd-legend b {
+  color: var(--vet-ink);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 1100px) {
+  .vet-ui .vet-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .vet-ui .vet-kpis {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

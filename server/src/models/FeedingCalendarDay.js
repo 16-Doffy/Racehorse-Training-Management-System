@@ -23,6 +23,8 @@ const schema = new mongoose.Schema({
   work: { type: String, enum: ['rest', 'light', 'moderate', 'high'], required: true },
   // 'sick': the horse was injured or isolated when the day was set, so it eats the sick diet (rationRules.js).
   diet: { type: String, enum: ['normal', 'sick'], default: 'normal' },
+  // On the sick diet: which one the vet ordered (feeding/dietOrder.js), box rest when none was.
+  sickKind: { type: String, enum: ['rest', 'colic', 'laminitis', 'respiratory', 'ulcer', null], default: null },
   meals: { type: [mealSchema], required: true },
   // The meals the trainer chose not to give that day, so confirming the plan again does not bring them back.
   removedSlots: { type: [{ type: String, enum: ['morning', 'noon', 'evening'] }], default: [] },

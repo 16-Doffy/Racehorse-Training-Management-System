@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import PlanTimeline from './PlanTimeline';
 import { WeekTimetable } from './weekTemplate';
 import { RaceFormBlock, RaceFormDot } from './RaceForm';
+import { PhaseCheckBlock, PlanJournal, PlanPauseNotice } from './PhaseCheckpoint';
 import { PHASE_LABELS, PLAN_STATUS_COLORS, PLAN_STATUS_LABELS, SESSION_KINDS, SURFACE_LABELS, sessionTimeLabel } from './trainingVocab';
 
 /** "Tuần 10/15 · Tốc độ, tuần 2/3", or when the cycle hasn't started / is over. */
@@ -15,7 +16,9 @@ export function whereNow(plan) {
   if (!p.started) return `Bắt đầu ngày ${dayjs(plan.startDate).format('DD/MM/YYYY')}`;
   if (p.ended) return `Đã qua hết ${p.totalWeeks} tuần của kế hoạch`;
   const phase = plan.phases?.[p.phaseIndex];
-  return `Tuần ${p.week}/${p.totalWeeks} · ${PHASE_LABELS[plan.phase]}${phase ? `, tuần ${p.phaseWeek}/${phase.weeks}` : ''}`;
+  // A phase made longer (an illness, a week more after its checkpoint) or shorter to keep the race.
+  const extra = phase?.extraDays ? ` (${phase.extraDays > 0 ? '+' : ''}${phase.extraDays} ngày)` : '';
+  return `Tuần ${p.week}/${p.totalWeeks} · ${PHASE_LABELS[plan.phase]}${phase ? `, tuần ${p.phaseWeek}/${p.phaseWeeks || phase.weeks}${extra}` : ''}`;
 }
 
 /** "Cúp Mùa Đông · 20/11 · còn 4 ngày", or null without a race. */
@@ -92,9 +95,11 @@ export default function PlanFocusPanel({ plan, locked = false, onEditWeek, menuI
       </header>
 
       <div className="flex flex-col gap-4 px-4 py-4">
+        <PlanPauseNotice plan={plan} />
         <div>
-          <PlanTimeline phases={phases} raceDate={plan.targetRace?.raceDate} />
+          <PlanTimeline phases={phases} raceDate={plan.targetRace?.status === 'withdrawn' ? null : plan.targetRace?.raceDate} />
           <div className="mt-1 text-xs text-gray-600">{whereNow(plan)}</div>
+          <PlanJournal plan={plan} />
         </div>
 
         <div className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -132,6 +137,11 @@ export default function PlanFocusPanel({ plan, locked = false, onEditWeek, menuI
           </div>
 
           <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-1">
+            {progress.checkpoint && (
+              <div className="rounded-lg border border-gray-200 px-3 py-2.5">
+                <PhaseCheckBlock plan={plan} />
+              </div>
+            )}
             {progress.form && (
               <div className="rounded-lg border border-gray-200 px-3 py-2.5">
                 <RaceFormBlock form={progress.form} />

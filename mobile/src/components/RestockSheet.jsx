@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from './AppText';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from './Icon';
 import { Badge, Banner, Button, Row, Sheet } from './ui';

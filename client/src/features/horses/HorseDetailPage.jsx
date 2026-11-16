@@ -190,7 +190,7 @@ export default function HorseDetailPage() {
         <Col xs={24} lg={14}>
           {/* At rest it is out in the pasture (the sessions page shows it on its training track). As tall as
               the card beside it, so no gap is left under the frame. */}
-          <MovingHorse3D creditInFrame fill breed={horse.breed} color={horse.color} motion={restingMotion(horse, injury)} surface="pasture" height="clamp(320px, 36vw, 520px)" />
+          <MovingHorse3D fill breed={horse.breed} color={horse.color} motion={restingMotion(horse, injury)} surface="pasture" height="clamp(320px, 36vw, 520px)" />
         </Col>
         <Col xs={24} lg={10}>
           <Card className="h-full !rounded-xl !border-[#E2D9C8]" title="Hồ sơ lý lịch">

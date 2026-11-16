@@ -1429,7 +1429,7 @@ export default function TrainingSessionPage() {
                 {/* The picked horse, in its own coat, doing the picked work at the target speed. */}
                 {draftKind && (
                   <div className="mb-3">
-                    <MovingHorse3D creditInFrame
+                    <MovingHorse3D
                       breed={draftHorse?.breed}
                       color={draftHorse?.color}
                       motion={motionOfKind(draftKind, draftSpeed)}

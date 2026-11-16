@@ -1,4 +1,5 @@
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from './AppText';
 import Icon from './Icon';
 import { colors, font, radius, shadow, spacing } from '../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

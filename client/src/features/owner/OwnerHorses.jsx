@@ -2,14 +2,22 @@ import { useMemo, useState } from 'react';
 import { Input, Segmented } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import { Card, EmptyNote, LoadFailed, OwnerPage, PageHead } from './kit';
-import HorseTile from './HorseTile';
+import HorseList from './HorseList';
 import { idOf } from './ownerFormat';
 import { useMyHorses, useOwnerSummary, useStallsByHorse } from './useOwnerData';
 
+// "Sao Mai" is found by "sao mai" and by "Sáo Mãi".
+const fold = (s) =>
+  (s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/đ/g, 'd');
+
 /**
- * The owner's horses, each as a card that opens its page. Counted the way the trainer counts them: a
- * horse is ready to train only with a vet's exam on file, an "eligible" status and no restriction; an
- * unexamined horse is counted apart rather than as healthy.
+ * The owner's horses as a list, a row each that opens the horse's page. Counted the way the trainer
+ * counts them: ready to train only with a vet's exam on file, "eligible" and no restriction; a horse no
+ * vet has examined is counted apart rather than as healthy.
  */
 export default function OwnerHorses() {
   const { horses, isLoading: horsesLoading, isError: horsesError, refetch: refetchHorses } = useMyHorses();
@@ -25,22 +33,15 @@ export default function OwnerHorses() {
     return 'watch';
   };
   const counts = rows.reduce((acc, r) => ({ ...acc, [groupOf(r)]: (acc[groupOf(r)] || 0) + 1 }), { ready: 0, watch: 0, unexamined: 0 });
-  const term = search.trim().toLowerCase();
-  const shown = rows.filter((r) => (filter === 'all' || groupOf(r) === filter) && (!term || r.horse.name.toLowerCase().includes(term)));
+  const term = fold(search.trim());
+  const shown = rows
+    .filter((r) => (filter === 'all' || groupOf(r) === filter) && (!term || fold(r.horse.name).includes(term)))
+    // The ones that need a look first, then by name.
+    .sort((a, b) => ({ watch: 0, unexamined: 1, ready: 2 })[groupOf(a)] - ({ watch: 0, unexamined: 1, ready: 2 })[groupOf(b)] || a.horse.name.localeCompare(b.horse.name, 'vi'));
 
   return (
     <OwnerPage>
-      <PageHead
-        eyebrow="Chủ sở hữu"
-        title="Ngựa của tôi"
-        sub="Hồ sơ, sức khỏe, lịch tập, giải đua và chuồng của từng chiến mã bạn sở hữu."
-        stats={[
-          { label: 'Tổng đàn', value: `${rows.length} con` },
-          { label: 'Đủ điều kiện tập', value: `${counts.ready} con` },
-          { label: 'Cần theo dõi', value: `${counts.watch} con` },
-          ...(counts.unexamined ? [{ label: 'Chưa khám', value: `${counts.unexamined} con` }] : []),
-        ]}
-      />
+      <PageHead eyebrow="Chủ sở hữu" title="Ngựa của tôi" sub={`${rows.length} chiến mã · bấm vào một con để xem hồ sơ, sức khỏe, lịch tập và giải đua.`} />
 
       <div className="own-toolbar">
         <Input allowClear prefix={<SearchOutlined />} placeholder="Tìm theo tên ngựa…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 280 }} aria-label="Tìm ngựa" />
@@ -50,16 +51,16 @@ export default function OwnerHorses() {
           options={[
             { value: 'all', label: `Tất cả (${rows.length})` },
             { value: 'ready', label: `Sẵn sàng (${counts.ready})` },
-            { value: 'watch', label: `Theo dõi (${counts.watch})` },
+            { value: 'watch', label: `Cần theo dõi (${counts.watch})` },
             ...(counts.unexamined ? [{ value: 'unexamined', label: `Chưa khám (${counts.unexamined})` }] : []),
           ]}
         />
       </div>
 
-      {rowsLoading || horsesLoading ? (
-        <EmptyNote>Đang tải…</EmptyNote>
-      ) : (rowsError || horsesError) && rows.length === 0 ? (
-        <Card>
+      <Card flush>
+        {rowsLoading || horsesLoading ? (
+          <EmptyNote>Đang tải…</EmptyNote>
+        ) : (rowsError || horsesError) && rows.length === 0 ? (
           <LoadFailed
             what="danh sách chiến mã"
             onRetry={() => {
@@ -67,18 +68,12 @@ export default function OwnerHorses() {
               if (horsesError) refetchHorses();
             }}
           />
-        </Card>
-      ) : shown.length === 0 ? (
-        <Card>
+        ) : shown.length === 0 ? (
           <EmptyNote>{rows.length ? 'Không có chiến mã nào khớp tìm kiếm.' : 'Bạn chưa có chiến mã nào. Khi CLB ghi nhận ngựa của bạn, chúng sẽ hiện ở đây.'}</EmptyNote>
-        </Card>
-      ) : (
-        <div className="own-horses">
-          {shown.map((r) => (
-            <HorseTile key={r.horse._id} row={r} horse={horsesById.get(idOf(r.horse))} stall={stallOf.get(idOf(r.horse))} stallsLoaded={stallsLoaded} />
-          ))}
-        </div>
-      )}
+        ) : (
+          <HorseList rows={shown} horsesById={horsesById} stallOf={stallOf} stallsLoaded={stallsLoaded} />
+        )}
+      </Card>
     </OwnerPage>
   );
 }

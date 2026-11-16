@@ -91,6 +91,8 @@ async function cancelPendingSessionsForLock(horseId, actor, level = 'none', lock
     });
     if (closed) aborted += 1;
   }
+  // Stopped altogether: its training plan pauses in the phase it is in (training/planProgress.service.js).
+  if (level === 'none') await require('../training/planProgress.service').followPlanOf(horseId);
   return { cancelled: result.modifiedCount, aborted };
 }
 

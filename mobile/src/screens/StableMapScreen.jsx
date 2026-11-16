@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../components/AppText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import AppHeader from '../components/AppHeader';
@@ -18,8 +19,8 @@ const KIND_ORDER = ['standard', 'recovery', 'isolation'];
  * each the stall, the horse, its health down its edge, today's work, and an icon for what to watch (a
  * treatment, a training limit, care overdue). The zones are buttons with their counts and fold under
  * their titles (only the first starts open), the search finds a horse or a stall, and "Cần chú ý"
- * keeps only the horses to watch. "Cả khu" on a zone shows every stall of it in the map's order —
- * colleagues' and empty ones faded — so the groom knows who stands next door, without a second map.
+ * keeps only the horses to watch. Only the stalls the groom looks after and that hold a horse: the
+ * stable work is theirs, a colleague's stall or an empty one is not.
  * Isolation and recovery zones are marked in their colours, come after the ordinary ones, and say
  * what the groom does differently there; a stall kept for a horse away in one of them says so.
  * Only the Manager places horses and gives stalls; this screen only shows.
@@ -31,8 +32,6 @@ export default function StableMapScreen({ navigation }) {
   const [search, setSearch] = useState('');
   // Zones the groom opened or closed by hand; by default only the first is open.
   const [toggled, setToggled] = useState(() => new Set());
-  // Zones shown whole: every stall of the zone, not only the groom's.
-  const [whole, setWhole] = useState(() => new Set());
   const [refreshing, setRefreshing] = useState(false);
   // How many tiles a row holds depends on the width; each tile takes its share of the row, so a web
   // scrollbar or a rounding never pushes one down a row.
@@ -83,7 +82,7 @@ export default function StableMapScreen({ navigation }) {
       return facts;
     };
     return [
-      ...myStalls.map((s) => ({ key: s._id, stall: s, horse: s.occupant?.horse || null, zone: s.zone, zoneName: s.zoneName || `Khu ${s.zone}`, code: s.code, kind: stallKind(s) })),
+      ...myStalls.filter((s) => s.occupant?.horse).map((s) => ({ key: s._id, stall: s, horse: s.occupant?.horse || null, zone: s.zone, zoneName: s.zoneName || `Khu ${s.zone}`, code: s.code, kind: stallKind(s) })),
       ...myUnplaced.map((u) => ({ key: u.assignment || refId(u.horse), stall: null, horse: u.horse, zone: LOOSE_ZONE, zoneName: 'Chuồng ghi tay', code: null, written: u.stableBlock, kind: STALL_KINDS.standard })),
     ].map((e) => ({ ...e, facts: factsOf(e.horse) }));
   }, [myStalls, myUnplaced, horseById, lockedHorseIds, treatmentByHorse, todayByHorse]);
@@ -91,7 +90,6 @@ export default function StableMapScreen({ navigation }) {
   const horses = entries.filter((e) => e.horse);
   const attention = horses.filter((e) => e.facts.watch).length;
   const workLeft = horses.reduce((sum, e) => sum + (e.facts.work?.open || 0), 0);
-  const entryByStall = new Map(entries.filter((e) => e.stall).map((e) => [e.stall._id, e]));
   const mapZoneByKey = new Map(zones.map((z) => [z.key, z]));
 
   // My zones, ordinary ones first in the map's order, then recovery and isolation; each with how many
@@ -130,7 +128,6 @@ export default function StableMapScreen({ navigation }) {
       return next;
     });
   const fold = flip(setToggled);
-  const flipWhole = flip(setWhole);
 
   const openHorse = (horse) => horse?._id && navigation.navigate('HorseDetail', { horseId: horse._id, name: horse.name });
   const onRefresh = async () => {
@@ -145,7 +142,7 @@ export default function StableMapScreen({ navigation }) {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <AppHeader
         title="Chuồng của tôi"
-        subtitle={`${horses.length} ngựa · ${entries.length} chuồng · ${myZones.length} khu${attention ? ` · ${attention} cần chú ý` : ''}`}
+        subtitle={`${horses.length} ngựa · ${myZones.length} khu${attention ? ` · ${attention} cần chú ý` : ''}`}
         right={<IconButton icon="care" label={`Việc còn lại hôm nay: ${workLeft}`} badge={workLeft} onPress={() => navigation.navigate('Chăm sóc', { segment: 'chores', at: Date.now() })} />}
       />
 
@@ -213,21 +210,18 @@ export default function StableMapScreen({ navigation }) {
           <View style={styles.panel}>
             <EmptyState
               icon={attentionOnly && !q ? 'checkCircle' : 'stall'}
-              text={entries.length ? (attentionOnly && !q ? 'Không có ngựa nào cần chú ý' : 'Không tìm thấy ngựa hay chuồng nào') : 'Bạn chưa được phân công chuồng nào'}
-              hint={entries.length ? undefined : 'Quản lý CLB là người xếp chuồng và người phụ trách.'}
+              text={entries.length ? (attentionOnly && !q ? 'Không có ngựa nào cần chú ý' : 'Không tìm thấy ngựa hay chuồng nào') : 'Bạn chưa được giao ngựa nào'}
+              hint={entries.length ? undefined : 'Quản lý CLB là người xếp chuồng và giao ngựa cho bạn.'}
             />
           </View>
         ) : (
           <>
             {shownZones.map((z, index) => {
               const closed = isFolded(z.key, index);
-              // Others' stalls in this zone: what "Cả khu" adds.
-              const others = z.map ? z.map.stalls.filter((s) => !entryByStall.has(s._id)).length : 0;
-              const showWhole = !filtering && whole.has(z.key) && !!z.map;
-              const tiles = showWhole ? z.map.stalls.map((s) => entryByStall.get(s._id) || { key: s._id, other: s }) : z.items;
+              const tiles = z.items;
               const special = z.kind.key !== 'standard';
               return (
-                <View key={z.key} style={[styles.zone, special && { borderLeftWidth: 3, borderLeftColor: z.kind.color, paddingLeft: spacing.sm }]}>
+                <View key={z.key} style={styles.zone}>
                   <View style={[styles.zoneHead, closed && styles.zoneHeadClosed, closed && special && { borderColor: z.kind.color, backgroundColor: z.kind.bg }]}>
                     <Pressable accessibilityRole="button" accessibilityState={{ expanded: !closed }} onPress={() => fold(z.key)} style={styles.zoneTitle} hitSlop={4}>
                       <Icon name={closed ? 'chevronRight' : 'chevronDown'} size={16} color={colors.forestLight} />
@@ -250,19 +244,6 @@ export default function StableMapScreen({ navigation }) {
                         </View>
                       ) : null}
                     </Pressable>
-                    {!closed && others > 0 && !filtering ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: showWhole }}
-                        accessibilityLabel={showWhole ? `Chỉ chuồng của tôi trong ${z.name}` : `Xem cả ${z.name}: thêm ${others} chuồng khác`}
-                        onPress={() => flipWhole(z.key)}
-                        style={[styles.wholeToggle, showWhole && styles.wholeToggleOn]}
-                        hitSlop={6}
-                      >
-                        <Icon name="stable" size={13} color={showWhole ? colors.white : colors.forestLight} />
-                        <Text style={[styles.wholeText, showWhole && { color: colors.white }]}>{showWhole ? 'Chỉ của tôi' : 'Cả khu'}</Text>
-                      </Pressable>
-                    ) : null}
                   </View>
                   {special && !closed ? <KindRules kind={z.kind} /> : null}
                   {z.key === LOOSE_ZONE && !closed ? (
@@ -272,7 +253,7 @@ export default function StableMapScreen({ navigation }) {
                     <View style={styles.grid} onLayout={(ev) => setGridWidth(Math.floor(ev.nativeEvent.layout.width))}>
                       {tiles.map((e) => (
                         <View key={e.key} style={[styles.cell, { width: cell }]}>
-                          {e.other ? <OtherMini stall={e.other} onPress={() => openHorse(e.other.occupant?.horse)} /> : e.horse ? <MiniTile entry={e} onPress={() => openHorse(e.horse)} /> : <EmptyMini stall={e.stall} />}
+                          <MiniTile entry={e} onPress={() => openHorse(e.horse)} />
                         </View>
                       ))}
                     </View>
@@ -378,9 +359,8 @@ function MiniTile({ entry, onPress }) {
       accessibilityRole="button"
       accessibilityLabel={`${horse.name}, chuồng ${code || written || 'chưa có'}${special ? ` (${kind.short.toLowerCase()})` : ''}, ${status.label}${work?.total ? `, ${work.done} trên ${work.total} việc` : ''}`}
       onPress={onPress}
-      style={({ pressed }) => [styles.mini, facts.watch && styles.miniWatch, special && { backgroundColor: kind.bg, borderColor: kind.color }, pressed && { opacity: 0.8 }]}
+      style={({ pressed }) => [styles.mini, special && { backgroundColor: kind.bg }, pressed && { opacity: 0.8 }]}
     >
-      <View style={[styles.miniEdge, { backgroundColor: status.color }]} />
       <Row style={{ justifyContent: 'space-between', gap: 2 }}>
         <Text style={[styles.miniCode, !code && { color: colors.textMuted }]} numberOfLines={1}>
           {code || 'Ghi tay'}
@@ -395,67 +375,18 @@ function MiniTile({ entry, onPress }) {
       <Text style={styles.miniName} numberOfLines={1}>
         {horse.name}
       </Text>
-      <Text style={[styles.miniHealth, { color: status.color }]} numberOfLines={1}>
-        {status.label}
-      </Text>
+      <Row style={{ gap: 4 }}>
+        <View style={[styles.miniDot, { backgroundColor: status.color }]} />
+        <Text style={[styles.miniHealth, { color: horse.healthStatus && horse.healthStatus !== 'eligible' ? status.color : colors.textMuted }]} numberOfLines={1}>
+          {status.label}
+        </Text>
+      </Row>
       <View style={{ gap: 3, marginTop: 'auto' }}>
         <Text style={[styles.miniWork, work?.open ? { color: colors.orange } : null]} numberOfLines={1}>
           {work?.total ? `${work.done}/${work.total} việc` : 'Không có việc'}
         </Text>
         <ProgressBar percent={percent} tint={colors.green} track={colors.graySoft} height={3} />
       </View>
-    </Pressable>
-  );
-}
-
-/** A stall of mine with no horse yet, under maintenance, or kept for a horse away: in its place in the zone, faded. */
-function EmptyMini({ stall }) {
-  const maintenance = stall?.status === 'maintenance';
-  const kept = stall?.reservedFor;
-  return (
-    <View
-      style={[styles.mini, styles.miniEmpty, kept && styles.miniKept]}
-      accessibilityLabel={`Chuồng ${stall?.code || ''} của tôi ${maintenance ? 'đang bảo trì' : kept ? `giữ chỗ cho ${kept.horse?.name || 'ngựa đang điều trị'}` : 'trống'}`}
-    >
-      <Text style={[styles.miniCode, { color: colors.textMuted }]} numberOfLines={1}>
-        {stall?.code || '—'}
-      </Text>
-      <Text style={[styles.miniName, { color: colors.textFaint }]} numberOfLines={1}>
-        {maintenance ? 'Bảo trì' : kept ? 'Giữ chỗ' : 'Trống'}
-      </Text>
-      {kept ? (
-        <Text style={styles.miniKeptFor} numberOfLines={2}>
-          {kept.horse?.name ? `${kept.horse.name} · đang ở ${kept.now}` : 'Ngựa đang điều trị'}
-        </Text>
-      ) : null}
-      <Text style={styles.miniOwner}>Của tôi</Text>
-    </View>
-  );
-}
-
-/** A colleague's stall (or an empty one) shown with the whole zone: faded, the horse in it if any. */
-function OtherMini({ stall, onPress }) {
-  const state = stallState(stall);
-  const horse = stall.occupant?.horse;
-  const maintenance = state.key === 'maintenance';
-  return (
-    <Pressable
-      accessibilityRole={horse ? 'button' : undefined}
-      accessibilityLabel={`Chuồng ${stall.code}: ${horse?.name || (maintenance ? 'bảo trì' : stall.occupied ? 'có ngựa' : 'trống')}, người khác phụ trách`}
-      disabled={!horse}
-      onPress={onPress}
-      style={({ pressed }) => [styles.mini, styles.miniOther, pressed && { opacity: 0.7 }]}
-    >
-      <View style={[styles.miniEdge, { backgroundColor: state.color, opacity: 0.5 }]} />
-      <Text style={[styles.miniCode, { color: colors.textMuted }]} numberOfLines={1}>
-        {stall.code}
-      </Text>
-      <Text style={[styles.miniName, { color: horse ? colors.textMuted : colors.textFaint, fontWeight: horse ? '700' : '600' }]} numberOfLines={1}>
-        {horse?.name || (stall.occupied ? 'Có ngựa' : maintenance ? 'Bảo trì' : stall.reservedFor ? `Giữ chỗ${stall.reservedFor.horse?.name ? `: ${stall.reservedFor.horse.name}` : ''}` : 'Trống')}
-      </Text>
-      <Text style={styles.miniOwner} numberOfLines={1}>
-        {stall.caretaker?.name ? stall.caretaker.name : horse || stall.occupied ? 'Người khác' : 'Chưa giao'}
-      </Text>
     </Pressable>
   );
 }
@@ -476,9 +407,6 @@ const styles = StyleSheet.create({
   zoneName: { fontSize: 15, fontWeight: '800', color: colors.forest, flexShrink: 1 },
   zoneWatch: { paddingHorizontal: 7, paddingVertical: 1, borderRadius: radius.pill, backgroundColor: colors.redSoft },
   zoneWatchText: { fontSize: 11, fontWeight: '800', color: colors.red },
-  wholeToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white },
-  wholeToggleOn: { backgroundColor: colors.forest, borderColor: colors.forest },
-  wholeText: { fontSize: 12, fontWeight: '700', color: colors.forestLight },
   // Three (or four) tiles a row: each cell is its share of the row, the gap is the cells' own padding.
   grid: { flexDirection: 'row', flexWrap: 'wrap', margin: -3 },
   cell: { padding: 3 },
@@ -486,8 +414,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     minHeight: 92,
     paddingVertical: 7,
-    paddingLeft: 10,
-    paddingRight: 6,
+    paddingHorizontal: 8,
     borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.borderSoft,
@@ -495,15 +422,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     gap: 1,
   },
-  miniWatch: { borderColor: '#fecaca' },
-  miniEdge: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
-  miniEmpty: { borderStyle: 'dashed', borderColor: colors.border, backgroundColor: colors.cream },
-  miniOther: { backgroundColor: colors.graySoft, borderColor: colors.borderSoft },
+  miniDot: { width: 7, height: 7, borderRadius: 4 },
   miniCode: { fontSize: 12, fontWeight: '800', color: colors.forest, letterSpacing: 0.3, flexShrink: 1 },
   miniName: { fontSize: 13.5, fontWeight: '800', color: colors.text },
   miniHealth: { fontSize: 11, fontWeight: '700' },
   miniWork: { fontSize: 10.5, fontWeight: '700', color: colors.textMuted },
-  miniOwner: { fontSize: 10.5, color: colors.textFaint, marginTop: 'auto' },
   legend: { flexWrap: 'wrap', gap: spacing.md, paddingHorizontal: 2 },
   zonePick: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 42, paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.cream },
   zonePickText: { flex: 1, fontSize: 14, fontWeight: '800', color: colors.forest },

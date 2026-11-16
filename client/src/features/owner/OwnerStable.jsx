@@ -14,9 +14,9 @@ const OFF_MAP = 'off-map';
 
 /**
  * Where the owner's horses live, the way the stable is laid out: pick the zone, then the stall (on the
- * map or in the barn in 3D), and the horse in it shows with today's care and its rations. Only the
- * stalls of the owner's horses can be picked; the others show as the map has them. The horse stays in
- * the URL (?horse=<id>), and the zone follows it.
+ * map or in the barn in 3D), and the horse in it shows with today's care and its rations. The map and
+ * the barn show only the stalls of the owner's own horses, never the rest of the zone. The horse stays
+ * in the URL (?horse=<id>), and the zone follows it.
  */
 export default function OwnerStable() {
   const { horses, isLoading } = useMyHorses();
@@ -52,7 +52,7 @@ export default function OwnerStable() {
   };
 
   const tabs = [
-    ...zones.map((z) => ({ key: z.key, name: z.name, sub: `${z.mine.length} ngựa của bạn · ${z.stalls.length} chuồng` })),
+    ...zones.map((z) => ({ key: z.key, name: z.name, sub: `${z.mine.length} chuồng có ngựa của bạn` })),
     ...(offMap.length ? [{ key: OFF_MAP, name: 'Chưa có trên sơ đồ', sub: `${offMap.length} ngựa` }] : []),
   ];
   const placed = horses.filter((h) => byHorse.has(idOf(h))).length;
@@ -109,9 +109,9 @@ export default function OwnerStable() {
             </div>
             {zone && stall ? (
               <div className="own-barn">
-                <Stall3D stalls={zone.stalls} focusCode={stall.code} onSelect={pickStall} height="clamp(300px, 52vh, 500px)" />
+                <Stall3D stalls={zone.mine} focusCode={stall.code} onSelect={pickStall} height="clamp(300px, 52vh, 500px)" />
                 <aside className="own-barn-side">
-                  <StableMap stalls={zone.stalls} zoneKey={zone.key} selectedCode={stall.code} onSelect={pickStall} canSelect={(s) => mineSet.has(idOf(s.occupant?.horse))} compact />
+                  <StableMap stalls={zone.mine} zoneKey={zone.key} selectedCode={stall.code} onSelect={pickStall} canSelect={(s) => mineSet.has(idOf(s.occupant?.horse))} aisle={false} legend={['ok', 'watch', 'bad']} compact />
                   <InStall horse={horse} stall={stall} />
                 </aside>
               </div>

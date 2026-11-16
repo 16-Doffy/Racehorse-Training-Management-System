@@ -16,7 +16,7 @@ export const HORSE_MODEL = {
   animation: 'Horse|Horse_Idle',
   // The materials the coat is painted on: their textures are neutral grey.
   coatMaterials: { body: 'M_Body', hair: 'M_Hair' },
-  // Shown under the viewer, as the model's licence (CC BY-NC 4.0) requires.
+  // Behind the "i" in the viewer's corner (ModelCredit), as the model's licence (CC BY-NC 4.0) requires.
   credit: 'Mô hình 3D: “HORSE – Realistic 3D Model” · WildMesh 3D · CC BY-NC 4.0',
 };
 

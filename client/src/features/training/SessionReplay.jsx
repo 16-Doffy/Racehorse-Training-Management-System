@@ -27,7 +27,7 @@ const PACES = [
  * reading); on the last one, pulled up on the sore leg if the feed stopped the run as a suspected
  * injury, else standing once the playback is over.
  */
-function motionAt(session, readings, i, running, target, pace) {
+export function motionAt(session, readings, i, running, target, pace) {
   const r = readings[i];
   const last = i === readings.length - 1;
   const trial = session.kind === 'trial';
@@ -103,7 +103,7 @@ function ReplayBody({ session, readings, horse, plan }) {
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
       <div className="min-w-0 lg:col-span-6">
-        <MovingHorse3D creditInFrame
+        <MovingHorse3D
           breed={horse?.breed}
           color={horse?.color}
           motion={motionAt(session, readings, index, running, target, pace)}

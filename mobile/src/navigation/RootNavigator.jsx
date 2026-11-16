@@ -1,5 +1,7 @@
-import { Text, View } from 'react-native';
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { View } from 'react-native';
+import { Text } from '../components/AppText';
+import { DefaultTheme, NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { FONT } from '../components/AppText';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Icon from '../components/Icon';
@@ -11,6 +13,7 @@ import StableMapScreen from '../screens/StableMapScreen';
 import CareScreen from '../screens/CareScreen';
 import SuppliesScreen from '../screens/SuppliesScreen';
 import IncidentsScreen from '../screens/IncidentsScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
 import HorseDetailScreen from '../screens/HorseDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { Loading } from '../components/ui';
@@ -20,6 +23,16 @@ import { colors } from '../theme';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 const navigationRef = createNavigationContainerRef();
+// The navigators' own text (headers, tab labels, back titles) in the app's typeface too.
+const theme = {
+  ...DefaultTheme,
+  fonts: {
+    regular: { fontFamily: FONT.regular, fontWeight: 'normal' },
+    medium: { fontFamily: FONT.medium, fontWeight: 'normal' },
+    bold: { fontFamily: FONT.semibold, fontWeight: 'normal' },
+    heavy: { fontFamily: FONT.bold, fontWeight: 'normal' },
+  },
+};
 
 // Where tapping a live notification takes the groom: stock news to the storeroom, the rest home.
 const STOCK_NOTIFICATIONS = ['stock_update', 'restock_decision', 'low_stock'];
@@ -81,7 +94,7 @@ function Tabs() {
           paddingBottom: 10,
           paddingTop: 8,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: 11, fontFamily: FONT.medium },
         tabBarItemStyle: { paddingHorizontal: 2 },
         tabBarIcon: ({ focused }) => <TabIcon name={route.name} focused={focused} badge={badges[route.name] || 0} />,
       })}
@@ -98,7 +111,7 @@ const detailHeader = {
   headerShown: true,
   headerStyle: { backgroundColor: colors.forest },
   headerTintColor: colors.white,
-  headerTitleStyle: { fontWeight: '700' },
+  headerTitleStyle: { fontFamily: FONT.semibold },
 };
 
 export default function RootNavigator() {
@@ -107,13 +120,14 @@ export default function RootNavigator() {
   if (restoring) return <Loading text="Đang mở phiên làm việc..." />;
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer ref={navigationRef} theme={theme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
           <>
             <Stack.Screen name="Tabs" component={Tabs} />
             <Stack.Screen name="Profile" component={ProfileScreen} options={{ ...detailHeader, title: 'Hồ sơ của tôi' }} />
             <Stack.Screen name="Incidents" component={IncidentsScreen} options={{ ...detailHeader, title: 'Báo cáo sự cố' }} />
+            <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ ...detailHeader, title: 'Thông báo' }} />
             <Stack.Screen
               name="HorseDetail"
               component={HorseDetailScreen}

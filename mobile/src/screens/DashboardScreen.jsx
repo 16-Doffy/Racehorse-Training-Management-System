@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../components/AppText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import { NotificationBell } from '../components/AppHeader';
-import { Badge, EmptyState, ProgressBar, Row, StallPlate } from '../components/ui';
+import { Badge, EmptyState, ProgressBar, Row } from '../components/ui';
+import { StallTag } from '../components/CareKit';
 import { useAuth } from '../auth/AuthContext';
 import { useCarePlan, useFeedings, useInventory, useRefreshAll, useStableOverview, useToday } from '../hooks/useGroomData';
 import {
@@ -117,7 +119,7 @@ export default function DashboardScreen({ navigation }) {
   const dueNow = open.filter((t) => ['ready', 'late'].includes(stateOf(t)?.key));
   const nowSegment = ['medication', 'feeding', 'chores'].find((s) => dueNow.some((t) => segmentOf(t) === s));
   const next = missed.length
-    ? { tone: 'bad', icon: 'clock', title: `${missed.length} bữa/liều quá giờ chưa ghi nhận`, hint: 'Báo "quên ghi" hoặc "không làm được"', action: 'Xử lý', segment: segmentOf(missed[0]) }
+    ? { tone: 'bad', icon: 'clock', title: `${missed.length} bữa/liều quá giờ chưa ghi`, hint: 'Báo "quên ghi" hoặc "không làm được"', action: 'Xử lý', segment: segmentOf(missed[0]) }
     : nowSegment
       ? {
           tone: 'now',
@@ -205,17 +207,17 @@ export default function DashboardScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}>
         {/* The shift: how far it has got, and what to do next. */}
         <View style={[styles.hero, shadow.raised]}>
-          <Row style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
-            <View>
-              <Text style={styles.heroLabel}>Ca hôm nay</Text>
-              <Text style={styles.heroCount}>
-                {completed.length}
-                <Text style={styles.heroOf}>/{planned} việc đã xong</Text>
-              </Text>
+          <Row style={{ justifyContent: 'space-between' }}>
+            <Text style={styles.heroLabel}>Ca hôm nay</Text>
+            <View style={styles.heroPercentPill}>
+              <Text style={styles.heroPercent}>{percent}%</Text>
             </View>
-            <Text style={styles.heroPercent}>{percent}%</Text>
           </Row>
-          <ProgressBar percent={percent} height={8} />
+          <Text style={styles.heroCount}>
+            {completed.length}
+            <Text style={styles.heroOf}> / {planned} việc đã xong</Text>
+          </Text>
+          <ProgressBar percent={percent} height={6} />
           {todayTasks.length !== planned ? <Text style={styles.heroNote}>{todayTasks.length - planned} việc HLV cho bỏ qua hôm nay</Text> : null}
 
           {next ? (
@@ -226,11 +228,10 @@ export default function DashboardScreen({ navigation }) {
               onPress={() => go(next.segment)}
               style={({ pressed }) => [styles.next, pressed && { opacity: 0.85 }]}
             >
-              <View style={[styles.nextIcon, next.tone === 'bad' && { backgroundColor: 'rgba(220,38,38,0.25)' }]}>
-                <Icon name={next.icon} size={18} color={next.tone === 'bad' ? '#fca5a5' : colors.gold} />
+              <View style={[styles.nextIcon, next.tone === 'bad' && { backgroundColor: 'rgba(248,113,113,0.18)' }]}>
+                <Icon name={next.icon} size={16} color={next.tone === 'bad' ? '#fca5a5' : colors.gold} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.nextLabel}>{next.tone === 'bad' ? 'Cần làm trước' : next.tone === 'now' ? 'Việc tiếp theo' : 'Sắp tới'}</Text>
                 <Text style={styles.nextTitle} numberOfLines={2}>
                   {next.title}
                 </Text>
@@ -238,11 +239,9 @@ export default function DashboardScreen({ navigation }) {
                   {next.hint}
                 </Text>
               </View>
-              <View style={{ alignItems: 'center', gap: 3 }}>
-                <View style={[styles.nextAction, next.tone === 'bad' && { backgroundColor: colors.red }]}>
-                  <Icon name="arrowRight" size={18} color={next.tone === 'bad' ? colors.white : colors.forest} />
-                </View>
-                <Text style={styles.nextActionText}>{next.action}</Text>
+              <View style={[styles.nextAction, next.tone === 'bad' && { backgroundColor: colors.red }]}>
+                <Text style={[styles.nextActionText, next.tone === 'bad' && { color: colors.white }]}>{next.action}</Text>
+                <Icon name="chevronRight" size={14} color={next.tone === 'bad' ? colors.white : colors.forest} />
               </View>
             </Pressable>
           ) : (
@@ -308,9 +307,8 @@ export default function DashboardScreen({ navigation }) {
                     onPress={() => navigation.navigate('HorseDetail', { horseId: h.id, name: h.horse?.name })}
                     style={({ pressed }) => [styles.horse, pressed && { opacity: 0.85 }]}
                   >
-                    <View style={[styles.horseTop, { backgroundColor: health.color }]} />
                     <Row style={{ justifyContent: 'space-between' }}>
-                      <StallPlate code={h.stall} name={h.horse?.name} size="sm" />
+                      <StallTag code={h.stall} name={h.horse?.name} />
                       {lockedHorseIds.has(h.id) ? <Icon name="lock" size={14} color={colors.red} /> : null}
                     </Row>
                     <Text style={styles.horseName} numberOfLines={1}>
@@ -318,7 +316,7 @@ export default function DashboardScreen({ navigation }) {
                     </Text>
                     <Row style={{ gap: 4 }}>
                       <View style={[styles.dot, { backgroundColor: health.color }]} />
-                      <Text style={[styles.horseHealth, { color: health.color }]} numberOfLines={1}>
+                      <Text style={[styles.horseHealth, { color: h.horse?.healthStatus && h.horse.healthStatus !== 'eligible' ? health.color : colors.textMuted }]} numberOfLines={1}>
                         {health.label}
                       </Text>
                     </Row>
@@ -418,19 +416,19 @@ const styles = StyleSheet.create({
   chipWarn: { backgroundColor: colors.redSoft, borderColor: colors.redSoft },
   chipText: { fontSize: 12, fontWeight: '700', color: colors.forest },
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg },
-  hero: { backgroundColor: colors.forest, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm },
-  heroLabel: { ...font.tiny, color: colors.gold },
-  heroCount: { color: colors.white, fontWeight: '800', fontSize: 26, marginTop: 2 },
-  heroOf: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.75)' },
-  heroPercent: { color: colors.gold, fontWeight: '800', fontSize: 22 },
+  hero: { backgroundColor: colors.forest, borderRadius: radius.lg, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: 6 },
+  heroLabel: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.7)' },
+  heroPercentPill: { paddingHorizontal: 10, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: 'rgba(234,179,8,0.16)' },
+  heroCount: { color: colors.white, fontWeight: '800', fontSize: 24, lineHeight: 30 },
+  heroOf: { fontSize: 14, fontWeight: '500', color: 'rgba(255,255,255,0.72)' },
+  heroPercent: { color: colors.gold, fontWeight: '700', fontSize: 13 },
   heroNote: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },
-  next: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.08)' },
-  nextIcon: { width: 40, height: 40, borderRadius: radius.sm, backgroundColor: 'rgba(234,179,8,0.18)', alignItems: 'center', justifyContent: 'center' },
-  nextLabel: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' },
-  nextTitle: { fontSize: 15, fontWeight: '800', color: colors.white },
-  nextHint: { fontSize: 12, color: 'rgba(255,255,255,0.75)' },
-  nextAction: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.gold },
-  nextActionText: { fontSize: 10.5, fontWeight: '800', color: colors.gold },
+  next: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 6, paddingVertical: 10, paddingLeft: 10, paddingRight: 10, borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.07)' },
+  nextIcon: { width: 34, height: 34, borderRadius: radius.pill, backgroundColor: 'rgba(234,179,8,0.16)', alignItems: 'center', justifyContent: 'center' },
+  nextTitle: { fontSize: 14, fontWeight: '700', color: colors.white },
+  nextHint: { fontSize: 12, color: 'rgba(255,255,255,0.68)' },
+  nextAction: { flexDirection: 'row', alignItems: 'center', gap: 1, minHeight: 34, paddingLeft: 10, paddingRight: 6, borderRadius: radius.pill, backgroundColor: colors.gold },
+  nextActionText: { fontSize: 12.5, fontWeight: '700', color: colors.forest },
   allDone: { gap: spacing.sm, marginTop: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.08)' },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', margin: -5 },
   // Two tiles a row: each cell is half the row, the gap is the cells' own padding.
@@ -471,7 +469,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     overflow: 'hidden',
   },
-  horseTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
   horseName: { fontSize: 15, fontWeight: '800', color: colors.text, marginTop: 4 },
   dot: { width: 7, height: 7, borderRadius: 4 },
   horseHealth: { fontSize: 11.5, fontWeight: '800', flexShrink: 1 },

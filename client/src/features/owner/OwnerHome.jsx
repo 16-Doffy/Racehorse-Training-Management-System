@@ -1,22 +1,43 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { Select } from 'antd';
-import { BellOutlined, CalendarOutlined, DollarOutlined, FundOutlined, LineChartOutlined, TrophyOutlined } from '@ant-design/icons';
+import { Button, Select } from 'antd';
+import { BarChartOutlined, BellOutlined, CalendarOutlined, HeartOutlined, LineChartOutlined, PieChartOutlined, TrophyOutlined, WalletOutlined } from '@ant-design/icons';
 import { CHART_RANGES, chartRange, trainingChartRows, trainingChartTotals } from '../horses/trainingChart';
-import { Card, EmptyNote, LoadFailed, OwnerPage, PageHead, Stats, Tiles } from './kit';
+import { categoryLabel } from '../finance/financeLabels';
+import { Card, EmptyNote, LoadFailed, OwnerPage } from './kit';
 import { TrainingBars } from './charts';
 import { AgendaList, AttentionList } from './lists';
-import HorseTile from './HorseTile';
-import { countChange, idOf, longDate, money, percentChange } from './ownerFormat';
+import HorseList from './HorseList';
+import { capFirst, idOf, money } from './ownerFormat';
 import { agendaItems, attentionItems } from './ownerInsights';
-import { useMyHorses, useOwnerOverview, useOwnerSummary, useRaces, useSessions, useStallsByHorse, useTrainingChart } from './useOwnerData';
+import { useMyFinance, useMyHorses, useOwnerOverview, useOwnerSummary, useRaces, useSessions, useStallsByHorse, useTrainingChart } from './useOwnerData';
+import { Columns, DashHero, KpiRow, KpiTile, RankBars, compactVnd, deltaOf, greeting, inBucket, lastMonths, lastWeeks, todayLong, usePager } from '../dashboard/dashKit';
+
+const DONE = ['completed', 'evaluated'];
+const HEALTH = [
+  { key: 'eligible', label: 'Đủ điều kiện', tone: 'good' },
+  { key: 'monitoring', label: 'Theo dõi', tone: 'watch' },
+  { key: 'injured', label: 'Chấn thương', tone: 'bad' },
+  { key: 'quarantined', label: 'Cách ly', tone: 'quar' },
+];
+const signedVnd = (n) => `${n >= 0 ? '+' : '−'}${compactVnd(Math.abs(n))}`;
+// Places as the owner reads them, in their own order.
+const PLACES = [
+  { key: 'p1', label: 'Về nhất', test: (p) => p === 1 },
+  { key: 'p2', label: 'Hạng nhì', test: (p) => p === 2 },
+  { key: 'p3', label: 'Hạng ba', test: (p) => p === 3 },
+  { key: 'p45', label: 'Hạng 4–5', test: (p) => p === 4 || p === 5 },
+  { key: 'rest', label: 'Ngoài top 5', test: (p) => p > 5 },
+];
 
 /**
- * The Horse Owner's home: the figures that matter, what needs a look, what comes next, every horse at
- * a glance, training over time and the race record.
+ * The Horse Owner's home: what the horses are worth in one band, four figures with their trend, what
+ * needs a look and what comes next, every horse at a glance, then training, the race record and the
+ * money of the last six months.
  */
 export default function OwnerHome() {
+  const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const [range, setRange] = useState('6months');
   const { horses } = useMyHorses();
@@ -25,6 +46,7 @@ export default function OwnerHome() {
   const { byHorse: stallOf, isSuccess: stallsLoaded } = useStallsByHorse();
   const { sessions } = useSessions();
   const { races } = useRaces();
+  const { entries, isLoading: moneyLoading } = useMyFinance();
   const { chart, isLoading: chartLoading } = useTrainingChart(chartRange(range).params());
 
   const horsesById = useMemo(() => new Map(horses.map((h) => [idOf(h), h])), [horses]);
@@ -35,63 +57,129 @@ export default function OwnerHome() {
 
   const racesDone = overview?.races;
   const training = overview?.training;
-  const cash = overview?.money;
-  const dash = overviewLoading ? '—' : null;
   const serious = attention.filter((a) => a.tone === 'bad' || a.tone === 'watch').length;
+  const herd = HEALTH.map((h) => ({ ...h, value: rows.filter((r) => r.health.status === h.key).length }));
+  const healthy = rows.filter((r) => r.health.status === 'eligible' && !r.health.restricted).length;
+  // The horses that need a look first: hurt or held back, then not yet examined, then the rest.
+  const need = (r) => (['injured', 'quarantined'].includes(r.health.status) ? 0 : r.health.restricted || r.health.status === 'monitoring' ? 1 : !r.health.lastExam ? 2 : 3);
+  const horseRows = [...rows].sort((a, b) => need(a) - need(b) || a.horse.name.localeCompare(b.horse.name, 'vi'));
+  const HORSES_SHOWN = 6;
 
+  // Finished sessions per week (eight weeks) for the training tile's trend.
+  const weeks = useMemo(() => {
+    const done = sessions.filter((s) => DONE.includes(s.status));
+    return lastWeeks(8).map((b) => ({ ...b, n: done.filter((s) => inBucket(s.actualStartAt || s.scheduledAt, b)).length }));
+  }, [sessions]);
+  // The owner's money: six months side by side, and the year's costs by category.
+  const money6 = useMemo(
+    () =>
+      lastMonths(6).map((b) => {
+        const list = entries.filter((e) => inBucket(e.date, b));
+        const revenue = list.filter((e) => e.type === 'revenue').reduce((t, e) => t + (Number(e.amount) || 0), 0);
+        const cost = list.filter((e) => e.type === 'cost').reduce((t, e) => t + (Number(e.amount) || 0), 0);
+        return { ...b, revenue, cost, net: revenue - cost };
+      }),
+    [entries],
+  );
+  const month = money6[money6.length - 1];
+  const sixNet = money6.reduce((t, m) => t + m.net, 0);
+  const costRows = useMemo(() => {
+    const by = new Map();
+    entries.filter((e) => e.type === 'cost' && new Date(e.date).getFullYear() === new Date().getFullYear()).forEach((e) => by.set(e.category, (by.get(e.category) || 0) + (Number(e.amount) || 0)));
+    return [...by.entries()].map(([k, v]) => ({ key: k, label: capFirst(categoryLabel(k)), value: v, display: compactVnd(v), to: '/finance' })).sort((a, b) => b.value - a.value);
+  }, [entries]);
+  // The race record by place.
+  const placed = races.filter((r) => r.status === 'completed' && r.position);
+  const placeRows = PLACES.map((p) => ({ key: p.key, label: p.label, value: placed.filter((r) => p.test(r.position)).length, display: `${placed.filter((r) => p.test(r.position)).length} lần` }));
+  const prize = placed.reduce((t, r) => t + (r.prizeMoney || 0), 0);
+  const costPage = usePager(costRows, 6);
+
+  const valuation = overview?.valuation;
   return (
     <OwnerPage>
-      <PageHead
-        eyebrow={`Chủ sở hữu · ${longDate()}`}
-        title={`Xin chào, ${user?.name || 'bạn'}`}
+      <DashHero
+        eyebrow={`Chủ sở hữu ngựa · ${todayLong()}`}
+        title={`${greeting()}, ${user?.name || 'bạn'}`}
         sub={
           rowsLoading
             ? 'Đang tải tình hình các chiến mã…'
             : `Bạn có ${rows.length} chiến mã · ${serious ? `${serious} việc cần chú ý` : 'không có gì đáng lo'} · ${agenda.length ? `${agenda.length} lịch sắp tới` : 'chưa có lịch sắp tới'}.`
         }
+        actions={
+          <>
+            <Button type="primary" onClick={() => navigate('/horses')}>
+              Ngựa của tôi
+            </Button>
+            <Button onClick={() => navigate('/owner/training')}>Lịch tập</Button>
+            <Button onClick={() => navigate('/owner/races')}>Giải đua</Button>
+          </>
+        }
+        figure={{ label: 'Tổng giá trị đàn ngựa', value: overviewLoading ? '—' : `${compactVnd(valuation?.total || 0)}`, sub: valuation ? `${valuation.valued}/${overview.horses} ngựa đã được định giá` : null }}
       />
 
       {overviewError && <div className="own-note">Chưa tải được số liệu tổng quan — thử tải lại trang.</div>}
 
-      <Stats
-        items={[
-          {
-            label: 'Tổng giá trị tài sản',
-            icon: <FundOutlined />,
-            value: dash ?? money(overview?.valuation.total ?? 0),
-            sub: overview ? `${overview.valuation.valued}/${overview.horses} ngựa đã được định giá` : null,
-          },
-          {
-            label: 'Tỷ lệ chiến thắng',
-            icon: <TrophyOutlined />,
-            value: dash ?? (racesDone?.winRate == null ? '—' : `${racesDone.winRate}%`),
-            sub: racesDone?.completed
-              ? `${racesDone.wins} thắng · ${racesDone.podiums} top 3 / ${racesDone.completed} giải · tiền thưởng ${money(racesDone.prize)}`
-              : 'Chưa có giải nào hoàn tất',
-          },
-          {
-            label: 'Buổi tập tháng này',
-            icon: <LineChartOutlined />,
-            value: dash ?? training?.thisMonth ?? 0,
-            change: training ? countChange(training.thisMonth, training.lastMonth) : null,
-            sub: training ? `Tháng trước ${training.lastMonth} buổi${training.metRate == null ? '' : ` · ${training.metRate}% đạt chỉ tiêu`}` : null,
-          },
-          {
-            label: 'Thu tháng này',
-            icon: <DollarOutlined />,
-            value: dash ?? money(cash?.thisMonth.revenue ?? 0),
-            change: cash ? percentChange(cash.thisMonth.revenue, cash.lastMonth.revenue) : null,
-            sub: cash ? `Chi ${money(cash.thisMonth.cost)} · tháng trước thu ${money(cash.lastMonth.revenue)}` : null,
-          },
-        ]}
-      />
+      <KpiRow>
+        <KpiTile
+          icon={<HeartOutlined />}
+          tone="good"
+          label="Chiến mã khỏe mạnh"
+          value={rowsLoading ? '—' : healthy}
+          unit={rowsLoading ? null : `/ ${rows.length} ngựa`}
+          sub={rows.length - healthy ? `${rows.length - healthy} ngựa đang được bác sĩ theo dõi` : 'Cả đàn tập bình thường'}
+          split={herd}
+          to="/owner/health"
+        />
+        <KpiTile
+          icon={<LineChartOutlined />}
+          label="Buổi tập tháng này"
+          value={overviewLoading ? '—' : (training?.thisMonth ?? 0)}
+          unit="buổi"
+          delta={training ? deltaOf(training.thisMonth, training.lastMonth, 'so với tháng trước') : null}
+          sub={`Tháng trước ${training?.lastMonth ?? 0} buổi${training?.metRate == null ? '' : ` · ${training.metRate}% đạt chỉ tiêu`}`}
+          chart={{ data: weeks.slice(-6).map((w) => ({ key: w.key, label: w.label, full: w.full, value: w.n })), label: 'Buổi hoàn thành', caption: 'Buổi hoàn thành mỗi tuần (tuần bắt đầu ngày)' }}
+          to="/owner/training"
+        />
+        <KpiTile
+          icon={<TrophyOutlined />}
+          tone="brass"
+          label="Tỷ lệ chiến thắng"
+          value={overviewLoading ? '—' : racesDone?.winRate == null ? '—' : Number(racesDone.winRate).toLocaleString('vi-VN')}
+          unit={racesDone?.winRate == null ? null : '%'}
+          sub={racesDone?.completed ? `${racesDone.wins} lần về nhất / ${racesDone.completed} giải` : 'Chưa có giải nào hoàn tất'}
+          split={[
+            { key: 'win', label: 'Về nhất', value: racesDone?.wins || 0, tone: 'good' },
+            { key: 'podium', label: 'Nhì · ba', value: Math.max(0, (racesDone?.podiums || 0) - (racesDone?.wins || 0)), tone: 'info' },
+            { key: 'rest', label: 'Khác', value: Math.max(0, (racesDone?.completed || 0) - (racesDone?.podiums || 0)), tone: 'neutral' },
+          ]}
+          to="/owner/races"
+        />
+        <KpiTile
+          icon={<WalletOutlined />}
+          tone={(month?.net || 0) >= 0 ? 'good' : 'bad'}
+          label={`Thu chi tháng ${new Date().getMonth() + 1}`}
+          value={moneyLoading ? '—' : signedVnd(month?.net || 0)}
+          sub={`Thu ${compactVnd(month?.revenue || 0)} · chi ${compactVnd(month?.cost || 0)}`}
+          chart={{ data: money6.map((m) => ({ key: m.key, label: m.label, full: m.full, value: m.net })), fmt: compactVnd, label: 'Thu trừ chi', caption: 'Thu trừ chi mỗi tháng' }}
+          to="/finance"
+        />
+      </KpiRow>
 
       <div className="own-grid-main">
         <Card title="Cần chú ý" icon={<BellOutlined />} flush extra={attention.length > 0 && <span className="own-faint text-xs">{attention.length} mục</span>}>
-          {rowsLoading ? <EmptyNote>Đang tải…</EmptyNote> : <AttentionList items={attention} />}
+          {rowsLoading ? <EmptyNote>Đang tải…</EmptyNote> : <AttentionList items={attention} pageSize={5} />}
         </Card>
-        <Card title="Sắp tới" icon={<CalendarOutlined />} flush extra={<Link to="/owner/training" className="text-xs font-semibold">Lịch tập</Link>}>
-          <AgendaList items={agenda} horsesById={horsesById} />
+        <Card
+          title="Sắp tới"
+          icon={<CalendarOutlined />}
+          flush
+          extra={
+            <Link to="/owner/training" className="text-xs font-semibold">
+              Lịch tập
+            </Link>
+          }
+        >
+          <AgendaList items={agenda} horsesById={horsesById} pageSize={5} />
         </Card>
       </div>
 
@@ -99,7 +187,7 @@ export default function OwnerHome() {
         <div className="own-toolbar">
           <h2 className="own-section-title">Chiến mã của tôi</h2>
           <Link to="/horses" className="text-sm font-semibold">
-            Xem danh sách
+            {rows.length > HORSES_SHOWN ? `Xem tất cả ${rows.length} con` : 'Xem danh sách'}
           </Link>
         </div>
         {rowsLoading ? (
@@ -113,11 +201,9 @@ export default function OwnerHome() {
             <EmptyNote>Bạn chưa có chiến mã nào. Khi CLB ghi nhận ngựa của bạn, chúng sẽ hiện ở đây.</EmptyNote>
           </Card>
         ) : (
-          <div className="own-horses">
-            {rows.map((r) => (
-              <HorseTile key={r.horse._id} row={r} horse={horsesById.get(idOf(r.horse))} stall={stallOf.get(idOf(r.horse))} stallsLoaded={stallsLoaded} />
-            ))}
-          </div>
+          <Card flush>
+            <HorseList rows={horseRows.slice(0, HORSES_SHOWN)} horsesById={horsesById} stallOf={stallOf} stallsLoaded={stallsLoaded} compact />
+          </Card>
         )}
       </section>
 
@@ -133,39 +219,77 @@ export default function OwnerHome() {
             <EmptyNote>Chưa có buổi tập nào hoàn thành {chartRange(range).period}.</EmptyNote>
           ) : (
             <div className="flex flex-col gap-3">
-              <div className="own-muted">
-                <b className="own-num own-ink text-lg">{totals.sessions}</b> buổi hoàn thành {chartRange(range).period} · <b className="own-ink">{totals.met}</b> buổi đạt chỉ tiêu
-                {totals.rate == null ? '' : ` (${totals.rate}%)`}
+              <div className="dk-chart-head">
+                <b>{totals.sessions} buổi</b>
+                <span>
+                  hoàn thành {chartRange(range).period} · {totals.met} buổi đạt chỉ tiêu{totals.rate == null ? '' : ` (${totals.rate}%)`}
+                </span>
               </div>
               <TrainingBars rows={chartRows} />
             </div>
           )}
         </Card>
 
-        <Card title="Thành tích giải đấu" icon={<TrophyOutlined />} extra={<Link to="/owner/races" className="text-xs font-semibold">Giải đua</Link>}>
-          {overviewLoading ? (
-            <EmptyNote>Đang tải…</EmptyNote>
-          ) : !racesDone?.completed ? (
+        <Card
+          title="Thành tích giải đấu"
+          icon={<TrophyOutlined />}
+          extra={
+            <Link to="/owner/races" className="text-xs font-semibold">
+              Giải đua
+            </Link>
+          }
+        >
+          {placed.length === 0 ? (
             <EmptyNote>Chưa có giải nào hoàn tất. Kết quả sẽ hiện ở đây sau mỗi giải.</EmptyNote>
           ) : (
-            <div className="flex flex-col gap-3">
-              <Tiles
-                cols={2}
-                items={[
-                  { label: 'Về nhất', value: `${racesDone.wins} lần` },
-                  { label: 'Vào top 3', value: `${racesDone.podiums} lần` },
-                  { label: 'Đã thi đấu', value: `${racesDone.completed} giải` },
-                  { label: 'Tiền thưởng', value: money(racesDone.prize) },
-                ]}
-              />
-              <div>
-                <div className="own-progress" aria-hidden="true">
-                  <span style={{ width: `${racesDone.winRate || 0}%` }} />
-                </div>
-                <div className="own-faint text-xs mt-1.5">{racesDone.winRate}% số giải về nhất</div>
+            <>
+              <div className="dk-chart-head">
+                <b>{compactVnd(prize)}</b>
+                <span>tiền thưởng từ {placed.length} giải đã đua</span>
               </div>
-            </div>
+              <RankBars rows={placeRows} />
+            </>
           )}
+        </Card>
+      </div>
+
+      <div className="own-grid-main">
+        <Card
+          title="Thu chi 6 tháng"
+          icon={<BarChartOutlined />}
+          extra={
+            <Link to="/finance" className="text-xs font-semibold">
+              Sổ thu chi
+            </Link>
+          }
+        >
+          {moneyLoading ? (
+            <EmptyNote>Đang tải…</EmptyNote>
+          ) : (
+            <>
+              <div className="dk-chart-head">
+                <b>{signedVnd(sixNet)}</b>
+                <span>{sixNet >= 0 ? 'còn lại sau 6 tháng' : 'chi nhiều hơn thu trong 6 tháng'}</span>
+              </div>
+              <Columns
+                data={money6}
+                series={[
+                  { key: 'revenue', name: 'Thu', cls: 'is-series-1' },
+                  { key: 'cost', name: 'Chi', cls: 'is-series-2' },
+                ]}
+                fmt={money}
+                yFmt={compactVnd}
+                table={{ fmt: compactVnd, extra: [{ name: 'Còn lại', value: (d) => signedVnd(d.net), tone: (d) => (d.net >= 0 ? 'own-good' : 'own-bad') }] }}
+                more={(d) => [[null, 'Chênh lệch', money(d.net)]]}
+                label="Thu và chi của bạn trong 6 tháng gần nhất"
+              />
+            </>
+          )}
+        </Card>
+
+        <Card title={`Chi theo hạng mục · ${new Date().getFullYear()}`} icon={<PieChartOutlined />}>
+          <RankBars rows={costPage.rows} max={costRows[0]?.value} empty="Chưa có khoản chi nào trong năm." />
+          {costPage.pager}
         </Card>
       </div>
     </OwnerPage>

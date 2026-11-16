@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from './AppText';
 import Icon from './Icon';
 import { Badge, Card, ChipRow, EmptyState, Row, SearchInput, SectionTitle, Sheet } from './ui';
 import { INVENTORY_CATEGORY, formatStock, levelOf, matchesSearch } from '../utils/groom';

@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
+import dayjs from 'dayjs';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import PageHeroBanner from '../../components/common/PageHeroBanner';
 import HealthAlert from '../../components/veterinarian/HealthAlert';
 import CareModal from '../../components/veterinarian/CareModal';
 import ExamRequestModal from '../../components/veterinarian/ExamRequestModal';
 import HorsePickerModal from '../../components/veterinarian/HorsePickerModal';
 import IncidentModal from '../../components/veterinarian/IncidentModal';
-import { ActionMenu, Callout, EmptyNote, FilterChips, HorseAvatar, LevelPill, LoadingBlock, Pill, Progress, VetCard } from '../../components/veterinarian/ui';
+import { ActionMenu, Callout, EmptyNote, FilterChips, HorseAvatar, LevelPill, LoadingBlock, Pill, Progress } from '../../components/veterinarian/ui';
 import {
   CARE_KINDS,
   CARE_ORDER,
@@ -31,7 +32,10 @@ import vetApi from '../../api/veterinarianApi';
 import { message } from '../../lib/antdStatic';
 import { incidentStatusOf } from '../../constants/care';
 import useSocket from '../../hooks/useSocket';
-import { useCareOrders, useClearances, useExamRequests, useIncidents, useVetHorses, useVetRefresh } from '../../hooks/useVetData';
+import { useCareOrders, useClearances, useExamRequests, useHealthRecords, useIncidents, useVetHorses, useVetRefresh } from '../../hooks/useVetData';
+import { INCIDENT_CATEGORY_META } from '../../constants/care';
+import { Card } from '../../features/owner/kit';
+import { Columns, DashHero, KpiRow, KpiTile, RankBars, deltaOf, greeting, inBucket, lastDays, todayLong, usePager } from '../../features/dashboard/dashKit';
 
 const KIND_FILTERS = [
   { value: 'incident', label: 'Sự cố' },
@@ -39,8 +43,22 @@ const KIND_FILTERS = [
   { value: 'clearance', label: 'Cần khám' },
   { value: 'care', label: 'Chăm sóc định kỳ' },
 ];
-// How far ahead routine care shows up in the queue.
+// How far ahead routine care shows up in the queue; what falls due after that, up to two weeks, is the
+// "coming up" list beside it.
 const CARE_AHEAD_DAYS = 3;
+const COMING_DAYS = 14;
+const HERD = [
+  { key: 'eligible', label: 'Đủ điều kiện', tone: 'good' },
+  { key: 'monitoring', label: 'Theo dõi', tone: 'watch' },
+  { key: 'injured', label: 'Chấn thương', tone: 'bad' },
+  { key: 'quarantined', label: 'Cách ly', tone: 'quar' },
+];
+const LEVELS = [
+  { key: 'none', label: 'Khóa tập', tone: 'bad' },
+  { key: 'light', label: 'Chỉ tập nhẹ', tone: 'watch' },
+  { key: 'moderate', label: 'Tối đa vừa', tone: 'info' },
+];
+const SHORT_DAY = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
 const joinVi = (parts) => (parts.length > 1 ? `${parts.slice(0, -1).join(', ')} và ${parts[parts.length - 1]}` : parts[0]);
 
@@ -59,7 +77,7 @@ function buildQueue({ horses, requests, incidents, clearances }) {
   // deadline first.
   for (const request of requests) {
     const deadline = requestDeadline(request);
-    items.push({ key: `request-${request._id}`, kind: 'request', horseId: idOf(request.horse), rank: deadline.overdue ? -1 : PRIORITY_META[request.priority]?.rank ?? 2, at: deadline.due, request });
+    items.push({ key: `request-${request._id}`, kind: 'request', horseId: idOf(request.horse), rank: deadline.overdue ? -1 : (PRIORITY_META[request.priority]?.rank ?? 2), at: deadline.due, request });
   }
   // A horse already asked about is answered by the same exam: one row is enough.
   const examWanted = new Set(requests.map((r) => idOf(r.horse)));
@@ -114,20 +132,24 @@ export default function VeterinarianDashboard() {
   const incidentsQ = useIncidents();
   const clearancesQ = useClearances();
   const ordersQ = useCareOrders();
+  const recordsQ = useHealthRecords();
+  const allIncidentsQ = useQuery({ queryKey: ['vet', 'incidents', 'all'], queryFn: () => vetApi.getIncidents().then((res) => res?.data ?? []) });
   const { alerts, clearAlert, clearAllAlerts } = useSocket();
   const [filter, setFilter] = useState('all');
   const [dialog, setDialog] = useState(null);
 
   const horses = useMemo(() => horsesQ.data || [], [horsesQ.data]);
   const horseById = useMemo(() => new Map(horses.map((h) => [h._id, h])), [horses]);
-  const queue = useMemo(
-    () => buildQueue({ horses, requests: requestsQ.data || [], incidents: incidentsQ.data || [], clearances: clearancesQ.data || [] }),
-    [horses, requestsQ.data, incidentsQ.data, clearancesQ.data]
-  );
+  const queue = useMemo(() => buildQueue({ horses, requests: requestsQ.data || [], incidents: incidentsQ.data || [], clearances: clearancesQ.data || [] }), [horses, requestsQ.data, incidentsQ.data, clearancesQ.data]);
   const counts = KIND_FILTERS.reduce((acc, k) => ({ ...acc, [k.value]: queue.filter((i) => i.kind === k.value).length }), {});
   const shown = filter === 'all' ? queue : queue.filter((i) => i.kind === filter);
   const restricted = horses.filter((h) => clearanceOf(h).restricted);
-  const orders = (ordersQ.data || []).filter((r) => r.tasks?.length || r.medications?.length || r.careInstructions);
+  // Orders with doses left to give today; one with none left has nothing to watch.
+  const orders = (ordersQ.data || []).filter((r) => r.progress?.total > 0);
+  // Routine care and follow-up exams falling due after the queue's window, soonest first.
+  const coming = horses
+    .flatMap((h) => CARE_ORDER.map((kind) => ({ horse: h, kind, due: h.careSchedule?.[CARE_KINDS[kind].field] })).filter((c) => c.due && daysUntil(c.due) > CARE_AHEAD_DAYS && daysUntil(c.due) <= COMING_DAYS))
+    .sort((a, b) => new Date(a.due) - new Date(b.due));
   const loading = horsesQ.isLoading || requestsQ.isLoading || incidentsQ.isLoading || clearancesQ.isLoading;
   const failed = [horsesQ, requestsQ, incidentsQ, clearancesQ].find((q) => q.isError);
 
@@ -153,6 +175,57 @@ export default function VeterinarianDashboard() {
     counts.care && `${counts.care} việc chăm sóc đến hạn`,
   ].filter(Boolean);
   const count = (status) => horses.filter((h) => h.healthStatus === status).length;
+  const herd = HERD.map((h) => ({ ...h, n: count(h.key) }));
+  const pressing = queue.filter((i) => i.rank <= 0).length;
+  const sick = count('injured') + count('quarantined');
+
+  // Exams: per day for a month, split by what they concluded; the last week against the one before.
+  const exams = useMemo(() => {
+    const list = recordsQ.data || [];
+    const at = (r) => r.date || r.createdAt;
+    const days = lastDays(30).map((b) => {
+      const day = list.filter((r) => inBucket(at(r), b));
+      const ok = day.filter((r) => r.resultStatus === 'eligible').length;
+      return { ...b, label: b.start.format('DD/MM'), ok, issue: day.length - ok, n: day.length };
+    });
+    const week = days.slice(-7);
+    const sum = (rows, k = 'n') => rows.reduce((t, d) => t + d[k], 0);
+    return { days, week, n7: sum(week), prev7: sum(days.slice(-14, -7)), issue7: sum(week, 'issue'), n30: sum(days), issue30: sum(days, 'issue') };
+  }, [recordsQ.data]);
+  // Incidents reported in the last 30 days by kind, with how many are still open.
+  const incidentRows = useMemo(() => {
+    const since = dayjs().subtract(30, 'day');
+    const by = new Map();
+    (allIncidentsQ.data || [])
+      .filter((t) => dayjs(t.incidentReport?.reportedAt || t.createdAt).isAfter(since))
+      .forEach((t) => {
+        const k = t.incidentReport?.category || 'other';
+        const row = by.get(k) || { n: 0, open: 0 };
+        row.n += 1;
+        if (t.incidentReport?.status !== 'resolved') row.open += 1;
+        by.set(k, row);
+      });
+    return [...by.entries()]
+      .map(([k, r]) => ({ key: k, label: INCIDENT_CATEGORY_META[k]?.label || 'Khác', sub: r.open ? `${r.open} chưa xử lý xong` : 'Đã xử lý hết', value: r.n, display: `${r.n} lần` }))
+      .sort((a, b) => b.value - a.value);
+  }, [allIncidentsQ.data]);
+  // Routine care and follow-ups due on each of the next seven days.
+  const careWeek = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) => {
+        const d = dayjs().startOf('day').add(i, 'day');
+        const due = horses.flatMap((h) => CARE_ORDER.filter((k) => h.careSchedule?.[CARE_KINDS[k].field] && dayjs(h.careSchedule[CARE_KINDS[k].field]).isSame(d, 'day')));
+        return { key: d.format('YYYY-MM-DD'), label: i === 0 ? 'Nay' : `${SHORT_DAY[d.day()]}`, full: `${d.format('DD/MM')} · ${due.length} việc`, value: due.length };
+      }),
+    [horses],
+  );
+  const overdueCare = horses.reduce((n, h) => n + CARE_ORDER.filter((k) => h.careSchedule?.[CARE_KINDS[k].field] && daysUntil(h.careSchedule[CARE_KINDS[k].field]) < 0).length, 0);
+  const levels = LEVELS.map((l) => ({ ...l, value: restricted.filter((h) => clearanceOf(h).level === l.key).length }));
+  const queuePage = usePager(shown, 6, filter);
+  const comingPage = usePager(coming, 5);
+  const heldPage = usePager(restricted, 5);
+  const orderPage = usePager(orders, 5);
+  const incidentPage = usePager(incidentRows, 6);
 
   const renderItem = (item) => {
     if (item.kind === 'incident') {
@@ -206,7 +279,10 @@ export default function VeterinarianDashboard() {
           onOpenHorse={() => openHorse(item.horseId)}
           pills={
             <>
-              <Pill tone={request.priority === 'normal' ? 'info' : priority.tone}>Yêu cầu khám{request.priority !== 'normal' ? ` · ${priority.label}` : ''}</Pill>
+              <Pill tone={request.priority === 'normal' ? 'info' : priority.tone}>
+                Yêu cầu khám
+                {request.priority !== 'normal' ? ` · ${priority.label}` : ''}
+              </Pill>
               <Pill tone={deadline.tone} icon="bi-alarm" title={deadline.text}>
                 {deadline.overdue ? deadline.label : `Trước ${fmtDateTime(deadline.due)}`}
               </Pill>
@@ -315,42 +391,33 @@ export default function VeterinarianDashboard() {
   };
 
   return (
-    <div className="vet-ui">
+    <div className="vet-ui own-ui own-page vet-home">
       <HealthAlert alerts={alerts} onDismiss={clearAlert} onDismissAll={clearAllAlerts} />
 
-      <PageHeroBanner
-        eyebrow="TEAM 8 • Y TẾ & THÚ Y"
-        roleLabel="Bác sĩ Thú y"
-        title={`Xin chào, ${user?.name || 'Bác sĩ'}`}
-        subtitle={loading ? 'Đang tải việc hôm nay…' : summary.length ? `Hôm nay có ${joinVi(summary)} đang chờ bạn.` : 'Không có việc gấp — đàn ngựa đang ổn định.'}
-        stats={
-          horses.length
-            ? [
-                { label: 'Theo dõi', value: `${horses.length} ngựa` },
-                { label: 'Đủ điều kiện', value: count('eligible') },
-                { label: 'Hạn chế tập', value: restricted.length },
-                { label: 'Chấn thương', value: count('injured') },
-                { label: 'Cách ly', value: count('quarantined') },
-              ]
-            : []
-        }
-        actionButton={
-          <div className="d-flex flex-wrap gap-2">
-            <Button variant="vet-hero-outline" onClick={() => setDialog({ type: 'pick', purpose: 'treat' })}>
-              <i className="bi bi-capsule" aria-hidden="true" /> Kê đơn
-            </Button>
+      <DashHero
+        eyebrow={`Bác sĩ thú y · ${todayLong()}`}
+        title={`${greeting()}, ${user?.name || 'Bác sĩ'}`}
+        sub={loading ? 'Đang tải việc hôm nay…' : summary.length ? `Hôm nay có ${joinVi(summary)} đang chờ bạn.` : 'Không có việc gấp, đàn ngựa đang ổn định.'}
+        actions={
+          <>
             <Button variant="vet-hero" onClick={() => setDialog({ type: 'pick', purpose: 'exam' })}>
               <i className="bi bi-clipboard2-pulse" aria-hidden="true" /> Khám bệnh
             </Button>
-          </div>
+            <Button variant="vet-hero-outline" onClick={() => setDialog({ type: 'pick', purpose: 'treat' })}>
+              <i className="bi bi-capsule" aria-hidden="true" /> Kê đơn
+            </Button>
+            <Button variant="vet-hero-outline" onClick={() => navigate('/veterinarian/schedules')}>
+              <i className="bi bi-calendar-week" aria-hidden="true" /> Lịch chăm sóc
+            </Button>
+          </>
         }
+        figure={{ label: 'Việc đang chờ bạn', value: loading ? '—' : queue.length, sub: pressing ? `${pressing} việc gấp hoặc quá hạn` : queue.length ? 'Không có việc quá hạn' : 'Đã xử lý hết' }}
       />
 
       {failed && (
         <Callout
           tone="bad"
           icon="bi-wifi-off"
-          className="mb-3"
           action={
             <Button size="sm" variant="vet-outline" onClick={refresh}>
               Thử lại
@@ -361,11 +428,50 @@ export default function VeterinarianDashboard() {
         </Callout>
       )}
 
-      <div className="vet-grid-2">
-        <VetCard
-          title="Việc cần xử lý"
-          icon="bi-list-check"
-          count={loading ? null : queue.length}
+      <KpiRow>
+        <KpiTile
+          icon={<i className="bi bi-heart-pulse" />}
+          tone="good"
+          label="Đàn ngựa khỏe"
+          value={horsesQ.isLoading ? '—' : count('eligible')}
+          unit={horsesQ.isLoading ? null : `/ ${horses.length} ngựa`}
+          sub={sick ? `${sick} ngựa chấn thương hoặc cách ly` : 'Không ngựa nào chấn thương hay cách ly'}
+          split={herd.map((h) => ({ key: h.key, label: h.label, value: h.n, tone: h.tone }))}
+          to="/veterinarian/horses"
+        />
+        <KpiTile
+          icon={<i className="bi bi-clipboard2-pulse" />}
+          label="Ca khám 7 ngày qua"
+          value={recordsQ.isLoading ? '—' : exams.n7}
+          unit="ca"
+          delta={deltaOf(exams.n7, exams.prev7, 'so với 7 ngày trước')}
+          sub={exams.issue7 ? `${exams.issue7} ca kết luận cần theo dõi hoặc điều trị` : 'Các ca đều kết luận đủ điều kiện'}
+          chart={{ data: exams.week.map((d) => ({ key: d.key, label: d.label, full: `${d.full} · ${d.ok} đủ điều kiện, ${d.issue} có vấn đề`, value: d.n })), label: 'Ca khám', caption: 'Số ca khám mỗi ngày' }}
+        />
+        <KpiTile
+          icon={<i className="bi bi-lock" />}
+          tone={restricted.length ? 'watch' : 'good'}
+          label="Hạn chế tập luyện"
+          value={horsesQ.isLoading ? '—' : restricted.length}
+          unit={horsesQ.isLoading ? null : `/ ${horses.length} ngựa`}
+          sub={restricted.length ? 'Theo phiếu khám hoặc phác đồ đang điều trị' : 'Cả đàn tập bình thường'}
+          split={[...levels, { key: 'free', label: 'Tập bình thường', value: horses.length - restricted.length, tone: 'good' }]}
+        />
+        <KpiTile
+          icon={<i className="bi bi-calendar2-week" />}
+          tone={overdueCare ? 'bad' : 'info'}
+          label="Lịch chăm sóc 7 ngày tới"
+          value={horsesQ.isLoading ? '—' : careWeek.reduce((t, d) => t + d.value, 0)}
+          unit="việc"
+          sub={overdueCare ? `Thêm ${overdueCare} việc đã quá hạn` : 'Không có việc nào quá hạn'}
+          chart={{ data: careWeek, label: 'Việc đến hạn', caption: 'Khám, tiêm phòng, tẩy giun, móng mỗi ngày' }}
+        />
+      </KpiRow>
+
+      <div className="own-grid-main">
+        <Card
+          title={`Việc cần xử lý${loading ? '' : ` · ${queue.length}`}`}
+          icon={<i className="bi bi-list-check" />}
           flush
           extra={
             <Button size="sm" variant="vet-ghost" className="vet-icon-btn" onClick={refresh} title="Làm mới" aria-label="Làm mới">
@@ -389,86 +495,146 @@ export default function VeterinarianDashboard() {
               Sự cố, yêu cầu khám và lịch chăm sóc mới sẽ hiện ở đây.
             </EmptyNote>
           ) : (
-            <div className="vet-list">{shown.map(renderItem)}</div>
+            <div className="vet-list">{queuePage.rows.map(renderItem)}</div>
           )}
-        </VetCard>
+          {queuePage.pager}
+        </Card>
 
-        <div className="vet-stack">
-          <VetCard title="Hạn chế tập luyện" icon="bi-lock" count={horsesQ.isLoading ? null : restricted.length} flush>
+        <div className="dk-stack">
+          <Card title={`Sắp đến hạn · ${COMING_DAYS} ngày`} icon={<i className="bi bi-calendar2-week" />} flush>
             {horsesQ.isLoading ? (
               <LoadingBlock rows={2} height={44} />
-            ) : restricted.length === 0 ? (
-              <EmptyNote icon="bi-unlock" title="Không ngựa nào bị hạn chế tập" />
+            ) : coming.length === 0 ? (
+              <EmptyNote icon="bi-calendar2-check" title={`Không có lịch nào trong ${COMING_DAYS} ngày tới`} />
             ) : (
               <div className="vet-list">
-                {restricted.map((h) => {
-                  const c = clearanceOf(h);
+                {comingPage.rows.map((c) => {
+                  const meta = CARE_KINDS[c.kind];
+                  const d = dayjs(c.due);
                   return (
-                    <div key={h._id} className="vet-row is-clickable" role="button" tabIndex={0} onClick={() => openHorse(h._id)} onKeyDown={(e) => e.key === 'Enter' && openHorse(h._id)}>
-                      <HorseAvatar horse={h} size={34} />
+                    <div key={`${c.horse._id}-${c.kind}`} className="vet-row is-clickable" role="button" tabIndex={0} onClick={() => openHorse(c.horse._id)} onKeyDown={(e) => e.key === 'Enter' && openHorse(c.horse._id)}>
+                      <span className="vet-date-block">
+                        <span>{d.format('DD')}</span>
+                        <small>Th{d.month() + 1}</small>
+                      </span>
                       <div className="vet-row-main">
-                        <div className="d-flex flex-wrap align-items-center gap-2">
-                          <span className="vet-row-title">{h.name}</span>
-                          <LevelPill level={c.level} short />
+                        <div className="vet-row-title">{c.horse.name}</div>
+                        <div className="vet-small vet-muted">
+                          <i className={`bi ${meta.icon} me-1`} aria-hidden="true" />
+                          {c.kind === 'exam' ? 'Tái khám / khám định kỳ' : meta.label}
                         </div>
-                        <div className="vet-small vet-muted vet-clamp-1">{c.reason || CLEARANCE_SOURCE[c.source] || ''}</div>
                       </div>
-                      <i className="bi bi-chevron-right vet-faint" aria-hidden="true" />
+                      <span className="vet-small vet-faint vet-tnum">Còn {daysUntil(c.due)} ngày</span>
                     </div>
                   );
                 })}
               </div>
             )}
-          </VetCard>
-
-          <VetCard
-            title="Y lệnh hôm nay"
-            icon="bi-capsule"
-            count={ordersQ.isLoading ? null : orders.length}
-            flush
-            extra={
-              <button type="button" className="vet-link vet-small" onClick={() => navigate('/veterinarian/treatments')}>
-                Điều trị
-              </button>
-            }
-          >
-            {ordersQ.isLoading ? (
-              <LoadingBlock rows={2} height={44} />
-            ) : orders.length === 0 ? (
-              <EmptyNote icon="bi-capsule" title="Hôm nay không có y lệnh cần theo dõi" />
-            ) : (
-              <div className="vet-list">
-                {orders.map((row) => {
-                  const p = row.progress || {};
-                  const horseId = idOf(row.horse);
-                  return (
-                    <div key={row._id} className="vet-row is-clickable" role="button" tabIndex={0} onClick={() => openHorse(horseId)} onKeyDown={(e) => e.key === 'Enter' && openHorse(horseId)}>
-                      <HorseAvatar horse={horseById.get(horseId) || row.horse} size={34} />
-                      <div className="vet-row-main">
-                        <div className="d-flex align-items-center justify-content-between gap-2">
-                          <span className="vet-row-title text-truncate">{row.horse?.name || 'Ngựa'}</span>
-                          <span className="vet-small vet-tnum vet-muted">{p.total ? `${p.done}/${p.total} đã làm` : 'Chưa có việc'}</span>
-                        </div>
-                        {p.total > 0 && (
-                          <div className="mt-1">
-                            <Progress value={p.done} max={p.total} tone={p.missed || p.notDone ? 'bad' : 'good'} />
-                          </div>
-                        )}
-                        {(p.missed > 0 || p.notDone > 0 || !p.total) && (
-                          <div className={`vet-small mt-1 ${p.total ? 'vet-text-bad' : 'vet-faint'}`}>
-                            {!p.total
-                              ? 'Hôm nay không còn liều nào: đã qua giờ cho thuốc, hoặc ngựa chưa có người chăm sóc phụ trách.'
-                              : [p.missed && `${p.missed} bỏ lỡ`, p.notDone && `${p.notDone} không cho được`].filter(Boolean).join(' · ')}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </VetCard>
+            {comingPage.pager}
+          </Card>
         </div>
+      </div>
+
+      <div className="own-grid-main">
+        <Card title="Ca khám · 30 ngày qua" icon={<i className="bi bi-bar-chart" />}>
+          <div className="dk-chart-head">
+            <b>{exams.n30} ca</b>
+            <span>{exams.issue30 ? `${exams.issue30} ca kết luận cần theo dõi, chấn thương hoặc cách ly` : 'tất cả kết luận đủ điều kiện'}</span>
+          </div>
+          <Columns
+            data={exams.days}
+            stacked
+            series={[
+              { key: 'ok', name: 'Đủ điều kiện', cls: 'is-series-1' },
+              { key: 'issue', name: 'Có vấn đề', cls: 'is-series-2' },
+            ]}
+            fmt={(v) => `${v} ca`}
+            capFmt={(v) => v}
+            label="Số ca khám mỗi ngày trong 30 ngày qua, theo kết luận"
+          />
+        </Card>
+
+        <Card title="Sự cố theo loại · 30 ngày" icon={<i className="bi bi-exclamation-octagon" />}>
+          <div className="dk-chart-head">
+            <b>{incidentRows.reduce((t, r) => t + r.value, 0)} sự cố</b>
+            <span>nhân viên chăm sóc báo trong 30 ngày</span>
+          </div>
+          <RankBars rows={incidentPage.rows} max={incidentRows[0]?.value} empty="Không có sự cố nào trong 30 ngày qua." />
+          {incidentPage.pager}
+        </Card>
+      </div>
+
+      <div className="own-grid-2">
+        <Card title={`Hạn chế tập luyện · ${restricted.length}`} icon={<i className="bi bi-lock" />} flush>
+          {horsesQ.isLoading ? (
+            <LoadingBlock rows={2} height={44} />
+          ) : restricted.length === 0 ? (
+            <EmptyNote icon="bi-unlock" title="Không ngựa nào bị hạn chế tập" />
+          ) : (
+            <div className="vet-list">
+              {heldPage.rows.map((h) => {
+                const c = clearanceOf(h);
+                return (
+                  <div key={h._id} className="vet-row is-clickable" role="button" tabIndex={0} onClick={() => openHorse(h._id)} onKeyDown={(e) => e.key === 'Enter' && openHorse(h._id)}>
+                    <HorseAvatar horse={h} size={34} />
+                    <div className="vet-row-main">
+                      <div className="d-flex flex-wrap align-items-center gap-2">
+                        <span className="vet-row-title">{h.name}</span>
+                        <LevelPill level={c.level} short />
+                      </div>
+                      <div className="vet-small vet-muted vet-clamp-1">{c.reason || CLEARANCE_SOURCE[c.source] || ''}</div>
+                    </div>
+                    <i className="bi bi-chevron-right vet-faint" aria-hidden="true" />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {heldPage.pager}
+        </Card>
+
+        <Card
+          title={`Y lệnh hôm nay · ${orders.length}`}
+          icon={<i className="bi bi-capsule" />}
+          flush
+          extra={
+            <button type="button" className="vet-link vet-small" onClick={() => navigate('/veterinarian/treatments')}>
+              Điều trị
+            </button>
+          }
+        >
+          {ordersQ.isLoading ? (
+            <LoadingBlock rows={2} height={44} />
+          ) : orders.length === 0 ? (
+            <EmptyNote icon="bi-capsule" title="Hôm nay không còn liều thuốc nào cần cho" />
+          ) : (
+            <div className="vet-list">
+              {orderPage.rows.map((row) => {
+                const p = row.progress;
+                const horseId = idOf(row.horse);
+                const trouble = [p.missed && `${p.missed} bỏ lỡ`, p.notDone && `${p.notDone} không cho được`].filter(Boolean).join(' · ');
+                return (
+                  <div key={row._id} className="vet-row is-clickable" role="button" tabIndex={0} onClick={() => openHorse(horseId)} onKeyDown={(e) => e.key === 'Enter' && openHorse(horseId)}>
+                    <HorseAvatar horse={horseById.get(horseId) || row.horse} size={34} />
+                    <div className="vet-row-main">
+                      <div className="d-flex align-items-center justify-content-between gap-2">
+                        <span className="vet-row-title text-truncate">{row.horse?.name || 'Ngựa'}</span>
+                        <span className="vet-small vet-tnum vet-muted">
+                          {p.done}/{p.total} liều
+                        </span>
+                      </div>
+                      <div className="mt-1">
+                        <Progress value={p.done} max={p.total} tone={trouble ? 'bad' : 'good'} />
+                      </div>
+                      {trouble && <div className="vet-small mt-1 vet-text-bad">{trouble}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {orderPage.pager}
+        </Card>
       </div>
 
       {dialog?.type === 'request' && (

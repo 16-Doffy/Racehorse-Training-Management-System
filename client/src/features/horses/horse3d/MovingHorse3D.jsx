@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Tooltip } from 'antd';
-import { InfoCircleOutlined } from '@ant-design/icons';
+import { Button } from 'antd';
 import { coatFor } from './horseBreeds';
 import { MOVING_HORSE, PASTURE_CREDIT } from './horseMotion';
+import ModelCredit from './ModelCredit';
 
 const GLASS = { background: 'rgba(1,17,12,.62)', border: '1px solid rgba(255,255,255,.14)', backdropFilter: 'blur(6px)' };
 const TONES = { alert: '#fca5a5', warn: '#fde68a' };
@@ -25,12 +25,10 @@ function vietnamClock() {
  * `view`: 'side' (side on, the track streams by, drag to look around) or 'turntable' (turns by itself).
  * `hour`: the hour of the day (Vietnam, hourOf) whose sky the track shows — a session's; without
  * it the pasture shows the sky of now and a track a plain one.
- * `creditInFrame`: the models' authors (their CC BY licence asks for them) behind an "i" in the
- * frame's corner instead of in two lines under it.
  * `fill`: the frame grows to the height of its parent (a grid cell beside a taller card), `height`
- * being its least.
+ * being its least. `recordable`: its frames can be copied into a video (SessionVideo).
  */
-export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', hour = null, height = 260, view = 'side', compact = false, showCoat = false, creditInFrame = false, fill = false, className = '' }) {
+export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', hour = null, height = 260, view = 'side', compact = false, showCoat = false, fill = false, recordable = false, className = '' }) {
   const canvas = useRef(null);
   const box = useRef(null);
   const stage = useRef(null);
@@ -59,7 +57,7 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
       })
       .then((mod) => {
         if (!mod?.createHorseStage || !alive || !canvas.current) return;
-        const s = mod.createHorseStage(canvas.current, { view });
+        const s = mod.createHorseStage(canvas.current, { view, recordable });
         stage.current = s;
         const { coat: c, motion: m, surface: f, hour: h } = latest.current;
         s.setHour(h);
@@ -77,7 +75,7 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
       stage.current?.dispose();
       stage.current = null;
     };
-  }, [view]);
+  }, [view, recordable]);
 
   useEffect(() => {
     stage.current?.setCoat(coat);
@@ -156,40 +154,9 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
             Không hiển thị được mô hình 3D trên thiết bị này.
           </div>
         )}
-        {creditInFrame && (
-          <Tooltip
-            trigger={['hover', 'focus', 'click']}
-            placement="topRight"
-            title={
-              <div className="text-xs leading-snug">
-                <div>{MOVING_HORSE.credit}</div>
-                {surface === 'pasture' && <div className="mt-1">{PASTURE_CREDIT.full}</div>}
-              </div>
-            }
-          >
-            <button
-              type="button"
-              aria-label="Nguồn mô hình 3D"
-              className={`absolute flex h-6 w-6 cursor-pointer items-center justify-center rounded-full p-0 text-white ${compact ? 'right-2 bottom-2' : 'right-3 bottom-3'}`}
-              style={{ ...GLASS, fontSize: 12 }}
-            >
-              <InfoCircleOutlined />
-            </button>
-          </Tooltip>
-        )}
+        {/* The models' authors (their CC BY licences ask for them) behind an "i" in the corner. */}
+        <ModelCredit lines={[MOVING_HORSE.credit, surface === 'pasture' && PASTURE_CREDIT.full]} style={compact ? undefined : { right: 12, bottom: 12 }} />
       </div>
-      {!creditInFrame && (
-        <>
-          <div className="text-right text-gray-400 mt-1 truncate" style={{ fontSize: compact ? 9 : 10 }} title={MOVING_HORSE.credit}>
-            {MOVING_HORSE.credit}
-          </div>
-          {surface === 'pasture' && (
-            <div className="text-right text-gray-400 truncate" style={{ fontSize: compact ? 9 : 10 }} title={PASTURE_CREDIT.full}>
-              {PASTURE_CREDIT.short}
-            </div>
-          )}
-        </>
-      )}
     </div>
   );
 }

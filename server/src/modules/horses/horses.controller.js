@@ -22,6 +22,7 @@ const { closeRun } = require('../training/trainingSession.service');
 const { getScopedHorseIds, canAccessHorse, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
 const { pushNotification } = require('../alerts/notification.service');
 const { clearanceMap } = require('../health/trainingClearance');
+const { dietSummary } = require('../feeding/dietOrder');
 const { closeLeftoversFor } = require('./archive.service');
 const { checklistFor } = require('./checklist.service');
 const { STAFF_FIELDS } = require('../stable/caretaker');
@@ -39,7 +40,8 @@ async function withClearance(horses) {
     ExamRequest.find({ horse: { $in: ids }, status: 'pending', holdTraining: true }).select('horse reason createdAt'),
   ]);
   const holdOf = new Map(holds.map((q) => [String(q.horse), { reason: q.reason, since: q.createdAt }]));
-  return horses.map((h) => ({ ...h.toObject(), trainingClearance: map.get(String(h._id)), examHold: holdOf.get(String(h._id)) || null }));
+  // `feedingDiet`: what it eats today when not as planned (a sick diet, the week back after one), for whoever feeds it.
+  return horses.map((h) => ({ ...h.toObject(), trainingClearance: map.get(String(h._id)), examHold: holdOf.get(String(h._id)) || null, feedingDiet: dietSummary(h) }));
 }
 
 const populatePedigree = [

@@ -2,7 +2,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import loginBg from '../../assets/login-bg.jpg';
-import { ROLES } from '../../constants/roles';
+import { ROLE_LABELS, ROLES } from '../../constants/roles';
 
 // Contextual subtitle per staff route when a page does not supply a custom subtitle.
 const ROUTE_NOTES = {
@@ -102,7 +102,7 @@ export default function PageHeroBanner({
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <div className="min-w-0 flex-[1_1_320px]">
           <div className="st-hero-banner__eyebrow">
-            <span>{roleLabel || (userRole === ROLES.HEAD_TRAINER ? 'Huấn luyện viên Trưởng' : 'Quản lý Câu lạc bộ')}</span>
+            <span>{roleLabel || ROLE_LABELS[userRole] || 'Câu lạc bộ'}</span>
           </div>
           <h1 className="!m-0 !leading-tight text-balance">
             {title}

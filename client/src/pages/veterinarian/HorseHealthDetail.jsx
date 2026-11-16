@@ -586,7 +586,7 @@ export default function HorseHealthDetail() {
             {horse.photoUrl ? (
               <HorseAvatar horse={horse} size={128} />
             ) : (
-              <MovingHorse3D creditInFrame breed={horse.breed} color={horse.color} motion={restingMotion(horse, injuryFrom({ markers: injuries, records }))} surface="pasture" height="var(--vet-horse-stage)" />
+              <MovingHorse3D breed={horse.breed} color={horse.color} motion={restingMotion(horse, injuryFrom({ markers: injuries, records }))} surface="pasture" height="var(--vet-horse-stage)" />
             )}
           </div>
           <div className="vet-horse-body">

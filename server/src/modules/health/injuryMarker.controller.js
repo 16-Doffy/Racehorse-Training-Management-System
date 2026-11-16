@@ -64,6 +64,8 @@ async function syncHorseHealthStatus(horseId) {
     await followHealthSafely(horseId, { reason: 'injuries' });
     // And its meals: the sick diet while injured, the usual ones once fit.
     await require('../feeding/feedingCalendar.service').followHealthDiet(horseId);
+    // And its training plan: paused while it is stopped, the days made up once it is back.
+    await require('../training/planProgress.service').followPlanOf(horseId);
   }
 }
 

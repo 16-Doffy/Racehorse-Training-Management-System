@@ -133,7 +133,7 @@ const CARD_STYLES = {
   title: { whiteSpace: 'normal', overflow: 'visible' },
 };
 
-function LiveCard({ session, readings, horse, surface }) {
+function LiveCard({ session, readings, horse, surface, readOnly = false }) {
   const { token } = theme.useToken();
   const gridColor = token.colorBorderSecondary || GRID;
   const axisColor = token.colorTextTertiary || AXIS;
@@ -161,13 +161,13 @@ function LiveCard({ session, readings, horse, surface }) {
               Vượt ngưỡng nhịp tim
             </Tag>
           )}
-          <ScenarioButton session={session} />
+          {!readOnly && <ScenarioButton session={session} />}
         </CardTitle>
       }
     >
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         <div className="lg:col-span-5 min-w-0">
-          <MovingHorse3D creditInFrame breed={horse?.breed} color={horse?.color} motion={motion} surface={surface} hour={hourOfSession(session)} height={236} />
+          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={motion} surface={surface} hour={hourOfSession(session)} height={236} />
         </div>
         <div className="lg:col-span-7 min-w-0">
           <Telemetry heartRate={heartRate} heartRateMax={target.heartRateMax} speed={speed} targetSpeed={target.speed} distance={distance} targetDistance={targetDistance} />
@@ -211,7 +211,7 @@ function LiveCard({ session, readings, horse, surface }) {
 const COMPACT_FROM = 3;
 
 /** Several horses at once: a row per horse, the ones over their heart-rate ceiling first; a row opens its card. */
-function LiveBoard({ running, readings, horseOf, surfaceFor }) {
+function LiveBoard({ running, readings, horseOf, surfaceFor, readOnly = false }) {
   const [openId, setOpenId] = useState(null);
   const rows = running
     .map((s) => ({ s, f: liveFigures(s, readings[s._id] || []) }))
@@ -263,7 +263,7 @@ function LiveBoard({ running, readings, horseOf, surfaceFor }) {
       </div>
       {open && (
         <div className="mt-3">
-          <LiveCard session={open} readings={readings[open._id] || []} horse={horseOf(open)} surface={surfaceFor(open)} />
+          <LiveCard session={open} readings={readings[open._id] || []} horse={horseOf(open)} surface={surfaceFor(open)} readOnly={readOnly} />
         </div>
       )}
     </Card>
@@ -293,7 +293,7 @@ function StoppedCard({ session, horse, surface, onClose }) {
     >
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         <div className="lg:col-span-5 min-w-0">
-          <MovingHorse3D creditInFrame breed={horse?.breed} color={horse?.color} motion={liveMotion(session, 0, { stopped: true })} surface={surface} hour={hourOfSession(session)} height={236} />
+          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={liveMotion(session, 0, { stopped: true })} surface={surface} hour={hourOfSession(session)} height={236} />
         </div>
         <div className="lg:col-span-7 min-w-0 flex flex-col gap-2 text-sm text-gray-800">
           <p className="m-0">Tốc độ tụt hẳn và nhịp tim vọt lên giữa buổi: hệ thống đã dừng buổi tập để bảo vệ ngựa.</p>
@@ -316,9 +316,10 @@ function StoppedCard({ session, horse, surface, onClose }) {
  * speed and distance from the sensor feed (`sensor:reading`, sent to the horse's trainer) and a
  * heart-rate line against the session's own ceiling. Shown only while something is running (or was
  * just stopped as a suspected injury): a card per horse, or a row per horse from COMPACT_FROM at once.
- * `horses` gives each horse's breed and colour, so it runs in its own coat.
+ * `horses` gives each horse's breed and colour, so it runs in its own coat. `readOnly`: watched by the owner,
+ * without the trainer's tools (the scenario button).
  */
-export default function LiveSessionMonitor({ sessions = [], horses = [], plans = [], onSessionCompleted }) {
+export default function LiveSessionMonitor({ sessions = [], horses = [], plans = [], onSessionCompleted, readOnly = false }) {
   const running = sessions.filter((s) => s.status === 'in_progress');
   const [readings, setReadings] = useState(() => Object.fromEntries(liveCache));
   // Runs just stopped as a suspected injury: { session, at }.
@@ -405,9 +406,9 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], plans =
         <StoppedCard key={session._id} session={session} horse={horseOf(session)} surface={surfaceFor(session)} onClose={() => closeStopped(session._id)} />
       ))}
       {running.length >= COMPACT_FROM ? (
-        <LiveBoard running={running} readings={readings} horseOf={horseOf} surfaceFor={surfaceFor} />
+        <LiveBoard running={running} readings={readings} horseOf={horseOf} surfaceFor={surfaceFor} readOnly={readOnly} />
       ) : (
-        running.map((s) => <LiveCard key={s._id} session={s} readings={readings[s._id] || []} horse={horseOf(s)} surface={surfaceFor(s)} />)
+        running.map((s) => <LiveCard key={s._id} session={s} readings={readings[s._id] || []} horse={horseOf(s)} surface={surfaceFor(s)} readOnly={readOnly} />)
       )}
     </section>
   );

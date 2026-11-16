@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { coatFor } from './horse3d/horseBreeds';
 import { HORSE_MODEL, loadModelViewer, paintCoat } from './horse3d/modelViewer';
+import ModelCredit from './horse3d/ModelCredit';
 import { CARE_EVENT_META } from '../../constants/care';
 import { KIND_COLOR, buildCarePins } from './careMapPins';
 // The 3D viewer is styled by the vet's stylesheet, whose rules all sit under .vet-ui.
@@ -177,9 +178,7 @@ export default function CareBodyMap({ horse, events = [], height = 380 }) {
               <div>Không tải được mô hình 3D — cần kết nối mạng để tải trình xem. Xem danh sách bên cạnh.</div>
             </div>
           )}
-        </div>
-        <div className="vet-3d-credit" title={HORSE_MODEL.credit}>
-          {HORSE_MODEL.credit} · bản đã bỏ yên cương
+          <ModelCredit lines={[HORSE_MODEL.credit, 'Bản đã bỏ yên cương']} style={{ right: 10, bottom: 10 }} />
         </div>
       </div>
     </div>

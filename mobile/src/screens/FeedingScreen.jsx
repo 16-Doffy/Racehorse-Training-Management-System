@@ -1,16 +1,15 @@
 import { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Icon from '../components/Icon';
-import AppHeader from '../components/AppHeader';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '../components/AppText';
 import CompleteTaskModal from '../components/CompleteTaskModal';
 import MealDetailSheet from '../components/MealDetailSheet';
-import StockCard from '../components/StockCard';
 import NotDoneModal from '../components/NotDoneModal';
 import RestockSheet from '../components/RestockSheet';
 import HistorySheet from '../components/HistorySheet';
 import YesterdayRecap from '../components/YesterdayRecap';
-import { Badge, Banner, Button, CountTabs, EmptyState, IconButton, LoadError, Loading, ProgressBar, Row, SearchInput, StallPlate } from '../components/ui';
+import Icon from '../components/Icon';
+import { Badge, EmptyState, IconButton, LoadError, Loading, Row, SearchInput } from '../components/ui';
+import { CareFrame, DietTag, DoneMark, FilterTabs, ItemLines, LinkLine, MetaChip, MoreMark, Notice, StallTag, SummaryCard, TimeChip, UseFirstCard, WorkGroup, WorkRow, dietLine, rowAction } from '../components/CareKit';
 import { useFeedings, useInventory, useRefreshAll, useStableOverview, useTasks } from '../hooks/useGroomData';
 import {
   EATEN_OPTIONS,
@@ -19,6 +18,8 @@ import {
   MEAL_ORDER,
   NO_RATION_REASON,
   describeObservation,
+  expiryOf,
+  formatDate,
   formatDays,
   formatStock,
   formatTime,
@@ -34,23 +35,26 @@ import {
   restockRequestFor,
   stallCodeOf,
   stateRank,
+  stockFor,
   taskState,
+  useFirstItems,
+  weekdayShort,
 } from '../utils/groom';
-import { colors, font, radius, spacing } from '../theme';
+import { colors, spacing } from '../theme';
 
 const SLOT_SHORT = { morning: 'Sáng', noon: 'Trưa', evening: 'Tối' };
 
 /**
- * Feeding, one meal at a time. The tabs are the day's three meals (the current one first open), each
- * with how many horses have eaten; under them, one line per horse for that meal — what goes in the
- * bucket and the one button its state calls for: "Cho ăn" when it can be recorded, "Quên ghi" when
- * it was given but its window closed, "Xin kho" when the store is short, "Báo HLV" when there is no
- * approved ration. Tapping the line opens the meal in full with every other action ("Không cho ăn").
- * A meal is only recorded against an approved ration — the server refuses it otherwise too.
+ * Feeding, one meal at a time. The summary says how many horses have eaten the meal shown and at what
+ * hour; the tabs under it are the day's three meals; the list is one line per horse — its stall, what
+ * goes in the bucket, where it stands, and the one button its state calls for: "Cho ăn" when it can be
+ * recorded, "Quên ghi" when it was given but its window closed, "Xin kho" when the store is short,
+ * "Báo HLV" when there is no approved ration. Tapping the line opens the meal in full with every other
+ * action ("Không cho ăn"). A meal is only recorded against an approved ration — the server refuses it
+ * otherwise too.
  */
 export default function FeedingScreen({ navigation, segments }) {
   const [slotChoice, setSlotChoice] = useState(null);
-  const [scope, setScope] = useState('mine');
   const [search, setSearch] = useState('');
   const [showDone, setShowDone] = useState(false);
   const [openMeal, setOpenMeal] = useState(null);
@@ -72,8 +76,8 @@ export default function FeedingScreen({ navigation, segments }) {
 
   const feedingTasks = useMemo(() => tasks.filter((t) => t.taskType === 'feeding' && isSameDay(t.scheduledDate, new Date())), [tasks]);
   const mealHistory = useMemo(
-    () => tasks.filter((t) => t.taskType === 'feeding' && (scope === 'all' || myHorseIds.has(refId(t.horse)))),
-    [tasks, scope, myHorseIds]
+    () => tasks.filter((t) => t.taskType === 'feeding' && myHorseIds.has(refId(t.horse))),
+    [tasks, myHorseIds]
   );
 
   const rationsByHorse = useMemo(() => {
@@ -82,11 +86,12 @@ export default function FeedingScreen({ navigation, segments }) {
     return map;
   }, [feedings]);
 
-  // My horses: those I look after, and any horse whose meal was given to me today (covering a colleague).
+  // The horses I feed: those I look after, and any horse whose meal was given to me today (covering a
+  // colleague). Only these: a meal can only be recorded by the groom it was given to.
   const fedByMe = useMemo(() => new Set(feedingTasks.map((t) => refId(t.horse))), [feedingTasks]);
   const stallOf = (horseId) => stallCodeOf(assignmentByHorseId.get(horseId));
   const scoped = horses
-    .filter((h) => scope === 'all' || myHorseIds.has(h._id) || fedByMe.has(h._id))
+    .filter((h) => myHorseIds.has(h._id) || fedByMe.has(h._id))
     .filter((h) => matchesSearch(`${h.name} ${stallOf(h._id) || ''}`, search))
     .sort((a, b) => (stallOf(a._id) || '~').localeCompare(stallOf(b._id) || '~', 'vi', { numeric: true }));
 
@@ -112,10 +117,11 @@ export default function FeedingScreen({ navigation, segments }) {
       .filter(Boolean);
 
   const tabs = MEAL_ORDER.map((s) => {
-    const rows = rowsFor(s).filter((r) => r.task);
-    const done = rows.filter((r) => r.task.status === 'completed').length;
-    const alert = rows.some((r) => ['missed', 'blocked'].includes(taskState(r.task, ctx)?.key));
-    return { value: s, label: SLOT_SHORT[s], icon: MEAL_CONFIG[s].icon, done, total: rows.length, alert, sub: mealTimeOf(s, allSchedules) };
+    const list = rowsFor(s).filter((r) => r.task);
+    const done = list.filter((r) => r.task.status === 'completed').length;
+    const alert = list.some((r) => ['missed', 'blocked'].includes(taskState(r.task, ctx)?.key));
+    const at = mealTimeOf(s, allSchedules);
+    return { value: s, label: SLOT_SHORT[s], alert, sub: list.length ? `${done === list.length ? '✓ ' : ''}${done}/${list.length} · ${at}` : at };
   });
 
   const rows = rowsFor(slot).sort((a, b) => stateRank(taskState(a.task, ctx)) - stateRank(taskState(b.task, ctx)));
@@ -131,6 +137,16 @@ export default function FeedingScreen({ navigation, segments }) {
   // Feeds the rations in scope use that are running out, with how long they last.
   const usedItems = new Set(allSchedules.flatMap((s) => (s.items || []).map((i) => String(refId(i.inventoryItem) || ''))).filter(Boolean));
   const shortages = inventory.filter((item) => usedItems.has(String(item._id)) && item.level?.short);
+  // Feed to use first: what today's rations take whose next lot expires soon, and what waits unused.
+  const useFirst = useFirstItems(inventory, 'feed', usedItems).slice(0, 5);
+  const feeds = inventory.filter((i) => i.category === 'feed' && i.isActive !== false);
+  const storeLine = [
+    `${feeds.length} loại`,
+    feeds.filter((i) => i.level?.short).length ? `${feeds.filter((i) => i.level?.short).length} sắp hết` : null,
+    useFirst.length ? `${useFirst.length} sắp hết hạn` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const reportNotDone = (task, reason = '') => {
     setNotDoneReason(reason);
@@ -154,151 +170,30 @@ export default function FeedingScreen({ navigation, segments }) {
   };
 
   const meal = MEAL_CONFIG[slot];
-  const subtitle = withTask.length
-    ? `${meal.label} · ${doneCount}/${withTask.length} ngựa đã ăn${todo.length ? ` · còn ${todo.length}` : ''}`
-    : `${meal.label} · chưa có bữa nào cần cho ăn`;
+  const mealAt = mealTimeOf(slot, allSchedules);
+  const isNow = current.slot === slot && !current.tomorrow;
+  const severe = shortages.some((s) => s.level.key !== 'low');
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <AppHeader title="Cho ăn" subtitle={subtitle} right={<IconButton icon="history" label="Lịch sử cho ăn" onPress={() => setHistoryOpen(true)} />} />
+  const summary = (
+    <SummaryCard
+      done={withTask.length ? doneCount : 0}
+      total={withTask.length || null}
+      label={withTask.length ? `ngựa đã ăn ${meal.label.toLowerCase()}${isNow ? ' (bữa hiện tại)' : ''}` : `Chưa có ngựa nào cần ăn ${meal.label.toLowerCase()}`}
+      note={withTask.length ? (todo.length ? `Còn ${todo.length} ngựa cần cho ăn${noRation.length ? ` · ${noRation.length} chưa có KP` : ''}` : 'Đã xong bữa này') : null}
+      right={<MetaChip icon={meal.icon} text={mealAt} />}
+      progress={withTask.length ? (doneCount / withTask.length) * 100 : null}
+    />
+  );
 
-      {segments}
+  const filters = (
+    <>
+      <FilterTabs options={tabs} value={slot} onChange={setSlotChoice} />
+      <SearchInput value={search} onChange={setSearch} placeholder="Tìm ngựa, mã chuồng..." />
+    </>
+  );
 
-      <View style={styles.toolbar}>
-        <CountTabs options={tabs} value={slot} onChange={setSlotChoice} />
-        <Row style={{ gap: spacing.sm }}>
-          <View style={{ flex: 1 }}>
-            <SearchInput value={search} onChange={setSearch} placeholder="Tìm ngựa, mã chuồng..." />
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={scope === 'mine' ? 'Đang xem ngựa của tôi, chạm để xem tất cả' : 'Đang xem tất cả ngựa, chạm để xem ngựa của tôi'}
-            onPress={() => setScope((s) => (s === 'mine' ? 'all' : 'mine'))}
-            style={({ pressed }) => [styles.scope, scope === 'all' && styles.scopeOn, pressed && { opacity: 0.7 }]}
-          >
-            <Icon name="stable" size={15} color={scope === 'all' ? colors.white : colors.forest} />
-            <Text style={[styles.scopeText, scope === 'all' && { color: colors.white }]}>{scope === 'mine' ? 'Của tôi' : 'Tất cả'}</Text>
-          </Pressable>
-        </Row>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}>
-        {withTask.length > 0 ? (
-          <View style={{ gap: 4 }}>
-            <Row style={{ justifyContent: 'space-between' }}>
-              <Text style={styles.progressLabel}>
-                {current.slot === slot && !current.tomorrow ? 'Bữa hiện tại' : meal.label} · {mealTimeOf(slot, allSchedules)}
-              </Text>
-              <Text style={styles.progressValue}>
-                {doneCount}/{withTask.length} đã ăn
-              </Text>
-            </Row>
-            <ProgressBar percent={(doneCount / withTask.length) * 100} tint={colors.green} track={colors.graySoft} height={6} />
-          </View>
-        ) : null}
-
-        {shortages.length > 0 ? (
-          <Banner tone={shortages.some((s) => s.level.key !== 'low') ? 'danger' : 'warning'} style={styles.alert}>
-            <Row style={{ gap: spacing.sm }}>
-              <Icon name="warning" size={17} color={shortages.some((s) => s.level.key !== 'low') ? colors.red : colors.orange} />
-              <Text style={[font.small, { flex: 1, color: colors.text }]} numberOfLines={2}>
-                <Text style={{ fontWeight: '700' }}>Kho sắp hết: </Text>
-                {shortages
-                  .map((s) => `${s.name} ${s.level.key === 'expired' ? 'hết hạn' : `còn ${formatStock(s)}${s.daysLeft != null ? ` (${formatDays(s.daysLeft)})` : ''}`}`)
-                  .join(' · ')}
-              </Text>
-              <Button
-                title="Xin thêm"
-                size="sm"
-                variant="danger"
-                onPress={() =>
-                  shortages.length === 1
-                    ? setRestock(restockRequestFor({ entry: { inventoryItem: shortages[0]._id, name: shortages[0].name, unit: shortages[0].unit, available: shortages[0].quantity }, inventory }))
-                    : navigation.navigate('Kho')
-                }
-              />
-            </Row>
-          </Banner>
-        ) : null}
-
-        {isLoading ? (
-          <Loading />
-        ) : isError || tasksFailed ? (
-          <LoadError
-            text={isError ? 'Không tải được khẩu phần' : 'Không tải được danh sách bữa ăn'}
-            onRetry={() => {
-              refetch();
-              refetchTasks();
-            }}
-          />
-        ) : scoped.length === 0 ? (
-          <View style={styles.list}>
-            <EmptyState icon="stable" text={search ? 'Không tìm thấy ngựa nào' : 'Bạn chưa phụ trách ngựa nào'} hint={search ? 'Thử xoá từ khoá.' : "Chạm 'Của tôi' để xem cả ngựa khác."} />
-          </View>
-        ) : (
-          <>
-            {noRation.length > 0 ? (
-              <View style={styles.list}>
-                <Text style={styles.groupTitle}>Chưa có khẩu phần · {noRation.length}</Text>
-                {noRation.map((r) => (
-                  <NoRationRow key={r.horse._id} row={r} ctx={ctx} onReport={() => reportNotDone(r.task, NO_RATION_REASON)} />
-                ))}
-              </View>
-            ) : null}
-
-            {rows.length === 0 ? (
-              <View style={styles.list}>
-                <EmptyState icon={meal.icon} text={`Không có ngựa nào ăn ${meal.label.toLowerCase()}`} hint="Khẩu phần do HLV lập và duyệt." />
-              </View>
-            ) : (
-              <>
-                {todo.length > 0 ? (
-                  <View style={styles.list}>
-                    <Text style={styles.groupTitle}>Cần cho ăn · {todo.length}</Text>
-                    {todo.map((r) => (
-                      <MealRow key={r.horse._id} row={r} ctx={ctx} onOpen={() => open(r)} onAct={() => act(r)} />
-                    ))}
-                  </View>
-                ) : (
-                  <Banner tone="success" style={styles.alert}>
-                    <Row style={{ gap: spacing.sm }}>
-                      <Icon name="checkCircle" size={18} color={colors.green} />
-                      <Text style={[font.body, { flex: 1, fontWeight: '700' }]}>Xong {meal.label.toLowerCase()} cho mọi ngựa</Text>
-                    </Row>
-                  </Banner>
-                )}
-
-                {settled.length > 0 ? (
-                  <View style={styles.list}>
-                    <Pressable accessibilityRole="button" onPress={() => setShowDone((v) => !v)} style={styles.foldHead} hitSlop={4}>
-                      <Text style={[styles.groupTitle, { paddingBottom: 0 }]}>Đã xong · {settled.length}</Text>
-                      <Icon name={showDone ? 'chevronUp' : 'chevronDown'} size={16} color={colors.textMuted} />
-                    </Pressable>
-                    {showDone ? settled.map((r) => <MealRow key={r.horse._id} row={r} ctx={ctx} onOpen={() => open(r)} onAct={() => act(r)} />) : null}
-                  </View>
-                ) : null}
-              </>
-            )}
-
-            {noSlot.length > 0 ? (
-              <Text style={styles.footnote}>
-                Không ăn {meal.label.toLowerCase()}: {noSlot.map((h) => h.name).join(', ')}
-              </Text>
-            ) : null}
-          </>
-        )}
-
-        {/* Reference, below the day's work: how yesterday went and what the store holds. */}
-        <YesterdayRecap tasks={mealHistory} noun="bữa" onPress={() => setHistoryOpen(true)} />
-        <StockCard
-          title="Thức ăn trong kho"
-          category="feed"
-          items={inventory}
-          onOpenSupplies={() => navigation.navigate('Kho')}
-          emptyText="Kho chưa có mặt hàng thức ăn nào. Quản lý CLB là người tạo danh mục."
-        />
-      </ScrollView>
-
+  const overlays = (
+    <>
       <MealDetailSheet
         meal={openMeal}
         visible={!!openMeal}
@@ -324,7 +219,6 @@ export default function FeedingScreen({ navigation, segments }) {
           reportNotDone(task, reason);
         }}
       />
-
       <CompleteTaskModal
         task={completing}
         schedules={completing ? feedings.filter((f) => refId(f.horse) === refId(completing.horse)) : []}
@@ -343,31 +237,112 @@ export default function FeedingScreen({ navigation, segments }) {
       <NotDoneModal task={notDone} visible={!!notDone} initialReason={notDoneReason} onClose={() => setNotDone(null)} />
       <RestockSheet request={restock} visible={!!restock} onClose={() => setRestock(null)} />
       <HistorySheet visible={historyOpen} onClose={() => setHistoryOpen(false)} title="Lịch sử cho ăn" tasks={mealHistory} emptyText="Chưa có bữa nào được ghi nhận trong khoảng này" />
-    </SafeAreaView>
+    </>
+  );
+
+  return (
+    <CareFrame
+      subtitle={`Hôm nay · ${weekdayShort(new Date())} ${formatDate(new Date()).slice(0, 5)}`}
+      right={<IconButton icon="history" label="Lịch sử cho ăn" onPress={() => setHistoryOpen(true)} />}
+      segments={segments}
+      summary={summary}
+      filters={filters}
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      overlays={overlays}
+    >
+      {shortages.length > 0 ? (
+        <Notice
+          tone={severe ? 'danger' : 'warning'}
+          title="Kho sắp hết:"
+          text={shortages.map((s) => `${s.name} ${s.level.key === 'expired' ? 'hết hạn' : `còn ${formatStock(s)}${s.daysLeft != null ? ` (${formatDays(s.daysLeft)})` : ''}`}`).join(' · ')}
+          action="Xin thêm"
+          onAction={() =>
+            shortages.length === 1
+              ? setRestock(restockRequestFor({ entry: { inventoryItem: shortages[0]._id, name: shortages[0].name, unit: shortages[0].unit, available: shortages[0].quantity }, inventory }))
+              : navigation.navigate('Kho')
+          }
+        />
+      ) : null}
+
+      {isLoading ? (
+        <Loading />
+      ) : isError || tasksFailed ? (
+        <LoadError
+          text={isError ? 'Không tải được khẩu phần' : 'Không tải được danh sách bữa ăn'}
+          onRetry={() => {
+            refetch();
+            refetchTasks();
+          }}
+        />
+      ) : scoped.length === 0 ? (
+        <WorkGroup>
+          <EmptyState icon="stable" text={search ? 'Không tìm thấy ngựa nào' : 'Bạn chưa phụ trách ngựa nào'} hint={search ? 'Thử xoá từ khoá.' : 'Quản lý phân công ngựa cho bạn ở Chuồng trại.'} />
+        </WorkGroup>
+      ) : (
+        <>
+          {rows.length === 0 ? (
+            <WorkGroup>
+              <EmptyState icon={meal.icon} text={`Không có ngựa nào ăn ${meal.label.toLowerCase()}`} hint="Khẩu phần do HLV lập và duyệt." />
+            </WorkGroup>
+          ) : todo.length > 0 ? (
+            <WorkGroup title={`Cần cho ăn · ${todo.length}`}>
+              {todo.map((r) => (
+                <MealRow key={r.horse._id} row={r} ctx={ctx} onOpen={() => open(r)} onAct={() => act(r)} />
+              ))}
+            </WorkGroup>
+          ) : (
+            <Notice tone="success" icon="checkCircle" title={`Xong ${meal.label.toLowerCase()}`} text="cho mọi ngựa." />
+          )}
+
+          {noRation.length > 0 ? (
+            <WorkGroup title={`Chưa có khẩu phần · ${noRation.length}`}>
+              {noRation.map((r) => (
+                <NoRationRow key={r.horse._id} row={r} ctx={ctx} onReport={() => reportNotDone(r.task, NO_RATION_REASON)} />
+              ))}
+            </WorkGroup>
+          ) : null}
+
+          {settled.length > 0 ? (
+            <WorkGroup title={`Đã xong · ${settled.length}`} foldable open={showDone} onToggle={() => setShowDone((v) => !v)}>
+              {settled.map((r) => (
+                <MealRow key={r.horse._id} row={r} ctx={ctx} onOpen={() => open(r)} onAct={() => act(r)} />
+              ))}
+            </WorkGroup>
+          ) : null}
+
+          {noSlot.length > 0 ? (
+            <Row style={styles.footnote}>
+              <Icon name="info" size={14} color={colors.textFaint} />
+              <Text style={styles.footnoteText}>
+                Không ăn {meal.label.toLowerCase()}: {noSlot.map((h) => h.name).join(', ')}
+              </Text>
+            </Row>
+          ) : null}
+        </>
+      )}
+
+      <UseFirstCard entries={useFirst} kind="feed" onOpenStore={() => navigation.navigate('Kho')} />
+
+      {/* Reference, below the day's work: how yesterday went and what the store holds. */}
+      <YesterdayRecap tasks={mealHistory} noun="bữa" onPress={() => setHistoryOpen(true)} />
+      <LinkLine icon="supplies" title="Kho thức ăn:" text={feeds.length ? storeLine : 'chưa có mặt hàng nào'} tone={colors.forestLight} onPress={() => navigation.navigate('Kho')} />
+    </CareFrame>
   );
 }
 
-// The button a meal's state calls for (utils/groom.js primaryAction), in the words of feeding.
-const ACTIONS = {
-  complete: { title: 'Cho ăn', icon: 'check', variant: 'primary' },
-  late: { title: 'Quên ghi', icon: 'clock', variant: 'subtle' },
-  restock: { title: 'Xin kho', icon: 'plus', variant: 'danger' },
-  notDone: { title: 'Báo lỡ', icon: 'block', variant: 'ghost' },
-};
-
 /**
  * One horse's meal: its stall, what goes in the bucket, where it stands, and the one button for it.
- * The line and the button are two touch targets side by side, never nested.
  */
 function MealRow({ row, ctx, onOpen, onAct }) {
   const { horse, schedules, task, stall } = row;
   const state = taskState(task, ctx);
   const action = primaryAction(task, ctx);
   // A known reason (no approved ration, an expired feed) goes to the trainer; otherwise it is a missed meal.
-  const button = action ? { ...ACTIONS[action.key], ...(action.reason ? { title: 'Báo HLV' } : {}) } : null;
+  const button = action ? { ...rowAction(action.key, { complete: 'Cho ăn' }), ...(action.reason ? { title: 'Báo HLV' } : {}), onPress: onAct } : null;
   const health = horse.healthStatus && horse.healthStatus !== 'eligible' ? HEALTH_STATUS[horse.healthStatus] : null;
   const fed = task?.status === 'completed';
-  const items = schedules.flatMap((s) => s.items || []).map(rationLine);
+  const rationItems = schedules.flatMap((s) => s.items || []);
   const approved = schedules.some((s) => s.approvedBy);
   const eaten = EATEN_OPTIONS.find((o) => o.value === task?.observation?.amountEatenPercent);
 
@@ -381,43 +356,46 @@ function MealRow({ row, ctx, onOpen, onAct }) {
     const unwell = task.observation?.appetite === 'refused' || task.observation?.manure === 'loose' || (eaten && eaten.value < 50);
     tone = unwell ? colors.red : colors.green;
   } else if (task.status === 'skipped') status = state?.key === 'cancelled' ? 'HLV cho bỏ bữa này' : `Không cho ăn: ${task.skipReason || '—'}`;
-  else if (state?.key === 'upcoming') status = state.reason || `Chưa tới giờ · ${mealTimeOf(task.mealSlot, row.allSchedules)}`;
-  else if (state?.key === 'ready') status = task.makeUpOf ? `Cho ăn bù lúc ${formatTime(task.scheduledDate)}` : 'Cho ăn được bây giờ';
+  // Not time yet: the hour on the right says it. Ready: the button says it.
+  else if (state?.key === 'upcoming') status = null;
+  else if (state?.key === 'ready') status = task.makeUpOf ? `Cho ăn bù lúc ${formatTime(task.scheduledDate)}` : null;
   else status = state?.reason || state?.label;
 
+  const trailing = fed ? <DoneMark /> : state?.key === 'upcoming' ? <TimeChip time={task.makeUpOf ? formatTime(task.scheduledDate) : mealTimeOf(task.mealSlot, row.allSchedules)} /> : <MoreMark />;
+
   return (
-    <View style={[styles.row, fed && styles.rowDone]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Bữa của ${horse.name}`} onPress={onOpen} style={({ pressed }) => [styles.rowMain, pressed && { opacity: 0.7 }]}>
-        <StallPlate code={stall} name={horse.name} size="sm" />
-        <View style={{ flex: 1, gap: 2 }}>
-          <Row style={{ gap: 6 }}>
-            <Text style={styles.name} numberOfLines={1}>
-              {horse.name}
-            </Text>
-            {task?.makeUpOf ? <Badge label="Ăn bù" color={colors.blue} bg={colors.blueSoft} /> : null}
-            {health ? <View style={[styles.healthDot, { backgroundColor: health.color }]} accessibilityLabel={health.label} /> : null}
-          </Row>
-          <Text style={styles.ration} numberOfLines={1}>
-            {items.length ? items.map((i) => `${i.label} ${i.amount}`.trim()).join(' · ') : 'Chưa có khẩu phần'}
-            {items.length > 0 && !approved ? ' · chờ HLV duyệt' : ''}
-          </Text>
-          <Text style={[styles.status, { color: tone }]} numberOfLines={2}>
-            {status}
-          </Text>
-        </View>
-      </Pressable>
-      {button ? (
-        <Button title={button.title} icon={button.icon} variant={button.variant} size="sm" style={styles.action} onPress={onAct} />
-      ) : fed ? (
-        <Icon name="checkCircle" size={26} color={colors.green} />
-      ) : state?.key === 'upcoming' ? (
-        <View style={styles.timeChip}>
-          <Text style={styles.timeChipText}>{task.makeUpOf ? formatTime(task.scheduledDate) : mealTimeOf(task.mealSlot, row.allSchedules)}</Text>
-        </View>
-      ) : (
-        <Icon name="chevronRight" size={16} color={colors.textFaint} />
-      )}
-    </View>
+    <WorkRow
+      lead={<StallTag code={stall} name={horse.name} />}
+      title={horse.name}
+      label={`Bữa của ${horse.name}`}
+      tags={
+        <>
+          {task?.makeUpOf ? <Badge label="Ăn bù" color={colors.blue} bg={colors.blueSoft} /> : null}
+          {rationItems.length > 0 && !approved ? <Badge label="Chờ HLV duyệt" color={colors.orange} bg={colors.orangeSoft} /> : null}
+          {health ? <View style={[styles.healthDot, { backgroundColor: health.color }]} accessibilityLabel={health.label} /> : null}
+          {!fed ? <DietTag diet={horse.feedingDiet} /> : null}
+        </>
+      }
+      // On a sick diet the vet's words (or what to mind) right under the name, before the bucket is filled.
+      detail={rationItems.length ? (fed ? null : dietLine(horse.feedingDiet)) : 'Chưa có khẩu phần'}
+      footer={
+        rationItems.length ? (
+          <ItemLines
+            items={rationItems.map((item) => {
+              const line = rationLine(item);
+              const stock = stockFor({ inventoryItem: item.inventoryItem, name: item.type }, ctx.inventory || [], 'feed');
+              return { icon: line.icon, label: line.label, amount: line.amount, expiry: stock?.linked && !fed ? expiryOf(stock.items[0]) : null };
+            })}
+          />
+        ) : null
+      }
+      status={status}
+      statusTone={tone}
+      action={button}
+      trailing={trailing}
+      done={fed}
+      onPress={onOpen}
+    />
   );
 }
 
@@ -426,63 +404,20 @@ function NoRationRow({ row, ctx, onReport }) {
   const state = taskState(row.task, ctx);
   const pending = row.task.status === 'pending';
   return (
-    <View style={styles.row}>
-      <View style={styles.rowMain}>
-        <StallPlate code={row.stall} name={row.horse.name} size="sm" muted />
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={styles.name} numberOfLines={1}>
-            {row.horse.name}
-          </Text>
-          <Text style={[styles.status, { color: pending ? colors.red : colors.orange }]} numberOfLines={2}>
-            {pending ? 'Chưa có khẩu phần được HLV duyệt — chưa ghi nhận cho ăn được.' : state?.key === 'cancelled' ? 'HLV cho bỏ qua' : `Đã báo: ${row.task.skipReason}`}
-          </Text>
-        </View>
-      </View>
-      {pending ? <Button title="Báo HLV" icon="block" variant="ghost" size="sm" style={styles.action} onPress={onReport} /> : null}
-    </View>
+    <WorkRow
+      lead={<StallTag code={row.stall} name={row.horse.name} />}
+      title={row.horse.name}
+      detail={pending ? 'Chưa có khẩu phần' : null}
+      status={pending ? null : state?.key === 'cancelled' ? 'HLV cho bỏ qua' : `Đã báo HLV: ${row.task.skipReason}`}
+      statusTone={colors.orange}
+      action={pending ? { title: 'Báo HLV', icon: 'block', variant: 'ghost', onPress: onReport } : null}
+      trailing={pending ? null : <MoreMark />}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.cream },
-  toolbar: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSoft,
-  },
-  scope: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
-  },
-  scopeOn: { backgroundColor: colors.forest, borderColor: colors.forest },
-  scopeText: { fontSize: 13, fontWeight: '700', color: colors.forest },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  progressLabel: { fontSize: 12.5, fontWeight: '700', color: colors.forest },
-  progressValue: { fontSize: 12.5, fontWeight: '700', color: colors.textMuted },
-  alert: { paddingVertical: spacing.sm },
-  list: { backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSoft, overflow: 'hidden' },
-  groupTitle: { ...font.tiny, paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs },
-  foldHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: spacing.md, paddingBottom: spacing.md },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.borderSoft },
-  rowDone: { backgroundColor: '#f7fdf9' },
-  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, minWidth: 0 },
-  name: { fontSize: 15, fontWeight: '800', color: colors.text, flexShrink: 1 },
-  ration: { fontSize: 12.5, color: colors.text },
-  status: { fontSize: 12, fontWeight: '600' },
   healthDot: { width: 8, height: 8, borderRadius: 4 },
-  action: { minWidth: 92 },
-  timeChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.graySoft },
-  timeChipText: { fontSize: 12.5, fontWeight: '800', color: colors.textMuted },
-  footnote: { ...font.small, paddingHorizontal: spacing.xs },
+  footnote: { gap: 6, paddingHorizontal: spacing.xs, alignItems: 'flex-start' },
+  footnoteText: { flex: 1, fontSize: 12, lineHeight: 17, color: colors.textMuted },
 });

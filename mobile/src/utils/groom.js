@@ -978,3 +978,173 @@ export function stockFor({ inventoryItem, name }, inventory = [], category) {
   if (linked) return { quantity: linked.quantity, unit: linked.unit, items: [linked], level: levelOf(linked), linked: true };
   return findStock(name, inventory, category);
 }
+
+// ── Expiry: which lot to use first ─────────────────────────────────────────────────────────────
+// The store keeps each delivery as a lot with its own expiry (InventoryItem.batches). Recording a meal
+// or a dose takes stock from the lot that expires first (server: inventory/stock.service.js, FEFO), so
+// the groom should take that same lot off the shelf; and feed or medicine about to expire is used
+// before anything else, so nothing is thrown away.
+
+/** A lot expiring within this many days is used first and shown in amber; within URGENT_DAYS in red. */
+export const USE_FIRST_DAYS = 14;
+export const URGENT_DAYS = 3;
+const round1 = (n) => Math.round(n * 10) / 10;
+
+/**
+ * The lots of a stock item: `usable` ones in the order the store gives them out (expiring first,
+ * undated last, older deliveries first among those), and `expired` ones (which the server refuses).
+ * An item from before lots existed counts as one lot of its quantity and expiry.
+ */
+export function lotsOf(item, today = startOfDay(new Date())) {
+  const raw = item?.batches?.length ? item.batches : Number(item?.quantity) > 0 ? [{ qty: item.quantity, expiryDate: item.expiryDate }] : [];
+  const lots = raw
+    .filter((b) => Number(b.qty) > 0)
+    .map((b) => ({ qty: Number(b.qty), expiryDate: b.expiryDate || null, receivedAt: b.receivedAt || null, expired: b.expiryDate ? new Date(b.expiryDate) < today : false }));
+  const usable = lots
+    .filter((l) => !l.expired)
+    .sort((a, b) => {
+      if (a.expiryDate && b.expiryDate) return new Date(a.expiryDate) - new Date(b.expiryDate);
+      if (a.expiryDate) return -1;
+      if (b.expiryDate) return 1;
+      return new Date(a.receivedAt || 0) - new Date(b.receivedAt || 0);
+    });
+  return { usable, expired: lots.filter((l) => l.expired) };
+}
+
+/**
+ * How the lot to use next stands: { date, days, qty, tone: 'urgent'|'soon'|'ok', label: 'HSD 20/11' },
+ * or null when the item has no dated lot.
+ */
+export function expiryOf(item, today = startOfDay(new Date())) {
+  const first = lotsOf(item, today).usable.find((l) => l.expiryDate);
+  if (!first) return null;
+  const days = Math.round((startOfDay(first.expiryDate) - today) / 86400000);
+  const tone = days <= URGENT_DAYS ? 'urgent' : days <= USE_FIRST_DAYS ? 'soon' : 'ok';
+  return { date: first.expiryDate, days, qty: first.qty, tone, label: `HSD ${formatDate(first.expiryDate).slice(0, 5)}` };
+}
+
+/** "còn 3 ngày", "hết hạn hôm nay". */
+export const expiryDaysText = (days) => (days <= 0 ? 'hết hạn hôm nay' : `còn ${days} ngày`);
+
+/**
+ * What to take for `amount` of an item, lot by lot in the order the store gives them out:
+ * { plan: [{ expiryDate, take, qty }], short } — `short` is what no usable lot covers.
+ */
+export function takeFromLots(item, amount, today = startOfDay(new Date())) {
+  const plan = [];
+  let left = Number(amount) || 0;
+  for (const lot of lotsOf(item, today).usable) {
+    if (left <= 0) break;
+    const take = round1(Math.min(lot.qty, left));
+    plan.push({ expiryDate: lot.expiryDate, take, qty: lot.qty });
+    left = round1(left - take);
+  }
+  return { plan, short: left > 0 ? left : 0 };
+}
+
+/**
+ * Stock of one category (feed | medicine) whose next lot expires within USE_FIRST_DAYS, soonest
+ * first: [{ item, expiry, inUse }] — `inUse` when today's rations or prescriptions take it (`usedIds`),
+ * otherwise it is waiting on the shelf and the trainer or the vet should hear about it.
+ */
+export function useFirstItems(inventory = [], category, usedIds = new Set(), today = startOfDay(new Date())) {
+  return inventory
+    .filter((item) => item?.category === category && item.isActive !== false)
+    .map((item) => ({ item, expiry: expiryOf(item, today), inUse: usedIds.has(String(item._id)) }))
+    .filter((x) => x.expiry && x.expiry.tone !== 'ok')
+    .sort((a, b) => a.expiry.days - b.expiry.days);
+}
+
+// ── Notifications: what each is about, where it leads, and the alike ones folded ─────────────────
+
+/** The kinds of notification a groom reads, with their icon and colour, in the order of the filter. */
+export const NOTIFICATION_GROUPS = {
+  feed: { label: 'Cho ăn', icon: 'feeding', color: '#ea580c', bg: '#ffedd5' },
+  med: { label: 'Thuốc & y lệnh', icon: 'medication', color: '#dc2626', bg: '#fee2e2' },
+  work: { label: 'Việc chuồng', icon: 'tasks', color: '#2563eb', bg: '#dbeafe' },
+  horse: { label: 'Ngựa & sức khỏe', icon: 'vet', color: '#7c3aed', bg: '#ede9fe' },
+  store: { label: 'Kho', icon: 'supplies', color: '#16a34a', bg: '#dcfce7' },
+  other: { label: 'Khác', icon: 'bell', color: '#6b7280', bg: '#f3f4f6' },
+};
+
+const MEAL_WORDS = /(bữa|cho ăn|khẩu phần)/i;
+const MED_WORDS = /(thuốc|liều|y lệnh)/i;
+const HORSE_TYPES = ['injury_lock', 'training_restricted', 'training_unlocked', 'horse_assigned', 'exam_request', 'exam_due', 'vaccination_due', 'deworming_due', 'farrier_due', 'fitness_alert', 'session_scheduled', 'session_completed'];
+
+/** Which kind a notification is (a key of NOTIFICATION_GROUPS). */
+export function notificationGroup(n = {}) {
+  const type = n.type;
+  if (type === 'meal_missed' || type === 'ration_review') return 'feed';
+  if (type === 'care_order') return 'med';
+  if (['low_stock', 'stock_update', 'restock_decision', 'restock_request'].includes(type)) return 'store';
+  if (type === 'incident_report' || type === 'incident_update') return 'work';
+  if (HORSE_TYPES.includes(type)) return 'horse';
+  if (type === 'task_assigned') return MEAL_WORDS.test(n.message || '') ? 'feed' : MED_WORDS.test(n.message || '') ? 'med' : 'work';
+  return 'other';
+}
+
+/**
+ * Where tapping a notification takes the groom: { screen, params } — the care tab on the right part
+ * for a meal, a dose or a chore, the store, the incidents, or the horse. null when nowhere fits.
+ */
+export function notificationTarget(n = {}) {
+  const group = notificationGroup(n);
+  const horseId = refId(n.horse);
+  if (n.type === 'incident_report' || n.type === 'incident_update') return { screen: 'Incidents' };
+  if (group === 'feed') return { screen: 'Chăm sóc', params: { segment: 'feeding' } };
+  if (group === 'med') return { screen: 'Chăm sóc', params: { segment: 'medication' } };
+  if (group === 'work') return { screen: 'Chăm sóc', params: { segment: 'chores' } };
+  if (group === 'store') return { screen: 'Kho' };
+  if (horseId) return { screen: 'HorseDetail', params: { horseId, name: n.horse?.name } };
+  return null;
+}
+
+// A letter or digit, Vietnamese ones included: where a message's words begin.
+const WORD_START = /[A-Za-z0-9À-ỹ]/;
+
+/**
+ * A notification's text as a title (its first sentence, or what comes before " — ") and the rest. A
+ * leading emoji goes: the line's icon already says what it is about.
+ */
+export function splitMessage(text = '') {
+  let clean = String(text).trim();
+  while (clean && !WORD_START.test(clean[0])) clean = clean.slice(1).trimStart();
+  const sentence = clean.search(/[.!?](\s|$)/);
+  const dash = clean.indexOf(' — ');
+  const at = dash > 0 && (sentence < 0 || dash < sentence) ? dash : sentence;
+  if (at < 0 || at >= clean.length - 1) return { title: clean.replace(/[.]$/, ''), body: '' };
+  const body = clean.slice(at + (at === dash ? 3 : 1)).trim();
+  return { title: clean.slice(0, at), body };
+}
+
+/**
+ * The list folded: notifications of the same kind sent the same minute that say the same thing about
+ * different horses ("Đến giờ bữa chiều 17:00 của Pegasus / Orion / …") become one entry —
+ * { key, ids, items, group, type, severity, unread, createdAt, title, body, horses }. Newest first, as given.
+ */
+export function foldNotifications(list = []) {
+  const out = [];
+  const byKey = new Map();
+  for (const n of list) {
+    const name = n.horse?.name;
+    const template = name ? String(n.message || '').split(name).join('{ngựa}') : String(n.message || '');
+    const minute = String(n.createdAt || '').slice(0, 16);
+    const key = name && template.includes('{ngựa}') ? `${n.type}|${minute}|${template}` : `one|${n._id}`;
+    let entry = byKey.get(key);
+    if (!entry) {
+      entry = { key, ids: [], items: [], horses: [], template, group: notificationGroup(n), type: n.type, severity: n.severity || 'info', unread: false, createdAt: n.createdAt };
+      byKey.set(key, entry);
+      out.push(entry);
+    }
+    entry.ids.push(n._id);
+    entry.items.push(n);
+    if (name && !entry.horses.includes(name)) entry.horses.push(name);
+    if (!n.isRead) entry.unread = true;
+    if (n.severity === 'critical' || (n.severity === 'warning' && entry.severity === 'info')) entry.severity = n.severity;
+  }
+  return out.map((e) => {
+    if (e.items.length === 1) return { ...e, ...splitMessage(e.items[0].message) };
+    const { title, body } = splitMessage(e.template.split('{ngựa}').join(`${e.horses.length} ngựa`));
+    return { ...e, title, body: [e.horses.join(', '), body].filter(Boolean).join(' · ') };
+  });
+}
