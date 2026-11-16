@@ -19,6 +19,20 @@ const templateDaySchema = new mongoose.Schema(
     reps: { type: Number },
     targetSpeedKmh: { type: Number },
     targetHeartRateMax: { type: Number },
+    // The workout in parts (warm-up → main work → cool-down), copied onto each session booked from
+    // this day. Empty: the session is the kind's single default workout.
+    segments: [
+      {
+        kind: { type: String, enum: KINDS, required: true },
+        durationMinutes: { type: Number, min: 1 },
+        distanceM: { type: Number, min: 0 },
+        targetSpeedKmh: { type: Number, min: 0 },
+        targetHeartRateMax: { type: Number, min: 60 },
+        restMinutes: { type: Number, min: 0 },
+        note: { type: String, trim: true, maxlength: 80 },
+        _id: false,
+      },
+    ],
   },
   { _id: false }
 );

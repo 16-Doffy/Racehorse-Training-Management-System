@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { Table, Button, Typography, Tag, Card, Select, Empty, Dropdown, Modal, Space, Alert, Input } from 'antd';
+import { useEffect, useState } from 'react';
+import { Table, Button, Typography, Tag, Card, Select, Empty, Modal, Alert, Input, Collapse } from 'antd';
 import {
   PlusOutlined,
   CalendarOutlined,
@@ -16,9 +16,10 @@ import { horsesApi } from '../horses/horsesApi';
 import { raceApi } from '../race/raceApi';
 import { useLockedHorseIds } from './useLockedHorses';
 import PlanTimeline from './PlanTimeline';
-import PlanFocusPanel from './PlanFocusPanel';
+import PlanFocusPanel, { whereNow } from './PlanFocusPanel';
 import PlanWizard from './PlanWizard';
-import { RaceFormBlock, RaceFormDot, RaceFormTag } from './RaceForm';
+import { RaceFormDot, RaceFormTag } from './RaceForm';
+import { PhaseWeekEditor, withParts } from './weekTemplate';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import {
   PHASE_LABELS,
@@ -43,72 +44,61 @@ const STATUS_CHOICES = {
   cancelled: ['cancelled'],
 };
 
-/** "Tuần 10/15 — Tốc độ (tuần 2/3)", or when the cycle hasn't started / is over. */
-function whereNow(plan) {
-  const p = plan.progress;
-  if (!p) return null;
-  if (!p.started) return `Bắt đầu ngày ${dayjs(plan.startDate).format('DD/MM/YYYY')}`;
-  if (p.ended) return `Đã qua hết ${p.totalWeeks} tuần của kế hoạch`;
-  const phase = plan.phases?.[p.phaseIndex];
-  return `Tuần ${p.week}/${p.totalWeeks} — ${PHASE_LABELS[plan.phase]}${phase ? ` (tuần ${p.phaseWeek}/${phase.weeks})` : ''}`;
-}
-
-/** What opens under a plan's row: its goal, its four figures, what comes next and its race form. */
-function PlanDetail({ plan }) {
-  const p = plan.progress || {};
+/**
+ * The week templates of a running plan, changed and saved: the sessions ahead it booked itself and the
+ * trainer has not changed are booked again from the new weeks (server: trainingPlan.controller updatePlan).
+ */
+function WeekTemplateModal({ plan, startPhase = 0, onClose }) {
+  const queryClient = useQueryClient();
+  const [phases, setPhases] = useState(() =>
+    (plan.phases || []).map((p) => ({
+      key: p.key,
+      weeks: p.weeks,
+      weeklyVolumeKm: p.weeklyVolumeKm,
+      intensity: p.intensity,
+      surface: p.surface,
+      ...(p.distanceTarget ? { distanceTarget: p.distanceTarget } : {}),
+      week: (p.week || []).map(withParts),
+    }))
+  );
+  const [tab, setTab] = useState(startPhase);
+  const save = useMutation({
+    mutationFn: () => trainingPlanApi.update(plan._id, { phases }),
+    onSuccess: () => {
+      message.success('Đã lưu tuần mẫu — các buổi sắp tới được xếp lại theo tuần mới.');
+      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+      queryClient.invalidateQueries({ queryKey: ['training-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['feeding'] });
+      onClose();
+    },
+    onError: (err) => message.error(err.message || 'Không lưu được tuần mẫu.'),
+  });
   return (
-    <div className="st-sub-panel light-surface-box flex flex-col gap-3">
-      <PlanTimeline phases={plan.phases} raceDate={plan.targetRace?.raceDate} />
-      <div className="text-xs text-gray-600">{plan.goal || 'Chưa nêu mục tiêu huấn luyện'}</div>
-      <dl className="m-0 grid grid-cols-2 gap-y-2.5 border-y border-[#E4DFD3] py-2.5 text-xs sm:grid-cols-4">
-        <div className="pr-3">
-          <dt className="text-gray-500">Cường độ</dt>
-          <dd className="m-0 mt-1">
-            <Tag color={INTENSITY_COLORS[plan.intensity]} className="!m-0 font-medium">
-              {INTENSITY_LABELS[plan.intensity]}
-            </Tag>
-          </dd>
-        </div>
-        <div className="pr-3">
-          <dt className="text-gray-500">Khối lượng tuần</dt>
-          <dd className="m-0 mt-1 font-semibold tabular-nums text-gray-900">{plan.weeklyVolumeKm} km/tuần</dd>
-        </div>
-        <div className="pr-3">
-          <dt className="text-gray-500">Cự ly &amp; sân</dt>
-          <dd className="m-0 mt-1 font-semibold tabular-nums text-gray-900">
-            {plan.distanceTarget} m, {SURFACE_LABELS[plan.surface]}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-gray-500">Khung giờ tập</dt>
-          <dd className="m-0 mt-1 tabular-nums text-gray-900">
-            Sáng {plan.sessionTime || '07:30'}, chiều {plan.afternoonTime || '16:00'}
-          </dd>
-        </div>
-      </dl>
-      <div>
-        <Text type="secondary" className="!text-xs font-medium">
-          Buổi sắp tới
-        </Text>
-        {p.upcoming?.length ? (
-          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
-            {p.upcoming.map((s) => (
-              <span key={s._id} className="inline-flex items-center gap-2 text-xs">
-                <Tag color={SESSION_KINDS[s.kind]?.color || 'default'} className="!m-0 !text-[11px]">
-                  {SESSION_KINDS[s.kind]?.label || 'Buổi tập'}
-                </Tag>
-                <span className="tabular-nums text-gray-600">{sessionTimeLabel(s.scheduledAt)}</span>
-              </span>
-            ))}
-          </div>
-        ) : (
-          <Text type="secondary" className="block !text-xs mt-1">
-            Chưa có buổi nào trong 2 tuần tới: kế hoạch bắt đầu muộn hơn, hoặc bác sĩ đang khóa tập.
-          </Text>
-        )}
-      </div>
-      {p.form && <RaceFormBlock form={p.form} />}
-    </div>
+    <Modal
+      open
+      width={1120}
+      title={`Tuần mẫu — ${plan.horse?.name || 'Ngựa'}${plan.targetRace?.raceName ? ` · ${plan.targetRace.raceName}` : ''}`}
+      onCancel={onClose}
+      okText="Lưu tuần mẫu"
+      cancelText="Hủy"
+      confirmLoading={save.isPending}
+      onOk={() => save.mutate()}
+      destroyOnHidden
+    >
+      <Text type="secondary" className="mb-3 block !text-sm">
+        Chọn bài cho từng buổi của mỗi giai đoạn. Lưu xong, các buổi sắp tới hệ thống tự xếp được xếp lại theo tuần mới; buổi HLV đã đổi tay giữ nguyên.
+      </Text>
+      <PhaseWeekEditor
+        phases={phases}
+        onChange={setPhases}
+        phaseIndex={tab}
+        onPhaseIndex={setTab}
+        sessionTime={plan.sessionTime}
+        afternoonTime={plan.afternoonTime}
+        guideDistance={plan.targetRace?.distance || plan.distanceTarget}
+        ranges={(plan.phases || []).map((p) => (p.startDate ? { start: p.startDate, end: p.endDate } : null))}
+      />
+    </Modal>
   );
 }
 
@@ -186,125 +176,27 @@ export default function TrainingPlanPage() {
   };
 
   const [search, setSearch] = useState('');
-  const [selectedPlanId, setSelectedPlanId] = useState(null);
-  const planFocusRef = useRef(null);
+  const selectedPlanId = searchParams.get('plan');
+  const selectPlan = (id) => setSearchParams(id ? { plan: id } : {}, { replace: true });
+  // The week templates being edited: { plan, phase }.
+  const [weekEdit, setWeekEdit] = useState(null);
   const shownActive = active.filter((p) => !search.trim() || fold(p.horse?.name).includes(fold(search.trim())));
-  const selectedPlan = shownActive.find(p => p._id === selectedPlanId) || shownActive[0];
-  // One line per horse in four columns, so it fits a laptop screen: the horse (its race form a dot),
-  // where it is in its cycle and how the phase is going, what comes next, and the actions.
-  const activeColumns = [
-    {
-      title: 'Ngựa',
-      key: 'horse',
-      render: (_, r) => (
-        <div className="flex max-w-[240px] items-center gap-1.5">
-          <RaceFormDot form={r.progress?.form} />
-          <Link to={`/horses/${r.horse?._id}`} className="truncate font-semibold" title={r.horse?.name}>
-            {r.horse?.name}
-          </Link>
-          {lockedHorseIds.has(r.horse?._id) && <span className="shrink-0 text-[11px] font-medium text-rose-700">Đang khóa</span>}
-        </div>
-      ),
-    },
-    {
-      title: 'Đang ở',
-      key: 'where',
-      render: (_, r) => {
-        const ps = r.progress?.phaseSessions || { planned: 0, completed: 0, met: 0 };
-        return (
-          <div className="w-48">
-            <PlanTimeline phases={r.phases} raceDate={r.targetRace?.raceDate} compact />
-            <div className="mt-0.5 truncate text-[11px] text-gray-600" title={whereNow(r)}>
-              {whereNow(r)}
-            </div>
-            <div className="text-[11px] tabular-nums text-gray-500">
-              Giai đoạn này: {ps.completed}/{ps.planned} buổi{ps.completed ? `, đạt ${ps.met}` : ''}
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      title: 'Sắp tới',
-      key: 'next',
-      render: (_, r) => {
-        const s = r.progress?.upcoming?.[0];
-        const race = r.targetRace;
-        return (
-          <div className="max-w-[200px] text-xs">
-            {s ? (
-              <div className="truncate text-gray-900">
-                {SESSION_KINDS[s.kind]?.short || SESSION_KINDS[s.kind]?.label || 'Buổi tập'} <span className="tabular-nums text-gray-500">{sessionTimeLabel(s.scheduledAt)}</span>
-              </div>
-            ) : (
-              <div className="text-gray-500">Chưa có buổi trong 2 tuần tới</div>
-            )}
-            {race && (
-              <div className="truncate text-pink-700" title={`${race.raceName}, ${dayjs(race.raceDate).format('DD/MM/YYYY')}`}>
-                <FlagOutlined className="mr-1" />
-                {race.raceName}
-                {r.progress?.raceInDays > 0 ? `, còn ${r.progress.raceInDays} ngày` : r.progress?.raceInDays === 0 ? ', hôm nay' : ''}
-              </div>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      title: 'Điều kiện dự giải',
-      key: 'raceForm',
-      render: (_, r) => {
-        const form = r.progress?.form;
-        if (!form) return <Text type="secondary">Chưa đánh giá</Text>;
-        return (
-          <div className="flex max-w-[230px] flex-col gap-0.5 text-xs">
-            <RaceFormTag form={form} />
-            <span className="truncate tabular-nums text-gray-600" title={formFigures(form)}>
-              {formFigures(form)}
-            </span>
-          </div>
-        );
-      },
-    },
-    {
-      title: '',
-      key: 'actions',
-      render: (_, r) => {
-        const locked = lockedHorseIds.has(r.horse?._id);
-        const generating = generateMutation.isPending && generateMutation.variables?.plan._id === r._id;
-        // Ending or dropping a plan is rare: it waits behind "⋯" with the week booking.
-        const items = [
-          { key: 'next', label: 'Xếp lại tuần tới', disabled: locked },
-          { key: 'this', label: 'Xếp lại tuần này', disabled: locked },
-          { type: 'divider' },
-          ...STATUS_CHOICES[r.status].filter((s) => s !== r.status).map((s) => ({ key: `status:${s}`, label: s === 'completed' ? 'Kết thúc kế hoạch' : s === 'cancelled' ? 'Hủy kế hoạch' : PLAN_STATUS_LABELS[s], danger: s === 'cancelled' })),
-        ];
-        return (
-          <Space size={4}>
-            <Button size="small" type={selectedPlan?._id === r._id ? 'primary' : 'default'} aria-pressed={selectedPlan?._id === r._id} onClick={() => {
-              setSelectedPlanId(r._id);
-              planFocusRef.current?.scrollIntoView({ block: 'start' });
-            }}>
-              Xem lộ trình
-            </Button>
-            <Button size="small" icon={<CalendarOutlined />} onClick={() => navigate(`/training/sessions?plan=${r._id}`)}>
-              Lịch tập
-            </Button>
-            <Dropdown
-              trigger={['click']}
-              menu={{
-                items,
-                onClick: ({ key }) => (key.startsWith('status:') ? confirmStatus(r, key.slice(7)) : generateMutation.mutate({ plan: r, which: key })),
-              }}
-            >
-              <Button size="small" type="text" icon={<MoreOutlined />} loading={generating || (statusMutation.isPending && statusMutation.variables?.id === r._id)} aria-label={`Thao tác khác với kế hoạch của ${r.horse?.name}`} />
-            </Dropdown>
-          </Space>
-        );
-      },
-    },
-  ];
-
+  const selectedPlan = plans.find((p) => p._id === selectedPlanId) || shownActive[0];
+  useEffect(() => {
+    if (searchParams.get('week') !== 'edit' || !selectedPlan) return;
+    setWeekEdit({ plan: selectedPlan, phase: selectedPlan.progress?.started && !selectedPlan.progress?.ended ? selectedPlan.progress.phaseIndex : 0 });
+    setSearchParams({ plan: selectedPlan._id }, { replace: true });
+  }, [searchParams, selectedPlan, setSearchParams]);
+  const menuFor = (r) => {
+    const locked = lockedHorseIds.has(r.horse?._id);
+    return [
+      { key: 'this', label: 'Xếp lại tuần này', disabled: locked },
+      { key: 'next', label: 'Xếp lại tuần tới', disabled: locked },
+      { type: 'divider' },
+      ...STATUS_CHOICES[r.status].filter((st) => st !== r.status).map((st) => ({ key: `status:${st}`, label: st === 'completed' ? 'Kết thúc kế hoạch' : st === 'cancelled' ? 'Hủy kế hoạch' : PLAN_STATUS_LABELS[st], danger: st === 'cancelled' })),
+    ];
+  };
+  const onMenu = (r, key) => (key.startsWith('status:') ? confirmStatus(r, key.slice(7)) : generateMutation.mutate({ plan: r, which: key }));
   const historyColumns = [
     { title: 'Ngựa', key: 'horse', render: (_, r) => <Link to={`/horses/${r.horse?._id}`}>{r.horse?.name}</Link> },
     {
@@ -406,44 +298,93 @@ export default function TrainingPlanPage() {
           </Empty>
         </Card>
       ) : (
-        <>
-        {selectedPlan && <div ref={planFocusRef} className="st-plan-focus-region"><PlanFocusPanel plan={selectedPlan} /></div>}
-        <Card className="!rounded-xl !border-[#E2D9C8]" styles={{ body: { padding: 0 } }}>
-          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-            <span className="text-[15px] font-semibold text-gray-900">Đang áp dụng</span>
-            <Input allowClear prefix={<SearchOutlined className="text-gray-400" />} placeholder="Tìm ngựa" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-48" aria-label="Tìm ngựa trong kế hoạch" />
-          </div>
-          <Table
-            rowKey="_id"
-            size="small"
-            columns={activeColumns}
-            dataSource={shownActive}
-            scroll={{ x: 'max-content' }}
-            pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
-            expandable={{ expandedRowRender: (plan) => <PlanDetail plan={plan} />, expandRowByClick: false }}
-            locale={{ emptyText: `Không có ngựa nào tên “${search}”.` }}
-          />
-        </Card>
-        </>
+        <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <aside className="light-surface-box overflow-hidden rounded-xl border border-gray-200 bg-white lg:sticky lg:top-4" aria-label="Ngựa đang theo kế hoạch">
+            <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2.5">
+              <span className="text-sm font-semibold text-gray-900">
+                Đang áp dụng <span className="font-normal text-gray-500">· {active.length}</span>
+              </span>
+              <Input size="small" allowClear prefix={<SearchOutlined className="text-gray-400" />} placeholder="Tìm ngựa" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-36" aria-label="Tìm ngựa trong kế hoạch" />
+            </div>
+            <div className="max-h-[calc(100vh-260px)] overflow-y-auto">
+              {shownActive.map((r) => {
+                const on = selectedPlan?._id === r._id;
+                const p = r.progress || {};
+                const phase = r.phases?.[p.phaseIndex];
+                const share = p.totalWeeks ? Math.min(1, Math.max(0, (p.week || 0) / p.totalWeeks)) : 0;
+                return (
+                  <button
+                    key={r._id}
+                    type="button"
+                    onClick={() => selectPlan(r._id)}
+                    aria-pressed={on}
+                    className={`block w-full cursor-pointer border-0 border-b border-gray-100 px-3 py-2.5 text-left ${on ? 'bg-amber-50/60 shadow-[inset_3px_0_0_#D4AF37]' : 'bg-transparent hover:bg-gray-50'}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <RaceFormDot form={p.form} />
+                        <span className="truncate text-sm font-semibold text-gray-900">{r.horse?.name}</span>
+                      </span>
+                      {lockedHorseIds.has(r.horse?._id) ? <span className="shrink-0 text-[11px] font-medium text-rose-700">Khóa tập</span> : <RaceFormTag form={p.form} />}
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-gray-500">
+                      <span className="truncate">
+                        {p.started && !p.ended ? `${PHASE_LABELS[r.phase] || r.phase}${phase ? ` · tuần ${p.phaseWeek}/${phase.weeks}` : ''}` : whereNow(r)}
+                      </span>
+                      {r.targetRace && p.raceInDays >= 0 && (
+                        <span className="shrink-0 text-pink-700">
+                          <FlagOutlined className="mr-0.5" />
+                          {p.raceInDays === 0 ? 'hôm nay' : `${p.raceInDays} ngày`}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-gray-100">
+                      <div className="h-full rounded-full bg-gray-400" style={{ width: `${Math.round(share * 100)}%` }} />
+                    </div>
+                  </button>
+                );
+              })}
+              {!shownActive.length && <div className="px-3 py-4 text-sm text-gray-500">Không có ngựa nào tên “{search}”.</div>}
+            </div>
+          </aside>
+          {selectedPlan && (
+            <PlanFocusPanel
+              key={selectedPlan._id}
+              plan={selectedPlan}
+              locked={lockedHorseIds.has(selectedPlan.horse?._id)}
+              onEditWeek={(phase) => setWeekEdit({ plan: selectedPlan, phase })}
+              menuItems={['draft', 'active'].includes(selectedPlan.status) ? menuFor(selectedPlan) : []}
+              onMenu={(key) => onMenu(selectedPlan, key)}
+              busy={(generateMutation.isPending && generateMutation.variables?.plan._id === selectedPlan._id) || (statusMutation.isPending && statusMutation.variables?.id === selectedPlan._id)}
+            />
+          )}
+        </div>
       )}
 
       {others.length > 0 && (
-        <>
-          <Title level={5} className="!mt-8 !mb-2">
-            Kế hoạch nháp, đã xong hoặc đã hủy
-          </Title>
-          <Card className="!rounded-xl shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
-            <Table
-              rowKey="_id"
-              size="small"
-              columns={historyColumns}
-              dataSource={others}
-              scroll={{ x: 'max-content' }}
-              pagination={{ pageSize: 8, hideOnSinglePage: true }}
-            />
-          </Card>
-        </>
+        <Collapse
+          className="!mt-6"
+          items={[
+            {
+              key: 'history',
+              label: <span className="text-sm font-medium">Kế hoạch nháp, đã xong hoặc đã hủy · {others.length}</span>,
+              children: (
+                <Table
+                  rowKey="_id"
+                  size="small"
+                  columns={historyColumns}
+                  dataSource={others}
+                  scroll={{ x: 'max-content' }}
+                  pagination={{ pageSize: 8, hideOnSinglePage: true }}
+                  onRow={(r) => ({ onClick: () => selectPlan(r._id), className: 'cursor-pointer' })}
+                />
+              ),
+            },
+          ]}
+        />
       )}
+
+      {weekEdit && <WeekTemplateModal plan={weekEdit.plan} startPhase={weekEdit.phase} onClose={() => setWeekEdit(null)} />}
 
       <PlanWizard
         open={wizardOpen}

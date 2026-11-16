@@ -13,6 +13,9 @@
  *   week, expiring first, then the fullest.
  * - A horse injured or in isolation is not worked, whatever its plan says: its days take the sick diet
  *   (`diet: 'sick'`) — forage as on a rest day, the least concentrate (none at lunch), minerals only.
+ * - The main hay and the main grain stay the same every day (a sudden change upsets the gut); what is
+ *   mixed in with them follows the day's work (`dayFocus`, `focusFeeds`): grass hay and a mash on a
+ *   rest day, alfalfa for the protein after hill work, an energy grain on a speed day.
  */
 const { feedTypeOf } = require('../inventory/feedType');
 
@@ -105,6 +108,91 @@ function pickSecond(stock, kind, first, { weekNeed = 0, day = new Date() } = {})
   return usable.sort((a, b) => b.quantity - a.quantity)[0] || null;
 }
 
+// What a day's work asks of the feed mixed in with the main hay and grain. `prefer`: names to look for in
+// stock, in order; `share`: the mixed-in item's part of its kind; `why`: what it brings, for the trainer.
+const GRASS_HAY = /(timothy|cỏ thường|cỏ voi|cỏ sả|bermuda|grass|orchard|rye)/i;
+const ALFALFA = /(alfalfa|linh lăng|lucerne)/i;
+const MASH = /(cám gạo|cám mì|bran|mash|củ cải|beet|bã)/i;
+const PELLET = /(viên|pellet|cube)/i;
+const ENERGY_GRAIN = /(lúa mạch|barley|ngô|bắp|corn|maize|ngũ cốc|grain|sweet)/i;
+const FOCUS = {
+  rest: {
+    label: 'Ngày nghỉ',
+    forage: { prefer: [GRASS_HAY], share: 0.4, why: 'nhiều xơ, ít đạm' },
+    concentrate: { prefer: [MASH, PELLET], share: 0.4, why: 'nhẹ bụng ngày nghỉ' },
+  },
+  easy: {
+    label: 'Ngày tập nhẹ',
+    forage: { prefer: [GRASS_HAY], share: 0.3, why: 'nhiều xơ, ít đạm' },
+    concentrate: { prefer: [MASH, PELLET], share: 0.3, why: 'nhẹ bụng' },
+  },
+  aerobic: {
+    label: 'Ngày phi bền',
+    forage: { prefer: [], share: 0.3 },
+    concentrate: { prefer: [PELLET], share: 0.4, why: 'đủ chất, giữ sức bền' },
+  },
+  strength: {
+    label: 'Ngày leo dốc',
+    forage: { prefer: [ALFALFA], share: 0.4, why: 'giàu đạm, phục hồi cơ' },
+    concentrate: { prefer: [PELLET], share: 0.4, why: 'đủ chất cho cơ' },
+  },
+  speed: {
+    label: 'Ngày nước rút',
+    forage: { prefer: [ALFALFA], share: 0.3, why: 'giàu canxi, đệm dạ dày' },
+    concentrate: { prefer: [ENERGY_GRAIN], share: 0.5, why: 'nhiều năng lượng' },
+  },
+};
+const FOCUS_OF_KIND = { walk: 'easy', canter: 'aerobic', hill: 'strength', breeze: 'speed', gallop: 'speed', trial: 'speed' };
+const FOCUS_RANK = { rest: 0, easy: 1, aerobic: 2, strength: 3, speed: 4 };
+// When the main item is already what the day asks for, the other one is mixed in at this smaller part.
+const MAIN_FITS_SHARE = 0.2;
+// "Cỏ khô Timothy (Timothy Hay)" → "Cỏ khô Timothy": the note stays one line.
+const shortName = (item) => String(item.name).replace(/\s*\([^)]*\)\s*$/, '') || item.name;
+
+/** What the day's work asks of the feed: its hardest session's (rest when it has none, or the horse is sick). */
+function dayFocus(sessions = [], diet = 'normal') {
+  if (diet === 'sick') return 'rest';
+  return (sessions || []).reduce((f, s) => {
+    const of = FOCUS_OF_KIND[s.kind] || 'aerobic';
+    return FOCUS_RANK[of] > FOCUS_RANK[f] ? of : f;
+  }, 'rest');
+}
+
+/**
+ * The items to mix in with the main hay and grain on a day of this focus, and their parts:
+ * { forageMix, forageShare, concentrateMix, concentrateShare, notes }. An item the day asks for is used
+ * when the club stocks it (usable, in kg, enough for its part of a few such days); when the main item is
+ * already that, the other one goes in at a smaller part; otherwise the usual second item, at the usual part.
+ */
+function focusFeeds(stock, { forage, concentrate }, focus, { weekNeed = {}, day = new Date() } = {}) {
+  const rules = FOCUS[focus] || FOCUS.aerobic;
+  const out = { notes: [] };
+  for (const [kind, main] of [['forage', forage], ['concentrate', concentrate]]) {
+    const rule = rules[kind];
+    let mix = null;
+    let share = MIX[kind];
+    if (main) {
+      const need = (weekNeed[kind] || 0) * rule.share * 0.5;
+      const usable = stock.filter((i) => String(i._id) !== String(main._id) && feedTypeOf(i) === kind && unitOf(i) === 'kg' && usableOn(i, day) && i.quantity >= need);
+      const wanted = rule.prefer.map((re) => usable.filter((i) => re.test(i.name)).sort((a, b) => b.quantity - a.quantity)[0]).find(Boolean);
+      if (wanted) {
+        mix = wanted;
+        share = rule.share;
+        if (rule.why) out.notes.push(`thêm ${shortName(wanted)} (${rule.why})`);
+      } else {
+        mix = pickSecond(stock, kind, main, { weekNeed: weekNeed[kind] || 0, day });
+        if (rule.prefer.some((re) => re.test(main.name))) {
+          share = MAIN_FITS_SHARE;
+          if (rule.why) out.notes.push(`nhiều ${shortName(main)} hơn (${rule.why})`);
+        }
+      }
+    }
+    out[kind === 'forage' ? 'forageMix' : 'concentrateMix'] = mix;
+    out[kind === 'forage' ? 'forageShare' : 'concentrateShare'] = share;
+  }
+  return out;
+}
+
 /** The supplement items to use, one per kind that the club stocks in a unit with a known dose. */
 function pickSupplements(stock, day = new Date()) {
   return SUPPLEMENTS.map((rule) => {
@@ -141,12 +229,12 @@ function dayMeals({ weightKg, work, phase, clocks, feeds, diet = 'normal', sessi
   return SLOTS.map((slot) => {
     const items = [];
     if (feeds.forage) {
-      items.push(...mixedLines(feeds.forage, feeds.forageMix, halfKg(weight * share.forage * forageFactor * split[slot].forage), MIX.forage));
+      items.push(...mixedLines(feeds.forage, feeds.forageMix, halfKg(weight * share.forage * forageFactor * split[slot].forage), feeds.forageShare ?? MIX.forage));
     }
     if (feeds.concentrate && split[slot].concentrate > 0) {
       const concFactor = !sick && phaseKey === 'recovery' ? 0.8 : hasHardSession && slot === 'evening' ? 1.1 : 1;
       const grain = cappedHalfKg(weight * share.concentrate * concFactor * split[slot].concentrate, weight * MAX_CONCENTRATE_PER_MEAL);
-      items.push(...mixedLines(feeds.concentrate, feeds.concentrateMix, grain, MIX.concentrate));
+      items.push(...mixedLines(feeds.concentrate, feeds.concentrateMix, grain, feeds.concentrateShare ?? MIX.concentrate));
     }
     if (slot === 'evening') {
       for (const { rule, item } of feeds.supplements || []) {
@@ -168,12 +256,14 @@ const PHASE_RATION_HINT = {
   recovery: 'Hồi phục: giảm 20% tinh bột, bổ sung điện giải',
 };
 
-function rationBasis(phaseKey, work, sessions = [], diet = 'normal') {
+/** Why the day eats what it eats, in a line: the phase, a hard session, and what the day's work mixes in (`mixNotes`). */
+function rationBasis(phaseKey, work, sessions = [], diet = 'normal', mixNotes = []) {
   if (diet === 'sick') return 'Chế độ bệnh: giảm tinh bột, tăng cỏ thô giữ tiêu hóa';
-  if (work === 'rest') return 'Ngày nghỉ: cân bằng cỏ thô, giảm nhẹ tinh bột buổi tối';
+  if (work === 'rest') return `Ngày nghỉ: cân bằng cỏ thô, giảm nhẹ tinh bột buổi tối${mixNotes.length ? ` · ${mixNotes.join(', ')}` : ''}`;
   const base = PHASE_RATION_HINT[phaseKey] || 'Theo cường độ buổi tập';
   const hard = (sessions || []).some((s) => HIGH_SWEAT_KINDS.has(s.kind));
-  return hard ? `${base} · Sau bài nặng tăng tinh bột tối + điện giải` : base;
+  const mixed = mixNotes.length ? ` · ${FOCUS[dayFocus(sessions, diet)].label}: ${mixNotes.join(', ')}` : '';
+  return `${base}${hard ? ' · Sau bài nặng tăng tinh bột tối + điện giải' : ''}${mixed}`;
 }
 
 /** Roughly what a week of meals takes of each kind (to prefer an item that lasts the week). */
@@ -185,6 +275,9 @@ function weekNeed(weightKg, kind) {
 module.exports = {
   heavierWork,
   pickSecond,
+  dayFocus,
+  focusFeeds,
+  FOCUS,
   SLOTS,
   SHARES,
   SPLITS,

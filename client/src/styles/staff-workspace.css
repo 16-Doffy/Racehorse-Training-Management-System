@@ -219,121 +219,12 @@ body.wdp-staff-workspace.wdp-dark-portals {
 .forest-layout.staff-workspace .custom-sidebar-menu.is-staff-menu .ant-menu,
 .forest-layout.staff-workspace .custom-sidebar-menu.is-staff-menu .ant-menu-sub { background: transparent !important; }
 
-/* Executive Top Command Bar & Trainer 1->5 Flow Pipeline */
+/* Executive Top Command Bar */
 .forest-layout.staff-workspace .st-top-bar {
   background: var(--st-surface);
   border-bottom: 1px solid var(--st-border);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
   z-index: 10;
-}
-
-.forest-layout.staff-workspace .st-flow-pipeline {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 6px;
-  border-radius: 10px;
-  background: var(--st-sunk);
-  border: 1px solid var(--st-border);
-  overflow-x: auto;
-  max-width: 100%;
-}
-
-.forest-layout.staff-workspace .st-flow-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--st-ink-secondary);
-  border-right: 1px solid var(--st-border);
-  margin-right: 2px;
-  white-space: nowrap;
-}
-
-.forest-layout.staff-workspace .st-flow-step {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  color: var(--st-ink) !important;
-  background: var(--st-surface);
-  border: 1px solid var(--st-border);
-  transition: all 140ms ease;
-  text-decoration: none !important;
-}
-
-.forest-layout.staff-workspace .st-flow-step:hover {
-  border-color: var(--st-primary);
-  background: var(--st-primary-soft);
-}
-
-.forest-layout.staff-workspace .st-flow-step.is-active {
-  background: var(--st-action) !important;
-  color: var(--st-action-ink) !important;
-  border-color: var(--st-action-hover) !important;
-  font-weight: 700;
-  box-shadow: 0 1px 4px rgba(234, 179, 8, 0.35);
-}
-
-.forest-layout.staff-workspace .st-flow-step.is-active span {
-  color: var(--st-action-ink) !important;
-}
-
-.forest-layout.staff-workspace .st-flow-step__num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  font-size: 10.5px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  background: var(--st-sunk);
-  color: var(--st-ink);
-  border: 1px solid var(--st-border);
-}
-
-.forest-layout.staff-workspace .st-flow-step.is-active .st-flow-step__num {
-  background: #0F172A;
-  color: #EAB308 !important;
-  border-color: #0F172A;
-}
-
-.forest-layout.staff-workspace .st-flow-step__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 17px;
-  padding: 0 5px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  background: var(--st-warn-bg);
-  color: var(--st-warn-ink) !important;
-  border: 1px solid rgba(180, 83, 9, 0.3);
-}
-
-.forest-layout.staff-workspace .st-flow-step__badge.is-optional {
-  background: var(--st-sunk);
-  color: var(--st-ink-secondary) !important;
-  border-color: var(--st-border);
-}
-
-.forest-layout.staff-workspace .st-flow-step.is-active .st-flow-step__badge {
-  background: #0F172A;
-  color: #FDE047 !important;
-  border-color: #0F172A;
 }
 
 /* Page Container & Split Command Header Card (PageHeroBanner) */

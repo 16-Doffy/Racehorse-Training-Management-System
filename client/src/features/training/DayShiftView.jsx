@@ -69,6 +69,7 @@ function DaySessionCard({
   onPreCheck,
   onEvaluate,
   onSchedule,
+  onChangeWork,
   onCancel,
   onEnd,
   onAbort,
@@ -83,6 +84,7 @@ function DaySessionCard({
   const canChangeTime = ['scheduled', 'ready', 'blocked'].includes(session.status);
 
   const moreItems = [];
+  if (canChangeTime && session.kind !== 'trial' && onChangeWork) moreItems.push({ key: 'change-work', label: 'Đổi bài tập' });
   if (canChangeTime) {
     moreItems.push({ key: 'reschedule', label: 'Đổi giờ' });
     moreItems.push({ key: 'cancel', label: 'Hủy buổi tập', danger: true });
@@ -93,6 +95,7 @@ function DaySessionCard({
 
   const handleMore = ({ key }) => {
     if (key === 'reschedule') onSchedule?.(session);
+    if (key === 'change-work') onChangeWork?.(session);
     if (key === 'cancel') onCancel?.(session);
   };
 
@@ -230,6 +233,7 @@ export default function DayShiftView({
   onPreCheck,
   onEvaluate,
   onSchedule,
+  onChangeWork,
   onCancel,
   onEnd,
   onAbort,
@@ -369,6 +373,7 @@ export default function DayShiftView({
                                 onPreCheck={onPreCheck}
                                 onEvaluate={onEvaluate}
                                 onSchedule={onSchedule}
+                                onChangeWork={onChangeWork}
                                 onCancel={onCancel}
                                 onEnd={onEnd}
                                 onAbort={onAbort}

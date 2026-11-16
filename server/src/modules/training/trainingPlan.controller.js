@@ -89,7 +89,11 @@ function normalizePhases(list) {
       const overrides = pick(d, ['distanceM', 'reps', 'targetSpeedKmh', 'targetHeartRateMax']);
       const problem = rangeProblem(overrides, PRESCRIPTION_RANGES) || kindSpeedProblem(d.kind, overrides.targetSpeedKmh);
       if (problem) return { error: `${label}: ${problem}` };
-      week.push({ day, slot, kind: d.kind, ...overrides });
+      const parts = readTemplateSegments(d.segments, { slot });
+      if (parts.error) return { error: `${label}: ${parts.error}` };
+      // A day in parts is as hard as its hardest part: that is the kind the vet's clearance is checked against.
+      const kind = parts.segments.length ? heaviestKind(parts.segments) : d.kind;
+      week.push({ day, slot, kind, ...overrides, ...(parts.segments.length ? { segments: parts.segments } : {}) });
     }
     phases.push({
       key: p.key,
@@ -102,6 +106,45 @@ function normalizePhases(list) {
     });
   }
   return { phases };
+}
+
+// A day's workout in parts: at most this many (warm-up, two or three pieces of work, cool-down).
+const MAX_TEMPLATE_SEGMENTS = 8;
+const KIND_RANK = { walk: 1, canter: 2, hill: 3, breeze: 4, trial: 5 };
+const heaviestKind = (segments) => segments.reduce((a, s) => (KIND_RANK[s.kind] > KIND_RANK[a] ? s.kind : a), segments[0].kind);
+
+/**
+ * The parts of a template day's workout, checked: each a kind of work (no trial — the plan books that
+ * itself), with optional minutes, metres, pace, heart rate, rest and a short note. In the afternoon,
+ * when the club keeps it light, only walking and slow cantering. Returns { segments } or { error }.
+ */
+function readTemplateSegments(raw, { slot }) {
+  if (raw === undefined || raw === null) return { segments: [] };
+  if (!Array.isArray(raw)) return { error: 'các phần của bài tập không hợp lệ.' };
+  if (raw.length > MAX_TEMPLATE_SEGMENTS) return { error: `một buổi tối đa ${MAX_TEMPLATE_SEGMENTS} phần.` };
+  const segments = [];
+  for (const [i, s] of raw.entries()) {
+    const at = `phần ${i + 1}`;
+    if (!s || !SESSION_KINDS[s.kind]) return { error: `${at}: loại bài không hợp lệ.` };
+    if (s.kind === 'trial') return { error: `${at}: không xếp "Chạy thử" vào tuần mẫu.` };
+    if (slot === 'afternoon' && clubPolicy.afternoonLightOnly && !AFTERNOON_KINDS.includes(s.kind)) {
+      return { error: `${at}: buổi chiều chỉ tập nhẹ (đi bộ hoặc phi chậm).` };
+    }
+    const num = (v) => (v === undefined || v === null || v === '' ? undefined : Number(v));
+    const part = { kind: s.kind };
+    for (const [field, min, max] of [['durationMinutes', 1, 180], ['distanceM', 0, 10000], ['targetSpeedKmh', 0, 80], ['targetHeartRateMax', 60, 250], ['restMinutes', 0, 60]]) {
+      const v = num(s[field]);
+      if (v === undefined) continue;
+      if (!Number.isFinite(v) || v < min || v > max) return { error: `${at}: giá trị không hợp lệ.` };
+      part[field] = v;
+    }
+    if (!part.durationMinutes && !part.distanceM) return { error: `${at}: cần thời lượng hoặc cự ly.` };
+    const speedProblem = kindSpeedProblem(s.kind, part.targetSpeedKmh);
+    if (speedProblem) return { error: `${at}: ${speedProblem}` };
+    if (typeof s.note === 'string' && s.note.trim()) part.note = s.note.trim().slice(0, 80);
+    segments.push(part);
+  }
+  return { segments };
 }
 
 /** Checks that only make sense against the plan as it will be saved. Returns an error or null. */
@@ -376,6 +419,13 @@ const updatePlan = asyncHandler(async (req, res) => {
   const activating = changes.status === 'active' && plan.status !== 'active';
   Object.assign(plan, changes);
   await plan.save();
+  // New week templates: the sessions ahead the plan booked itself, not started and not changed by the
+  // trainer, give way to the new weeks (booked again below); a session the trainer changed stays.
+  let rebooked = [];
+  if (plan.status === 'active' && changes.phases !== undefined) {
+    rebooked = await TrainingSession.find({ trainingPlan: plan._id, generated: true, status: 'scheduled', scheduledAt: { $gt: new Date() } }).select('scheduledAt');
+    if (rebooked.length) await TrainingSession.deleteMany({ _id: { $in: rebooked.map((s) => s._id) } });
+  }
   if (plan.status === 'active' && ['phases', 'startDate', 'endDate', 'sessionTime', 'afternoonTime', 'intensity', 'weeklyVolumeKm'].some((key) => changes[key] !== undefined)
     && await FeedingCalendarDay.exists({ plan: plan._id })) {
     await notifyHorseStaff({ staff: 'trainer', horse: plan.horse, type: 'ration_review', severity: 'warning',
@@ -383,6 +433,8 @@ const updatePlan = asyncHandler(async (req, res) => {
   }
   // A plan put into use, or an active plan whose phases, start or race changed: its weeks ahead now.
   if (plan.status === 'active' && (activating || ['phases', 'startDate', 'targetRace'].some((k) => changes[k] !== undefined))) await bookAhead(plan);
+  // A day that lost its session to the new weeks (now a rest day) has its confirmed meals follow too.
+  if (rebooked.length) await require('../feeding/feedingCalendar.service').followSessions(plan.horse, rebooked.map((s) => s.scheduledAt));
   // Closing a cycle also closes every workout that has not begun, including one whose start
   // time has just passed but whose pre-check/start grace window is still open.
   if (['completed', 'cancelled'].includes(changes.status)) {

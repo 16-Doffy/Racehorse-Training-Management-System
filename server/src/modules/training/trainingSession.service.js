@@ -103,6 +103,26 @@ async function announceSessionToGroom(session, horseName) {
 }
 
 /**
+ * The trainer changed the work of a booked session (another kind, other parts): the groom hears it, so
+ * the horse is tacked and fed for the new work. `fromKind`: the kind it had.
+ */
+async function announceSessionChange(session, horseName, fromKind) {
+  if (session.status !== 'scheduled') return;
+  const at = new Date(session.scheduledAt);
+  if (at < new Date()) return;
+  const label = (kind) => SESSION_KINDS[kind]?.label || kind;
+  const parts = (session.segments || []).map((s) => `${SESSION_KINDS[s.kind]?.short || s.kind}${s.durationMinutes ? ` ${s.durationMinutes}'` : ''}`).join(' → ');
+  const what = fromKind && fromKind !== session.kind ? `đổi từ "${label(fromKind)}" sang "${label(session.kind)}"` : `đổi nội dung bài "${label(session.kind)}"`;
+  await notifyCaretaker({
+    horse: session.horse,
+    trainingSession: session._id,
+    type: 'session_scheduled',
+    severity: 'info',
+    message: `🔁 Buổi tập ${clock(at)} ngày ${at.toLocaleDateString('vi-VN')} của ${horseName}: HLV ${what}${parts ? ` (${parts})` : ''}.${session.coachNote ? ` HLV dặn: ${session.coachNote}` : ''}`,
+  });
+}
+
+/**
  * Raises an exam request when the numbers of a finished session say the horse was pushed well past
  * the heart-rate ceiling the trainer set for it. At most one per session, and none while the horse
  * already has a request waiting.
@@ -477,6 +497,7 @@ async function markMissedSessions(now = new Date()) {
 }
 
 module.exports = {
+  announceSessionChange,
   markMissedSessions,
   computeOutcome,
   announceSessionToGroom,

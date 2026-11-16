@@ -32,8 +32,8 @@ const {
   kindSpeedProblem,
   slotKindProblem,
 } = require('../../constants/training');
-const { announceSessionToGroom, buildFromKind, closeRun } = require('./trainingSession.service');
-const { INTENSITY_RANK } = require('../health/trainingClearance');
+const { announceSessionToGroom, announceSessionChange, buildFromKind, closeRun } = require('./trainingSession.service');
+const { INTENSITY_RANK, getTrainingClearance, allows } = require('../health/trainingClearance');
 const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const { ROLES } = require('../../constants/roles');
 
@@ -43,6 +43,10 @@ const { ROLES } = require('../../constants/roles');
 const PLAN_FIELDS = ['kind', 'sessionType', 'objective', 'intensity', 'prescription', 'coachNote', 'scheduledAt', 'endAt', 'segments', 'assignedTo', 'raceEntry'];
 
 const SEGMENT_RANK = { walk: 1, canter: 2, hill: 3, breeze: 4, trial: 5 };
+// The work of a session: changing any of it is "đổi bài" (the groom hears it, the day's meals follow it).
+const WORK_FIELDS = ['kind', 'segments', 'prescription', 'objective', 'intensity', 'sessionType', 'coachNote'];
+// A session booked, changed or called off: the meals of its days follow it (lazy: feeding requires training models).
+const feedForSessions = (horseId, dates) => require('../feeding/feedingCalendar.service').followSessions(horseId, dates);
 
 /**
  * Normalizes `segments` and planned `endAt` on create/update:
@@ -402,6 +406,7 @@ const createSession = asyncHandler(async (req, res) => {
     await reportOverride({ session, readiness, reason: overrideReason, user: req.user, moment: 'create' });
   }
   await announceSessionToGroom(session, readiness.horse.name);
+  await feedForSessions(session.horse, [session.scheduledAt]);
   return created(res, session, 'Training session created.');
 });
 
@@ -435,13 +440,26 @@ const updateSession = asyncHandler(async (req, res) => {
     if (!moved) return fail(res, 'Buổi tập đã thay đổi hoặc bắt đầu — tải lại trước khi đổi giờ.', 409, { code: SESSION_ERROR.NOT_EDITABLE });
     const horse = await Horse.findById(moved.horse).select('name');
     await announceSessionToGroom(moved, horse?.name || 'Ngựa');
+    await feedForSessions(moved.horse, [session.scheduledAt, moved.scheduledAt]);
     await logAction({ actorId: req.user._id, action: 'trainingSession.update', targetModel: 'TrainingSession', targetId: moved._id });
     return ok(res, moved, 'Training session updated.');
   }
-  if (Object.keys(changes).length > 0 && session.status !== 'scheduled') {
-    return fail(res, 'Chỉ sửa được nội dung buổi tập khi buổi tập còn ở trạng thái "đã lên lịch".', 409, {
+  // The work of a session not yet started can change: a pre-check done for the old work no longer counts.
+  const changesWork = WORK_FIELDS.some((f) => changes[f] !== undefined);
+  const editable = changesWork ? [SESSION_STATUS.SCHEDULED, SESSION_STATUS.READY, SESSION_STATUS.BLOCKED] : [SESSION_STATUS.SCHEDULED];
+  if (Object.keys(changes).length > 0 && !editable.includes(session.status)) {
+    return fail(res, 'Chỉ sửa được nội dung buổi tập chưa bắt đầu.', 409, {
       code: SESSION_ERROR.NOT_EDITABLE,
     });
+  }
+  // A workout in parts: the parts checked, the totals from them, and the session as hard as its hardest
+  // part (a breeze among walks is a breeze for the vet's clearance). An empty list: back to one workout.
+  if (Array.isArray(changes.segments) && changes.segments.length > 0) {
+    const segmentsProblem = normalizeSegmentsAndEndAt(changes);
+    if (segmentsProblem) return fail(res, segmentsProblem, 400);
+    changes.kind = [...changes.segments].sort((a, b) => (SEGMENT_RANK[b.kind] || 0) - (SEGMENT_RANK[a.kind] || 0))[0].kind;
+  } else if (changes.segments !== undefined) {
+    changes.segments = [];
   }
   const problem =
     applyKind(changes, session.kind) ||
@@ -453,6 +471,18 @@ const updateSession = asyncHandler(async (req, res) => {
   if (changes.scheduledAt !== undefined && !(new Date(changes.scheduledAt) > new Date())) {
     return fail(res, 'Giờ tập mới phải ở tương lai.', 400);
   }
+  // Harder work than the vet allows is refused here, not at the pre-check an hour before.
+  if (changes.kind !== undefined || changes.intensity !== undefined) {
+    const intensity = changes.intensity || SESSION_KINDS[changes.kind || session.kind]?.intensity;
+    const clearance = await getTrainingClearance(session.horse);
+    if (clearance && !allows(clearance, intensity)) {
+      return fail(res, `Bác sĩ đang cho ngựa ${clearance.label} — không đổi sang "${SESSION_KINDS[changes.kind || session.kind]?.label || changes.kind}" được.`, 409);
+    }
+  }
+  // The planned end follows the new work.
+  if (changesWork && changes.endAt === undefined && changes.prescription?.durationMinutes > 0) {
+    changes.endAt = new Date(new Date(changes.scheduledAt || session.scheduledAt).getTime() + Number(changes.prescription.durationMinutes) * 60000);
+  }
   if (Object.keys(changes).length > 0) {
     const merged = { kind: changes.kind ?? session.kind, sessionType: changes.sessionType ?? session.sessionType, scheduledAt: changes.scheduledAt ?? session.scheduledAt };
     const plan = await TrainingPlan.findById(session.trainingPlan).select('targetRace');
@@ -461,8 +491,14 @@ const updateSession = asyncHandler(async (req, res) => {
     changes.raceEntry = trial.raceEntry;
   }
   const previousTime = new Date(session.scheduledAt).getTime();
+  const previousKind = session.kind;
   const readStatus = session.status;
   Object.assign(session, changes);
+  // The trainer's own work now: new week templates of the plan leave this session as it is.
+  if (WORK_FIELDS.some((f) => f !== 'coachNote' && changes[f] !== undefined)) changes.generated = false;
+  // New work after a pre-check: back to booked, to be checked again for it.
+  const recheck = WORK_FIELDS.some((f) => f !== 'coachNote' && changes[f] !== undefined) && readStatus !== SESSION_STATUS.SCHEDULED && req.body.status === undefined;
+  if (recheck) session.status = SESSION_STATUS.SCHEDULED;
 
   const { error } = await applyStatusChange(session, req.body.status, { cancelReason: req.body.cancelReason });
   if (error) return fail(res, error.message, error.status, error.data);
@@ -470,15 +506,19 @@ const updateSession = asyncHandler(async (req, res) => {
   // Claimed on the status it was read in: a session started meanwhile is not cancelled behind its back.
   const saved = await TrainingSession.findOneAndUpdate(
     { _id: session._id, status: readStatus },
-    { $set: { ...changes, status: session.status, ...(session.cancelReason ? { cancelReason: session.cancelReason } : {}), ...(session.cancelSource ? { cancelSource: session.cancelSource } : {}) } },
+    { $set: { ...changes, status: session.status, ...(session.cancelReason ? { cancelReason: session.cancelReason } : {}), ...(session.cancelSource ? { cancelSource: session.cancelSource } : {}) }, ...(recheck ? { $unset: { readiness: 1, blockedReason: 1 } } : {}) },
     { new: true }
   );
   if (!saved) return fail(res, 'Buổi tập vừa thay đổi trạng thái — tải lại rồi thử lại.', 409, { code: SESSION_ERROR.INVALID_TRANSITION });
-  // A moved session moves the groom's feeding deadline with it.
-  if (new Date(saved.scheduledAt).getTime() !== previousTime) {
+  // A moved session moves the groom's feeding deadline with it; new work is told as such.
+  const moved = new Date(saved.scheduledAt).getTime() !== previousTime;
+  if (moved || changesWork) {
     const horse = await Horse.findById(saved.horse).select('name');
-    await announceSessionToGroom(saved, horse?.name || 'Ngựa');
+    if (moved) await announceSessionToGroom(saved, horse?.name || 'Ngựa');
+    else if (saved.status === SESSION_STATUS.SCHEDULED) await announceSessionChange(saved, horse?.name || 'Ngựa', previousKind);
   }
+  // The meals of its day (both days, when it moved) follow the session's work, or its absence.
+  if (moved || changesWork || saved.status !== readStatus) await feedForSessions(saved.horse, [new Date(previousTime), saved.scheduledAt]);
   await logAction({
     actorId: req.user._id,
     action: saved.status === SESSION_STATUS.CANCELLED && readStatus !== SESSION_STATUS.CANCELLED ? 'trainingSession.cancel' : 'trainingSession.update',
@@ -922,6 +962,7 @@ const rescheduleSession = asyncHandler(async (req, res) => {
   });
   const horse = await Horse.findById(session.horse).select('name');
   await announceSessionToGroom(next, horse?.name || 'Ngựa');
+  await feedForSessions(next.horse, [next.scheduledAt]);
   return created(res, next, 'Đã xếp lại buổi tập.');
 });
 

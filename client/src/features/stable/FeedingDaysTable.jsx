@@ -115,7 +115,7 @@ export default function FeedingDaysTable({ days, phases = [], onEditMeal, edited
                 const isToday = d.date === today;
                 const work = dayWork(d);
                 // On the sick diet the horse is not worked: its plan's sessions are not said.
-                const sessions = work === 'sick' ? ['tạm nghỉ tập'] : (d.sessions || []).map((s) => `${SESSION_KINDS[s.kind]?.short || s.kind}${s.slot === 'afternoon' ? ' (chiều)' : ''}`);
+                const sessions = work === 'sick' ? ['tạm nghỉ tập'] : (d.sessions || []).map((s) => `${SESSION_KINDS[s.kind]?.short || s.kind}${s.at ? ` ${s.at}${s.until ? `–${s.until}` : ''}` : s.slot === 'afternoon' ? ' (chiều)' : ''}`);
                 return (
                   <tr key={d.date} className={`border-b border-gray-100 align-top ${isToday ? 'bg-emerald-50' : ''}`}>
                     <td className="px-3 py-1.5">

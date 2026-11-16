@@ -208,6 +208,32 @@ export const TRAINER_ABORT_OPTIONS = ['health', 'injury', 'behaviour', 'weather'
 // A completed run and an evaluated one are both done work.
 export const DONE_STATUSES = ['completed', 'evaluated'];
 
+// How long a session of each kind takes when nothing says (warm-up and cool-down around the work).
+const KIND_MINUTES = { walk: 30, canter: 60, hill: 75, breeze: 60, trial: 60 };
+
+/**
+ * The main work of a session in a few words — "Phi chậm 2400 + 1600 m", "Chạy kiệu 20' + 15'" — the
+ * warm-up, breathers and cool-down around it left out. Empty when it has no parts.
+ */
+export function mainWorkLine(segments = []) {
+  const parts = (segments || []).filter((s) => s?.kind);
+  if (!parts.length) return '';
+  const work = parts.filter((s) => s.kind !== 'walk');
+  if (work.length) {
+    const byKind = new Map();
+    for (const s of work) byKind.set(s.kind, [...(byKind.get(s.kind) || []), s]);
+    return [...byKind]
+      .map(([kind, list]) => {
+        const metres = list.every((s) => s.distanceM);
+        return `${SESSION_KINDS[kind]?.short || kind} ${list.map((s) => (metres ? s.distanceM : `${s.durationMinutes}'`)).join(' + ')}${metres ? ' m' : ''}`;
+      })
+      .join(' · ');
+  }
+  const trots = parts.filter((s) => Number(s.targetSpeedKmh) >= 10);
+  if (trots.length) return `Chạy kiệu ${trots.map((s) => `${s.durationMinutes}'`).join(' + ')}`;
+  return `Đi bộ ${parts.reduce((n, s) => n + (Number(s.durationMinutes) || 0), 0)}'`;
+}
+
 /** Planned end timestamp from explicit `endAt`, summed `segments`, or `prescription.durationMinutes`. */
 export function plannedEndAt(session) {
   if (!session?.scheduledAt) return null;
@@ -220,7 +246,7 @@ export function plannedEndAt(session) {
     const mins = segs.reduce((sum, s) => sum + (Number(s.durationMinutes) || SESSION_KINDS[s.kind]?.prescription?.durationMinutes || 15), 0);
     return mins > 0 ? new Date(new Date(session.scheduledAt).getTime() + mins * 60000) : null;
   }
-  const mins = Number(session.prescription?.durationMinutes) || SESSION_KINDS[session.kind]?.prescription?.durationMinutes || 0;
+  const mins = Number(session.prescription?.durationMinutes) || SESSION_KINDS[session.kind]?.prescription?.durationMinutes || KIND_MINUTES[session.kind] || 0;
   return mins > 0 ? new Date(new Date(session.scheduledAt).getTime() + mins * 60000) : null;
 }
 
@@ -237,19 +263,24 @@ export function segmentSafetyWarnings(segments = []) {
   const list = (segments || []).filter((s) => s?.kind);
   if (list.length === 0) return [];
   const warnings = [];
+  // Walking (warm-up, breathers, cool-down, the walker) is not the load: the work is from a canter up.
+  const work = list.filter((s) => s.kind !== 'walk');
+  const workMin = work.reduce((sum, s) => sum + (Number(s.durationMinutes) || 0), 0);
   const totalMin = list.reduce((sum, s) => sum + (Number(s.durationMinutes) || 0), 0);
-  const heavyIndices = list
-    .map((s, idx) => (['hill', 'breeze', 'trial'].includes(s.kind) ? idx : -1))
-    .filter((i) => i >= 0);
+  const heavyKinds = [...new Set(list.filter((s) => ['hill', 'breeze', 'trial'].includes(s.kind)).map((s) => s.kind))];
+  const heavyIndices = list.map((s, idx) => (['hill', 'breeze', 'trial'].includes(s.kind) ? idx : -1)).filter((i) => i >= 0);
 
-  if (list.length > 5) {
-    warnings.push(`Buổi có ${list.length} đoạn (khuyến nghị tối đa 4–5 đoạn trong 1 buổi để tránh rối nhịp vận động).`);
+  if (work.length > 5) {
+    warnings.push(`Buổi có ${work.length} hiệp tập chính (khuyến nghị tối đa 4–5 hiệp để tránh rối nhịp vận động).`);
   }
-  if (totalMin > 90) {
-    warnings.push(`Tổng thời lượng ${totalMin} phút — vượt ngưỡng 90 phút/buổi dễ gây quá tải gân và tim mạch.`);
+  if (workMin > 45) {
+    warnings.push(`Phần phi/dốc/nước rút dài ${workMin} phút — vượt khoảng 45 phút/buổi dễ gây quá tải gân và tim mạch.`);
   }
-  if (heavyIndices.length > 1) {
-    warnings.push(`Có ${heavyIndices.length} bài nặng (tập dốc / phi nhanh / chạy thử) trong cùng 1 buổi — thực tế chỉ nên xếp tối đa 1 bài nặng mỗi buổi.`);
+  if (totalMin > 180) {
+    warnings.push(`Cả buổi ${totalMin} phút — quá 3 giờ, nên tách bớt sang buổi chiều.`);
+  }
+  if (heavyKinds.length > 1) {
+    warnings.push(`Có ${heavyKinds.length} loại bài nặng (tập dốc / phi nhanh / chạy thử) trong cùng 1 buổi — thực tế chỉ nên xếp 1 loại bài nặng mỗi buổi.`);
   }
   if (heavyIndices.length > 0) {
     if (list[0]?.kind !== 'walk') {
@@ -338,6 +369,207 @@ export const canReplay = (s) => Boolean(s?.actualStartAt) && (DONE_STATUSES.incl
 
 // Only light work in the afternoon: the main workout is in the morning (server: AFTERNOON_KINDS).
 export const AFTERNOON_KINDS = ['walk', 'canter'];
+
+// The pieces a session is built from, as a trainer writes them on the board.
+const walkIn = (min = 15) => ({ kind: 'walk', durationMinutes: min, targetSpeedKmh: 6, note: 'Đi bộ khởi động' });
+const trot = (min, note = 'Chạy kiệu đều') => ({ kind: 'walk', durationMinutes: min, targetSpeedKmh: 14, targetHeartRateMax: 140, note });
+const breather = (min = 5) => ({ kind: 'walk', durationMinutes: min, targetSpeedKmh: 6, note: 'Đi bộ nghỉ giữa hiệp' });
+const walkOut = (min = 20) => ({ kind: 'walk', durationMinutes: min, targetSpeedKmh: 6, note: 'Đi bộ thả lỏng, hạ nhịp tim' });
+const walker = (min = 30) => ({ kind: 'walk', durationMinutes: min, targetSpeedKmh: 5, note: 'Máy đi bộ, tắm & làm mát' });
+const canterPart = (min, distanceM, speed, note, hr = 170) => ({ kind: 'canter', durationMinutes: min, distanceM, targetSpeedKmh: speed, targetHeartRateMax: hr, note });
+
+/**
+ * Ready-made sessions in parts — warm-up, the work, the breathers, cool-down and the walker — the way a
+ * trainer writes a day on the board: a morning of about an hour and a half (07:30 → ~09:15), a light
+ * afternoon of about forty minutes. `kind`: the session's kind (its hardest part); `short`: its name in
+ * a list of the same kind. The trainer starts from one and changes it.
+ */
+export const WORKOUT_PRESETS = {
+  trot: {
+    kind: 'walk',
+    label: 'Đi bộ + chạy kiệu',
+    short: 'Chạy kiệu 2 hiệp',
+    segments: [walkIn(), trot(20), breather(), trot(15, 'Chạy kiệu hiệp 2'), walkOut(15), walker(20)],
+  },
+  walk: {
+    kind: 'walk',
+    label: 'Đi bộ hồi sức',
+    short: "Hồi sức 60'",
+    segments: [{ kind: 'walk', durationMinutes: 20, targetSpeedKmh: 5, note: 'Dắt bộ giãn cơ' }, { kind: 'walk', durationMinutes: 25, targetSpeedKmh: 7, note: 'Đi bộ có người cưỡi' }, walker(15)],
+  },
+  afternoon_walk: {
+    kind: 'walk',
+    label: 'Đi bộ buổi chiều',
+    short: "Đi bộ chiều 40'",
+    segments: [{ kind: 'walk', durationMinutes: 20, targetSpeedKmh: 5, note: 'Dắt bộ giãn cơ' }, { kind: 'walk', durationMinutes: 20, targetSpeedKmh: 5, note: 'Máy đi bộ' }],
+  },
+  afternoon_trot: {
+    kind: 'walk',
+    label: 'Chạy kiệu nhẹ buổi chiều',
+    short: "Chạy kiệu chiều 40'",
+    segments: [walkIn(10), trot(15, 'Chạy kiệu nhẹ'), walkOut(15)],
+  },
+  canter: {
+    kind: 'canter',
+    label: 'Phi chậm 2 hiệp',
+    short: 'Phi chậm 2 hiệp · 4 km',
+    segments: [walkIn(), trot(15), canterPart(5, 2400, 32, 'Phi chậm hiệp 1'), breather(8), canterPart(3, 1600, 32, 'Phi chậm hiệp 2'), walkOut(), walker()],
+  },
+  canter_long: {
+    kind: 'canter',
+    label: 'Phi chậm dài',
+    short: 'Phi chậm dài · 5,2 km',
+    segments: [walkIn(), trot(20), canterPart(7, 3200, 30, 'Phi chậm dài, đều nhịp', 165), breather(8), canterPart(4, 2000, 33, 'Phi chậm hiệp 2'), walkOut(), walker()],
+  },
+  canter_easy: {
+    kind: 'canter',
+    label: 'Phi chậm nhẹ',
+    short: 'Phi chậm nhẹ · 4 km',
+    segments: [walkIn(), trot(15), canterPart(5, 2000, 28, 'Phi chậm nhẹ hiệp 1', 155), breather(), canterPart(4, 2000, 28, 'Phi chậm nhẹ hiệp 2', 155), walkOut(), walker(20)],
+  },
+  afternoon_canter: {
+    kind: 'canter',
+    label: 'Phi chậm nhẹ buổi chiều',
+    short: "Phi chậm chiều 40'",
+    segments: [walkIn(10), trot(10), canterPart(4, 1600, 28, 'Phi chậm nhẹ', 155), walkOut(15)],
+  },
+  hill: {
+    kind: 'hill',
+    label: 'Tập dốc 6 hiệp',
+    short: '6 hiệp × 400 m',
+    segments: [
+      walkIn(),
+      trot(15),
+      canterPart(3, 1200, 30, 'Phi chậm làm nóng'),
+      { kind: 'hill', durationMinutes: 25, distanceM: 2400, targetSpeedKmh: 30, targetHeartRateMax: 190, restMinutes: 3, note: '6 hiệp × 400 m lên dốc, đi bộ xuống nghỉ 3 phút' },
+      walkOut(),
+      walker(),
+    ],
+  },
+  hill_short: {
+    kind: 'hill',
+    label: 'Tập dốc 4 hiệp + phi chậm',
+    short: '4 hiệp + phi chậm',
+    segments: [
+      walkIn(),
+      trot(15),
+      { kind: 'hill', durationMinutes: 18, distanceM: 1600, targetSpeedKmh: 30, targetHeartRateMax: 185, restMinutes: 3, note: '4 hiệp × 400 m lên dốc' },
+      breather(8),
+      canterPart(4, 1600, 32, 'Phi chậm đều'),
+      walkOut(),
+      walker(25),
+    ],
+  },
+  breeze: {
+    kind: 'breeze',
+    label: 'Phi nhanh 800 m',
+    short: '800 m',
+    segments: [
+      walkIn(),
+      trot(15),
+      canterPart(4, 1600, 32, 'Phi chậm làm nóng'),
+      breather(),
+      { kind: 'breeze', durationMinutes: 1, distanceM: 800, targetSpeedKmh: 58, targetHeartRateMax: 215, note: 'Phi nhanh gần tốc độ đua' },
+      walkOut(25),
+      walker(),
+    ],
+  },
+  breeze_short: {
+    kind: 'breeze',
+    label: 'Phi nhanh 2 × 400 m',
+    short: '2 × 400 m',
+    segments: [
+      walkIn(),
+      trot(15),
+      canterPart(3, 1200, 30, 'Phi chậm làm nóng'),
+      { kind: 'breeze', durationMinutes: 1, distanceM: 400, targetSpeedKmh: 55, targetHeartRateMax: 210, note: 'Phi nhanh hiệp 1' },
+      breather(8),
+      { kind: 'breeze', durationMinutes: 1, distanceM: 400, targetSpeedKmh: 56, targetHeartRateMax: 210, note: 'Phi nhanh hiệp 2' },
+      walkOut(25),
+      walker(25),
+    ],
+  },
+  breeze_sharp: {
+    kind: 'breeze',
+    label: 'Phi nhanh ngắn giữ độ sắc',
+    short: '600 m giữ độ sắc',
+    segments: [
+      walkIn(),
+      trot(10),
+      canterPart(3, 1200, 30, 'Phi chậm làm nóng'),
+      { kind: 'breeze', durationMinutes: 1, distanceM: 600, targetSpeedKmh: 57, targetHeartRateMax: 212, note: 'Phi nhanh 600 m' },
+      walkOut(),
+      walker(20),
+    ],
+  },
+};
+// The ready-made sessions of each kind, the usual one first; the afternoon ones are light and short.
+export const PRESETS_BY_KIND = {
+  walk: ['trot', 'walk', 'afternoon_walk', 'afternoon_trot'],
+  canter: ['canter', 'canter_long', 'canter_easy', 'afternoon_canter'],
+  hill: ['hill', 'hill_short'],
+  breeze: ['breeze', 'breeze_short', 'breeze_sharp'],
+};
+const AFTERNOON_PRESET = { walk: 'afternoon_walk', canter: 'afternoon_canter' };
+/** The ready-made session a day of this kind starts with (the light, short one in the afternoon). */
+export const defaultPreset = (kind, slot = 'morning') => (slot === 'afternoon' ? AFTERNOON_PRESET[kind] : null) || PRESETS_BY_KIND[kind]?.[0] || null;
+/** A fresh copy of a ready-made workout's parts. */
+export const presetSegments = (name) => (WORKOUT_PRESETS[name]?.segments || []).map((s) => ({ ...s }));
+/** The ready-made session these parts are, by name, or null when the trainer changed them. */
+export function presetOf(segments = []) {
+  const key = (list) => JSON.stringify(list.map((x) => [x.kind, Number(x.durationMinutes) || 0, Number(x.distanceM) || 0, Number(x.targetSpeedKmh) || 0]));
+  const mine = key(segments.filter((x) => x?.kind));
+  return Object.keys(WORKOUT_PRESETS).find((name) => key(WORKOUT_PRESETS[name].segments) === mine) || null;
+}
+
+/** "07:30" plus some minutes, as a clock. */
+export const addClock = (clock, minutes) => {
+  const [h, m] = String(clock || '07:30').split(':').map(Number);
+  const t = (((h * 60 + m + Math.round(minutes)) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+/** Minutes of one part: its own, else its metres at its pace. */
+export const partMinutes = (s) => {
+  if (Number(s?.durationMinutes) > 0) return Number(s.durationMinutes);
+  const speed = Number(s?.targetSpeedKmh) || SESSION_KINDS[s?.kind]?.prescription?.targetSpeedKmh || 30;
+  return Number(s?.distanceM) > 0 ? Math.max(1, Math.round(Number(s.distanceM) / ((speed * 1000) / 60))) : 0;
+};
+/**
+ * A session's parts on the clock from `start`: { parts: [{ at, end, minutes, part }], end }. The way the
+ * groom and the rider read the morning: 07:30 đi bộ khởi động, 07:45 chạy kiệu, … xong 09:15.
+ */
+export function partsTimeline(segments = [], start = '07:30') {
+  let t = 0;
+  const parts = segments.filter((x) => x?.kind).map((part) => {
+    const minutes = partMinutes(part);
+    const at = addClock(start, t);
+    t += minutes;
+    return { at, end: addClock(start, t), minutes, part };
+  });
+  return { parts, end: addClock(start, t), minutes: t };
+}
+
+const KIND_RANK = { walk: 1, canter: 2, hill: 3, breeze: 4, trial: 5 };
+/** A day in parts is as hard as its hardest part (the server sets the same). */
+export const heaviestKind = (segments = []) =>
+  segments.filter((s) => s?.kind).reduce((a, s) => (!a || KIND_RANK[s.kind] > KIND_RANK[a] ? s.kind : a), null);
+/** Metres of one part: its distance, else its pace over its minutes. */
+export const segmentMetres = (s) => {
+  if (Number(s?.distanceM) > 0) return Number(s.distanceM);
+  const speed = Number(s?.targetSpeedKmh) || SESSION_KINDS[s?.kind]?.prescription?.targetSpeedKmh || 0;
+  return Math.round(((speed * 1000) / 60) * (Number(s?.durationMinutes) || 0));
+};
+/** { minutes, metres } of a workout in parts (a part's minutes include its rests, as the server sums them). */
+export const segmentsTotals = (segments = []) =>
+  segments
+    .filter((s) => s?.kind)
+    .reduce((t, s) => ({ minutes: t.minutes + (Number(s.durationMinutes) || 0), metres: t.metres + segmentMetres(s) }), { minutes: 0, metres: 0 });
+/** "Đi bộ 10' → Tập dốc 2400 m → Đi bộ 15'": the parts in a line. */
+export const segmentsLine = (segments = []) =>
+  segments
+    .filter((s) => s?.kind)
+    .map((s) => `${s.note && s.kind === 'walk' && /kiệu/i.test(s.note) ? 'Chạy kiệu' : SESSION_KINDS[s.kind]?.short || s.kind}${s.distanceM ? ` ${s.distanceM} m` : s.durationMinutes ? ` ${s.durationMinutes}'` : ''}`)
+    .join(' → ');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PHASE_ORDER = { base_building: 0, strength: 1, speed: 2, peak: 3, recovery: 4 };

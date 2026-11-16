@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Modal, Form, Select, DatePicker, InputNumber, Input, Tag, Space, Tooltip, Radio, Alert, Empty, Card, Segmented } from 'antd';
+import { Table, Button, Typography, Modal, Form, Select, DatePicker, InputNumber, Input, Tag, Tooltip, Radio, Alert, Empty, Card, Segmented, Grid } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, EditOutlined, FlagOutlined, ScheduleOutlined, WarningOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -67,6 +67,32 @@ function TrialCell({ trial }) {
         <Text type="secondary" className="!text-xs">{metricsLine(trial.metrics)}</Text>
       </div>
     </Tooltip>
+  );
+}
+
+/** The horse, the race and where it is run: the row's title. */
+function EntryTitle({ entry }) {
+  return (
+    <div className="min-w-0 leading-5">
+      <Link to={`/horses/${entry.horse?._id}`} className="block truncate text-[13px] font-semibold">
+        {entry.horse?.name || 'Ngựa'}
+      </Link>
+      <div className="break-words text-[13px] text-gray-800">{entry.raceName}</div>
+      {entry.venue && <div className="break-words text-xs text-gray-500">{entry.venue}</div>}
+    </div>
+  );
+}
+
+/** Race day, how many days are left, and the distance and surface under it. */
+function RaceWhen({ entry }) {
+  const days = raceDayOf(entry).diff(dayjs().startOf('day'), 'day');
+  const course = [entry.distance ? `${entry.distance} m` : null, SURFACE_LABELS[entry.surface]].filter(Boolean).join(' · ');
+  return (
+    <div className="leading-5">
+      <div className="text-[13px] font-medium tabular-nums text-gray-900">{dayjs(entry.raceDate).format('DD/MM/YYYY')}</div>
+      {['registered', 'confirmed'].includes(entry.status) && days >= 0 && <div className="text-xs text-amber-700">{days === 0 ? 'Hôm nay' : `Còn ${days} ngày`}</div>}
+      {course && <div className="text-xs text-gray-500">{course}</div>}
+    </div>
   );
 }
 
@@ -217,6 +243,9 @@ export default function RacePage() {
   const [resultForm] = Form.useForm();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const screens = Grid.useBreakpoint();
+  // Narrow screens: one card per entry instead of a table squeezed sideways.
+  const asCards = screens.md === false;
 
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
   // A notification about one horse's race (?horse=<id>) shows that horse's entries only.
@@ -286,120 +315,101 @@ export default function RacePage() {
   const firstWaitingId = waiting.length ? String(waiting.reduce((a, b) => (raceDayOf(b).isBefore(raceDayOf(a)) ? b : a))._id) : null;
   const decisionLabel = (r) => (r.reviewNeeded ? 'Xem lại quyết định' : r.status === 'registered' ? 'Quyết định dự giải' : 'Đổi quyết định');
 
+  // The buttons of one entry, one per line in the table (`stacked`), side by side on a card.
+  const actionsFor = (record, { stacked = true } = {}) => {
+    const open = ['registered', 'confirmed'].includes(record.status);
+    const plan = activePlanByHorse.get(refId(record.horse));
+    const planForThis = plan && refId(plan.targetRace) === String(record._id);
+    // Full width in the column, the label wrapping inside the button rather than cut off when the column is tight.
+    const btn = stacked ? '!h-auto !min-h-7 !w-full !justify-start !whitespace-normal !py-1 !text-left !leading-snug' : '';
+    return (
+      <div className={stacked ? 'flex flex-col items-stretch gap-1.5' : 'flex flex-wrap gap-1.5'}>
+        {open && !isPast(record) && !plan && (
+          <Button size="small" className={btn} icon={<ScheduleOutlined />} onClick={() => navigate(`/training/plans?race=${record._id}`)}>
+            Lập kế hoạch
+          </Button>
+        )}
+        {open && planForThis && (
+          <Button size="small" className={btn} icon={<ScheduleOutlined />} onClick={() => navigate('/training/plans')}>
+            Xem kế hoạch
+          </Button>
+        )}
+        {['registered', 'confirmed', 'withdrawn'].includes(record.status) && !isPast(record) && (
+          <Button size="small" className={btn} type={String(record._id) === firstWaitingId ? 'primary' : 'default'} icon={<FlagOutlined />} onClick={() => setDecisionRace(record)}>
+            {decisionLabel(record)}
+          </Button>
+        )}
+        {!isBeforeRaceDay(record) && record.status !== 'withdrawn' && (
+          <Button
+            size="small"
+            className={btn}
+            icon={<EditOutlined />}
+            onClick={() => {
+              setResultRace(record);
+              resultForm.setFieldsValue({ position: record.position, finishTime: record.finishTime, prizeMoney: record.prizeMoney || undefined, result: record.result });
+            }}
+          >
+            Cập nhật kết quả
+          </Button>
+        )}
+      </div>
+    );
+  };
+  const trialOf = (r) => (r.status === 'withdrawn' ? <Text type="secondary" className="!text-xs">—</Text> : <TrialCell trial={trialFor(r, trials)} />);
+  const decisionOf = (r) => (
+    <div className="flex flex-col gap-1">
+      <DecisionCell entry={r} form={formFor(r)} />
+      {r.result && (
+        <div className="text-[13px] leading-5">
+          <span className="font-medium text-gray-900">{r.result}</span>
+          {r.prizeMoney > 0 && (
+            <Text type="success" className="block !text-xs">
+              Thưởng {Number(r.prizeMoney).toLocaleString('vi-VN')} ₫
+            </Text>
+          )}
+        </div>
+      )}
+    </div>
+  );
+  // Every cell reads from its top line: rows of different heights stay lined up.
+  const top = () => ({ style: { verticalAlign: 'top' } });
+
+  // Five columns that fit the page (no sideways scrolling): who and which race, when and how far, the
+  // trial, the decision with the result under it, and the buttons.
   const columns = [
     {
-      title: 'Ngựa',
-      dataIndex: ['horse', 'name'],
+      title: 'Ngựa · giải đua',
       key: 'horse',
-      width: 180,
-      render: (name, record) => <Link to={`/horses/${record.horse?._id}`}>{name}</Link>,
+      width: '24%',
+      onCell: top,
+      render: (_, r) => <EntryTitle entry={r} />,
     },
     {
-      title: 'Giải đua',
-      dataIndex: 'raceName',
-      key: 'raceName',
-      width: 190,
-      render: (name, r) => (
-        <div>
-          <div>{name}</div>
-          {r.venue && <Text type="secondary" className="!text-xs">{r.venue}</Text>}
-        </div>
-      ),
-    },
-    {
-      title: 'Ngày đua',
-      dataIndex: 'raceDate',
+      title: 'Ngày đua · cự ly',
       key: 'raceDate',
-      width: 115,
-      render: (d, r) => {
-        const days = dayjs(d).startOf('day').diff(dayjs().startOf('day'), 'day');
-        return (
-          <div>
-            <div className="tabular-nums">{dayjs(d).format('DD/MM/YYYY')}</div>
-            {['registered', 'confirmed'].includes(r.status) && days >= 0 && (
-              <Text type="secondary" className="!text-xs">{days === 0 ? 'Hôm nay' : `Còn ${days} ngày`}</Text>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      title: 'Cự ly · mặt sân',
-      key: 'distance',
-      width: 130,
-      render: (_, r) => [r.distance ? `${r.distance}m` : null, SURFACE_LABELS[r.surface]].filter(Boolean).join(' · ') || '—',
+      width: '15%',
+      onCell: top,
+      render: (_, r) => <RaceWhen entry={r} />,
     },
     {
       title: 'Chạy thử',
       key: 'trial',
-      width: 210,
-      render: (_, r) => (r.status === 'withdrawn' ? <Text type="secondary" className="!text-xs">—</Text> : <TrialCell trial={trialFor(r, trials)} />),
+      width: '18%',
+      onCell: top,
+      render: (_, r) => trialOf(r),
     },
     {
-      // The result sits under the decision: one column fewer, so the table fits the page and the
-      // pinned actions column never covers it.
       title: 'Quyết định · kết quả',
       key: 'status',
-      width: 240,
-      render: (_, r) => (
-        <div className="flex flex-col gap-1">
-          <DecisionCell entry={r} form={formFor(r)} />
-          {r.result && (
-            <div>
-              <span className="font-medium">{r.result}</span>
-              {r.prizeMoney > 0 && (
-                <Text type="success" className="block !text-xs">
-                  Thưởng {Number(r.prizeMoney).toLocaleString('vi-VN')} ₫
-                </Text>
-              )}
-            </div>
-          )}
-        </div>
-      ),
+      onCell: top,
+      render: (_, r) => decisionOf(r),
     },
     {
-      title: '',
+      title: 'Thao tác',
       key: 'actions',
-      // Pinned so the actions stay in view when the table scrolls sideways; one button per line and a
-      // set width, so the pinned column never covers the result next to it.
-      fixed: 'right',
-      width: 180,
-      render: (_, record) => {
-        const open = ['registered', 'confirmed'].includes(record.status);
-        const plan = activePlanByHorse.get(refId(record.horse));
-        const planForThis = plan && refId(plan.targetRace) === String(record._id);
-        return (
-          <Space size={4} orientation="vertical" align="start">
-            {open && !isPast(record) && !plan && (
-              <Button size="small" icon={<ScheduleOutlined />} onClick={() => navigate(`/training/plans?race=${record._id}`)}>
-                Lập kế hoạch
-              </Button>
-            )}
-            {open && planForThis && (
-              <Button size="small" type="link" className="!px-1" onClick={() => navigate('/training/plans')}>
-                Xem kế hoạch
-              </Button>
-            )}
-            {['registered', 'confirmed', 'withdrawn'].includes(record.status) && !isPast(record) && (
-              <Button size="small" type={String(record._id) === firstWaitingId ? 'primary' : 'default'} icon={<FlagOutlined />} onClick={() => setDecisionRace(record)}>
-                {decisionLabel(record)}
-              </Button>
-            )}
-            {!isBeforeRaceDay(record) && record.status !== 'withdrawn' && (
-              <Button
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => {
-                  setResultRace(record);
-                  resultForm.setFieldsValue({ position: record.position, finishTime: record.finishTime, prizeMoney: record.prizeMoney || undefined, result: record.result });
-                }}
-              >
-                Cập nhật kết quả
-              </Button>
-            )}
-          </Space>
-        );
-      },
+      width: 212,
+      onCell: top,
+      render: (_, record) => actionsFor(record),
     },
   ];
 
@@ -470,13 +480,38 @@ export default function RacePage() {
         />
       </div>
 
-      <Card className="!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+      {asCards && (
+        <div className="flex flex-col gap-3">
+          {newestFirst(shownRaces).map((r) => (
+            <div key={r._id} className="light-surface-box rounded-xl border border-[#E5DEC9] bg-white p-3 shadow-xs">
+              <div className="flex items-start justify-between gap-3">
+                <EntryTitle entry={r} />
+                <div className="shrink-0 text-right">
+                  <RaceWhen entry={r} />
+                </div>
+              </div>
+              <div className="mt-2 border-t border-gray-100 pt-2">
+                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Chạy thử</div>
+                {trialOf(r)}
+              </div>
+              <div className="mt-2 border-t border-gray-100 pt-2">
+                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Quyết định · kết quả</div>
+                {decisionOf(r)}
+              </div>
+              <div className="mt-2 border-t border-gray-100 pt-2">{actionsFor(r, { stacked: false })}</div>
+            </div>
+          ))}
+          {!isLoading && !shownRaces.length && <Empty description='Chưa có giải đua nào được đăng ký. Nhấn "Đăng ký giải mới" để bắt đầu.' />}
+        </div>
+      )}
+
+      <Card className={`!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden${asCards ? ' !hidden' : ''}`} styles={{ body: { padding: 0 } }}>
         <Table
           rowKey="_id"
           columns={columns}
           dataSource={newestFirst(shownRaces)}
           loading={isLoading && !data}
-          scroll={{ x: 'max-content' }}
+          tableLayout="fixed"
           locale={{
             emptyText: (
               <Empty description='Chưa có giải đua nào được đăng ký. Nhấn "Đăng ký giải mới" để bắt đầu.'>

@@ -126,6 +126,17 @@ async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify 
         note = ` Đổi từ "${SESSION_KINDS[template.kind].label}" vì bác sĩ chỉ cho ${clearance.label}.`;
       }
       const content = buildFromKind(kind, kind === template.kind ? template : {});
+      // The day's workout in parts, as the template has it (a lighter kind the vet allows keeps the kind's own).
+      if (kind === template.kind && template.segments?.length) {
+        content.segments = template.segments.map((s) => ({ ...(s.toObject ? s.toObject() : s) }));
+        const minutes = content.segments.reduce((n, s) => n + (s.durationMinutes || 0), 0);
+        const metres = content.segments.reduce((n, s) => n + (s.distanceM || 0), 0);
+        if (minutes > 0) content.prescription.durationMinutes = minutes;
+        if (metres > 0) content.prescription.distanceM = metres;
+        // The parts are the workout: no hidden repeats of the kind's default on top of them.
+        content.prescription.reps = 1;
+        delete content.prescription.restMinutes;
+      }
       // The trial is run for the plan's race: it is that entry's evidence.
       if (kind === 'trial' && race) content.raceEntry = race._id;
       // eslint-disable-next-line no-await-in-loop
@@ -161,6 +172,8 @@ async function generatePlanWeek({ plan, weekStart: requestedWeek, actor, notify 
       message: `🏇 Lịch tập tuần ${ddmm(weekStart)} của ${plan.horse.name}: ${createdSessions.length} buổi — sáng ${clockOf.morning}${createdSessions.some((s) => slotOf(s.scheduledAt) === 'afternoon') ? `, chiều ${clockOf.afternoon}` : ''} (${list}). Cho ăn sáng xong trước giờ tập ít nhất 1,5 tiếng.`,
     });
   }
+  // The meals of the days just booked follow their work (lazy: feeding requires the training models).
+  if (createdSessions.length) await require('../feeding/feedingCalendar.service').followSessions(horseId, createdSessions.map((s) => s.scheduledAt));
   return { weekStart, created: createdSessions, skipped };
 }
 

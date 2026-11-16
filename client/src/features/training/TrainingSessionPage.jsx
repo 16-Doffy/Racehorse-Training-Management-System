@@ -29,6 +29,8 @@ import {
   ArrowDownOutlined,
   EditOutlined,
   CloseCircleOutlined,
+  CloseOutlined,
+  FlagOutlined,
   AimOutlined,
   PlayCircleOutlined,
   CalendarOutlined,
@@ -52,6 +54,8 @@ import { useLockedHorseIds, useHorseClearances } from './useLockedHorses';
 import { TRAINING_LEVEL_META, LEVEL_RANK, INTENSITY_RANK, intensityAllowed } from '../../constants/health';
 import ReadinessPanel from './ReadinessPanel';
 import PreCheckModal from './PreCheckModal';
+import { whereNow, raceLine } from './PlanFocusPanel';
+import ChangeWorkoutModal from './ChangeWorkoutModal';
 import LiveSessionMonitor from './LiveSessionMonitor';
 import SessionReplay from './SessionReplay';
 import MovingHorse3D from '../horses/horse3d/MovingHorse3D';
@@ -152,6 +156,8 @@ export default function TrainingSessionPage() {
   const [examFor, setExamFor] = useState(null);
   const [preCheckSession, setPreCheckSession] = useState(null);
   const [scheduleSession, setScheduleSession] = useState(null);
+  // The booked session whose work the trainer is changing ("Đổi bài tập").
+  const [workSession, setWorkSession] = useState(null);
   const [scheduleForm] = Form.useForm();
   const [cancelSession, setCancelSession] = useState(null);
   const [cancelForm] = Form.useForm();
@@ -221,6 +227,10 @@ export default function TrainingSessionPage() {
 
   const filteredPlan = planFilter ? (plansData?.data || []).find((p) => p._id === planFilter) : null;
   const filteredHorse = horseFilter ? (horsesData?.data || []).find((h) => h._id === horseFilter) : null;
+  // The plan behind what is shown: the one filtered on, else the horse's running plan.
+  const contextPlan = filteredPlan || (filteredHorse ? (plansData?.data || []).find((p) => p.status === 'active' && String(p.horse?._id) === String(filteredHorse._id)) : null);
+  const contextPhase = contextPlan?.phases?.[contextPlan.progress?.phaseIndex ?? 0];
+  const contextNoWeek = Boolean(contextPlan && contextPlan.status === 'active' && contextPlan.progress?.started && !contextPlan.progress?.ended && !contextPhase?.week?.length);
   const draftHorse = draft.horse ? (horsesData?.data || []).find((h) => String(h._id) === String(draft.horse)) : null;
   const allSessions = sessionsData?.data || [];
 
@@ -643,6 +653,14 @@ export default function TrainingSessionPage() {
         const canSchedule = (['scheduled', 'ready', 'blocked'].includes(record.status) || (record.status === 'missed' && !record.rescheduledTo));
         const canCancel = ['scheduled', 'ready', 'blocked'].includes(record.status);
 
+        if (canCancel && record.kind !== 'trial') {
+          moreItems.push({
+            key: 'change-work',
+            icon: <EditOutlined />,
+            label: 'Đổi bài tập',
+            onClick: () => setWorkSession(record),
+          });
+        }
         if (canSchedule && record.status !== 'missed') {
           moreItems.push({
             key: 'schedule',
@@ -853,32 +871,44 @@ export default function TrainingSessionPage() {
         />
       )}
 
-      {filteredPlan && (
-        <Tag
-          closable
-          closeIcon={<CloseCircleOutlined />}
-          onClose={() => setSearchParams({})}
-          color="blue"
-          className="mb-4"
-        >
-          Đang lọc theo kế hoạch: {filteredPlan.horse?.name} — {PHASE_LABELS[filteredPlan.phase] || filteredPlan.phase}
-        </Tag>
-      )}
-      {filteredHorse && (
-        <Tag
-          closable
-          closeIcon={<CloseCircleOutlined />}
-          onClose={() => setSearchParams({})}
-          color="blue"
-          className="mb-4"
-        >
-          Đang xem lịch của ngựa: {filteredHorse.name}
-        </Tag>
-      )}
-      {filteredHorse && (
-        <Link to={`/horses/${filteredHorse._id}`} className="mb-4 ml-1 inline-block text-sm">
-          Mở hồ sơ ngựa
-        </Link>
+      {/* What is being looked at, and the way to its plan: the plan and the sessions are two views of one cycle. */}
+      {(filteredPlan || filteredHorse) && (
+        <div className="light-surface-box mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5">
+          <div className="min-w-0 text-sm">
+            <span className="text-gray-500">{filteredPlan ? 'Lịch tập theo kế hoạch: ' : 'Lịch tập của ngựa: '}</span>
+            <b className="text-gray-900">{filteredPlan?.horse?.name || filteredHorse?.name}</b>
+            {contextPlan && <span className="text-gray-600"> · {whereNow(contextPlan)}</span>}
+            {contextPlan && raceLine(contextPlan) && (
+              <span className="ml-3 whitespace-nowrap text-pink-700">
+                <FlagOutlined className="mr-1" />
+                {raceLine(contextPlan)}
+              </span>
+            )}
+            {contextNoWeek && <div className="text-xs text-amber-700">Giai đoạn hiện tại chưa có tuần mẫu nên hệ thống chưa tự xếp được buổi tập.</div>}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {contextPlan && (
+              <Link to={`/training/plans?plan=${contextPlan._id}`}>
+                <Button size="small">Xem kế hoạch</Button>
+              </Link>
+            )}
+            {contextPlan && contextPlan.status === 'active' && (
+              <Link to={`/training/plans?plan=${contextPlan._id}&week=edit`}>
+                <Button size="small" type={contextNoWeek ? 'primary' : 'default'}>
+                  {contextNoWeek ? 'Thiết lập tuần mẫu' : 'Sửa tuần mẫu'}
+                </Button>
+              </Link>
+            )}
+            {filteredHorse && (
+              <Link to={`/horses/${filteredHorse._id}`}>
+                <Button size="small">Hồ sơ ngựa</Button>
+              </Link>
+            )}
+            <Button size="small" type="text" icon={<CloseOutlined />} onClick={() => setSearchParams({})}>
+              Bỏ lọc
+            </Button>
+          </div>
+        </div>
       )}
 
       {firstWeek && filteredPlan && !(sessionsData?.data || []).length && (
@@ -922,6 +952,7 @@ export default function TrainingSessionPage() {
           startingId={startMutation.isPending ? startMutation.variables?.id : null}
           onEvaluate={openEvaluation}
           onSchedule={openSchedule}
+          onChangeWork={setWorkSession}
           onCancel={setCancelSession}
           onEnd={setEndSession}
           onAbort={setAbortSession}
@@ -942,6 +973,7 @@ export default function TrainingSessionPage() {
           startingId={startMutation.isPending ? startMutation.variables?.id : null}
           onEvaluate={openEvaluation}
           onSchedule={openSchedule}
+          onChangeWork={setWorkSession}
           onCancel={setCancelSession}
           onEnd={setEndSession}
           onAbort={setAbortSession}
@@ -1501,6 +1533,14 @@ export default function TrainingSessionPage() {
           )}
         </Form>
       </Modal>
+
+      {workSession && (
+        <ChangeWorkoutModal
+          session={workSession}
+          clearance={clearances.get(String(workSession.horse?._id || workSession.horse))}
+          onClose={() => setWorkSession(null)}
+        />
+      )}
 
       <Modal
         title={scheduleSession?.status === 'missed' ? 'Xếp lại buổi tập đã lỡ giờ' : 'Đổi giờ buổi tập'}

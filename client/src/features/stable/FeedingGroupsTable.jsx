@@ -28,7 +28,7 @@ function groupDays(days) {
       p.groups.push(g);
     }
     g.dates.push(day.date);
-    for (const s of day.diet === 'sick' ? [] : day.sessions || []) g.kinds.add(`${SESSION_KINDS[s.kind]?.short || s.kind}${s.slot === 'afternoon' ? ' (chiều)' : ''}`);
+    for (const s of day.diet === 'sick' ? [] : day.sessions || []) g.kinds.add(`${SESSION_KINDS[s.kind]?.short || s.kind}${s.at ? ` ${s.at}${s.until ? `–${s.until}` : ''}` : s.slot === 'afternoon' ? ' (chiều)' : ''}`);
   }
   return phases;
 }

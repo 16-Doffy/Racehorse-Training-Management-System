@@ -16,7 +16,6 @@ import { siderCollapsedSet } from '../store/uiSlice';
 import { getMenuByRole } from './menuConfig';
 import { ROLE_LABELS, ROLES } from '../constants/roles';
 import AlertBell from '../features/alerts/AlertBell';
-import TrainerFlowBar from '../components/common/TrainerFlowBar';
 import { notificationsApi } from '../features/alerts/notificationsApi';
 import { notificationTarget, menuKeyFor } from '../features/alerts/notificationTarget';
 import { disconnectSocket } from '../lib/socket';
@@ -367,20 +366,8 @@ export default function MainLayout() {
               ]}
             />
           ) : <div />}
-          {/* The trainer's steps in order (TrainerFlowBar): between the canvas switch and the bell on a
-              wide screen, on a row of their own under them on a phone. */}
-          {user?.role === ROLES.HEAD_TRAINER && (
-            <div className="hidden min-w-0 flex-1 px-4 md:block">
-              <TrainerFlowBar />
-            </div>
-          )}
           <AlertBell />
         </div>
-        {user?.role === ROLES.HEAD_TRAINER && (
-          <div className="min-w-0 px-4 pt-2 md:hidden">
-            <TrainerFlowBar />
-          </div>
-        )}
         <Content
           style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto', overflowX: 'hidden' }}
           className="p-4 md:px-8 md:pb-8 relative"

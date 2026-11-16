@@ -100,7 +100,7 @@ export default function MealEditModal({ target, days, feedItems, gapHours, onApp
           {(day.sessions || []).map((s, i) => (
             <Tag key={i} color={SESSION_KINDS[s.kind]?.color} className="!m-0">
               {SESSION_KINDS[s.kind]?.short || s.kind}
-              {s.slot === 'afternoon' ? ' (chiều)' : ''}
+              {s.at ? ` ${s.at}${s.until ? `–${s.until}` : ''}` : s.slot === 'afternoon' ? ' (chiều)' : ''}
             </Tag>
           ))}
           <Text type="secondary" className="basis-full !text-xs">

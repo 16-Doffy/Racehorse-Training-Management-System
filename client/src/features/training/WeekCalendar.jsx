@@ -17,7 +17,7 @@ import {
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, PHASE_SHORT, mondayOf, DONE_STATUSES, canReplay, sessionWindowLabel } from './trainingVocab';
+import { SESSION_KINDS, OBJECTIVE_LABELS, WEEK_DAYS, PHASE_LABELS, PHASE_SHORT, mondayOf, DONE_STATUSES, canReplay, sessionWindowLabel, mainWorkLine } from './trainingVocab';
 import { SESSION_STATUS_LABELS } from './sessionStatus';
 import { useClubPolicy, precheckRuleText } from './useClubPolicy';
 import SessionDetail from './SessionDetail';
@@ -79,24 +79,29 @@ function plannedFor(plan, date) {
   const phase = phases.find((p) => !date.isBefore(dayjs(p.startDate), 'day') && !date.isAfter(dayjs(p.endDate), 'day'));
   const entries = (phase?.week || [])
     .filter((w) => w.day === date.day() && w.kind !== 'trial')
-    .map((w) => ({ slot: w.slot || 'morning', kind: w.kind, at: at(w.slot || 'morning') }));
+    .map((w) => ({ slot: w.slot || 'morning', kind: w.kind, segments: w.segments || [], at: at(w.slot || 'morning') }));
   return { entries };
 }
 
 /** A session the plan will book, not booked yet (the timetable books this week and next): one dashed line. */
 function PlannedChip({ entry }) {
   const kind = SESSION_KINDS[entry.kind];
+  const hours = sessionWindowLabel({ scheduledAt: entry.at.toDate(), kind: entry.kind, segments: entry.segments });
+  const work = mainWorkLine(entry.segments);
   return (
-    <Tooltip title={`Dự kiến: ${kind?.label || 'Buổi tập'} ${entry.at.format('HH:mm')}, theo lịch tuần mẫu của kế hoạch. Được xếp tự động khi tới tuần này hoặc tuần sau.`}>
-      <div className="flex w-full items-center justify-between gap-1 rounded-md border border-dashed border-black/15 px-1.5 py-0.5 text-[11px] text-gray-500">
-        <span className="truncate">{kind?.short || kind?.label || 'Buổi tập'}</span>
-        <span className="shrink-0 tabular-nums">{entry.at.format('HH:mm')}</span>
+    <Tooltip title={`Dự kiến: ${kind?.label || 'Buổi tập'} ${hours}${work ? ` (${work})` : ''}, theo lịch tuần mẫu của kế hoạch. Được xếp tự động khi tới tuần này hoặc tuần sau.`}>
+      <div className="w-full rounded-md border border-dashed border-black/15 px-1.5 py-0.5 text-[11px] leading-4 text-gray-500">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-1">
+          <span className="whitespace-nowrap">{kind?.short || kind?.label || 'Buổi tập'}</span>
+          <span className="whitespace-nowrap tabular-nums">{hours}</span>
+        </div>
+        {work && <div className="line-clamp-2 text-[10px] leading-[14px] text-gray-400">{work}</div>}
       </div>
     </Tooltip>
   );
 }
 
-function SessionChip({ session, replaced = [], onStart, onPreCheck, onEvaluate, onSchedule, onCancel, onEnd, onAbort, onRequestExam, onReplay, starting, scheduling }) {
+function SessionChip({ session, replaced = [], onStart, onPreCheck, onEvaluate, onSchedule, onChangeWork, onCancel, onEnd, onAbort, onRequestExam, onReplay, starting, scheduling }) {
   const policy = useClubPolicy();
   const [open, setOpen] = useState(false);
   const kind = SESSION_KINDS[session.kind];
@@ -163,6 +168,11 @@ function SessionChip({ session, replaced = [], onStart, onPreCheck, onEvaluate, 
           Xếp lại lịch
         </Button>
       )}
+      {onChangeWork && canChangeTime && session.kind !== 'trial' && (
+        <Button size="small" icon={<EditOutlined />} onClick={() => onChangeWork(session)}>
+          Đổi bài
+        </Button>
+      )}
       {onSchedule && canChangeTime && (
         <Button size="small" icon={<ScheduleOutlined />} loading={scheduling} onClick={() => onSchedule(session)}>
           Đổi giờ
@@ -177,7 +187,9 @@ function SessionChip({ session, replaced = [], onStart, onPreCheck, onEvaluate, 
   );
   const detail = <SessionDetail session={session} statusLabel={rescheduled ? 'Đã xếp lại lịch' : status.label} notes={notes} actions={actions} />;
   const timeWindow = sessionWindowLabel(session);
-  const segCount = Array.isArray(session.segments) ? session.segments.filter((seg) => seg?.kind).length : 0;
+  const work = mainWorkLine(session.segments);
+  // A second line for what needs a look (its result, a state waiting on someone), else its main work.
+  const flagged = met != null || ['missed', 'blocked', 'in_progress', 'ready'].includes(session.status);
 
   // White chip, its status on the left edge: the work and its result, then the time window (start–end).
   return (
@@ -187,23 +199,17 @@ function SessionChip({ session, replaced = [], onStart, onPreCheck, onEvaluate, 
         aria-label={`${kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}, ${slotLabel(session.scheduledAt)} ${timeWindow}, ${rescheduled ? 'Đã xếp lại lịch' : status.label}`}
         className={`w-full cursor-pointer rounded-md border border-black/10 border-l-[3px] ${status.accent} ${status.fill} px-1.5 py-0.5 text-left transition-shadow hover:shadow-xs ${session.status === 'cancelled' ? 'opacity-60 line-through' : ''}`}
       >
-        <div className="flex items-center justify-between gap-1 text-[11px]">
-          <span className="truncate font-semibold text-gray-900">
-            {kind?.short || kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}
-            {segCount > 1 && (
-              <span className="ml-1 inline-block rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800" title={`Buổi ghép ${segCount} bài tập`}>
-                {segCount} bài
-              </span>
-            )}
-          </span>
-          <span className="shrink-0 tabular-nums text-gray-500">{timeWindow}</span>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-1 text-[11px] leading-4">
+          <span className="whitespace-nowrap font-semibold text-gray-900">{kind?.short || kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}</span>
+          <span className="whitespace-nowrap tabular-nums text-gray-500">{timeWindow}</span>
         </div>
-        {/* A second line only for what needs a look: its result, or a state still waiting on someone. */}
-        {(met != null || ['missed', 'blocked', 'in_progress', 'ready'].includes(session.status)) && (
-          <div className="truncate text-[10px] font-medium leading-tight">
-            {met === true && <span className="text-emerald-700">Đạt</span>}
-            {met === false && <span className="text-rose-700">Chưa đạt</span>}
-            {met == null && <span className={rescheduled ? 'text-gray-600' : status.text}>{rescheduled ? 'Đã xếp lại' : status.label}</span>}
+        {(flagged || work) && (
+          <div className="line-clamp-2 text-[10px] leading-[14px]">
+            {met === true && <span className="font-medium text-emerald-700">Đạt</span>}
+            {met === false && <span className="font-medium text-rose-700">Chưa đạt</span>}
+            {met == null && flagged && <span className={`font-medium ${rescheduled ? 'text-gray-600' : status.text}`}>{rescheduled ? 'Đã xếp lại' : status.label}</span>}
+            {flagged && work ? <span className="text-gray-400"> · </span> : null}
+            {work && <span className="text-gray-500">{work}</span>}
           </div>
         )}
       </button>
@@ -229,6 +235,7 @@ export default function WeekCalendar({
   startingId,
   onEvaluate,
   onSchedule,
+  onChangeWork,
   onCancel,
   onEnd,
   onAbort,
@@ -304,7 +311,7 @@ export default function WeekCalendar({
           <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
             <thead>
               <tr>
-                <th className="wc-sticky sticky left-0 top-0 z-[3] w-[220px] border-b border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-gray-700">Ngựa</th>
+                <th className="wc-sticky sticky left-0 top-0 z-[3] w-[190px] border-b border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-gray-700">Ngựa</th>
                 {days.map((d) => {
                   const today = d.date.isSame(dayjs(), 'day');
                   return (
@@ -351,7 +358,13 @@ export default function WeekCalendar({
                         )}
                       </div>
                       <div className="flex min-w-0 items-center gap-x-2 truncate text-[11px] leading-snug text-gray-500">
-                        {plan ? <span className="truncate">{PHASE_SHORT[plan.phase] || PHASE_LABELS[plan.phase] || plan.phase}</span> : <span>Không có kế hoạch</span>}
+                        {plan ? (
+                          <Link to={`/training/plans?plan=${plan._id}`} title="Mở kế hoạch của ngựa này" className="truncate text-gray-500 hover:text-[var(--st-primary,#B45309)] hover:underline">
+                            {PHASE_SHORT[plan.phase] || PHASE_LABELS[plan.phase] || plan.phase}
+                          </Link>
+                        ) : (
+                          <span>Không có kế hoạch</span>
+                        )}
                         {locked && <span className="shrink-0 font-medium text-rose-700">Đang khóa tập</span>}
                         {raceInDays != null && raceInDays >= 0 && (
                           <Tooltip title={`${plan.targetRace.raceName}, ${dayjs(plan.targetRace.raceDate).format('DD/MM')}`}>
@@ -384,6 +397,7 @@ export default function WeekCalendar({
                                 onPreCheck={onPreCheck}
                                 onEvaluate={onEvaluate}
                                 onSchedule={onSchedule}
+                                onChangeWork={onChangeWork}
                                 onCancel={onCancel}
                                 onEnd={onEnd}
                                 onAbort={onAbort}
