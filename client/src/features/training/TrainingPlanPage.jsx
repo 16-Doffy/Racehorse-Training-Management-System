@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Table, Button, Typography, Tag, Card, Select, Empty, Modal, Alert, Input, Collapse } from 'antd';
 import {
   PlusOutlined,
-  CalendarOutlined,
   FlagOutlined,
   SearchOutlined,
-  MoreOutlined,
 } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,19 +21,13 @@ import { PhaseWeekEditor, withParts } from './weekTemplate';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import {
   PHASE_LABELS,
-  INTENSITY_LABELS,
-  INTENSITY_COLORS,
-  SURFACE_LABELS,
-  SESSION_KINDS,
   PLAN_STATUS_LABELS,
   PLAN_STATUS_COLORS,
-  sessionTimeLabel,
-  formFigures,
 } from './trainingVocab';
 import { newestFirst } from '../../utils/newestFirst';
 import { fold } from '../../utils/fold';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const STATUS_CHOICES = {
   active: ['active', 'completed', 'cancelled'],
@@ -184,11 +176,19 @@ export default function TrainingPlanPage() {
   const [weekEdit, setWeekEdit] = useState(null);
   const shownActive = active.filter((p) => !search.trim() || fold(p.horse?.name).includes(fold(search.trim())));
   const selectedPlan = plans.find((p) => p._id === selectedPlanId) || shownActive[0];
-  useEffect(() => {
-    if (searchParams.get('week') !== 'edit' || !selectedPlan) return;
-    setWeekEdit({ plan: selectedPlan, phase: selectedPlan.progress?.started && !selectedPlan.progress?.ended ? selectedPlan.progress.phaseIndex : 0 });
-    setSearchParams({ plan: selectedPlan._id }, { replace: true });
-  }, [searchParams, selectedPlan, setSearchParams]);
+  const urlWeekEdit =
+    searchParams.get('week') === 'edit' && selectedPlan
+      ? { plan: selectedPlan, phase: selectedPlan.progress?.started && !selectedPlan.progress?.ended ? selectedPlan.progress.phaseIndex : 0 }
+      : null;
+  const shownWeekEdit = weekEdit || urlWeekEdit;
+  const closeWeekEdit = () => {
+    setWeekEdit(null);
+    if (searchParams.get('week') === 'edit') {
+      const next = new URLSearchParams(searchParams);
+      next.delete('week');
+      setSearchParams(next, { replace: true });
+    }
+  };
   const menuFor = (r) => {
     const locked = lockedHorseIds.has(r.horse?._id);
     return [
@@ -386,7 +386,7 @@ export default function TrainingPlanPage() {
         />
       )}
 
-      {weekEdit && <WeekTemplateModal plan={weekEdit.plan} startPhase={weekEdit.phase} onClose={() => setWeekEdit(null)} />}
+      {shownWeekEdit && <WeekTemplateModal plan={shownWeekEdit.plan} startPhase={shownWeekEdit.phase} onClose={closeWeekEdit} />}
 
       <PlanWizard
         open={wizardOpen}

@@ -157,9 +157,9 @@ test('groom signing in on the web is pointed to the mobile app', async ({ page }
   await page.goto('/groom/tasks');
   await expect(page.getByRole('button', { name: 'Hoàn thành', exact: true })).toHaveCount(0);
 });
-test('trainer dashboard "Lập buổi tập mới" opens the create form on the sessions page', async ({ page }) => {
+test('trainer dashboard "Lập buổi tập" opens the create form on the sessions page', async ({ page }) => {
   await login(page, 'trainer');
-  await page.getByRole('button', { name: /Lập buổi tập mới/ }).click();
+  await page.getByRole('button', { name: /Lập buổi tập/ }).click();
   await expect(page.locator('.ant-modal-title', { hasText: 'Tạo buổi tập mới' })).toBeVisible();
   // The ?new=1 that opened it is dropped, so a reload does not open the form again.
   await expect(page).toHaveURL(/\/training\/sessions$/);
@@ -213,34 +213,30 @@ test('the light/dark switch changes the canvas, stays after a reload and takes t
   await expect(page.locator('.is-dark-canvas')).toHaveCount(0);
   await expect(page.locator('body.wdp-dark-portals')).toHaveCount(0);
 });
-test('trainer dashboard fitness panel shows the chosen run against its targets', async ({ page }) => {
+test('trainer dashboard fitness cards show the chosen run load and evaluation score', async ({ page }) => {
   await login(page, 'trainer');
-  const panel = page.locator('.ant-card', { hasText: 'Biểu đồ thể lực tổng quan' }).first();
-  // The fixture's walk ran today: today's horses are listed and that run is open.
-  await expect(panel.locator('.ant-select', { hasText: 'TEST Browser Horse' })).toBeVisible();
-  const result = panel.locator('.ant-card', { hasText: 'Kết quả buổi tập · TEST Browser Horse' });
-  await expect(result.getByText('Đạt mục tiêu', { exact: true })).toBeVisible();
-  await expect(result.getByText('4000 / 4000 m')).toBeVisible();
-  await expect(result.getByText('112 / trần 120 bpm')).toBeVisible();
-  await expect(result.getByText('8/10')).toBeVisible();
-  await expect(panel.getByText(/Xu hướng \d+ buổi gần nhất của ngựa/)).toBeVisible();
-  await expect(panel.getByText(/So sánh các ngựa ngày/)).toBeVisible();
+  // The fixture's walk ran today: 4000 m, evaluated 8/10, meeting targets.
+  const load = page.locator('.own-card', { hasText: 'Khối lượng tập · 14 ngày qua' }).first();
+  await expect(load.getByText('1 buổi')).toBeVisible();
+  await expect(load.getByText(/4 km trên sân/)).toBeVisible();
+  const ratings = page.locator('.own-card', { hasText: 'Điểm đánh giá theo ngựa · 30 ngày' }).first();
+  await expect(ratings.getByText('TEST Browser Horse')).toBeVisible();
+  await expect(ratings.getByText('8/10')).toBeVisible();
+  await expect(page.getByText('1/1 buổi đạt chỉ tiêu bài tập')).toBeVisible();
 });
-test('trainer home shows the 3D track and the board of the day', async ({ page }) => {
+test('trainer home shows today schedule and the pending decisions board', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await login(page, 'trainer');
-  // The fixture's walk ran today and met its targets: its line on the board says so.
-  const board = page.locator('.ant-card', { hasText: 'Bảng việc hôm nay' }).first();
-  const row = board.locator('.ant-table-row', { hasText: 'TEST Browser Horse' });
-  await expect(row).toContainText('Đi bộ');
-  await expect(row).toContainText('Đạt');
-  await expect(board.getByText(/Cần xử lý \(\d+\)/)).toBeVisible();
-  // The track draws in WebGL; its frame is there whether or not this browser can draw it.
-  await expect(page.locator('.ant-card', { hasText: 'Sân tập hôm nay' }).locator('canvas')).toHaveCount(1);
+  // The fixture's walk ran today and met its targets: its row in today's schedule says so.
+  const board = page.locator('.own-card', { hasText: 'Lịch tập hôm nay' }).first();
+  await expect(board.getByText('TEST Browser Horse')).toBeVisible();
+  await expect(board.getByText(/Đi bộ/)).toBeVisible();
+  await expect(board.getByText('Đạt', { exact: true })).toBeVisible();
+  await expect(page.locator('.own-card', { hasText: 'Chờ bạn quyết định' })).toBeVisible();
   expect(errors).toEqual([]);
 });
-test('manager home shows the stable, the grooms\' day and the store', async ({ page }) => {
+test('manager home shows the stable zones, waiting horses, care day and store', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   // A horse waiting for a free stall, as the server would say so.
@@ -251,17 +247,14 @@ test('manager home shows the stable, the grooms\' day and the store', async ({ p
     await route.fulfill({ response, body: JSON.stringify(body) });
   });
   await login(page, 'manager');
-  // The fixture's zone holds the fixture horse, so it is the one shown in 3D.
-  const stable = page.locator('.ant-card', { hasText: 'Chuồng trại toàn CLB' }).first();
-  await expect(stable.getByRole('button', { name: /Khu A/ })).toBeVisible();
+  const stable = page.locator('.own-card', { hasText: 'Chuồng theo khu' }).first();
+  await expect(stable.getByText('Khu A', { exact: true })).toBeVisible();
   await expect(stable.getByText('Chờ chuồng trống')).toBeVisible();
+  await expect(stable.getByText(/TEST Waiting Horse/)).toBeVisible();
   await expect(stable.getByText(/đang ở A-02, cần chuồng hồi phục/)).toBeVisible();
-  await stable.getByRole('button', { name: /Khu A/ }).click();
-  await expect(stable.getByRole('button', { name: /Khu A/ })).toHaveAttribute('aria-pressed', 'true');
-  // Each card says so in one line when there is nothing to show.
-  await expect(page.getByText('Nhân viên chăm sóc hôm nay')).toBeVisible();
+  await expect(page.getByText('Chăm sóc hôm nay theo việc')).toBeVisible();
   await expect(page.getByText('Kho cần chú ý')).toBeVisible();
-  await expect(page.locator('.ant-card', { hasText: 'Việc đang chờ bạn' })).toBeVisible();
+  await expect(page.locator('.own-card', { hasText: 'Việc đang chờ bạn' })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -533,7 +526,7 @@ test("the Manager's horse list opens the horse's stall form on the stable page",
 const failWith500 = (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, message: 'TEST server error' }) });
 // A new matcher per call: keep it to unroute (Playwright matches the function itself).
 const apiPath = (path) => (url) => url.pathname === `/api/v1${path}`;
-const queueCard = (page) => page.locator('.ant-card', { hasText: 'Việc đang chờ bạn' });
+const queueCard = (page) => page.locator('.ant-card, .own-card', { hasText: 'Việc đang chờ bạn' });
 
 test('the Manager queue: a list that fails is shown as not checked, and comes back on retry', async ({ page }) => {
   const inventoryList = apiPath('/inventory');
@@ -547,7 +540,7 @@ test('the Manager queue: a list that fails is shown as not checked, and comes ba
   await expect(card.getByRole('link', { name: /Tài khoản đăng ký chờ duyệt/ })).toBeVisible();
 
   await page.unroute(inventoryList);
-  await card.locator('.ant-card-head').getByRole('button', { name: 'Thử lại' }).click();
+  await card.locator('.ant-card-head, .own-card-head').getByRole('button', { name: 'Thử lại' }).click();
   await expect(card.getByText('chưa tải được', { exact: true })).toHaveCount(0);
   await expect(card.getByText(/^Chưa kiểm tra được/)).toHaveCount(0);
   await expect(card.getByRole('link', { name: /Hàng đã duyệt, chờ nhận/ })).toBeVisible();
@@ -578,7 +571,7 @@ test('the Manager queue keeps the last counts, marked as old, when a refresh fai
   await expect(card.getByText('Tất cả đã được giải quyết')).toHaveCount(0);
 
   await page.unroute(usersList);
-  await card.locator('.ant-card-head').getByRole('button', { name: 'Thử lại' }).click();
+  await card.locator('.ant-card-head, .own-card-head').getByRole('button', { name: 'Thử lại' }).click();
   await expect(card.getByText(/theo số liệu cũ/)).toHaveCount(0);
   await expect(card.getByText(/^số lúc/)).toHaveCount(0);
 });

@@ -14,12 +14,12 @@ import FeedingGroupsTable from './FeedingGroupsTable';
 import MealEditModal from './MealEditModal';
 import MealItemsEditor from './MealItemsEditor';
 import { Fact, PhaseStrip, StockNeedList } from './FeedingPlanParts';
+import { DIET_KINDS, RAMP_TEXT } from '../../constants/diet';
 import {
   DEFAULT_MEAL_TIMES,
   MEAL_ROLES,
   SLOTS,
   SLOT_LABELS,
-  SICK_DIET_TEXT,
   SLOT_SHORT,
   WORK_LABELS,
   amountText,
@@ -225,12 +225,23 @@ function PlanCalendarEditor({ plan, feedItems, policy, onDone, setDirty, onPropo
       )}
       {(calendar.problems || []).length > 0 && <Alert type="error" showIcon title="Chưa thể xác nhận lịch ăn" description={calendar.problems.join(' ')} />}
       {calendar.weightNote && <Alert type="warning" showIcon title={`Kiểm tra cân nặng: ${calendar.weightNote}`} />}
-      {calendar.diet === 'sick' && (
+      {calendar.diet === 'sick' && (() => {
+        const sickDiet = DIET_KINDS[calendar.sickKind || 'rest'] || DIET_KINDS.rest;
+        return (
+          <Alert
+            type="warning"
+            showIcon
+            title={`${calendar.horse?.name || 'Ngựa'} đang ${calendar.horse?.healthStatus === 'quarantined' ? 'cách ly' : calendar.horse?.healthStatus === 'monitoring' ? 'được theo dõi sau bệnh' : 'chấn thương'}: áp dụng chế độ "${sickDiet.label}".`}
+            description={`${sickDiet.does}${sickDiet.care ? ` ${sickDiet.care}` : ''} Vẫn sửa được từng bữa; khi bác sĩ kết luận đủ điều kiện, lịch tự về theo kế hoạch tập.`}
+          />
+        );
+      })()}
+      {calendar.diet !== 'sick' && draft.some((d) => d.ramp != null && d.ramp < 1) && (
         <Alert
-          type="warning"
+          type="info"
           showIcon
-          title={`${calendar.horse?.name || 'Ngựa'} đang ${calendar.horse?.healthStatus === 'quarantined' ? 'cách ly' : calendar.horse?.healthStatus === 'monitoring' ? 'được theo dõi sau bệnh' : 'chấn thương'}: các ngày từ hôm nay theo chế độ ăn khi bệnh.`}
-          description={`Ngựa không tập nên khẩu phần là ${SICK_DIET_TEXT}. Vẫn sửa được từng bữa; khi bác sĩ kết luận đủ điều kiện, lịch tự về theo kế hoạch tập.`}
+          title="Đang trong 7 ngày tập ăn lại sau bệnh."
+          description={`Khẩu phần gợi ý tự chia ${RAMP_TEXT} rồi mới về đủ 100% khẩu phần tập.`}
         />
       )}
 
@@ -448,14 +459,17 @@ function DailyRationEditor({ horse, rations, feedItems, policy, onDone, setDirty
         }
       />
       {suggestion?.warning && <Alert type="warning" showIcon title={suggestion.warning} />}
-      {suggestion?.diet === 'sick' && (
-        <Alert
-          type="warning"
-          showIcon
-          title="Ngựa đang bệnh: gợi ý là chế độ ăn khi bệnh."
-          description={`Khẩu phần đang áp dụng đã tự chuyển sang ${SICK_DIET_TEXT}; khẩu phần lúc khỏe được giữ lại và tự trả về khi bác sĩ kết luận đủ điều kiện.`}
-        />
-      )}
+      {suggestion?.diet === 'sick' && (() => {
+        const sickDiet = DIET_KINDS[suggestion.sickKind || 'rest'] || DIET_KINDS.rest;
+        return (
+          <Alert
+            type="warning"
+            showIcon
+            title={`Ngựa đang bệnh: áp dụng chế độ "${sickDiet.label}".`}
+            description={`${sickDiet.does}${sickDiet.care ? ` ${sickDiet.care}` : ''} Khẩu phần lúc khỏe được giữ lại và tự trả về khi bác sĩ kết luận đủ điều kiện.`}
+          />
+        );
+      })()}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {SLOTS.map((slot) => {
           const meal = meals[slot];

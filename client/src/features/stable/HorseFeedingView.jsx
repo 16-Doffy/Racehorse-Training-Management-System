@@ -10,7 +10,8 @@ import FeedingTimetable from './FeedingTimetable';
 import FeedingDaysTable from './FeedingDaysTable';
 import FeedingGroupsTable from './FeedingGroupsTable';
 import { Fact, PhaseStrip, StockNeedList } from './FeedingPlanParts';
-import { SICK_DIET_TEXT, SLOTS, SLOT_LABELS, amountText, dayTotals, idOf, planEnd, stockNeed } from './feedingPlan';
+import { DIET_KINDS, RAMP_TEXT } from '../../constants/diet';
+import { SLOTS, SLOT_LABELS, amountText, dayTotals, idOf, planEnd, stockNeed } from './feedingPlan';
 
 // Whether to say the ration is still a suggestion the trainer has not confirmed: off until the ration flow is settled.
 const SHOW_UNCONFIRMED_NOTE = false;
@@ -47,15 +48,25 @@ function PlanDays({ calendar, feedItems }) {
   const need = stockNeed(days.map((d) => ({ ...d, meals: d.meals.filter((m) => !d.locked?.[m.slot]) })), feedItems);
   const short = need.filter((r) => r.short);
   const unconfirmed = days.filter((d) => !d.approved || d.stale).length;
+  const sickDiet = calendar.diet === 'sick' ? DIET_KINDS[calendar.sickKind || 'rest'] || DIET_KINDS.rest : null;
+  const hasRamp = days.some((d) => d.ramp != null && d.ramp < 1);
   return (
     <div className="flex flex-col gap-2.5">
       <PhaseStrip days={days} />
-      {calendar.diet === 'sick' && (
+      {sickDiet && (
         <Alert
           type="warning"
           showIcon
-          title="Đang áp dụng chế độ ăn khi bệnh từ hôm nay."
-          description={`Ngựa không tập nên khẩu phần là ${SICK_DIET_TEXT}. Khi bác sĩ kết luận đủ điều kiện, lịch tự về theo kế hoạch tập.`}
+          title={`Đang áp dụng chế độ ăn khi bệnh: ${sickDiet.label}.`}
+          description={`${sickDiet.does}${sickDiet.care ? ` ${sickDiet.care}` : ''} Khi bác sĩ kết luận đủ điều kiện, lịch tự tăng dần lại theo kế hoạch tập.`}
+        />
+      )}
+      {!sickDiet && hasRamp && (
+        <Alert
+          type="info"
+          showIcon
+          title="Đang trong 7 ngày tập ăn lại sau bệnh."
+          description={`Lịch ăn tự giảm nhẹ tinh bột (${RAMP_TEXT}) để hệ tiêu hóa quen lại rồi trở về 100% khẩu phần tập.`}
         />
       )}
       {/* Hidden for now (Duy, 06/11): the ration flow (confirm or apply by itself) is decided after the demo. */}

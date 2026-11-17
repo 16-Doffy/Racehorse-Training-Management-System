@@ -8,8 +8,9 @@ const FORM_COLORS = { ready: 'green', on_track: 'blue', not_ready: 'orange', blo
 /** The plan's verdict on the horse's form for its race (server training/raceForm.js); why, on hover. */
 export function RaceFormTag({ form }) {
   if (!form) return null;
+  const reasons = Array.isArray(form.reasons) ? form.reasons : [];
   return (
-    <Tooltip title={[...form.reasons, formFigures(form)].filter(Boolean).join(' ')}>
+    <Tooltip title={[...reasons, formFigures(form)].filter(Boolean).join(' ')}>
       <Tag color={FORM_COLORS[form.status]} className="!m-0 w-fit font-medium">
         {form.label}
       </Tag>
@@ -22,9 +23,10 @@ const FORM_DOTS = { ready: 'bg-emerald-600', on_track: 'bg-blue-500', not_ready:
 /** The verdict as a dot beside a horse's name where a row has no room for a tag; the words on hover or focus. */
 export function RaceFormDot({ form }) {
   if (!form) return null;
+  const reasons = Array.isArray(form.reasons) ? form.reasons : [];
   const words = `Phong độ dự giải: ${form.label}`;
   return (
-    <Tooltip title={[`${words}.`, ...form.reasons, formFigures(form)].filter(Boolean).join(' ')} trigger={['hover', 'focus']}>
+    <Tooltip title={[`${words}.`, ...reasons, formFigures(form)].filter(Boolean).join(' ')} trigger={['hover', 'focus']}>
       <span tabIndex={0} role="img" aria-label={words} className={`inline-block h-2 w-2 shrink-0 cursor-help rounded-full ${FORM_DOTS[form.status] || FORM_DOTS.pending}`} />
     </Tooltip>
   );
@@ -37,6 +39,7 @@ export function RaceFormDot({ form }) {
 export function RaceFormBlock({ form }) {
   const policy = useClubPolicy();
   if (!form) return null;
+  const reasons = Array.isArray(form.reasons) ? form.reasons : [];
   const pct = (share) => `${Math.round(share * 100)}%`;
   const rule = `Theo quy định CLB: tập từ ${pct(policy.raceFormMinDone)} số buổi đến hạn, đạt chỉ tiêu từ ${pct(policy.raceFormMinMet)} số buổi đã tập, điểm đánh giá HLV TB từ ${policy.raceFormMinAvgRating}/10, chạy thử cho giải đạt, bác sĩ không khóa tập.`;
 
@@ -72,7 +75,7 @@ export function RaceFormBlock({ form }) {
           })}
         </div>
       )}
-      {form.reasons.length > 0 && <p className={`m-0 text-xs leading-snug ${form.status === 'blocked' ? 'text-rose-700' : 'text-amber-700'}`}>{form.reasons.join(' ')}</p>}
+      {reasons.length > 0 && <p className={`m-0 text-xs leading-snug ${form.status === 'blocked' ? 'text-rose-700' : 'text-amber-700'}`}>{reasons.join(' ')}</p>}
     </div>
   );
 }

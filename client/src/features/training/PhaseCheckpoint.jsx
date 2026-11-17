@@ -24,7 +24,7 @@ export function PlanPauseNotice({ plan }) {
       type="error"
       showIcon
       icon={<PauseCircleOutlined />}
-      message={`Tạm dừng từ ${ddmm(pause.since)}${days ? ` · đã nghỉ ${days} ngày` : ''}${phase ? ` · giai đoạn ${label(phase.key)}` : ''}`}
+      title={`Tạm dừng từ ${ddmm(pause.since)}${days ? ` · đã nghỉ ${days} ngày` : ''}${phase ? ` · giai đoạn ${label(phase.key)}` : ''}`}
       description={
         <span className="text-xs leading-snug">
           {pause.reason} Khi bác sĩ cho tập lại, giai đoạn này kéo dài thêm số ngày đã nghỉ (nghỉ trên 2 tuần thêm thời gian lấy lại thể lực), các giai đoạn sau lùi theo. Không còn kịp ngày đua thì ngựa tự rút khỏi giải.
@@ -80,7 +80,7 @@ export function PhaseCheckBlock({ plan }) {
         </span>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {check.checks.map((c) => (
+        {(check.checks || []).map((c) => (
           <span key={c.key} className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] leading-tight ${CHECK_TONE[c.ok]}`}>
             <span aria-hidden="true">{c.ok === true ? '✓' : c.ok === false ? '✗' : '•'}</span>
             <span className="font-medium">{c.label}:</span>

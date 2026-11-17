@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, Modal } from 'antd';
 import SegmentsEditor, { segmentsProblem } from './SegmentsEditor';
-import { PRESETS_BY_KIND, SESSION_KINDS, WORKOUT_PRESETS, defaultPreset, heaviestKind, presetSegments } from './trainingVocab';
+import { PRESETS_BY_KIND, SESSION_KINDS, defaultPreset, heaviestKind, presetSegments } from './trainingVocab';
 
 /**
  * One day of a phase's normal week, in parts: warm-up, the work, cool-down — as the sessions booked

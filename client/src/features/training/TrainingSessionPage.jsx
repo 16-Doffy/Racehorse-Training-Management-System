@@ -28,7 +28,6 @@ import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   EditOutlined,
-  CloseCircleOutlined,
   CloseOutlined,
   FlagOutlined,
   AimOutlined,
@@ -1314,8 +1313,28 @@ export default function TrainingSessionPage() {
                           <div className="flex items-center">
                             {fields.length > 1 && (
                               <>
-                                <Button size="small" type="text" icon={<ArrowUpOutlined />} disabled={idx === 0} onClick={() => move(idx, idx - 1)} aria-label="Đưa lên" />
-                                <Button size="small" type="text" icon={<ArrowDownOutlined />} disabled={idx === fields.length - 1} onClick={() => move(idx, idx + 1)} aria-label="Đưa xuống" />
+                                <Button
+                                  size="small"
+                                  type="text"
+                                  icon={<ArrowUpOutlined />}
+                                  disabled={idx === 0}
+                                  onClick={() => {
+                                    move(idx, idx - 1);
+                                    queueMicrotask(() => syncSegmentsToForm(createForm.getFieldValue('segments')));
+                                  }}
+                                  aria-label="Đưa lên"
+                                />
+                                <Button
+                                  size="small"
+                                  type="text"
+                                  icon={<ArrowDownOutlined />}
+                                  disabled={idx === fields.length - 1}
+                                  onClick={() => {
+                                    move(idx, idx + 1);
+                                    queueMicrotask(() => syncSegmentsToForm(createForm.getFieldValue('segments')));
+                                  }}
+                                  aria-label="Đưa xuống"
+                                />
                               </>
                             )}
                             <Button

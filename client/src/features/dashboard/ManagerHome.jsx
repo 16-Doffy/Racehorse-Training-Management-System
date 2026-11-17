@@ -25,6 +25,7 @@ import { inventoryApi } from '../inventory/inventoryApi';
 import { financeApi } from '../finance/financeApi';
 import { categoryLabel } from '../finance/financeLabels';
 import { dailyTaskApi, incidentApi, stallApi } from '../stable/stableApi';
+import { STALL_TYPE_LABELS } from '../stable/stall3d/stallStatus';
 import { TASK_TYPE_LABELS } from '../../constants/care';
 import { Card, EmptyNote, HorseAvatar, OwnerPage, Pill } from '../owner/kit';
 import { money } from '../owner/ownerFormat';
@@ -44,6 +45,12 @@ const EXPIRY_DAYS = 14;
 const STABLES = '/admin/stables';
 const signedVnd = (n) => `${n >= 0 ? '+' : '−'}${compactVnd(Math.abs(n))}`;
 const capFirst = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+function sourceState(query) {
+  if (query.isError) return query.data === undefined ? { state: 'error' } : { state: 'stale', updatedAt: query.dataUpdatedAt };
+  if (query.isPending) return { state: 'loading' };
+  return { state: 'ok' };
+}
 
 /**
  * The Club Manager's home: the month's result in one band, the club in four figures, the money of the
@@ -67,6 +74,8 @@ export default function ManagerHome() {
   const horses = listOf(horsesQ);
   const items = listOf(inventoryQ);
   const stalls = useMemo(() => stallsQ.data?.data?.stalls || [], [stallsQ.data]);
+  const waitingStalls = useMemo(() => stallsQ.data?.data?.waiting || [], [stallsQ.data]);
+  const wrongStalls = useMemo(() => stalls.filter((s) => s.placement && s.occupant?.horse), [stalls]);
   const records = useMemo(() => financeQ.data?.data || [], [financeQ.data]);
   const tasks = useMemo(() => tasksQ.data?.data || [], [tasksQ.data]);
   const incidents = listOf(incidentsQ);
@@ -79,39 +88,40 @@ export default function ManagerHome() {
   const queue = [
     {
       key: 'accounts',
+      source: usersQ,
       icon: <UserAddOutlined />,
       tone: 'watch',
-      label: 'Tài khoản chờ duyệt',
+      label: 'Tài khoản đăng ký chờ duyệt',
       short: 'tài khoản',
       desc: 'Nhân viên, bác sĩ hoặc chủ ngựa mới đăng ký',
       count: listOf(usersQ).filter((u) => u.approvalStatus === 'pending').length,
       to: '/admin/users',
-      loading: usersQ.isPending,
     },
     {
       key: 'restock',
+      source: inventoryQ,
       icon: <ShoppingCartOutlined />,
       tone: 'bad',
       label: 'Đề xuất vật tư chờ duyệt',
       short: 'đề xuất vật tư',
       desc: 'Từ nhân viên chăm sóc, HLV và bác sĩ',
       count: requests.filter((r) => r.status === 'pending').length,
-      to: '/inventory',
-      loading: inventoryQ.isPending,
+      to: '/inventory?tab=requests',
     },
     {
       key: 'delivery',
+      source: inventoryQ,
       icon: <InboxOutlined />,
       tone: 'info',
       label: 'Hàng đã duyệt, chờ nhận',
       short: 'lô hàng chờ nhận',
       desc: 'Kiểm đếm và ghi hạn sử dụng khi hàng về',
       count: requests.filter((r) => r.status === 'approved' && r.awaitingDelivery && !r.receivedAt).length,
-      to: '/inventory',
-      loading: inventoryQ.isPending,
+      to: '/inventory?tab=requests',
     },
     {
       key: 'assignment',
+      source: checkQ,
       icon: <ApartmentOutlined />,
       tone: 'watch',
       label: 'Ngựa thiếu phân công',
@@ -119,36 +129,58 @@ export default function ManagerHome() {
       desc: 'Thiếu chủ, HLV, bác sĩ hoặc chuồng',
       count: listOf(checkQ).filter((r) => r.items.some((i) => ASSIGNMENT_KEYS.includes(i.key) && !i.done)).length,
       to: '/horses',
-      loading: checkQ.isPending,
     },
-  ];
-  const waiting = queue.reduce((n, q) => n + q.count, 0);
+  ].map((q) => ({ ...q, ...sourceState(q.source) }));
+  const waiting = queue.reduce((n, q) => n + (q.state === 'ok' || q.state === 'stale' ? q.count : 0), 0);
+  const queueLoading = queue.some((q) => q.state === 'loading');
+  const queueFailed = [...new Set(queue.filter((q) => q.state === 'error').map((q) => q.source))];
+  const queueStale = [...new Set(queue.filter((q) => q.state === 'stale').map((q) => q.source))];
+  const queueUnknownCount = queue.filter((q) => q.state === 'error').length;
+  const retryQueue = () => [...queueFailed, ...queueStale].forEach((q) => q.refetch());
+  const queueRetrying = [...queueFailed, ...queueStale].some((q) => q.isFetching);
+  const queueSummary = queueLoading
+    ? 'Đang kiểm tra…'
+    : queueFailed.length
+      ? `Chưa kiểm tra được ${queueUnknownCount} mục${waiting ? `, ${waiting} việc chưa xử lý` : ''}`
+      : queueStale.length
+        ? `${waiting ? `${waiting} việc chưa xử lý` : 'Không có việc chờ'}, theo số liệu cũ`
+        : waiting === 0
+          ? 'Tất cả đã được giải quyết'
+          : `${waiting} việc chưa xử lý`;
 
   // The store: what runs out by the forecast of daily use, then what goes off, by the item or a batch.
   const short = (forecastQ.data?.data || []).filter((f) => f.isActive !== false && (f.quantity <= 0 || (f.reorderLevel > 0 && f.quantity <= f.reorderLevel) || (f.daysLeft != null && f.daysLeft < SHORT_DAYS)));
-  const shortIds = new Set(short.map((f) => String(f._id)));
+  const itemsById = new Map(items.map((i) => [String(i._id), i]));
   const expiryOf = (i) =>
     [i.expiryDate, ...(i.batches || []).filter((b) => b.qty > 0).map((b) => b.expiryDate)]
       .filter(Boolean)
       .map((d) => dayjs(d))
       .sort((x, y) => x - y)[0];
+  const shortIds = new Set();
   const stock = [
     ...short.map((f) => {
+      const item = itemsById.get(String(f._id));
+      const exp = item ? expiryOf(item) : null;
+      const expDays = exp ? exp.startOf('day').diff(dayjs().startOf('day'), 'day') : null;
+      const isExpSoonOrPast = expDays != null && expDays <= EXPIRY_DAYS;
+      if (!isExpSoonOrPast) shortIds.add(String(f._id));
       const out = f.quantity <= 0;
       const byDays = f.daysLeft != null;
+      const expHint = isExpSoonOrPast ? (expDays < 0 ? ' · có lô hết hạn' : ` · HSD ${expDays} ngày`) : '';
       return {
         key: `low-${f._id}`,
         label: f.name,
-        sub: `Còn ${f.quantity} ${f.unit || ''}${f.dailyUsage > 0 ? ` · dùng ${f.dailyUsage}/ngày` : f.reorderLevel ? ` · mức đặt lại ${f.reorderLevel}` : ''}`,
+        sub: `Còn ${f.quantity} ${f.unit || ''}${f.dailyUsage > 0 ? ` · dùng ${f.dailyUsage}/ngày` : f.reorderLevel ? ` · mức đặt lại ${f.reorderLevel}` : ''}${expHint}`,
         value: out ? 0 : byDays ? f.daysLeft : f.quantity,
         max: byDays ? SHORT_DAYS * 2 : Math.max(f.reorderLevel * 2, 1),
-        tone: out || (byDays && f.daysLeft < 3) ? 'bad' : 'watch',
+        tone: out || (byDays && f.daysLeft < 3) || (expDays != null && expDays < 0) ? 'bad' : 'watch',
         display: out ? 'Đã hết' : byDays ? (f.daysLeft < 1 ? '< 1 ngày' : `~${f.daysLeft} ngày`) : 'Dưới mức',
         rank: out ? 0 : 1,
+        to: isExpSoonOrPast ? '/inventory?status=expiry' : '/inventory',
       };
     }),
     ...items
-      .filter((i) => i.isActive !== false && !shortIds.has(String(i._id)))
+      .filter((i) => i.isActive !== false && !shortIds.has(String(i._id)) && !short.some((f) => String(f._id) === String(i._id)))
       .map((i) => ({ i, exp: expiryOf(i) }))
       .filter(({ exp }) => exp && exp.startOf('day').diff(dayjs().startOf('day'), 'day') <= EXPIRY_DAYS)
       .map(({ i, exp }) => {
@@ -162,11 +194,10 @@ export default function ManagerHome() {
           tone: days < 3 ? 'bad' : 'watch',
           display: days < 0 ? 'Hết hạn' : `HSD ${days} ngày`,
           rank: days < 0 ? 0 : 2,
+          to: '/inventory?status=expiry',
         };
       }),
-  ]
-    .sort((a, b) => a.rank - b.rank || a.value - b.value)
-    .map((s) => ({ ...s, to: '/inventory' }));
+  ].sort((a, b) => a.rank - b.rank || a.value - b.value);
 
   // Money: the last six months side by side, this month's result, and the year's costs by category.
   const money6 = useMemo(
@@ -320,17 +351,19 @@ export default function ManagerHome() {
         />
         <KpiTile
           icon={<AlertOutlined />}
-          tone={waiting ? 'watch' : 'good'}
+          tone={queueFailed.length || waiting ? 'watch' : 'good'}
           label="Việc chờ bạn duyệt"
-          value={waiting}
-          unit="việc"
+          value={queueFailed.length === queue.length ? '–' : waiting}
+          unit={queueFailed.length === queue.length ? null : 'việc'}
           sub={
-            waiting
-              ? queue
-                  .filter((q) => q.count)
-                  .map((q) => `${q.count} ${q.short}`)
-                  .join(' · ')
-              : 'Đã giải quyết hết'
+            queueFailed.length
+              ? queueSummary
+              : waiting
+                ? queue
+                    .filter((q) => q.count)
+                    .map((q) => `${q.count} ${q.short}`)
+                    .join(' · ')
+                : 'Đã giải quyết hết'
           }
           chart={{
             data: [
@@ -384,20 +417,43 @@ export default function ManagerHome() {
       </div>
 
       <div className="own-grid-main">
-        <Card title="Việc đang chờ bạn" icon={<AlertOutlined />} flush>
+        <Card
+          title="Việc đang chờ bạn"
+          icon={<AlertOutlined />}
+          flush
+          extra={
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-normal own-muted">{queueSummary}</span>
+              {(queueFailed.length > 0 || queueStale.length > 0) && (
+                <Button size="small" loading={queueRetrying} onClick={retryQueue}>
+                  Thử lại
+                </Button>
+              )}
+            </div>
+          }
+        >
           <ul className="own-list">
-            {queue.map((q) => (
-              <li key={q.key}>
-                <Link to={q.to} className="own-row own-mq">
-                  <span className={`own-icon is-${q.count ? q.tone : 'good'}`}>{q.icon}</span>
-                  <div className="own-row-main">
-                    <div className="own-row-title">{q.label}</div>
-                    <div className="own-row-sub">{q.desc}</div>
-                  </div>
-                  <span className={`own-mq-count${q.count ? ` is-${q.tone}` : ''}`}>{q.loading ? '…' : q.count || '✓'}</span>
-                </Link>
-              </li>
-            ))}
+            {queue.map((q) => {
+              const unknown = q.state === 'error';
+              const staleText = q.state === 'stale' ? `số lúc ${dayjs(q.updatedAt).format('HH:mm')}` : null;
+              return (
+                <li key={q.key}>
+                  <Link to={q.to} className="own-row own-mq">
+                    <span className={`own-icon is-${unknown ? 'watch' : q.count ? q.tone : 'good'}`}>{q.icon}</span>
+                    <div className="own-row-main">
+                      <div className="own-row-title">{q.label}</div>
+                      <div className="own-row-sub">{q.desc}</div>
+                    </div>
+                    <span className="flex flex-col items-end">
+                      <span className={`own-mq-count${!unknown && q.count ? ` is-${q.tone}` : ''}`}>
+                        {q.state === 'loading' || unknown ? '–' : q.count || '✓'}
+                      </span>
+                      {(unknown || staleText) && <span className="own-faint text-[11px]">{unknown ? 'chưa tải được' : staleText}</span>}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </Card>
 
@@ -410,7 +466,18 @@ export default function ManagerHome() {
             </Link>
           }
         >
-          {stock.length === 0 ? <EmptyNote>{forecastQ.isPending ? 'Đang tải…' : 'Không có vật tư sắp hết hay sắp hết hạn.'}</EmptyNote> : <MeterList rows={stockPage.rows} />}
+          {forecastQ.isError && inventoryQ.isError && !stock.length ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm own-muted">
+              <span>Chưa kiểm tra được tồn kho lúc này.</span>
+              <Button size="small" onClick={() => { forecastQ.refetch(); inventoryQ.refetch(); }}>
+                Thử lại
+              </Button>
+            </div>
+          ) : stock.length === 0 ? (
+            <EmptyNote>{forecastQ.isPending ? 'Đang tải…' : 'Không có vật tư sắp hết hay sắp hết hạn.'}</EmptyNote>
+          ) : (
+            <MeterList rows={stockPage.rows} />
+          )}
           {stockPage.pager}
         </Card>
       </div>
@@ -440,7 +507,18 @@ export default function ManagerHome() {
         </Card>
 
         <Card title="Chăm sóc hôm nay theo việc" icon={<CheckSquareOutlined />}>
-          {careRows.length === 0 ? <EmptyNote>{tasksQ.isPending ? 'Đang tải…' : 'Hôm nay chưa có việc chăm sóc nào.'}</EmptyNote> : <MeterList rows={carePage.rows} />}
+          {tasksQ.isError && !tasks.length ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm own-muted">
+              <span>Chưa tải được việc chăm sóc hôm nay.</span>
+              <Button size="small" onClick={() => tasksQ.refetch()}>
+                Thử lại
+              </Button>
+            </div>
+          ) : careRows.length === 0 ? (
+            <EmptyNote>{tasksQ.isPending ? 'Đang tải…' : 'Hôm nay chưa có việc chăm sóc nào.'}</EmptyNote>
+          ) : (
+            <MeterList rows={carePage.rows} />
+          )}
           {carePage.pager}
         </Card>
 
@@ -453,7 +531,48 @@ export default function ManagerHome() {
             </Link>
           }
         >
-          {zones.length === 0 ? <EmptyNote>{stallsQ.isPending ? 'Đang tải…' : 'Chưa khai báo khu chuồng nào.'}</EmptyNote> : <MeterList rows={zonePage.rows} />}
+          {stallsQ.isError && !stalls.length ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm own-muted">
+              <span>Chưa tải được sơ đồ chuồng.</span>
+              <Button size="small" onClick={() => stallsQ.refetch()}>
+                Thử lại
+              </Button>
+            </div>
+          ) : zones.length === 0 ? (
+            <EmptyNote>{stallsQ.isPending ? 'Đang tải…' : 'Chưa khai báo khu chuồng nào.'}</EmptyNote>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <MeterList rows={zonePage.rows} />
+              {(wrongStalls.length > 0 || waitingStalls.length > 0) && (
+                <ul className="own-list own-list-inset">
+                  {wrongStalls.map((s) => (
+                    <li key={`wrong-${s._id}`}>
+                      <Link to={STABLES} className="own-row">
+                        <div className="own-row-main">
+                          <div className="own-row-title">{s.occupant.horse.name} · {s.code}</div>
+                          <div className="own-row-sub own-hs-sub">{s.placement.message}</div>
+                        </div>
+                        <Pill tone="watch">Sai khu</Pill>
+                      </Link>
+                    </li>
+                  ))}
+                  {waitingStalls.map((w) => (
+                    <li key={`wait-${w.horse?._id || w.now}`}>
+                      <Link to={STABLES} className="own-row">
+                        <div className="own-row-main">
+                          <div className="own-row-title">{w.horse?.name || 'Ngựa'}</div>
+                          <div className="own-row-sub own-hs-sub">
+                            đang ở {w.now}, cần chuồng {(STALL_TYPE_LABELS[w.wants] || w.wants).toLowerCase()}
+                          </div>
+                        </div>
+                        <Pill tone="watch">Chờ chuồng trống</Pill>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           {zonePage.pager}
         </Card>
       </div>

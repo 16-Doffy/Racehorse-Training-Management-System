@@ -165,7 +165,7 @@ export default function ReadinessPanel({ horse, scheduledAt, intensity, sessionT
 
       {enabled && readiness && (
         <div className="flex flex-col gap-1.5">
-          {readiness.gates.map((gate) => (
+          {(readiness.gates || []).map((gate) => (
             <GateRow key={gate.key} gate={gate} onRequestExam={onRequestExam} />
           ))}
         </div>

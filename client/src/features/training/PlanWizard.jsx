@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState } from 'react';
-import { Modal, Steps, Form, Select, Input, InputNumber, DatePicker, Button, Alert, Typography, Tooltip, Segmented, Collapse } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
+import { Modal, Steps, Form, Select, Input, InputNumber, DatePicker, Button, Alert, Typography, Tooltip, Collapse } from 'antd';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { message } from '../../lib/antdStatic';
@@ -10,24 +10,11 @@ import { PhaseWeekEditor, withParts, fromPreset } from './weekTemplate';
 import { useClubPolicy } from './useClubPolicy';
 import {
   PHASE_LABELS,
-  PHASE_SHORT,
-  SESSION_KINDS,
-  WEEK_DAYS,
-  AFTERNOON_KINDS,
-  INTENSITY_LABELS,
   phaseOptions,
   intensityOptions,
   surfaceOptions,
   layPhases,
   planWarnings,
-  WORKOUT_PRESETS,
-  defaultPreset,
-  presetSegments,
-  segmentMetres,
-  presetOf,
-  partsTimeline,
-  mainWorkLine,
-  PRESETS_BY_KIND,
 } from './trainingVocab';
 import { distanceClass, phaseGuide, midKm, PLAN_RULES } from './planGuide';
 
@@ -44,7 +31,6 @@ const timeHasPassedToday = (date, hhmm) => {
   return !dayjs().isBefore(dayjs().hour(h).minute(m).second(0).millisecond(0));
 };
 const rangeText = ([a, b]) => (a === b ? `${a}` : `${a}–${b}`);
-const kmText = (km) => km.toLocaleString('vi-VN', { maximumFractionDigits: 1 });
 
 /**
  * The weeks before the race are fixed by the start date and race day: a phase made longer takes its

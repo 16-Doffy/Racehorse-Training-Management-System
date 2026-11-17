@@ -243,6 +243,24 @@ export default function HorseDetailPage() {
                 description={`Theo phác đồ của bác sĩ ${clearance.prescribedBy || ''}${clearance.since ? ` từ ${dayjs(clearance.since).format('DD/MM')}` : ''}. Hết hạn chế khi bác sĩ nâng mức hoặc kết thúc điều trị.`}
               />
             )}
+            {horse.feedingDiet && (
+              <Alert
+                className="!mt-3"
+                type={horse.feedingDiet.diet === 'sick' ? 'warning' : 'info'}
+                showIcon
+                title={
+                  horse.feedingDiet.diet === 'sick'
+                    ? `Chế độ ăn theo y lệnh: ${horse.feedingDiet.label}`
+                    : horse.feedingDiet.label
+                }
+                description={[
+                  horse.feedingDiet.care,
+                  horse.feedingDiet.note ? `Lưu ý bác sĩ: ${horse.feedingDiet.note}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              />
+            )}
           </Card>
         </Col>
       </Row>

@@ -2,13 +2,16 @@ import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { Button } from 'antd';
-import { AlertOutlined, BarChartOutlined, CalendarOutlined, CheckCircleOutlined, FlagOutlined, NodeIndexOutlined, PlusOutlined, ScheduleOutlined, StarOutlined, ThunderboltOutlined } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { AlertOutlined, BarChartOutlined, CalendarOutlined, CheckCircleOutlined, FlagOutlined, NodeIndexOutlined, PlusOutlined, ScheduleOutlined, SendOutlined, StarOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
+import { message } from '../../lib/antdStatic';
 import { horsesApi } from '../horses/horsesApi';
 import { trainingPlanApi, trainingSessionApi } from '../training/trainingApi';
 import { raceApi } from '../race/raceApi';
-import { PHASE_LABELS, SESSION_KINDS } from '../training/trainingVocab';
+import { dailyTaskApi } from '../stable/stableApi';
+import { healthRecordApi } from '../health/healthApi';
+import { PHASE_LABELS, SESSION_KINDS, mainWorkLine } from '../training/trainingVocab';
 import { SESSION_STATUS_LABELS } from '../training/sessionStatus';
 import PlanTimeline from '../training/PlanTimeline';
 import { whereNow } from '../training/PlanFocusPanel';
@@ -21,6 +24,7 @@ const DONE = ['completed', 'evaluated'];
 const SESSION_TONE = { scheduled: 'info', ready: 'info', blocked: 'watch', in_progress: 'bad', completed: 'good', evaluated: 'good', aborted: 'bad', missed: 'neutral', cancelled: 'neutral' };
 const FORM_TONE = { ready: 'good', on_track: 'info', not_ready: 'watch', blocked: 'bad', pending: 'neutral' };
 const TONE_RANK = { bad: 0, watch: 1, info: 2, neutral: 3 };
+const MEAL_SHORT = { morning: 'Sáng', noon: 'Trưa', evening: 'Chiều' };
 const ranAt = (s) => s.actualStartAt || s.scheduledAt;
 const km = (list) => Math.round(list.reduce((t, s) => t + (s.metrics?.distance || 0), 0) / 100) / 10;
 const daysTo = (d) => dayjs(d).startOf('day').diff(dayjs().startOf('day'), 'day');
@@ -46,12 +50,31 @@ function Line({ to, lead, title, sub, side }) {
  */
 export default function TrainerHome() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useSelector((state) => state.auth);
+  const todayKey = dayjs().format('YYYY-MM-DD');
   const horsesQ = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const sessionsQ = useQuery({ queryKey: ['training-sessions'], queryFn: () => trainingSessionApi.list() });
   const plansQ = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const racesQ = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
   const checkQ = useQuery({ queryKey: ['horses', 'checklist'], queryFn: () => horsesApi.checklists() });
+  const tasksQ = useQuery({
+    queryKey: ['daily-tasks', 'missed-meals', todayKey],
+    queryFn: () => dailyTaskApi.list({ date: todayKey }),
+    refetchInterval: 60000,
+  });
+  const examReqQ = useQuery({
+    queryKey: ['exam-requests', 'mine'],
+    queryFn: () => healthRecordApi.listExamRequests(),
+  });
+  const makeUp = useMutation({
+    mutationFn: ({ ids }) => Promise.all(ids.map((id) => dailyTaskApi.makeUpMeal(id))),
+    onSuccess: () => {
+      message.success('Đã báo nhân viên cho ăn bù. Khi họ ghi nhận, kiểm tra lại buổi tập (nhớ chờ đủ thời gian tiêu hóa).');
+      queryClient.invalidateQueries({ queryKey: ['daily-tasks'] });
+    },
+    onError: (err) => message.error(err.message || 'Không báo được.'),
+  });
   const horses = listOf(horsesQ);
   const sessions = useMemo(() => sessionsQ.data?.data || [], [sessionsQ.data]);
   const plans = listOf(plansQ);
@@ -105,8 +128,67 @@ export default function TrainerHome() {
   const week = stats.days.slice(-7);
   const notReady = Math.max(0, horses.length - ready.length - held.length);
 
+  const tasksList = useMemo(() => tasksQ.data?.data || [], [tasksQ.data]);
+  const missedMealsTodo = useMemo(() => {
+    const makeUps = new Map(tasksList.filter((t) => t.makeUpOf).map((t) => [String(t.makeUpOf), t]));
+    const missed = tasksList
+      .filter((t) => t.taskType === 'feeding' && t.mealSlot && !t.makeUpOf)
+      .filter((t) => (t.status === 'pending' && t.timing?.state === 'missed') || t.status === 'skipped')
+      .sort((a, b) => new Date(a.scheduledDate) - new Date(b.scheduledDate));
+    const grouped = new Map();
+    for (const t of missed) {
+      const id = String(t.horse?._id || t.horse);
+      if (!grouped.has(id)) grouped.set(id, { id, name: t.horse?.name || 'Ngựa', meals: [] });
+      grouped.get(id).meals.push(t);
+    }
+    return [...grouped.values()]
+      .map((row) => {
+        const open = row.meals.filter((m) => !makeUps.get(String(m._id)));
+        const done = row.meals.map((m) => makeUps.get(String(m._id))).filter(Boolean);
+        const mealNames = row.meals.map((m) => `${MEAL_SHORT[m.mealSlot] || m.mealSlot} ${dayjs(m.scheduledDate).format('HH:mm')}`).join(', ');
+        if (open.length) {
+          return {
+            key: `meal-${row.id}`,
+            tone: 'bad',
+            title: `${row.name} bỏ lỡ bữa ${mealNames}`,
+            sub: 'Cần báo nhân viên cho ăn bù trước khi tập trung bình/nặng',
+            to: `/stable/tasks?tab=rations&horse=${row.id}`,
+            action: { id: row.id, ids: open.map((m) => m._id) },
+          };
+        }
+        if (done.some((d) => d.status === 'pending')) {
+          return {
+            key: `meal-${row.id}`,
+            tone: 'info',
+            title: `${row.name}: đã báo cho ăn bù (${mealNames})`,
+            sub: 'Đang chờ nhân viên chuồng ghi nhận đã ăn',
+            to: `/stable/tasks?tab=rations&horse=${row.id}`,
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }, [tasksList]);
+
+  const examTodo = useMemo(
+    () =>
+      listOf(examReqQ)
+        .filter((r) => r.status === 'pending')
+        .map((r) => ({
+          key: `exam-${r._id}`,
+          tone: r.priority === 'urgent' || r.holdTraining ? 'bad' : 'watch',
+          title: r.acceptedAt
+            ? `Bác sĩ đã nhận khám ${r.horse?.name || 'ngựa'}${r.scheduledFor ? ` (${dayjs(r.scheduledFor).format('HH:mm DD/MM')})` : ''}`
+            : `Đang chờ bác sĩ khám ${r.horse?.name || 'ngựa'}`,
+          sub: r.reason || (r.holdTraining ? 'Ngựa đang tạm dừng tập chờ khám' : 'Yêu cầu khám bạn đã gửi'),
+          to: `/horses/${r.horse?._id || r.horse}`,
+        })),
+    [examReqQ],
+  );
+
   // What is waiting on the trainer, most pressing first.
   const todo = [
+    ...missedMealsTodo,
     ...active
       .filter((p) => p.progress?.checkpoint?.canDecide)
       .map((p) => ({
@@ -135,6 +217,7 @@ export default function TrainerHome() {
         sub: s.blockedReason,
         to: `/training/sessions?session=${s._id}`,
       })),
+    ...examTodo,
     ...horses
       .filter((h) => h.trainingClearance?.restricted)
       .map((h) => ({
@@ -252,13 +335,21 @@ export default function TrainerHome() {
             </Link>
           }
         >
-          {today.length === 0 ? (
+          {sessionsQ.isError && !sessions.length ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm own-muted">
+              <span>Chưa tải được lịch tập hôm nay.</span>
+              <Button size="small" onClick={() => sessionsQ.refetch()}>
+                Thử lại
+              </Button>
+            </div>
+          ) : today.length === 0 ? (
             <EmptyNote>{sessionsQ.isPending ? 'Đang tải…' : 'Hôm nay không có buổi tập nào.'}</EmptyNote>
           ) : (
             <ul className="dk-timeline">
               {todayPage.rows.map((s) => {
                 const horse = horseOf(s.horse);
                 const tone = SESSION_TONE[s.status] || 'neutral';
+                const segSummary = s.segments?.length ? mainWorkLine(s.segments) : '';
                 return (
                   <li key={s._id}>
                     <Link to={`/training/sessions?session=${s._id}`} className="dk-tl-row">
@@ -270,6 +361,7 @@ export default function TrainerHome() {
                           <div className="own-row-title">{horse?.name || 'Ngựa'}</div>
                           <div className="own-row-sub own-hs-sub">
                             {SESSION_KINDS[s.kind]?.label || 'Buổi tập'}
+                            {s.segments?.length > 1 ? ` · ${s.segments.length} bài${segSummary ? ` (${segSummary})` : ''}` : segSummary ? ` · ${segSummary}` : ''}
                             {s.status === 'blocked' && s.blockedReason ? ` · ${s.blockedReason}` : s.outcome?.summary ? ` · ${s.outcome.summary}` : ''}
                           </div>
                         </div>
@@ -291,7 +383,30 @@ export default function TrainerHome() {
             <ul className="own-list">
               {todoPage.rows.map((t) => (
                 <li key={t.key}>
-                  <Line to={t.to} lead={<span className={`own-th-dot is-${t.tone}`} aria-hidden="true" />} title={t.title} sub={t.sub} />
+                  {t.action ? (
+                    <div className="own-row items-center">
+                      <Link to={t.to} className="flex min-w-0 flex-1 items-center gap-3 text-inherit no-underline">
+                        <span className={`own-th-dot is-${t.tone}`} aria-hidden="true" />
+                        <div className="own-row-main">
+                          <div className="own-row-title">{t.title}</div>
+                          {t.sub && <div className="own-row-sub own-hs-sub">{t.sub}</div>}
+                        </div>
+                      </Link>
+                      <div className="own-row-side">
+                        <Button
+                          size="small"
+                          type="primary"
+                          icon={<SendOutlined />}
+                          loading={makeUp.isPending && makeUp.variables?.horse === t.action.id}
+                          onClick={() => makeUp.mutate({ horse: t.action.id, ids: t.action.ids })}
+                        >
+                          Báo cho ăn bù
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Line to={t.to} lead={<span className={`own-th-dot is-${t.tone}`} aria-hidden="true" />} title={t.title} sub={t.sub} />
+                  )}
                 </li>
               ))}
             </ul>
@@ -348,7 +463,14 @@ export default function TrainerHome() {
             </Link>
           }
         >
-          {active.length === 0 ? (
+          {plansQ.isError && !active.length ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm own-muted">
+              <span>Chưa tải được danh sách kế hoạch.</span>
+              <Button size="small" onClick={() => plansQ.refetch()}>
+                Thử lại
+              </Button>
+            </div>
+          ) : active.length === 0 ? (
             <EmptyNote>{plansQ.isPending ? 'Đang tải…' : 'Chưa có kế hoạch nào đang áp dụng.'}</EmptyNote>
           ) : (
             <ul className="own-list">
@@ -382,7 +504,14 @@ export default function TrainerHome() {
             </Link>
           }
         >
-          {upcomingRaces.length === 0 ? (
+          {racesQ.isError && !upcomingRaces.length ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm own-muted">
+              <span>Chưa tải được danh sách giải đua.</span>
+              <Button size="small" onClick={() => racesQ.refetch()}>
+                Thử lại
+              </Button>
+            </div>
+          ) : upcomingRaces.length === 0 ? (
             <EmptyNote>{racesQ.isPending ? 'Đang tải…' : 'Chưa đăng ký giải nào sắp tới.'}</EmptyNote>
           ) : (
             <ul className="own-list">
