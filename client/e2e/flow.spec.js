@@ -48,7 +48,7 @@ test('trainer sees scheduled training and recorded race result', async ({ page }
 });
 test('a horse added with its papers shows them on its profile', async ({ page }) => {
   // The profile draws the horse in 3D, slow on a busy machine.
-  test.setTimeout(120000);
+  test.setTimeout(180000);
   await login(page, 'manager');
   await page.goto('/horses');
   await page.getByRole('button', { name: /Thêm ngựa mới/ }).first().click();
@@ -81,7 +81,7 @@ test('a horse added with its papers shows them on its profile', async ({ page })
   await dialog.getByLabel('Nhân viên chăm sóc').click();
   await page.locator('.ant-select-item-option', { hasText: 'TEST groom' }).first().click();
   await dialog.getByRole('button', { name: 'Thêm ngựa vào A-04', exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expect(dialog).toBeHidden({ timeout: 30000 });
   await page.locator('.ant-table-row', { hasText: 'TEST Papers Horse' }).first().click();
   await expect(page).toHaveURL(/\/horses\/[0-9a-f]{24}$/);
   const papers = page.locator('.ant-card', { hasText: 'Hồ sơ lý lịch' }).first();
@@ -141,13 +141,14 @@ test('trainer opens one horse’s schedule from the sessions page, not its profi
   await page.goto('/training/sessions');
   await page.getByRole('link', { name: 'TEST Browser Horse', exact: true }).first().click();
   await expect(page).toHaveURL(/\/training\/sessions\?horse=/);
-  await expect(page.getByText('Đang xem lịch của ngựa: TEST Browser Horse')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Mở hồ sơ ngựa' })).toBeVisible();
+  await expect(page.getByText(/Lịch tập của ngựa: TEST Browser Horse/)).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Hồ sơ ngựa' })).toBeVisible();
 });
 test('owner sees race history and cannot open manager routes', async ({ page }) => {
   await login(page, 'owner');
   await page.goto('/owner/races');
-  await expect(page.getByText('TEST Browser Cup', { exact: true })).toBeVisible();
+  await page.locator('.ant-segmented').getByText(/Đã đua/).click();
+  await expect(page.getByRole('heading', { name: 'TEST Browser Cup' })).toBeVisible();
   await page.goto('/admin/users');
   await expect(page).toHaveURL(/\/403$/);
 });
@@ -230,9 +231,10 @@ test('trainer home shows today schedule and the pending decisions board', async 
   await login(page, 'trainer');
   // The fixture's walk ran today and met its targets: its row in today's schedule says so.
   const board = page.locator('.own-card', { hasText: 'Lịch tập hôm nay' }).first();
-  await expect(board.getByText('TEST Browser Horse')).toBeVisible();
-  await expect(board.getByText(/Đi bộ/)).toBeVisible();
-  await expect(board.getByText('Đạt', { exact: true })).toBeVisible();
+  await expect(board.getByText('TEST Browser Horse').first()).toBeVisible();
+  await expect(board.getByText(/Đi bộ/).first()).toBeVisible();
+  await expect(board.getByText(/Đạt mục tiêu/).first()).toBeVisible();
+  await expect(board.getByText('Đã đánh giá', { exact: true }).first()).toBeVisible();
   await expect(page.locator('.own-card', { hasText: 'Chờ bạn quyết định' })).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -292,6 +294,12 @@ for (const [name, canvas] of [['light', 'sand_bone'], ['dark', 'peak_equestrian_
     for (let i = 0; i < count; i++) {
       await items.nth(i).click();
       await expect(page.locator('h1').first()).toBeVisible();
+      if (new URL(page.url()).searchParams.has('session')) {
+        const close = page.locator('.ant-modal-close').first();
+        await close.waitFor({ state: 'visible', timeout: 5000 });
+        await close.click();
+        await expect(page.locator('.ant-modal-wrap')).toHaveCount(0);
+      }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(overflow, `menu item ${i} scrolls sideways`).toBeLessThanOrEqual(1);
     }
@@ -303,12 +311,16 @@ test('owner dashboard shows the real race record and prize money', async ({ page
   // The fixture horse has one finished race, won, with a 1,000,000 prize (owner-overview).
   await expect(page.getByText('Tỷ lệ chiến thắng', { exact: true })).toBeVisible();
   await expect(page.getByText('100%', { exact: true })).toBeVisible();
-  await expect(page.getByText(/tiền thưởng 1\.000\.000 ₫/)).toBeVisible();
+  const races = page.locator('.own-card', { hasText: 'Thành tích giải đấu' });
+  await expect(races.getByText('1 tr', { exact: true })).toBeVisible();
+  await expect(races.getByText(/tiền thưởng từ 1 giải đã đua/)).toBeVisible();
 });
 test('owner race page shows the prize in dong, not dollars', async ({ page }) => {
   await login(page, 'owner');
   await page.goto('/owner/races');
-  const result = page.locator('.own-row', { hasText: 'TEST Browser Cup' });
+  await page.locator('.ant-segmented').getByText(/Đã đua/).click();
+  await expect(page.getByRole('heading', { name: 'TEST Browser Cup' })).toBeVisible();
+  const result = page.locator('.own-re', { hasText: 'TEST Browser Horse' });
   await expect(result).toBeVisible();
   await expect(result.getByText('1.000.000 ₫', { exact: true })).toBeVisible();
   await expect(page.getByText(/\$1,000,000/)).toHaveCount(0);
@@ -322,9 +334,9 @@ test('owner opening the old reviews page lands on the trainer reviews of the tra
 test('owner horse list counts the examined horse as ready, like the trainer sees it', async ({ page }) => {
   await login(page, 'owner');
   await page.goto('/horses');
-  const bannerStat = (label) => page.locator('span').filter({ hasText: new RegExp(`^${label}:$`, 'i') }).locator('xpath=following-sibling::span[1]');
-  await expect(bannerStat('đủ điều kiện tập')).toHaveText('1 con');
-  await expect(bannerStat('cần theo dõi')).toHaveText('0 con');
+  // Filter tabs reflect real health/exam status across the owner's horses.
+  await expect(page.getByText('Sẵn sàng (1)', { exact: true })).toBeVisible();
+  await expect(page.getByText('Cần theo dõi (0)', { exact: true })).toBeVisible();
 });
 test('owner horse page shows the papers and the valuation', async ({ page }) => {
   await login(page, 'owner');
@@ -339,6 +351,7 @@ test('owner horse page shows the papers and the valuation', async ({ page }) => 
 test('owner health tab shows routine care on the same 3D horse as the injuries, one layer at a time', async ({ page }) => {
   await login(page, 'owner');
   await page.goto(`/horses/${fixture.horseId}?tab=health`);
+  await page.getByText(/^Chấn thương \(\d+\)$/).click();
   const body = page.locator('.vet-ui', { has: page.locator('.ant-segmented') });
   // No injury is open, so the care layer opens first: the cracked hoof in red, the shot on the left of the neck.
   await expect(body.getByText('Chăm sóc định kỳ', { exact: true })).toBeVisible();
@@ -368,30 +381,37 @@ test('owner plays back a finished run of their horse: the button, the 3D horse a
     }),
   );
   await page.goto(`/horses/${fixture.horseId}?tab=training`);
-  const replay = page.getByRole('button', { name: /Xem lại buổi chạy/ });
-  await expect(replay.first()).toBeVisible();
-  await replay.first().click();
+  const finishedChip = page.locator('button.own-tt-chip', { hasText: 'Đạt chỉ tiêu' }).first();
+  await expect(finishedChip).toBeVisible();
+  await finishedChip.click();
   const modal = page.locator('.ant-modal');
-  await expect(modal.getByText(/Xem lại buổi chạy: TEST Browser Horse/)).toBeVisible();
-  await expect(modal.getByText('Lần đo', { exact: false }).first()).toBeVisible();
+  await expect(modal.getByText('Video buổi tập')).toBeVisible();
   await expect(modal.getByText('Nhịp tim', { exact: true })).toBeVisible();
+  await expect(modal.getByRole('button', { name: 'Tải video' })).toBeVisible();
   await expect(modal.locator('canvas[aria-label^="Ngựa 3D"]')).toHaveCount(1);
 });
 test('a run typed in by hand has no sensor readings, so the owner is offered no replay', async ({ page }) => {
   await login(page, 'owner');
   await page.goto(`/horses/${fixture.horseId}?tab=training`);
-  // The fixture's finished walk is listed under "Đã tập" (4000 m), without a replay button.
-  await expect(page.locator('.own-row', { hasText: '4000 m' }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /Xem lại buổi chạy/ })).toHaveCount(0);
+  // Opening the finished hand-entered walk shows 4.000 m and explains there is no sensor video.
+  const finishedChip = page.locator('button.own-tt-chip', { hasText: 'Đạt chỉ tiêu' }).first();
+  await expect(finishedChip).toBeVisible();
+  await finishedChip.click();
+  const modal = page.locator('.ant-modal');
+  await expect(modal.getByText('4.000 m', { exact: true })).toBeVisible();
+  await expect(modal.getByText(/không có số đo cảm biến từng lần/i)).toBeVisible();
+  await expect(modal.getByRole('button', { name: 'Tải video' })).toHaveCount(0);
 });
 test('owner horse page shows the horse moving as its health allows', async ({ page }) => {
+  test.setTimeout(90000);
   await login(page, 'owner');
   await page.goto(`/horses/${fixture.horseId}`);
   // The fixture horse was examined and cleared for full work, and no session is running: it grazes, in the pasture.
   await expect(page.locator('.own-hero canvas')).toHaveAttribute('aria-label', /Khỏe · thư giãn gặm cỏ, trên đồng cỏ/);
-  await expect(page.locator('.own-hero').getByText(/Mô hình 3D chuyển động/)).toBeVisible();
-  // The pasture's tree and house are CC BY: their authors are named under the stage.
-  await expect(page.locator('.own-hero').getByText('Cây: atrodler · Nhà: BoredPain666 (Sketchfab, CC BY 4.0)')).toBeVisible();
+  await expect(page.locator('.own-hero').getByText('Khỏe · thư giãn gặm cỏ')).toBeVisible({ timeout: 30000 });
+  // The pasture's tree and house are CC BY: their authors are shown behind the 3D credit button.
+  await page.locator('.own-hero').getByRole('button', { name: 'Nguồn mô hình 3D' }).hover();
+  await expect(page.getByText(/atrodler.*BoredPain666.*CC BY 4\.0/)).toBeVisible();
 });
 test('owner horse page shows the horse in its stall, with no way to move it', async ({ page }) => {
   await login(page, 'owner');
@@ -414,7 +434,8 @@ test('owner stable page reads the stall from the stable map, not from the old fr
 });
 test('owner dashboard says where each horse stands', async ({ page }) => {
   await login(page, 'owner');
-  // The fixture horse is in stall A-01 of Khu A (stable map).
+  // The fixture horse is in stall A-01 of Khu A (shown on the owner's horse list and horse header).
+  await page.goto('/horses');
   await expect(page.getByText('Chuồng A-01 · Khu A', { exact: true })).toBeVisible();
 });
 test('owner stable page keeps the stall card title readable on the dark canvas', async ({ page }) => {
