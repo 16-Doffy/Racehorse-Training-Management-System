@@ -1,13 +1,32 @@
 name: Defense data (live)
-# The council's data on the REAL site, 02/11 to 12/11, three shifts a day (server/scripts/defenseData.js): new
-# horses Orion and Pegasus and the two "Demo ·" horses take the cases, the real horses race. The script reads
-# the clock to know its shift, stays until the shift ends, and does nothing if the shift has begun or before
-# 05:00. GitHub runs this repo's schedules 2 to 3.5 hours late (Test 06:45 runs near 09:30, the 05:00 demo ran at
-# 08:22), so each shift is asked for from hours ahead, and whichever lands first in its time starts it.
-# Since 04/11 each run also asks for the next itself (server/scripts/defenseClock.js): morning → noon at 11:00
-# → evening at 16:00 → the day's report → a night relay → morning at 05:00. The schedules stay as a fallback.
+# Daily 3-shift live auto-test on the REAL site (server/scripts/defenseData.js): 05:00, 11:00, 16:00 Vietnam time.
+# Four test horses (Orion, Pegasus, "Demo · Sẵn sàng tập", "Demo · Diễn tập chấn thương") rotate through all
+# roles and edge cases every week; real horses stay untouched here and are managed by auto-operate.yml.
+# Each shift reads the clock, waits until its window, and runs its cases; once a shift begins it dispatches the
+# next one itself via workflow_dispatch (server/scripts/defenseClock.js):
+#   morning 05:00 → noon 11:00 → evening 16:00 → daily report → night relay (02:00) → morning 05:00.
+# The schedules below stay as fallbacks in case a relay or manual run breaks the chain.
 # A run shown as cancelled with no steps was only replaced in the queue. Read each run's Summary for its report.
 on:
+  schedule:
+    - cron: '5 19 * * *' # 02:05 Vietnam time, asking for the morning shift (05:00)
+    - cron: '35 19 * * *'
+    - cron: '5 20 * * *'
+    - cron: '35 20 * * *'
+    - cron: '5 21 * * *'
+    - cron: '35 21 * * *'
+    - cron: '5 22 * * *'
+    - cron: '35 22 * * *'
+    - cron: '10 1 * * *' # 08:10, asking for the noon shift (11:00)
+    - cron: '10 2 * * *'
+    - cron: '10 3 * * *'
+    - cron: '10 4 * * *'
+    - cron: '10 6 * * *' # 13:10, asking for the evening shift (16:00)
+    - cron: '10 7 * * *'
+    - cron: '10 8 * * *'
+    - cron: '10 9 * * *'
+    - cron: '40 15 * * *' # 22:40, the day's report
+    - cron: '30 16 * * *'
   workflow_dispatch:
     inputs:
       shift:

@@ -1,6 +1,18 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { shiftAt, pickShift, waitBefore, nextAfter } = require('../scripts/defenseClock');
+const {
+  addDays,
+  weekDayIndex,
+  weeklyCup,
+  drillRace,
+  TEST_HORSES,
+  WORK,
+  WEEK_ROTA,
+  WEEK_EXTRAS,
+  planForDay,
+  extrasKeyFor,
+} = require('../scripts/defenseData');
 
 // Local times, as the workflow runs with TZ=Asia/Ho_Chi_Minh.
 const at = (s) => new Date(`2026-11-04T${s}:00`);
@@ -63,4 +75,52 @@ test('nothing is asked for when a shift had already begun, or the campaign is ov
 
 test('no run is asked to wait past what a job may last', () => {
   assert.equal(nextAfter({ shift: 'report', now: at('20:00'), began: true, hasDay: campaign }), null);
+});
+
+test('evergreen daily loop chains across midnight and month boundaries indefinitely', () => {
+  const always = () => true;
+  const endNov = nextAfter({ shift: 'report', now: new Date('2026-11-30T21:52:00'), began: true, hasDay: always });
+  assert.equal(endNov.next, 'relay');
+  assert.equal(endNov.at.getTime(), new Date('2026-12-01T02:00:00').getTime());
+  const firstDec = nextAfter({ shift: 'relay', now: new Date('2026-12-01T02:00:10'), began: false, hasDay: always });
+  assert.equal(firstDec.next, 'morning');
+  assert.equal(firstDec.at.getTime(), new Date('2026-12-01T04:59:00').getTime());
+});
+
+test('weekly 3-shift rota covers Mon–Sun for all 4 test horses without invalid cases', () => {
+  assert.equal(WEEK_ROTA.length, 7);
+  assert.equal(TEST_HORSES.length, 4);
+  // 2026-11-18 is Wednesday (idx 2); 2026-11-22 is Sunday (idx 6); 2026-11-23 is Monday (idx 0).
+  assert.equal(weekDayIndex('2026-11-16'), 0);
+  assert.equal(weekDayIndex('2026-11-18'), 2);
+  assert.equal(weekDayIndex('2026-11-22'), 6);
+  assert.equal(weekDayIndex('2026-11-23'), 0);
+  assert.equal(addDays('2026-11-29', 2), '2026-12-01');
+
+  assert.deepEqual(weeklyCup('2026-11-18'), { name: 'Cúp Tuần CLB 22/11/2026', date: '2026-11-22' });
+  assert.deepEqual(weeklyCup('2026-11-22'), { name: 'Cúp Tuần CLB 22/11/2026', date: '2026-11-22' });
+  assert.deepEqual(weeklyCup('2026-11-22', 1), { name: 'Cúp Tuần CLB 29/11/2026', date: '2026-11-29' });
+  assert.deepEqual(drillRace('2026-11-29'), { name: 'Cúp Diễn Tập Chấn Thương 01/12', date: '2026-12-01' });
+
+  for (let d = 0; d < 7; d += 1) {
+    const day = WEEK_ROTA[d];
+    for (const shift of ['morning', 'noon', 'evening']) {
+      assert.equal(day[shift].length, TEST_HORSES.length, `day ${d} ${shift} length`);
+      for (const code of day[shift]) {
+        assert.ok(code === '-' || WORK[code], `unknown WORK code "${code}" on day ${d} ${shift}`);
+        if (code === 'trial') {
+          assert.equal(shift, 'morning', `trial must only run in morning (day ${d} ${shift})`);
+          assert.notEqual(d, 6, 'trials must run before Sunday race day');
+        }
+      }
+    }
+  }
+  assert.ok(planForDay('2026-11-18', 'morning'));
+  assert.equal(extrasKeyFor('2026-11-18', 'morning'), '2/morning');
+  for (const key of Object.keys(WEEK_EXTRAS)) {
+    const [dStr, shift] = key.split('/');
+    const d = Number(dStr);
+    assert.ok(Number.isInteger(d) && d >= 0 && d <= 6, `invalid day in WEEK_EXTRAS key ${key}`);
+    assert.ok(['morning', 'noon', 'evening'].includes(shift), `invalid shift in WEEK_EXTRAS key ${key}`);
+  }
 });

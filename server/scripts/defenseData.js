@@ -1,36 +1,54 @@
 #!/usr/bin/env node
-// The data the council sees on 13/11/2026, made on the REAL site through the same API people use
-// (.github/workflows/defense-data.yml). From 02/11 to 12/11 each day has three shifts, one for each meal:
+// Evergreen 3-shift live auto-test on the REAL site through the same API people use
+// (.github/workflows/defense-data.yml): every day runs three shifts across four test horses
+// (Orion, Pegasus, Demo · Sẵn sàng tập, Demo · Diễn tập chấn thương) on a repeating Monday–Sunday cycle:
 //
 //   morning  05:00–11:00  the only shift with trials: the club allows them before noon
 //   noon     11:00–16:00
 //   evening  16:00–22:00  the day's results, and at 23:30 a report
 //
-// Two new horses, Orion and Pegasus, and the two "Demo ·" horses take the cases (ROTA), so no false illness
-// goes on a real horse's record. The real horses only race; autoOperate.js runs their days. On a race's
-// morning each horse's own record decides (verdict): one far from its targets is withdrawn, as is one the
-// vet has stopped. The report says, per horse and shift, what ran and whether it is fit to race; the
-// morning of 13/11 the last one adds up the whole campaign.
+// Real horses only live through autoOperate.js and are never touched here. Each Sunday races the weekly
+// cup ("Cúp Tuần CLB dd/mm/yyyy"): morning weighs each horse's form (verdict), evening records results &
+// prizes and enters next week's cup.
 //
 // Reads only unless DEFENSE_CONFIRM=write. DEFENSE_DAY (YYYY-MM-DD) and DEFENSE_SHIFT (morning, noon,
 // evening, report, relay, final) replace what the clock says. A shift that has begun does not begin again, so
-// any number of triggers is harmless. GitHub runs this repo's schedules 2 to 3.5 hours late, so the workflow
-// also asks hours ahead: from 03:00 to 04:40 a run is the night relay, and a report delayed past midnight is
-// still the day before's.
-//
-// Since 04/11 each run asks for the next one when it is done (defenseClock.js): a run asked for, or started by
-// the clock within 20 minutes of a shift, waits for 05:00, 11:00 or 16:00. DEFENSE_SHIFT may also be 'relay',
-// the night run that only waits and asks for the morning.
+// any number of triggers is harmless. Each run asks for the next one when done (defenseClock.js):
+//   morning 05:00 → noon 11:00 → evening 16:00 → report → relay (02:00) → morning 05:00.
 if (process.env.DEMO_TZ) process.env.TZ = process.env.DEMO_TZ;
 const fs = require('fs');
 const clock = require('./defenseClock');
 
+/** ISO calendar date N days from `dayStr` (YYYY-MM-DD), timezone-safe via UTC noon math. */
+function addDays(dayStr, offset) {
+  const d = new Date(`${dayStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + offset);
+  return d.toISOString().slice(0, 10);
+}
+/** 0 = Monday .. 6 = Sunday for an ISO date string (YYYY-MM-DD). */
+function weekDayIndex(dayStr) {
+  const d = new Date(`${dayStr}T12:00:00Z`);
+  return (d.getUTCDay() + 6) % 7;
+}
+/** Weekly cup on Sunday of `dayStr`'s Mon–Sun week (shifted by `weekOffset` weeks). */
+function weeklyCup(dayStr, weekOffset = 0) {
+  const idx = weekDayIndex(dayStr);
+  const date = addDays(dayStr, 6 - idx + weekOffset * 7);
+  const [yyyy, mm, dd] = date.split('-');
+  return { name: `Cúp Tuần CLB ${dd}/${mm}/${yyyy}`, date };
+}
+/** Upcoming drill race two days out, used by flowInjured so injury tests never cancel the Sunday cup. */
+function drillRace(dayStr) {
+  const date = addDays(dayStr, 2);
+  const [, mm, dd] = date.split('-');
+  return { name: `Cúp Diễn Tập Chấn Thương ${dd}/${mm}`, date };
+}
+
 const TODAY = new Date().toLocaleDateString('sv-SE');
 // The day of the rota to run: today, or another for a rehearsal.
 const ROTA_DAY = process.env.DEFENSE_DAY || TODAY;
-const FINAL_DAY = '2026-11-13';
 const REPORT_DAY = new Date().getHours() < 3 ? new Date(Date.now() - 24 * 3600000).toLocaleDateString('sv-SE') : TODAY;
-const SHIFT = TODAY === FINAL_DAY && !process.env.DEFENSE_SHIFT ? 'final' : clock.pickShift(process.env.DEFENSE_SHIFT, new Date());
+const SHIFT = clock.pickShift(process.env.DEFENSE_SHIFT, new Date());
 if (['morning', 'noon', 'evening'].includes(SHIFT)) process.env.DEMO_MEAL_SLOT = SHIFT;
 process.env.DEMO_LATEST_START = process.env.DEMO_LATEST_START || '23:30';
 const demo = require('./demoFlows');
@@ -45,16 +63,13 @@ const ORION = 'Orion';
 const PEGASUS = 'Pegasus';
 const READY = 'Demo · Sẵn sàng tập';
 const DRILL = 'Demo · Diễn tập chấn thương';
-const FIRST = { name: 'Cúp Mùa Thu CLB 2026', date: process.env.DEFENSE_FIRST_DATE || '2026-11-06' };
-const SECOND = { name: 'Cúp Tiền Mùa Đông CLB 2026', date: process.env.DEFENSE_SECOND_DATE || '2026-11-10' };
-const THIRD = { name: 'Cúp Khai Đông CLB 2026', date: process.env.DEFENSE_THIRD_DATE || '2026-11-12' };
-const LATER = { name: 'Cúp Mùa Đông CLB 2026', date: process.env.DEFENSE_LATER_DATE || '2026-11-20' };
-const OLD_RENAME = { from: 'TEST Cúp Demo 28/10', to: 'Cúp Giao Hữu CLB 28/10' };
+const TEST_HORSES = [ORION, PEGASUS, READY, DRILL];
 const NEW_HORSES = {
   [ORION]: { breed: 'Thoroughbred', sex: 'gelding', color: 'Bay', weightKg: 480, dob: '2021-03-18' },
   [PEGASUS]: { breed: 'Arabian', sex: 'mare', color: 'Grey', weightKg: 450, dob: '2022-02-09' },
+  [READY]: { breed: 'Thoroughbred', sex: 'colt', color: 'Chestnut', weightKg: 470, dob: '2021-06-10' },
+  [DRILL]: { breed: 'Quarter Horse', sex: 'filly', color: 'Dark Bay', weightKg: 460, dob: '2022-01-22' },
 };
-const TEST_HORSES = [ORION, PEGASUS, READY, DRILL];
 const RATION_TIMES = { morning: process.env.DEFENSE_BREAKFAST || '06:00', noon: '12:00', evening: '17:00' };
 const FAST_EXAM = (diagnosis, resultStatus, extra = {}) => ({
   diagnosis, resultStatus,
@@ -98,12 +113,16 @@ async function expectStall(F, horse, type, what) {
 }
 const exam = (F, horse, label, body) => must(F, 'vet', label, 'POST', '/health/records', { horse: horse._id, ...body });
 
+const findFreeStandardStall = (stalls) => {
+  const free = stalls.filter((s) => (s.type || 'standard') === 'standard' && s.status !== 'maintenance' && !s.occupied && !s.reservedFor);
+  return free.find((s) => s.zone === 'A') || free[0];
+};
 /** A horse new to the club: profile, a free ordinary stall and its groom, an exam, a breakfast, a plan. */
 async function newHorse(F, name, ctx) {
   const horse = await must(F, 'manager', `thêm ngựa "${name}", giao chủ, HLV, bác sĩ`, 'POST', '/horses', {
     name, ...NEW_HORSES[name], owner: ids.owner, assignedTrainer: ids.trainer, assignedVet: ids.vet,
   }, 201);
-  const free = (await stallsNow()).stalls.find((s) => (s.type || 'standard') === 'standard' && s.status !== 'maintenance' && !s.occupied && !s.reservedFor && s.zone === 'A');
+  const free = findFreeStandardStall((await stallsNow()).stalls);
   await must(F, 'manager', `xếp chuồng ${free?.code}, giao nhân viên chăm sóc`, 'POST', '/stable/assignments', { horse: horse._id, stall: free?._id, assignedCaretaker: ids.groom }, 201);
   await exam(F, horse, demo.INTAKE_EXAM.label, demo.INTAKE_EXAM.body);
   await must(F, 'trainer', `khẩu phần bữa sáng ${RATION_TIMES.morning}: 2,5 ${ctx.feed.unit} ${ctx.feed.name}`, 'POST', '/feeding', {
@@ -111,27 +130,44 @@ async function newHorse(F, name, ctx) {
   }, 201);
   await must(F, 'trainer', 'kế hoạch nền tảng sức bền (đang áp dụng)', 'POST', '/training/plans', {
     horse: horse._id, phase: 'base_building', distanceTarget: 1600, weeklyVolumeKm: 20, intensity: 'moderate', surface: 'dirt',
-    startDate: new Date().toISOString(), status: 'active', goal: 'Sức bền trước các giải mùa đông',
+    startDate: new Date().toISOString(), status: 'active', goal: 'Sức bền trước các giải đấu tuần',
   }, 201);
 }
-/** Whatever a shift needs and is not there yet: the new horses, and a meal for each shift of the four. */
+/** Whatever a shift needs and is not there yet: the four test horses, stalls, active plans, and 3 meals. */
 async function prepare(ctx) {
   const F = 'Chuẩn bị';
   const horses = await allHorses();
-  for (const name of [ORION, PEGASUS]) {
+  for (const name of TEST_HORSES) {
     // eslint-disable-next-line no-await-in-loop
     if (!horses.some((h) => h.name === name)) await newHorse(F, name, ctx);
   }
-  const rations = (await read('trainer', '/feeding')) || [];
+  const [rations, plans, { stalls, waiting }] = await Promise.all([
+    read('trainer', '/feeding'),
+    read('trainer', '/training/plans'),
+    stallsNow(),
+  ]);
   for (const name of TEST_HORSES) {
     // eslint-disable-next-line no-await-in-loop
     const horse = await horseNamed(name);
     if (!horse) throw new Error(`Không thấy ngựa "${name}".`);
-    for (const slot of ['noon', 'evening']) {
-      if (!rations.some((r) => idOf(r.horse) === idOf(horse) && r.mealTime === slot)) {
+    const stabled = stalls.some((s) => idOf(s.occupant?.horse) === idOf(horse)) || waiting.some((w) => idOf(w.horse) === idOf(horse));
+    if (!stabled) {
+      const free = findFreeStandardStall((await stallsNow()).stalls);
+      // eslint-disable-next-line no-await-in-loop
+      if (free) await must(F, 'manager', `${name}: xếp chuồng ${free.code}`, 'POST', '/stable/assignments', { horse: horse._id, stall: free._id, assignedCaretaker: ids.groom }, 201);
+    }
+    if (!(plans || []).some((p) => p.status === 'active' && idOf(p.horse) === idOf(horse))) {
+      // eslint-disable-next-line no-await-in-loop
+      await must(F, 'trainer', `${name}: tạo kế hoạch huấn luyện mới`, 'POST', '/training/plans', {
+        horse: horse._id, phase: 'base_building', distanceTarget: 1600, weeklyVolumeKm: 20, intensity: 'moderate', surface: 'dirt',
+        startDate: new Date().toISOString(), status: 'active', goal: 'Sức bền trước các giải đấu tuần',
+      }, 201);
+    }
+    for (const [slot, amount] of [['morning', 2.5], ['noon', 1], ['evening', 1]]) {
+      if (!(rations || []).some((r) => idOf(r.horse) === idOf(horse) && r.mealTime === slot)) {
         // eslint-disable-next-line no-await-in-loop
-        await must(F, 'trainer', `${name}: thêm bữa ${RATION_TIMES[slot]}, 1 ${ctx.feed.unit} ${ctx.feed.name}`, 'POST', '/feeding', {
-          horse: horse._id, mealTime: slot, timeOfDay: RATION_TIMES[slot], items: [{ inventoryItem: ctx.feed._id, amount: 1 }],
+        await must(F, 'trainer', `${name}: thêm bữa ${RATION_TIMES[slot]}, ${amount} ${ctx.feed.unit} ${ctx.feed.name}`, 'POST', '/feeding', {
+          horse: horse._id, mealTime: slot, timeOfDay: RATION_TIMES[slot], items: [{ inventoryItem: ctx.feed._id, amount }],
         }, 201);
       }
     }
@@ -216,6 +252,22 @@ async function verdict(race, names) {
   }
 }
 
+/** Whether the horse has no ongoing training lock, no unrecovered injury, and high medical clearance. */
+async function isFit(horse) {
+  const [treatments, markers, records] = await Promise.all([
+    read('vet', `/health/treatments?horse=${horse._id}`),
+    read('vet', `/health/injury-markers?horse=${horse._id}`),
+    read('vet', `/health/records?horse=${horse._id}`),
+  ]);
+  const locked = (treatments || []).some((t) => idOf(t.horse) === idOf(horse) && t.status === 'ongoing' && t.trainingLevel && t.trainingLevel !== 'high');
+  const hurt = (markers || []).some((m) => idOf(m.horse) === idOf(horse) && m.recoveryStatus !== 'recovered');
+  const latest = [...(records || [])]
+    .filter((r) => idOf(r.horse) === idOf(horse))
+    .sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt))[0];
+  const notCleared = latest && (latest.resultStatus !== 'eligible' || (latest.clearedLevel && latest.clearedLevel !== 'high'));
+  return !locked && !hurt && !notCleared;
+}
+
 /** The vet finds the horse fit: its treatments closed, its injuries recovered, then the exam that clears it. */
 async function clearHorse(F, horse) {
   const treatments = ((await read('vet', `/health/treatments?horse=${horse._id}`)) || []).filter((t) => idOf(t.horse) === idOf(horse) && t.status === 'ongoing');
@@ -229,6 +281,13 @@ async function clearHorse(F, horse) {
     await must(F, 'vet', `chấn thương "${m.bodyPart}" đã hồi phục`, 'PUT', `/health/injury-markers/${m._id}`, { recoveryStatus: 'recovered' });
   }
   await exam(F, horse, 'tái khám: đủ điều kiện tập', FAST_EXAM('Tái khám: hết sưng nóng, đi lại bình thường. Đủ điều kiện tập.', 'eligible', { clearedLevel: 'high' }));
+}
+
+/** Clears any lingering lock/injury only if the horse is not already fit. Returns true if cleared. */
+async function ensureFit(F, horse) {
+  if (await isFit(horse)) return false;
+  await clearHorse(F, horse);
+  return true;
 }
 
 /** Cleared for light work only, for as long as the rota says. The exam comes once. */
@@ -252,21 +311,20 @@ const withTrial = (race) => async (ctx, F, setup) => {
   const canter = await demo.flowPass(ctx, F, setup, false);
   const trials = (await read('trainer', `/races/${entry._id}/trials`)) || [];
   if (trials.some((t) => t.outcome?.met === true)) return `${canter} · đã có buổi chạy thử đạt`;
+  if (['completed', 'withdrawn'].includes(entry.status)) return `${canter} · giải đã ${entry.status}`;
   return `${canter} · ${await demo.trialThenDecide(F, setup, entry)}`;
 };
 const WORK = {
   pass: ['flow chính', (ctx, F, s) => demo.flowPass({ ...ctx, incidents: false }, F, s, false)],
   scrape: ['flow chính, có sự cố nhỏ', (ctx, F, s) => demo.flowPass({ ...ctx, incidents: true }, F, s, false)],
-  trial1: [`chạy thử ${FIRST.name}`, withTrial(FIRST)],
-  trial2: [`chạy thử ${SECOND.name}`, withTrial(SECOND)],
-  trial3: [`chạy thử ${THIRD.name}`, withTrial(THIRD)],
+  trial: ['chạy thử giải tuần', (ctx, F, s) => withTrial(weeklyCup(ROTA_DAY))(ctx, F, s)],
   tired: ['ngựa mệt', demo.flowTired],
   missed: ['lỡ giờ, xếp lại', demo.flowMissed],
   makeup: ['bỏ bữa, ăn bù', demo.flowMakeUp],
   weather: ['dừng vì mưa', demo.flowWeather],
   lock: ['khóa giữa buổi', demo.flowVetLock],
   injured: ['chấn thương', (ctx, F, s) => {
-    aim(FIRST);
+    aim(drillRace(ROTA_DAY));
     return demo.flowInjured(ctx, F, s);
   }],
   light: ['chỉ tập nhẹ', lightOnly],
@@ -292,20 +350,27 @@ async function runCase(ctx, setup, work) {
   return result;
 }
 
-/** A shift's cases per horse, in TEST_HORSES' order; '-' means only its meal and care. */
-const ROTA = {
-  '2026-11-02': { morning: ['trial1', 'pass', 'tired', 'weather'], noon: ['pass', 'pass', 'pass', 'pass'], evening: ['scrape', 'makeup', 'tired', 'missed'] },
-  '2026-11-03': { morning: ['makeup', 'injured', 'missed', 'lock'], noon: ['pass', '-', 'pass', '-'], evening: ['pass', '-', 'tired', '-'] },
-  '2026-11-04': { morning: ['trial1', '-', 'late', '-'], noon: ['pass', '-', 'light', '-'], evening: ['pass', '-', 'light', '-'] },
-  '2026-11-05': { morning: ['pass', '-', 'light', '-'], noon: ['pass', 'pass', 'pass', '-'], evening: ['pass', 'pass', 'pass', '-'] },
-  '2026-11-06': { morning: ['-', 'pass', 'pass', '-'], noon: ['-', 'pass', 'pass', '-'], evening: ['-', 'makeup', 'pass', '-'] },
-  '2026-11-07': { morning: ['-', 'trial2', 'pass', '-'], noon: ['pass', 'pass', 'pass', 'pass'], evening: ['pass', 'pass', 'tired', 'pass'] },
-  '2026-11-08': { morning: ['trial2', 'trial2', 'pass', 'missed'], noon: ['pass', 'pass', 'pass', 'pass'], evening: ['pass', 'scrape', 'pass', 'weather'] },
-  '2026-11-09': { morning: ['trial2', 'trial2', 'makeup', 'tired'], noon: ['pass', 'pass', 'pass', 'pass'], evening: ['pass', 'pass', 'pass', 'pass'] },
-  '2026-11-10': { morning: ['-', '-', 'trial3', 'pass'], noon: ['-', '-', 'pass', 'pass'], evening: ['-', '-', 'pass', 'tired'] },
-  '2026-11-11': { morning: ['trial3', 'trial3', 'trial3', 'pass'], noon: ['pass', 'pass', 'pass', 'pass'], evening: ['pass', 'pass', 'pass', 'missed'] },
-  '2026-11-12': { morning: ['-', '-', '-', 'pass'], noon: ['-', '-', '-', 'pass'], evening: ['-', '-', '-', 'pass'] },
-};
+/**
+ * Repeating Monday–Sunday 3-shift rota per horse, in TEST_HORSES' order ([Orion, Pegasus, Ready, Drill]).
+ * '-' means rest (only meals, doses, and scheduled care are completed).
+ */
+const WEEK_ROTA = [
+  // Thứ 2: mở tuần — Orion chạy thử cho Cúp Chủ Nhật; cả 4 ngựa đều chạy case
+  { morning: ['trial', 'pass', 'tired', 'weather'], noon: ['pass', 'pass', 'pass', 'pass'], evening: ['scrape', 'makeup', 'tired', 'missed'] },
+  // Thứ 3: diễn tập chấn thương (Pegasus) + khóa giữa buổi (Drill) → vào khu hồi phục / chờ chuồng
+  { morning: ['makeup', 'injured', 'missed', 'lock'], noon: ['pass', '-', 'pass', '-'], evening: ['pass', '-', 'tired', '-'] },
+  // Thứ 4: hồi phục về chuồng thường → Pegasus chạy thử, Ready bữa quá giờ → trưa/tối tập nhẹ
+  { morning: ['pass', 'trial', 'late', 'pass'], noon: ['pass', 'pass', 'light', 'pass'], evening: ['pass', 'scrape', 'light', 'weather'] },
+  // Thứ 5: Ready hết tập nhẹ; trưa giao chăm sóc nhiều ngày (Orion); 20:10 tối tạm ngưng cỏ kiểm tra cảnh báo (Ready)
+  { morning: ['trial', 'pass', 'pass', 'pass'], noon: ['pass', 'pass', 'pass', 'pass'], evening: ['pass', 'pass', 'pass', 'pass'] },
+  // Thứ 6: Ready hồi phục sau vụ hết cỏ; Drill diễn tập xếp tay & cách ly (chuồng CL)
+  { morning: ['-', 'pass', 'pass', '-'], noon: ['pass', 'pass', 'pass', '-'], evening: ['-', 'makeup', 'pass', '-'] },
+  // Thứ 7: Drill hết cách ly về chuồng cũ; Ready & Drill chạy thử trước Chủ Nhật
+  { morning: ['pass', 'pass', 'trial', 'trial'], noon: ['pass', 'pass', 'pass', 'pass'], evening: ['pass', 'tired', 'scrape', 'missed'] },
+  // Chủ Nhật: sáng xét dự giải (verdict); trưa nhập kho; tối ghi kết quả giải tuần, xem thành tích & đăng ký tuần sau
+  { morning: ['pass', 'pass', 'pass', 'pass'], noon: ['pass', 'pass', 'pass', 'pass'], evening: ['pass', 'pass', 'pass', 'missed'] },
+];
+const planForDay = (dayStr, shift) => WEEK_ROTA[weekDayIndex(dayStr)]?.[shift] || null;
 
 /** The groom's other work on these horses, as it falls due: late meals of the shift, doses, ice, baths. */
 async function tidy(setups) {
@@ -386,6 +451,47 @@ async function restock(ctx) {
   const approved = [...(refreshed?.restockRequests || [])].reverse().find((q) => q.status === 'approved');
   if (approved) await must(R, 'manager', `hàng về: nhận ${approved.approvedQuantity} ${ctx.feed.unit}`, 'POST', `/inventory/${ctx.feed._id}/receive`, { quantity: approved.approvedQuantity, requestId: approved._id });
 }
+/** Keeps grain stock safely above preflight minimum (>= 120 kg) across continuous weekly cycles. */
+async function topUpGrainIfNeeded(ctx) {
+  const fresh = ((await read('manager', '/inventory')) || []).find((i) => idOf(i) === idOf(ctx.feed));
+  if (!fresh || Number(fresh.quantity) >= 120) return;
+  const R = 'Bổ sung kho tự động';
+  const item = await must(R, 'groom', `kho còn ${fresh.quantity} ${ctx.feed.unit} ${ctx.feed.name} → đề xuất nhập thêm 200 ${ctx.feed.unit}`, 'POST', `/inventory/${ctx.feed._id}/restock-request`, {
+    quantity: 200, note: 'Kho xuống thấp trong chu kỳ auto test 3 ca — bổ sung tự động.',
+  });
+  const reqItem = [...(item?.restockRequests || [])].reverse().find((q) => q.status === 'pending');
+  if (!reqItem) return;
+  await must(R, 'manager', `duyệt nhập thêm 200 ${ctx.feed.unit}`, 'PATCH', `/inventory/${ctx.feed._id}/restock-requests/${reqItem._id}`, {
+    status: 'approved', approvedQuantity: 200, note: 'Duyệt nhập kho giữ mức vận hành liên tục.',
+  });
+  await must(R, 'manager', `nhận 200 ${ctx.feed.unit} vào kho`, 'POST', `/inventory/${ctx.feed._id}/receive`, { quantity: 200, requestId: reqItem._id });
+}
+/** Enters only horses that are currently medically fit into the target race. */
+async function enterFitHorses(F, race) {
+  const fitNames = [];
+  for (const name of TEST_HORSES) {
+    // eslint-disable-next-line no-await-in-loop
+    const horse = await horseNamed(name);
+    // eslint-disable-next-line no-await-in-loop
+    if (horse && (await isFit(horse))) fitNames.push(name);
+  }
+  await enterAll(F, race, fitNames);
+}
+/** Records ranked podium finishes & prize money for confirmed entries in the weekly cup. */
+async function recordWeeklyRace(race) {
+  const G = 'Thành tích';
+  const entries = (await entriesOf(race)).filter((e) => TEST_HORSES.includes(e.horse?.name));
+  const confirmed = entries.filter((e) => e.status === 'confirmed' || e.status === 'completed');
+  const offset = confirmed.length ? Math.floor(Date.parse(race.date) / (7 * 86400000)) % confirmed.length : 0;
+  const ordered = [...confirmed.slice(offset), ...confirmed.slice(0, offset)];
+  const times = ['1:36.85', '1:37.40', '1:38.25', '1:39.10'];
+  const prizes = [100000000, 50000000, 25000000, 0];
+  const places = ordered.map((e, idx) => [e.horse.name, idx + 1, times[idx] || '1:40.00', prizes[idx] ?? 0]);
+  for (const e of entries) {
+    if (!confirmed.includes(e)) places.push([e.horse.name, places.length + 1, '1:41.00', 0]);
+  }
+  await recordRace(G, race, places);
+}
 /** The ration planner on a real plan's days: confirmed once, and read back. */
 async function planner(setup) {
   const F = 'Lịch ăn theo kế hoạch';
@@ -415,11 +521,23 @@ async function boardCheck() {
   }
 }
 
-/** Work of a shift other than the horses' cases: before them, then after them. */
-const EXTRAS = {
-  '2026-11-03/morning': {
-    // Pegasus (injured) and the drill horse (locked by the vet, which also counts as injured) both want recovery,
-    // and only one of its stalls is free: whichever came first has it, the other is shown waiting.
+/** Work of a shift in the Monday–Sunday cycle other than the horses' main cases (day 0 = Mon .. 6 = Sun). */
+const WEEK_EXTRAS = {
+  '0/morning': {
+    async before() {
+      const cup = weeklyCup(ROTA_DAY);
+      aim(cup);
+      const taurus = await horseNamed('Taurus');
+      if (taurus && !(await isFit(taurus))) {
+        await refused('Giải', 'trainer', `đăng ký Taurus dự ${cup.name} → hệ thống từ chối (đang khóa tập)`, 'POST', '/races', {
+          horse: taurus._id, raceName: cup.name, raceDate: new Date(`${cup.date}T15:00:00`).toISOString(), ...demo.RACE,
+        });
+      }
+      await enterFitHorses('Giải tuần', cup);
+    },
+  },
+  '1/morning': {
+    // Pegasus (injured) and Drill (locked by vet) both want recovery stalls: verify placed or queued.
     async after() {
       const W = 'Chờ chuồng';
       const { waiting = [] } = await stallsNow();
@@ -433,53 +551,47 @@ const EXTRAS = {
       }
     },
   },
-  '2026-11-02/morning': {
+  '2/morning': {
     async before() {
-      aim(FIRST);
-      const taurus = await horseNamed('Taurus');
-      if (taurus) {
-        await refused('Giải', 'trainer', `đăng ký Taurus dự ${FIRST.name} → hệ thống từ chối (đang khóa tập)`, 'POST', '/races', {
-          horse: taurus._id, raceName: FIRST.name, raceDate: new Date(`${FIRST.date}T15:00:00`).toISOString(), ...demo.RACE,
-        });
+      const W = 'Hồi phục';
+      for (const name of [PEGASUS, DRILL]) {
+        // eslint-disable-next-line no-await-in-loop
+        const horse = await horseNamed(name);
+        // eslint-disable-next-line no-await-in-loop
+        if (horse && (await ensureFit(W, horse))) {
+          // eslint-disable-next-line no-await-in-loop
+          await expectStall(W, horse, 'standard', `${name} đủ điều kiện: về chuồng thường`);
+        }
       }
-      await enterAll('Giải', FIRST, ['Dembele', 'demo', READY]);
+      await enterFitHorses('Giải tuần', weeklyCup(ROTA_DAY));
     },
   },
-  '2026-11-04/noon': {
-    async after(ctx) {
-      await restock(ctx);
-    },
-  },
-  '2026-11-05/noon': {
-    // Pegasus goes home fit, and the waiting horse moves into its stall.
+  '3/morning': {
     async before() {
-      const W = 'Chờ chuồng';
-      const pegasus = await horseNamed(PEGASUS);
-      const drill = await horseNamed(DRILL);
-      const ready = await setupOf(READY);
-      await clearHorse(W, pegasus);
-      await expectStall(W, pegasus, 'standard', 'Pegasus đủ điều kiện: về chuồng cũ được giữ chỗ');
-      await expectStall(W, drill, 'recovery', 'ngựa còn lại ở chuồng hồi phục');
-      await clearHorse('Hồi phục', ready.horse);
+      const ready = await horseNamed(READY);
+      if (ready && (await ensureFit('Hồi phục', ready))) {
+        await expectStall('Hồi phục', ready, 'standard', `${READY} hết tập nhẹ: về chuồng thường`);
+      }
     },
+  },
+  '3/noon': {
     async after() {
       await careJob(await horseNamed(ORION));
     },
   },
-  '2026-11-05/evening': {
+  '3/evening': {
     async after() {
       await demo.waitUntil(atClock(HAY_CLOCK), 'giờ tạm ngưng cỏ (không có bữa nào tới giờ)');
       await hay(await horseNamed(READY));
     },
   },
-  '2026-11-06/morning': {
+  '4/morning': {
     async before() {
       const drill = await setupOf(DRILL);
       const ready = await horseNamed(READY);
       await clearHorse('Hồi phục', ready);
       await expectStall('Hồi phục', ready, 'standard', 'đủ điều kiện: ở chuồng thường');
-      await verdict(FIRST, [ORION, READY, 'Dembele', 'demo']);
-      // Placed by hand: a follow-up with the same conclusion leaves it; a changed conclusion moves it.
+      // Placed by hand: a follow-up with the same conclusion leaves it; a changed conclusion moves it to isolation.
       const M = 'Xếp tay';
       const home = (await stallsNow()).stalls.find((s) => idOf(s.reservedFor?.horse) === idOf(drill.horse));
       if (home) {
@@ -491,82 +603,45 @@ const EXTRAS = {
       await expectStall(M, drill.horse, 'isolation', 'cách ly: ngựa tự sang chuồng cách ly');
     },
   },
-  '2026-11-06/evening': {
-    async before() {
-      const G = 'Thành tích';
-      await recordRace(G, FIRST, [
-        [ORION, 1, '1:37.40', 100000000],
-        ['Dembele', 2, '1:38.15', 50000000],
-        ['demo', 3, '1:38.92', 25000000],
-        [READY, 6, '1:41.30', 0],
-      ]);
-      // Two older races that were never closed: results recorded late, one renamed first.
-      const entries = (await read('trainer', '/races')) || [];
-      const old = entries.find((e) => e.raceName === OLD_RENAME.from && e.status !== 'completed');
-      if (old) {
-        await must(G, 'trainer', `đổi tên giải "${OLD_RENAME.from}" thành "${OLD_RENAME.to}"`, 'PUT', `/races/${old._id}`, { raceName: OLD_RENAME.to });
-        await must(G, 'trainer', `${OLD_RENAME.to}: ${old.horse?.name} hạng 4, không có thưởng`, 'PATCH', `/races/${old._id}/results`, { position: 4, finishTime: '1:39.80', prizeMoney: 0 });
-      }
-      const winter = entries.find((e) => e.raceName === 'Winnter Fu' && e.status !== 'completed' && e.status !== 'withdrawn');
-      if (winter) await must(G, 'trainer', `Winnter Fu (nhập muộn): ${winter.horse?.name} hạng 2, thưởng 60.000.000 đ`, 'PATCH', `/races/${winter._id}/results`, { position: 2, finishTime: '1:37.95', prizeMoney: 60000000 });
-      await enterAll('Giải', SECOND, [ORION, PEGASUS, 'Dembele']);
-    },
-  },
-  '2026-11-07/morning': {
+  '5/morning': {
     async before() {
       const drill = await horseNamed(DRILL);
       await clearHorse('Hồi phục', drill);
       await expectStall('Hồi phục', drill, 'standard', 'hết cách ly: về chuồng cũ');
     },
   },
-  '2026-11-08/noon': {
+  '6/morning': {
+    async before() {
+      const cup = weeklyCup(ROTA_DAY);
+      await enterFitHorses('Giải tuần', cup);
+      await verdict(cup, TEST_HORSES);
+    },
+  },
+  '6/noon': {
     async after(ctx) {
       await restock(ctx);
     },
   },
-  '2026-11-10/morning': {
+  '6/evening': {
     async before() {
-      await verdict(SECOND, [ORION, PEGASUS, 'Dembele']);
-    },
-  },
-  '2026-11-10/evening': {
-    async before() {
-      await recordRace('Thành tích', SECOND, [
-        [PEGASUS, 1, '1:36.85', 100000000],
-        [ORION, 2, '1:37.20', 50000000],
-        ['Dembele', 5, '1:40.10', 0],
-      ]);
-      await enterAll('Giải', THIRD, [ORION, PEGASUS, 'Dembele', 'demo']);
-    },
-  },
-  '2026-11-12/morning': {
-    async before() {
-      await verdict(THIRD, [ORION, PEGASUS, READY, 'Dembele', 'demo']);
-      await planner(await setupOf(PEGASUS));
-    },
-  },
-  '2026-11-12/evening': {
-    async before() {
-      await recordRace('Thành tích', THIRD, [
-        ['Dembele', 1, '1:36.60', 100000000],
-        [PEGASUS, 2, '1:36.95', 50000000],
-        [READY, 3, '1:38.40', 25000000],
-        [ORION, 4, '1:38.75', 0],
-        ['demo', 7, '1:42.05', 0],
-      ]);
-      await enterAll('Giải', LATER, [ORION]);
+      await recordWeeklyRace(weeklyCup(ROTA_DAY));
       await boardCheck();
+      await enterFitHorses('Giải tuần sau', weeklyCup(ROTA_DAY, 1));
+    },
+    async after() {
+      await planner(await setupOf(ORION));
     },
   },
 };
+const extrasKeyFor = (dayStr, shift) => `${weekDayIndex(dayStr)}/${shift}`;
 
 async function runShift(ctx) {
-  const plan = ROTA[ROTA_DAY]?.[SHIFT];
+  const plan = planForDay(ROTA_DAY, SHIFT);
   if (!plan) {
     console.log(`${ROTA_DAY} ${SHIFT}: không có việc.`);
     return;
   }
-  const extras = EXTRAS[`${ROTA_DAY}/${SHIFT}`] || {};
+  const extras = WEEK_EXTRAS[extrasKeyFor(ROTA_DAY, SHIFT)] || {};
   const guarded = async (name, job) => {
     try {
       await job();
@@ -575,8 +650,16 @@ async function runShift(ctx) {
     }
   };
   if (extras.before) await guarded('đầu ca', () => extras.before(ctx));
-  // Read after the above, which may change a plan's race. A horse with no case only eats and is cared for,
-  // in its time, while the others run.
+  // Safety net: ensure every horse with an active non-light case today is medically fit before its shift starts.
+  for (let i = 0; i < TEST_HORSES.length; i += 1) {
+    if (!['-', 'light'].includes(plan[i])) {
+      // eslint-disable-next-line no-await-in-loop
+      const h = await horseNamed(TEST_HORSES[i]);
+      // eslint-disable-next-line no-await-in-loop
+      if (h) await ensureFit(`${h.name} · chuẩn bị ca`, h);
+    }
+  }
+  // Read after the above, which may update a plan's targetRace. Resting horses ('-') still get meals & care.
   const setups = await Promise.all(TEST_HORSES.map(setupOf));
   let running = true;
   const resting = setups.filter((_, i) => plan[i] === '-');
@@ -592,6 +675,7 @@ async function runShift(ctx) {
   running = false;
   await carers;
   if (extras.after) await guarded('cuối ca', () => extras.after(ctx));
+  await guarded('kho', () => topUpGrainIfNeeded(ctx));
   await tidyUntilShiftEnds(setups);
 }
 /** Whether this shift has begun today: a meal of its slot on one of the four is no longer waiting. */
@@ -648,14 +732,16 @@ async function dayReport(date) {
   return `### Ngày ${date}: ${run.length} buổi tập, ${fed} bữa ăn\n\n${mdTable(['Ngựa', 'Ca sáng', 'Ca trưa', 'Ca tối', 'Bữa đã ăn', 'Kết luận', 'Quá trình', 'Vì sao'], rows)}\n`;
 }
 async function raceReport() {
-  const entries = ((await read('trainer', '/races')) || []).filter((e) => [FIRST, SECOND, THIRD, LATER].some((r) => r.name === e.raceName) || e.raceName === OLD_RENAME.to || e.raceName === 'Winnter Fu');
+  const cups = new Set([-1, 0, 1].map((w) => weeklyCup(REPORT_DAY, w).name));
+  const since = addDays(REPORT_DAY, -14);
+  const entries = ((await read('trainer', '/races')) || []).filter((e) => cups.has(e.raceName) || (e.raceDate && dayOf(e.raceDate) >= since));
   const rows = [...entries].sort((a, b) => new Date(a.raceDate) - new Date(b.raceDate)).map((e) => [e.raceName, dayOf(e.raceDate), e.horse?.name, e.status, e.result || '', e.prizeMoney ? demo.vnd(e.prizeMoney) : '', e.decision?.reason || '']);
   return `### Các giải\n\n${mdTable(['Giải', 'Ngày', 'Ngựa', 'Trạng thái', 'Kết quả', 'Thưởng', 'Lý do quyết định'], rows)}\n`;
 }
-/** The morning of 13/11: the whole campaign, day by day, then the horses' last word and the board. */
+/** Last 7 days summary, today's breakdown, races, horse achievements, and current grain/forage stock. */
 async function finalReport() {
   const sessions = (await read('trainer', '/training/sessions')) || [];
-  const days = Object.keys(ROTA);
+  const days = Array.from({ length: 7 }, (_, i) => addDays(TODAY, i - 6));
   const rows = [];
   for (const date of days) {
     const mine = sessions.filter((s) => s.scheduledAt && dayOf(s.scheduledAt) === date);
@@ -668,7 +754,7 @@ async function finalReport() {
   const board = (await allHorses()).filter((h) => h.achievements?.length).map((h) => [h.name, h.achievements.map((a) => `${a.race}: ${a.result}`).join('; ')]);
   const stock = ((await read('manager', '/inventory')) || []).filter((i) => i.category === 'feed').map((i) => [i.name, `${i.quantity} ${i.unit}`]);
   return [
-    `### Tổng kết ${days[0]} → ${days[days.length - 1]}\n\n${mdTable(['Ngày', 'Buổi đã chạy', 'Đạt', 'Chưa đạt', 'Xong', 'Lỡ giờ', 'Dừng', 'Bữa đã ăn'], rows)}\n`,
+    `### Tổng kết 7 ngày (${days[0]} → ${days[days.length - 1]})\n\n${mdTable(['Ngày', 'Buổi đã chạy', 'Đạt', 'Chưa đạt', 'Xong', 'Lỡ giờ', 'Dừng', 'Bữa đã ăn'], rows)}\n`,
     await dayReport(days[days.length - 1]),
     await raceReport(),
     `### Bảng thành tích\n\n${mdTable(['Ngựa', 'Thành tích'], board)}\n`,
@@ -711,13 +797,14 @@ async function main() {
   }
   const ctx = await demo.preflight(accounts);
   if (!ctx) return;
-  if (!ROTA[ROTA_DAY]) {
-    log('Kiểm tra trước', '-', `${ROTA_DAY}: ngoài các ngày của đợt này, không có việc`, true);
+  const plan = planForDay(ROTA_DAY, SHIFT);
+  if (!plan) {
+    log('Kiểm tra trước', '-', `${ROTA_DAY} ${SHIFT}: không có lịch chạy`, true);
     return;
   }
   if (!WRITE) {
     const { stalls = [], waiting = [] } = await stallsNow();
-    log('Kiểm tra trước', '-', `chỉ đọc: ${ROTA_DAY} ${SHIFT} sẽ chạy khi có DEFENSE_CONFIRM=write`, true, `${TEST_HORSES.map((w, i) => `${w}: ${ROTA[ROTA_DAY][SHIFT][i]}`).join('; ')}. ${stalls.filter((s) => !s.occupied && !s.reservedFor).length} chuồng trống, ${waiting.length} ngựa chờ chuồng`);
+    log('Kiểm tra trước', '-', `chỉ đọc: ${ROTA_DAY} ${SHIFT} sẽ chạy khi có DEFENSE_CONFIRM=write`, true, `${TEST_HORSES.map((w, i) => `${w}: ${plan[i]}`).join('; ')}. ${stalls.filter((s) => !s.occupied && !s.reservedFor).length} chuồng trống, ${waiting.length} ngựa chờ chuồng`);
     return;
   }
   if (await shiftBegun()) {
@@ -729,26 +816,42 @@ async function main() {
   await runShift(ctx);
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    log('Lỗi', '-', 'kịch bản dừng', false, error.message);
-  })
-  .finally(() => {
-    if (SHIFT === 'early') return;
-    const head = `### Dữ liệu cho hội đồng · ${TODAY} · ${SHIFT_WORDS[SHIFT] || 'Báo cáo'} (${hhmm(new Date())})`;
-    const caseTable = cases.length ? `${mdTable(['Ngựa', 'Case', 'Kết quả'], cases.map((c) => [c.horse, c.label, c.result]))}\n\n` : '';
-    demo.summary(`${head}\n\n${reportText}${caseTable}${demo.steps.length ? demo.table(demo.steps) : ''}`);
-    if (reportText) console.log(reportText);
-    // Annotations: the public API shows them without a token, so the end-of-day diagnosis can read them.
-    if (process.env.GITHUB_ACTIONS) for (const s of demo.steps.filter((x) => !x.ok).slice(0, 10)) console.log(`::error::${s.flow}: ${s.action}. ${s.detail}`);
-    // The run the workflow asks for next (its last step), even when a case failed: the day goes on.
-    const now = new Date();
-    const ask = WRITE ? clock.nextAfter({ shift: SHIFT, now, began, hasDay: (day) => Boolean(ROTA[day]) }) : null;
-    if (ask) {
-      const waitSec = Math.max(0, Math.round((ask.at - now) / 1000));
-      console.log(`Lượt kế: ${ask.next} lúc ${hhmm(ask.at)} (chờ ${Math.round(waitSec / 60)} phút).`);
-      if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `next=${ask.next}\nwait=${waitSec}\n`);
-    }
-    if (demo.hasFailed()) process.exitCode = 1;
-  });
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      console.error(error);
+      log('Lỗi', '-', 'kịch bản dừng', false, error.message);
+    })
+    .finally(() => {
+      if (SHIFT === 'early') return;
+      const head = `### Auto test 3 ca · ${TODAY} · ${SHIFT_WORDS[SHIFT] || 'Báo cáo'} (${hhmm(new Date())})`;
+      const caseTable = cases.length ? `${mdTable(['Ngựa', 'Case', 'Kết quả'], cases.map((c) => [c.horse, c.label, c.result]))}\n\n` : '';
+      demo.summary(`${head}\n\n${reportText}${caseTable}${demo.steps.length ? demo.table(demo.steps) : ''}`);
+      if (reportText) console.log(reportText);
+      // Annotations: the public API shows them without a token, so the end-of-day diagnosis can read them.
+      if (process.env.GITHUB_ACTIONS) for (const s of demo.steps.filter((x) => !x.ok).slice(0, 10)) console.log(`::error::${s.flow}: ${s.action}. ${s.detail}`);
+      // The run the workflow asks for next (its last step), even when a case failed: the day goes on.
+      const now = new Date();
+      const ask = WRITE ? clock.nextAfter({ shift: SHIFT, now, began, hasDay: () => true }) : null;
+      if (ask) {
+        const waitSec = Math.max(0, Math.round((ask.at - now) / 1000));
+        console.log(`Lượt kế: ${ask.next} lúc ${hhmm(ask.at)} (chờ ${Math.round(waitSec / 60)} phút).`);
+        if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `next=${ask.next}\nwait=${waitSec}\n`);
+      }
+      if (demo.hasFailed()) process.exitCode = 1;
+    });
+}
+
+module.exports = {
+  addDays,
+  weekDayIndex,
+  weeklyCup,
+  drillRace,
+  TEST_HORSES,
+  RATION_TIMES,
+  WORK,
+  WEEK_ROTA,
+  WEEK_EXTRAS,
+  planForDay,
+  extrasKeyFor,
+};

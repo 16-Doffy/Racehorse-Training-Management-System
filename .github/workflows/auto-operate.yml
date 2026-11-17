@@ -6,8 +6,8 @@ name: Auto operate (live)
 # 07:30 sessions were missed), so a run stays on for most of the 6 hours a job may last, the next one queued
 # behind it, and the schedule asks from 02:00 to be on before the first meal. Minutes 17 and 47, off the busy :00 and
 # :30: asked on those, it did not run once between 10:08 and 16:30 on 02/11, while defense-data on :05/:10/:35 did.
-# The script stops by itself after OPERATE_UNTIL. The four horses of defense-data work (defenseData.js) need
-# their breakfasts left for it, so they are left alone until OPERATE_SKIP_UNTIL.
+# The four horses of defense-data work (defenseData.js) need their meals and sessions left for it,
+# so they stay listed in OPERATE_SKIP while all real horses continue running automatically here.
 on:
   schedule:
     - cron: '17,47 * * * *' # Every 30 minutes (off :00/:30); autoOperate runs meals and sessions as due.
@@ -35,3 +35,4 @@ jobs:
           DEMO_ACCOUNTS: ${{ secrets.DEMO_ACCOUNTS }}
           OPERATE_CONFIRM: 'write'
           OPERATE_RUN_MIN: '340'
+          OPERATE_SKIP: 'Orion,Pegasus,Demo · Sẵn sàng tập,Demo · Diễn tập chấn thương'
