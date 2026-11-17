@@ -8,15 +8,15 @@ test('care routines: a job for many days becomes each day\'s tasks, follows its 
   const { api, raw, models, users } = ctx;
   const { horse } = await intake(ctx, 'TEST Routine Horse');
   const pad = (n) => String(n).padStart(2, '0');
-  const later = (minutes) => {
+  const later = (minutes, fallback = '23:59') => {
     const d = new Date(Date.now() + minutes * 60000);
     // Still today: a time late in the day keeps the test meaningful near midnight.
-    if (d.getDate() !== new Date().getDate()) return '23:59';
+    if (d.getDate() !== new Date().getDate()) return fallback;
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
   const today = new Date();
   const inDays = (n) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + n).toISOString();
-  const [first, second] = [later(30), later(90)].sort();
+  const [first, second] = [later(30, '23:57'), later(90, '23:59')].sort();
   const body = {
     horse: horse._id, taskType: 'icing', times: first === second ? [first] : [first, second], durationMinutes: 20,
     instructions: 'Ngâm hai chân trước trong nước đá 20 phút, lau khô, so độ sưng hai bên.', startDate: inDays(0), endDate: inDays(13),
@@ -66,7 +66,8 @@ test('care routines: a job for many days becomes each day\'s tasks, follows its 
   assert.equal((await models.DailyTask.find({ routine: routine._id, status: 'skipped' })).length, 1, 'a skipped time is not made again');
 
   // The routine changes: today's open tasks follow it.
-  const updated = await api('trainer', 'PUT', `/stable/routines/${routine._id}`, { ...body, times: [second === first ? later(120) : second], durationMinutes: 30, startDate: routine.startDate });
+  const nextTime = second === first ? (first === '23:58' ? '23:59' : '23:58') : second;
+  const updated = await api('trainer', 'PUT', `/stable/routines/${routine._id}`, { ...body, times: [nextTime], durationMinutes: 30, startDate: routine.startDate });
   assert.equal(updated.durationMinutes, 30);
   tasks = await models.DailyTask.find({ routine: routine._id, status: 'pending' }).lean();
   assert.equal(tasks.length, 1);
