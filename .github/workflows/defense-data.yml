@@ -8,26 +8,6 @@ name: Defense data (live)
 # → evening at 16:00 → the day's report → a night relay → morning at 05:00. The schedules stay as a fallback.
 # A run shown as cancelled with no steps was only replaced in the queue. Read each run's Summary for its report.
 on:
-  schedule:
-    - cron: '5 19 1-11 11 *' # 02:05 Vietnam time, asking for the morning shift (05:00)
-    - cron: '35 19 1-11 11 *'
-    - cron: '5 20 1-11 11 *'
-    - cron: '35 20 1-11 11 *'
-    - cron: '5 21 1-11 11 *'
-    - cron: '35 21 1-11 11 *'
-    - cron: '5 22 1-11 11 *'
-    - cron: '35 22 1-11 11 *'
-    - cron: '10 1 2-12 11 *' # 08:10, asking for the noon shift (11:00)
-    - cron: '10 2 2-12 11 *'
-    - cron: '10 3 2-12 11 *'
-    - cron: '10 4 2-12 11 *'
-    - cron: '10 6 2-12 11 *' # 13:10, asking for the evening shift (16:00)
-    - cron: '10 7 2-12 11 *'
-    - cron: '10 8 2-12 11 *'
-    - cron: '10 9 2-12 11 *'
-    - cron: '40 15 2-12 11 *' # 22:40, the day's report
-    - cron: '30 16 2-12 11 *'
-    - cron: '7 0 13 11 *' # 07:07 on 13/11, the whole campaign's report
   workflow_dispatch:
     inputs:
       shift:

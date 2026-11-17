@@ -11,9 +11,6 @@ name: Demo flows (live)
 # or dropped schedule (GitHub delayed the 16/10 run by two hours); it stops when the work is done.
 # Remove the schedule after the demo.
 on:
-  schedule:
-    - cron: '0 22 26 10 *' # 05:00 Vietnam time on 27/10 (the mentor's day): the rounds
-    - cron: '30 23 26 10 *' # 06:30 on 27/10: backup, skipped once round 1 exists
   workflow_dispatch:
     inputs:
       mode:
