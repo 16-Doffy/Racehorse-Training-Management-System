@@ -87,8 +87,9 @@ const ctrl = crudFactory(InventoryItem, {
   // The request history and proposal flags are managed by the endpoints below, not the item form.
   fields: ['name', 'category', 'feedType', 'description', 'quantity', 'unit', 'packUnit', 'packSize', 'reorderLevel', 'price', 'expiryDate', 'stableBlock', 'isActive'],
   validate: checkItem,
-  // A new item is news to the grooms who use it; an edit only reloads the open screens (broadcastWrites).
-  afterWrite: async (item, _req, existing) => {
+  // A new item is news to the grooms who use it; when an existing item's expiryDate is edited in
+  // the Manager form, keep its undated/matching batches synced so FEFO consumption does not wipe HSD.
+  afterWrite: async (item, req, existing) => {
     if (!existing) {
       if (item.quantity > 0 && (!item.batches || item.batches.length === 0)) {
         item.batches = [{ qty: item.quantity, expiryDate: item.expiryDate || null, receivedAt: new Date() }];
@@ -96,6 +97,31 @@ const ctrl = crudFactory(InventoryItem, {
         await item.save();
       }
       await announceNewItem(item);
+      return;
+    }
+    if (req.body?.expiryDate !== undefined) {
+      ensureBatches(item);
+      const nextExpiry = item.expiryDate || null;
+      if (nextExpiry) {
+        let filled = false;
+        for (const batch of item.batches) {
+          if (batch.qty > 0 && !batch.expiryDate) {
+            batch.expiryDate = nextExpiry;
+            filled = true;
+          }
+        }
+        if (!filled && item.batches.length === 1 && item.batches[0].qty > 0) {
+          item.batches[0].expiryDate = nextExpiry;
+        }
+      } else {
+        for (const batch of item.batches) {
+          if (batch.qty > 0 && existing.expiryDate && batch.expiryDate && new Date(batch.expiryDate).getTime() === new Date(existing.expiryDate).getTime()) {
+            batch.expiryDate = null;
+          }
+        }
+      }
+      syncItemFromBatches(item);
+      await item.save();
     }
   },
 });
