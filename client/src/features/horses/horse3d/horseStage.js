@@ -4,6 +4,12 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { MOVING_HORSE } from './horseMotion';
+import {
+  createSurfaceMaps,
+  createInfieldTexture,
+  createTreelineBackdrop,
+  createHoofParticles,
+} from './trackSurfacePbr';
 
 /**
  * The stage of the moving horse (MovingHorse3D): the horse on the surface its plan trains on, the
@@ -42,7 +48,7 @@ const GRASS_DEPTH = { near: 3.2, far: -3.3, mown: 1.0 };
 // the elbow (0.8 m), Forearm at the knee (0.45 m), Hand at the fetlock (0.15 m); a hind leg's Thing at
 // the hip (1.15 m), Calf at the stifle (0.82 m), HorseLink at the hock (0.5 m), Foot at the fetlock.
 // RF/LF/RH/LH: right/left fore/hind; the camera sees the right side.
-const LEGS = {
+export const LEGS = {
   RF: { upper: 'BN_R_UpperArm', knee: 'BN_R_Forearm', fetlock: 'BN_R_Hand', hoof: 'BN_R_Toe_047', chain: ['BN_R_Clavicle', 'BN_R_UpperArm', 'BN_R_Forearm', 'BN_R_Hand', 'BN_R_Toe_047'] },
   LF: { upper: 'BN_L_UpperArm', knee: 'BN_l_Forearm', fetlock: 'BN_L_Hand', hoof: 'BN_L_Toe_042', chain: ['BN_L_Clavicle', 'BN_L_UpperArm', 'BN_l_Forearm', 'BN_L_Hand', 'BN_L_Toe_042'] },
   RH: { upper: 'BN_R_Thing', stifle: 'BN_R_Calf', knee: 'BN_R_HorseLink', fetlock: 'BN_R_Foot', hoof: 'BN_R_Toe_2_059', chain: ['BN_R_Thing', 'BN_R_Calf', 'BN_R_HorseLink', 'BN_R_Foot', 'BN_R_Toe_2_059'] },
@@ -50,13 +56,13 @@ const LEGS = {
 };
 // A sore leg held off the ground (radians, positive anticlockwise seen from the camera): a foreleg
 // folds at the knee and fetlock, a hind leg draws up at the hip and hock and rests on its toe.
-const HOLD = {
+export const HOLD = {
   fore: { upper: 0.25, knee: -1.5, fetlock: -0.6 },
   hind: { upper: 0.35, stifle: -0.5, knee: 1.3, fetlock: -0.8 },
 };
 // Where a mark goes for an injury that is not in a leg (vet's body regions, horseMotion.js markAt).
-const MARK_BONES = { head: 'BN_Head_00', neck: 'BN_Neck_02', back: 'BN_Spine_02', shoulder: 'BN_R_Clavicle', croup: 'BN_Pelvis', chest: 'BN_Spine_00', belly: 'BN_Stomach' };
-const NECK = 'BN_Neck_00';
+export const MARK_BONES = { head: 'BN_Head_00', neck: 'BN_Neck_02', back: 'BN_Spine_02', shoulder: 'BN_R_Clavicle', croup: 'BN_Pelvis', chest: 'BN_Spine_00', belly: 'BN_Stomach' };
+export const NECK = 'BN_Neck_00';
 // A trot made from the walk: each leg's swing moved in the cycle so the diagonal pairs (left fore with
 // right hind, right fore with left hind) step together, half a cycle apart. The walk's swing peaks are
 // at LF 0, RH 0.175, RF 0.425, LH 0.75 of its cycle (measured).
@@ -708,36 +714,61 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
   // The world tilts on a slope (uphill work); the track and rails scroll inside it.
   const world = new THREE.Group();
   scene.add(world);
+  const maxAniso = renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 4;
   let surfaceKind = null;
-  let trackTexture = null;
-  const track = new THREE.Mesh(new THREE.PlaneGeometry(TRACK_LENGTH, 7), new THREE.MeshStandardMaterial({ roughness: 0.95 }));
+  let surfaceMaps = null;
+  const track = new THREE.Mesh(
+    new THREE.PlaneGeometry(TRACK_LENGTH, 7.2),
+    new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0.02, bumpScale: 0.07 }),
+  );
   track.rotation.x = -Math.PI / 2;
   world.add(track);
+  // Crisp inner white curb & rail ground shadow along the far track edge.
+  const curb = new THREE.Mesh(
+    new THREE.BoxGeometry(TRACK_LENGTH, 0.09, 0.14),
+    new THREE.MeshStandardMaterial({ color: '#ece9e2', roughness: 0.78 }),
+  );
+  curb.position.set(0, 0.04, -3.55);
+  world.add(curb);
+  const railShadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(TRACK_LENGTH, 0.65),
+    new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.14, depthWrite: false }),
+  );
+  railShadow.rotation.x = -Math.PI / 2;
+  railShadow.position.set(0, 0.008, -3.22);
+  world.add(railShadow);
   // A soft shadow under the horse, painted once.
   const shadowCanvas = document.createElement('canvas');
   shadowCanvas.width = 128;
   shadowCanvas.height = 128;
   const sg = shadowCanvas.getContext('2d');
   const gradient = sg.createRadialGradient(64, 64, 4, 64, 64, 64);
-  gradient.addColorStop(0, 'rgba(0,0,0,0.45)');
+  gradient.addColorStop(0, 'rgba(0,0,0,0.48)');
   gradient.addColorStop(1, 'rgba(0,0,0,0)');
   sg.fillStyle = gradient;
   sg.fillRect(0, 0, 128, 128);
   const shadowTexture = new THREE.CanvasTexture(shadowCanvas);
-  const blob = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.9), new THREE.MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false }));
+  const blob = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.95), new THREE.MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false }));
   blob.rotation.x = -Math.PI / 2;
-  blob.position.y = 0.01;
+  blob.position.y = 0.012;
   // The horse and its shadow stand together: in the paddock a walking horse takes them round it.
   const stand = new THREE.Group();
   world.add(stand);
   stand.add(blob);
+  // Hoof kickback particles (dirt dust, golden sand spray, turf divots, synthetic rubber flecks).
+  const hoofParticles = createHoofParticles(72);
+  world.add(hoofParticles.points);
   // Where a walking horse is on its round of the paddock: it starts on the far side, walking to the right.
   let lap = -Math.PI / 2;
   const UP = new THREE.Vector3(0, 1, 0);
-  const infield = new THREE.Mesh(new THREE.PlaneGeometry(TRACK_LENGTH, 40), new THREE.MeshStandardMaterial({ color: '#4a7a3a', roughness: 1 }));
+  const infieldTex = createInfieldTexture(maxAniso);
+  infieldTex.repeat.set(TRACK_LENGTH / 6, 42 / 6);
+  const infield = new THREE.Mesh(new THREE.PlaneGeometry(TRACK_LENGTH, 44), new THREE.MeshStandardMaterial({ map: infieldTex, roughness: 0.96 }));
   infield.rotation.x = -Math.PI / 2;
-  infield.position.set(0, -0.01, 0);
+  infield.position.set(0, -0.012, -16);
   world.add(infield);
+  const treeline = createTreelineBackdrop(TRACK_LENGTH + 36);
+  scene.add(treeline.group);
   // A white rail on the far side: posts and a top rail; only the posts move, the rail is endless.
   const postGeo = new THREE.BoxGeometry(0.08, 1.05, 0.08);
   const white = new THREE.MeshStandardMaterial({ color: '#f4f2ec', roughness: 0.6 });
@@ -986,7 +1017,9 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     if (want) ensurePaddock();
     inPaddock = want;
     if (paddock) paddock.visible = want;
-    for (const o of [track, infield, posts, rail]) o.visible = !want;
+    for (const o of [track, curb, railShadow, infield, posts, rail]) o.visible = !want;
+    treeline.group.visible = !want && !inPasture;
+    hoofParticles.points.visible = !want && !inPasture;
     lowerRail.visible = inPasture && !want;
     if (grass) grass.visible = Boolean(SURFACES[surfaceKind]?.grass) && !want;
     if (barn) barn.visible = inPasture && !want;
@@ -997,11 +1030,19 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     controls.maxAzimuthAngle = strip ? 0.7 : Infinity;
   };
 
-  // The sore leg: a pulsing red ring at its hoof.
-  const marker = new THREE.Mesh(new THREE.RingGeometry(0.11, 0.16, 32), new THREE.MeshBasicMaterial({ color: '#ef4444', transparent: true, opacity: 0.9, depthTest: false }));
+  // The sore leg: a pulsing red/orange ring at its hoof + soft ground halo underneath.
+  const marker = new THREE.Mesh(new THREE.RingGeometry(0.11, 0.165, 32), new THREE.MeshBasicMaterial({ color: '#ef4444', transparent: true, opacity: 0.92, depthTest: false }));
   marker.visible = false;
   marker.renderOrder = 10;
   scene.add(marker);
+  const groundHalo = new THREE.Mesh(
+    new THREE.RingGeometry(0.24, 0.36, 32),
+    new THREE.MeshBasicMaterial({ color: '#ef4444', transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  groundHalo.rotation.x = -Math.PI / 2;
+  groundHalo.position.y = 0.02;
+  groundHalo.visible = false;
+  world.add(groundHalo);
 
   let horse = null;
   // Turned out in the pasture a horse wears no saddle or bridle (one material in the model); on the track it does.
@@ -1033,20 +1074,33 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     });
   };
 
-  const play = () => {
+  // Physical velocity & injury choreography state: gives smooth Gallop -> Trot -> Walk -> Idle pull-ups
+  // and natural 4-phase injury transitions (stumble -> limp -> careful halt -> guarded leg hold).
+  let actualKmh = 0;
+  let speedInitialized = false;
+  let holdBlend = 0;
+  let stumbleTimer = 0;
+  let prevInjuryPhase = null;
+
+  const switchClip = (clipName, timeScale = 1, fade = 0.35, onceThen = null) => {
     if (!mixer) return;
-    const name = motion.clip && actions[motion.clip] ? motion.clip : 'Idle';
+    const name = clipName && actions[clipName] ? clipName : 'Idle';
     const next = actions[name];
-    next.timeScale = motion.timeScale || 1;
+    next.timeScale = timeScale || 1;
     if (current === next) return;
     next.reset();
-    if (motion.then && name === motion.clip) {
+    if (onceThen && name === clipName) {
       next.setLoop(THREE.LoopOnce, 1);
       next.clampWhenFinished = true;
     } else next.setLoop(THREE.LoopRepeat, Infinity);
     next.play();
-    if (current) current.crossFadeTo(next, 0.35, false);
+    if (current) current.crossFadeTo(next, fade, false);
     current = next;
+  };
+
+  const play = () => {
+    if (!mixer) return;
+    switchClip(motion.clip, motion.timeScale || 1, 0.35, motion.then);
   };
 
   const ready = loadModel().then((gltf) => {
@@ -1130,13 +1184,50 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     // Ease into a slope.
     tilt.now += ((motion.tilt || 0) * (Math.PI / 180) - tilt.now) * Math.min(1, dt * 3);
     world.rotation.z = tilt.now;
-    // The ground streams back at the horse's speed.
+
+    // Smooth physical speed easing so stopping / pulling up decelerates naturally (~3.8–4.2s)
+    // through Gallop -> Trot -> Walk -> Idle instead of snapping instantaneously to 0 km/h.
+    const targetKmh = Number(motion.kmh) || 0;
+    if (!speedInitialized) {
+      actualKmh = targetKmh;
+      speedInitialized = true;
+    } else if (reduceMotion) {
+      actualKmh = targetKmh;
+    } else if (targetKmh < actualKmh) {
+      // Natural racehorse braking curve: firm initial check, then gentle cooling walk-down.
+      const decel = motion.injuryPhase ? Math.max(4.5, actualKmh * 0.55) : Math.max(3.6, actualKmh * 0.52);
+      actualKmh = Math.max(targetKmh, actualKmh - decel * dt);
+      if (targetKmh === 0 && actualKmh < 0.35) actualKmh = 0;
+    } else if (targetKmh > actualKmh) {
+      const accel = Math.max(8, (targetKmh - actualKmh) * 1.4);
+      actualKmh = Math.min(targetKmh, actualKmh + accel * dt);
+    }
+    const braking = targetKmh === 0 && actualKmh > 0.35;
+    if (stumbleTimer > 0) stumbleTimer = Math.max(0, stumbleTimer - dt);
+
+    // Derive natural gait & playback speed while decelerating to rest.
+    if (mixer && braking) {
+      if (motion.injuryPhase || motion.limp) {
+        switchClip('Walk', Math.min(1.15, Math.max(0.45, actualKmh / 9)), 0.3);
+      } else if (actualKmh > 22) {
+        switchClip('Gallop', Math.min(1.15, Math.max(0.54, actualKmh / 48)), 0.3);
+      } else if (actualKmh > 9.5) {
+        switchClip('Trot', Math.min(1.45, Math.max(0.72, actualKmh / 13)), 0.35);
+      } else if (actualKmh > 0.6) {
+        switchClip('Walk', Math.min(1.25, Math.max(0.52, actualKmh / 6.5)), 0.35);
+      }
+    } else if (mixer && targetKmh === 0 && actualKmh <= 0.35 && current !== actions[motion.clip || 'Idle']) {
+      switchClip(motion.clip || 'Idle', motion.timeScale || 1, 0.45, motion.then);
+    }
+
+    // The ground streams back at the horse's actual smooth speed.
+    const mps = actualKmh / 3.6;
     if (inPaddock) {
       // In the paddock a walking horse goes round it, facing its way, instead of the ground streaming under it.
-      if ((motion.kmh || 0) > 0.5 && !reduceMotion) {
+      if (actualKmh > 0.5 && !reduceMotion) {
         const from = stand.position.clone();
         const yaw = stand.rotation.y;
-        lap += ((motion.kmh || 0) / 3.6 / PADDOCK.walk) * dt;
+        lap += (mps / PADDOCK.walk) * dt;
         stand.position.set(Math.cos(lap) * PADDOCK.walk, 0, Math.sin(lap) * PADDOCK.walk);
         stand.rotation.y = -lap - Math.PI / 2;
         // The camera goes with it and turns as it turns: the walking horse stays in view, seen from inside the paddock.
@@ -1147,8 +1238,10 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
         camera.position.copy(controls.target).add(offset);
       }
     } else if (!reduceMotion && view === 'side') {
-      travelled += ((motion.kmh || 0) / 3.6) * dt;
-      if (trackTexture) trackTexture.offset.x = (travelled / TILE_M) % 1;
+      travelled += mps * dt;
+      if (surfaceMaps) surfaceMaps.setOffsetX((travelled / TILE_M) % 1);
+      infieldTex.offset.x = (travelled / 6) % 1;
+      treeline.setOffsetX(((travelled * 0.012) % 1 + 1) % 1);
       placePosts(travelled);
       if (raceMarks.visible) placeMarks(travelled);
       if (grass) grass.position.x = -(travelled % GRASS_PATCH);
@@ -1156,6 +1249,10 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       const loop = (x) => ((((x - travelled) % BARN_LOOP) + BARN_LOOP * 1.5) % BARN_LOOP) - BARN_LOOP / 2;
       if (barn) barn.position.x = loop(BARN_X);
       if (tree) tree.position.x = loop(TREE_X);
+      if (hoofParticles.points.visible) {
+        hoofParticles.emitForHorse(0, 0, actualKmh, dt);
+        hoofParticles.update(dt, mps);
+      }
     }
     // A trial's finish post comes in from the right as the end nears; the hills show on a slope.
     if (finishAt != null) {
@@ -1185,15 +1282,49 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       const phase = current ? (current.time / current.getClip().duration) % 1 : 0;
       const leg = LEGS[motion.leg] ? motion.leg : 'RF';
       const fore = leg.endsWith('F');
+      const rightSide = leg.startsWith('R');
       const sore = bones[leg] || {};
+
+      // Subtle body lean away from the sore leg during stumble / limp, eased back to upright at rest.
+      let targetRoll = 0;
+      let targetPitch = 0;
+      if (stumbleTimer > 0) {
+        const k = Math.sin((stumbleTimer / 1.15) * Math.PI);
+        targetRoll = (rightSide ? -0.09 : 0.09) * k;
+        targetPitch = (fore ? -0.08 : 0.06) * k;
+        swing(bones.neck, 0.38 * k);
+      } else if ((motion.limp || (braking && motion.injuryPhase)) && actualKmh > 0.6) {
+        const stepImpact = Math.max(0, Math.sin(phase * Math.PI * 2));
+        targetRoll = (rightSide ? -0.055 : 0.055) * stepImpact;
+      }
+      if (!inPaddock) {
+        stand.rotation.x += (targetRoll - stand.rotation.x) * Math.min(1, dt * 8);
+        stand.rotation.z += (targetPitch - stand.rotation.z) * Math.min(1, dt * 8);
+      }
+
       // A lame leg: stiff (held near its rest pose). Lame in front, the head nods up as the sore leg
       // lands; lame behind, it dips instead.
-      if (motion.limp) {
-        for (const key of ['upper', 'stifle', 'knee', 'fetlock']) if (sore[key]) sore[key].quaternion.slerp(rest.get(sore[key]), 0.55);
-        swing(bones.neck, (fore ? 0.3 : -0.15) * Math.max(0, Math.sin(phase * Math.PI * 2)));
+      if ((motion.limp || (braking && motion.injuryPhase)) && actualKmh > 0.5) {
+        for (const key of ['upper', 'stifle', 'knee', 'fetlock']) if (sore[key]) sore[key].quaternion.slerp(rest.get(sore[key]), 0.62);
+        swing(bones.neck, (fore ? 0.34 : -0.18) * Math.max(0, Math.sin(phase * Math.PI * 2)));
       }
-      // The sore leg held off the ground.
-      if (motion.hold) for (const [key, angle] of Object.entries(fore ? HOLD.fore : HOLD.hind)) swing(sore[key], angle);
+
+      // Smoothly lift & fold the sore leg once the horse has slowed down (over ~0.9s, never snapping in 1 frame).
+      const wantHold = Boolean(motion.hold && actualKmh < 1.2);
+      holdBlend += ((wantHold ? 1 : 0) - holdBlend) * Math.min(1, dt * (wantHold ? 3.2 : 5));
+      if (holdBlend > 0.01) {
+        for (const [key, angle] of Object.entries(fore ? HOLD.fore : HOLD.hind)) swing(sore[key], angle * holdBlend);
+      }
+
+      // Natural rein-check neck lift during normal deceleration, and gentle breathing cadence when standing.
+      if (braking && !motion.injuryPhase && actualKmh > 6) {
+        swing(bones.neck, 0.14 * Math.min(1, actualKmh / 35));
+      } else if (actualKmh <= 0.5 && current === actions.Idle) {
+        const breathRate = motion.hold || motion.injuryPhase ? 2.6 : 1.3;
+        const breathAmp = motion.hold || motion.injuryPhase ? 0.045 : 0.02;
+        swing(bones.neck, Math.sin((now / 1000) * breathRate) * breathAmp - (motion.hold ? 0.08 : 0));
+      }
+
       // The trot's spring: the body rises twice a stride, as each diagonal pair pushes off.
       horse.position.y = current === actions.Trot ? baseY + 0.035 * Math.abs(Math.sin(phase * Math.PI * 2)) : baseY;
       // A tired horse carries its head low and nods heavily with each stride.
@@ -1201,11 +1332,19 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       // The mark: on the sore leg's hoof, or on the part of the body the vet named (motion.markAt).
       const spot = motion.markAt ? markBones[motion.markAt] : sore.hoof;
       marker.visible = Boolean(motion.marker && spot);
+      groundHalo.visible = Boolean(motion.marker && !motion.markAt && spot && !inPaddock);
       if (marker.visible) {
         horse.updateMatrixWorld(true);
         spot.getWorldPosition(marker.position);
         marker.quaternion.copy(camera.quaternion);
-        marker.scale.setScalar(1 + 0.25 * Math.sin(now / 180));
+        const pulse = 1 + 0.28 * Math.sin(now / (stumbleTimer > 0 ? 110 : 180));
+        marker.scale.setScalar(pulse);
+        marker.material.color.set(stumbleTimer > 0 ? '#f97316' : '#ef4444');
+        if (groundHalo.visible) {
+          groundHalo.position.set(marker.position.x, 0.022, marker.position.z);
+          groundHalo.scale.setScalar(0.95 + 0.25 * Math.sin(now / 220));
+          groundHalo.material.color.set(stumbleTimer > 0 ? '#f97316' : '#ef4444');
+        }
       }
     }
     renderer.render(scene, camera);
@@ -1226,6 +1365,19 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     },
     setMotion(next) {
       motion = next || { clip: 'Idle' };
+      const nextPhase = motion.injuryPhase || null;
+      // Trigger dramatic stumble dip + dust burst right when injury starts.
+      if (nextPhase === 'stumble' && prevInjuryPhase !== 'stumble') {
+        stumbleTimer = 1.15;
+        if (hoofParticles.points.visible) hoofParticles.burst(0.35, 0, 18);
+      }
+      prevInjuryPhase = nextPhase;
+      // If a fresh static card mounts already stopped/resting, keep its speed at 0 without sliding.
+      if (!speedInitialized) {
+        actualKmh = Number(motion.kmh) || 0;
+        if (motion.hold && actualKmh === 0 && !motion.stopping) holdBlend = 1;
+        speedInitialized = true;
+      }
       // A trial: race poles; once the next reading ends the run, the finish post, reached a little before
       // that reading so the horse is seen crossing it (the readings' metres are not the stage's: the
       // simulated sensors compress the run).
@@ -1234,7 +1386,8 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       else if (finishAt == null) finishAt = travelled + ((motion.kmh || 0) / 3.6) * Math.max(Math.min(0.4, motion.course.finishIn), motion.course.finishIn - 2);
       if (finishAt == null) finish.visible = false;
       applyScene();
-      play();
+      // Only immediately switch clips when not mid-braking (braking steps smoothly through Gallop -> Trot -> Walk -> Idle).
+      if (!((Number(motion.kmh) || 0) === 0 && actualKmh > 0.5)) play();
     },
     /** The sky of an hour of the day (a session's), or null: the clock in Vietnam in the pasture, a plain sky on the track. */
     setHour(hour) {
@@ -1250,11 +1403,16 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       const next = SURFACES[kind] ? kind : 'dirt';
       if (next === surfaceKind) return;
       surfaceKind = next;
-      trackTexture?.dispose();
-      trackTexture = surfaceTexture(next);
-      trackTexture.repeat.set(TRACK_LENGTH / TILE_M, 7 / TILE_M);
-      track.material.map = trackTexture;
+      surfaceMaps?.dispose();
+      surfaceMaps = createSurfaceMaps(next, maxAniso);
+      surfaceMaps.setRepeat(TRACK_LENGTH / TILE_M, 7.2 / TILE_M);
+      track.material.map = surfaceMaps.map;
+      track.material.bumpMap = surfaceMaps.bumpMap;
+      track.material.bumpScale = surfaceMaps.preset.bumpScale;
+      track.material.roughnessMap = surfaceMaps.roughnessMap;
+      track.material.roughness = surfaceMaps.preset.roughness;
       track.material.needsUpdate = true;
+      hoofParticles.setSurface(next);
       if (SURFACES[next].grass && !grass) {
         grass = makeGrass(grassTime);
         world.add(grass);
@@ -1273,7 +1431,10 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       io.disconnect();
       controls.dispose();
       mixer?.stopAllAction();
-      trackTexture?.dispose();
+      surfaceMaps?.dispose();
+      infieldTex.dispose();
+      treeline.dispose();
+      hoofParticles.dispose();
       shadowTexture.dispose();
       paddockTexture?.dispose();
       pathTexture?.dispose();

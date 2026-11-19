@@ -67,19 +67,58 @@ const LEG_WORDS = { LF: 'chân trước trái', RF: 'chân trước phải', LH:
  * leg. A trial: `remaining` metres left, `step` the metres the last reading added; when the next
  * reading (`finishIn` seconds away — the feed sends one every 5 s) will end the run, its finish post.
  */
-export function liveMotion(session, speed, { stopped = false, remaining, step, finishIn = 5 } = {}) {
+export function liveMotion(session, speed, { stopped = false, finishing = false, injuryElapsedMs = null, remaining, step, finishIn = 5 } = {}) {
   const leg = LEG_OF[session?.simLeg] || 'RF';
-  // Standing with the sore leg off the ground, marked (no rearing pull-up: a lame horse just stops).
-  if (stopped) return { clip: 'Idle', timeScale: 1, hold: true, leg, marker: true, label: `Nghi chấn thương: đã dừng, ${LEG_WORDS[leg]} không chịu lực`, kmh: 0, tone: 'alert' };
+  // Normal run finish: smoothly decelerate through Gallop -> Trot -> Walk -> Idle instead of an abrupt cut.
+  if (finishing) {
+    return {
+      clip: 'Idle',
+      timeScale: 1,
+      stopping: true,
+      label: 'Đang giảm tốc hạ nhiệt · Hoàn tất',
+      kmh: 0,
+    };
+  }
+  // Standing with the sore leg gently eased off the ground after natural halting deceleration.
+  if (stopped) {
+    return {
+      clip: 'Idle',
+      timeScale: 1,
+      hold: true,
+      stopping: true,
+      injuryPhase: 'guarded',
+      leg,
+      marker: true,
+      label: `Nghi chấn thương: đã dừng, ${LEG_WORDS[leg]} không chịu lực`,
+      kmh: 0,
+      tone: 'alert',
+    };
+  }
   const motion = motionOfKind(session?.kind, speed ?? 0);
   if (session?.kind === 'trial' && motion.kmh) {
     motion.course = { remaining, finishIn: remaining != null && step > 0 && remaining <= step ? finishIn : null };
     if (remaining != null) motion.label = `Chạy thử, còn ${Math.max(0, Math.round(remaining))} m`;
   }
   if (session?.simScenario === 'tired' && motion.kmh) return { ...motion, tired: true, label: `${motion.label}, đang đuối sức`, tone: 'warn' };
-  // Lame: a short, stiff stride on the sore leg, the head nodding as it lands, whatever the speed.
-  if (session?.simScenario === 'injury' && motion.kmh) {
-    return { clip: 'Walk', timeScale: clamp(motion.kmh / 10, 0.8, 1.3), limp: true, leg, marker: true, label: `Khập khiễng, nghi đau ${LEG_WORDS[leg]}`, kmh: motion.kmh, tilt: motion.tilt, tone: 'alert' };
+  // Natural 2-step on-track injury choreography before auto-stop:
+  //   0..1.3s: sudden stumble / stride break + dust burst + glowing joint marker
+  //   >1.3s: asymmetric slow limping walk favoring the injured leg
+  if (session?.simScenario === 'injury') {
+    const stumbling = injuryElapsedMs != null && injuryElapsedMs < 1300;
+    const baseKmh = motion.kmh || 18;
+    const limpKmh = stumbling ? Math.max(12, Math.min(24, baseKmh * 0.55)) : Math.max(5.5, Math.min(10.5, baseKmh * 0.35));
+    return {
+      clip: 'Walk',
+      timeScale: clamp(limpKmh / 9.5, 0.72, 1.25),
+      limp: true,
+      injuryPhase: stumbling ? 'stumble' : 'limp',
+      leg,
+      marker: true,
+      label: stumbling ? `Hụt bước · Nghi chấn thương ${LEG_WORDS[leg]}` : `Khập khiễng giảm tốc · Đau ${LEG_WORDS[leg]}`,
+      kmh: limpKmh,
+      tilt: motion.tilt,
+      tone: 'alert',
+    };
   }
   return motion;
 }
