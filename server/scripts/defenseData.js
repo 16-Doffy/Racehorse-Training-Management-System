@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Evergreen 3-shift live auto-test on the REAL site through the same API people use
 // (.github/workflows/defense-data.yml): every day runs three shifts across four test horses
-// (Orion, Pegasus, Demo · Sẵn sàng tập, Demo · Diễn tập chấn thương) on a repeating Monday–Sunday cycle:
+// (Orion, Pegasus, Apollo, Titan) on a repeating Monday–Sunday cycle:
 //
 //   morning  05:00–11:00  the only shift with trials: the club allows them before noon
 //   noon     11:00–16:00
@@ -61,8 +61,8 @@ const SHIFT_WORDS = { morning: 'Ca sáng', noon: 'Ca trưa', evening: 'Ca tối'
 const HAY_CLOCK = process.env.DEFENSE_HAY_CLOCK || '20:10';
 const ORION = 'Orion';
 const PEGASUS = 'Pegasus';
-const READY = 'Demo · Sẵn sàng tập';
-const DRILL = 'Demo · Diễn tập chấn thương';
+const READY = 'Apollo';
+const DRILL = 'Titan';
 const TEST_HORSES = [ORION, PEGASUS, READY, DRILL];
 const NEW_HORSES = {
   [ORION]: { breed: 'Thoroughbred', sex: 'gelding', color: 'Bay', weightKg: 480, dob: '2021-03-18' },
@@ -506,7 +506,7 @@ async function planner(setup) {
 async function boardCheck() {
   const G = 'Thành tích';
   const board = await allHorses();
-  for (const name of [ORION, PEGASUS, 'Dembele', READY, 'chú bé', 'demo']) {
+  for (const name of [ORION, PEGASUS, 'Dembele', READY, DRILL]) {
     const horse = board.find((h) => h.name === name);
     const got = (horse?.achievements || []).map((a) => `${a.race}: ${a.result}`).join('; ');
     log(G, 'manager', `${name}: thành tích trên hồ sơ`, Boolean(got), got || 'chưa có');

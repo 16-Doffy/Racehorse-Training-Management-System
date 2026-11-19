@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, Dropdown, Progress, Tag, Typography, theme } from 'antd';
-import { DownOutlined, ExperimentOutlined, HeartFilled, ThunderboltOutlined, UpOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, DownOutlined, ExperimentOutlined, HeartFilled, PauseCircleOutlined, ThunderboltOutlined, UpOutlined } from '@ant-design/icons';
 import { LineChart, Line, XAxis, YAxis, ReferenceLine, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { useQueryClient } from '@tanstack/react-query';
 import { message } from '../../lib/antdStatic';
@@ -111,6 +111,29 @@ function ScenarioButton({ session, iconOnly = false }) {
   );
 }
 
+/**
+ * The trainer's hands on a running session: end it (the end-of-session form), stop it (with a reason), and
+ * the demo's scenario button. `iconOnly`: the small tile's corner; open, the buttons carry their words.
+ */
+function SessionControls({ session, onEnd, onAbort, iconOnly = false }) {
+  const name = session.horse?.name || 'ngựa';
+  return (
+    <span className="inline-flex items-center gap-1">
+      <ScenarioButton session={session} iconOnly={iconOnly} />
+      {onEnd && (
+        <Button size="small" type={iconOnly ? 'text' : 'primary'} icon={<CheckCircleOutlined />} onClick={() => onEnd(session)} title="Kết thúc buổi" aria-label={`Kết thúc buổi của ${name}`}>
+          {iconOnly ? null : 'Kết thúc'}
+        </Button>
+      )}
+      {onAbort && (
+        <Button size="small" type={iconOnly ? 'text' : 'default'} danger icon={<PauseCircleOutlined />} onClick={() => onAbort(session)} title="Dừng buổi" aria-label={`Dừng buổi của ${name}`}>
+          {iconOnly ? null : 'Dừng'}
+        </Button>
+      )}
+    </span>
+  );
+}
+
 /** The heart rate of the last minutes as a thin line, against the ceiling (dashed): the trend at a glance. */
 function Sparkline({ values, ceiling, over, color }) {
   const pts = values.filter((v) => v != null);
@@ -131,7 +154,7 @@ function Sparkline({ values, ceiling, over, color }) {
 }
 
 /** The open tile: the horse running in 3D at its live speed, and its heart-rate line against the ceiling. */
-function LiveDetail({ session, readings, horse, surface, figures, readOnly }) {
+function LiveDetail({ session, readings, horse, surface, figures, readOnly, onEnd, onAbort }) {
   const { token } = theme.useToken();
   const { target, segmentCount, segmentIndex, segmentLabel, segmentNote } = figures;
   const data = readings.map((r, i) => ({ i, hr: r.hr, speed: r.speed }));
@@ -153,7 +176,7 @@ function LiveDetail({ session, readings, horse, surface, figures, readOnly }) {
               </Tag>
             )}
           </div>
-          {!readOnly && <ScenarioButton session={session} />}
+          {!readOnly && <SessionControls session={session} onEnd={onEnd} onAbort={onAbort} />}
         </div>
         {data.length > 1 ? (
           <div className="h-40 w-full">
@@ -192,7 +215,7 @@ function LiveDetail({ session, readings, horse, surface, figures, readOnly }) {
  * speed against the target, the distance done and a line of the heart rate. Pressed, it opens across the
  * whole row with the 3D horse and the full chart.
  */
-function LiveTile({ session, readings, horse, surface, open, onToggle, readOnly }) {
+function LiveTile({ session, readings, horse, surface, open, onToggle, readOnly, onEnd, onAbort }) {
   const { token } = theme.useToken();
   const f = liveFigures(session, readings);
   const startedAt = session.actualStartAt ? dayjs(session.actualStartAt) : null;
@@ -214,7 +237,7 @@ function LiveTile({ session, readings, horse, surface, open, onToggle, readOnly 
       >
         <div className="flex flex-col gap-1.5 px-3 py-2.5">
           {/* The horse, its work, how long it has run. */}
-          <div className={`flex min-w-0 items-center gap-2 ${readOnly || open ? 'pr-6' : 'pr-14'}`}>
+          <div className={`flex min-w-0 items-center gap-2 ${readOnly || open ? 'pr-6' : 'pr-28'}`}>
             <span className="relative inline-flex h-2 w-2 shrink-0" aria-hidden="true">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: f.over ? RED : FOREST.primary }} />
               <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: f.over ? RED : FOREST.primary }} />
@@ -263,13 +286,13 @@ function LiveTile({ session, readings, horse, surface, open, onToggle, readOnly 
       <span className="pointer-events-none absolute right-2.5 top-2.5 text-[10px]" style={{ color: token.colorTextTertiary }} aria-hidden="true">
         {open ? <UpOutlined /> : <DownOutlined />}
       </span>
-      {/* The demo tool, beside the tile's own button rather than inside it (open, it sits by the chart). */}
+      {/* End, stop and the demo tool, beside the tile's own button rather than inside it (open, they sit by the chart). */}
       {!readOnly && !open && (
         <div className="absolute right-6 top-1">
-          <ScenarioButton session={session} iconOnly />
+          <SessionControls session={session} onEnd={onEnd} onAbort={onAbort} iconOnly />
         </div>
       )}
-      {open && <LiveDetail session={session} readings={readings} horse={horse} surface={surface} figures={f} readOnly={readOnly} />}
+      {open && <LiveDetail session={session} readings={readings} horse={horse} surface={surface} figures={f} readOnly={readOnly} onEnd={onEnd} onAbort={onAbort} />}
     </div>
   );
 }
@@ -292,10 +315,10 @@ const readFolded = () => {
  * heart rate — so ten or twenty horses at once still fit in a few rows. A tile opens across the row with
  * the horse running in 3D and the full chart (one at a time; a lone horse opens by itself). The board folds
  * to one line. Shown only while something is running (or was just stopped as a suspected injury).
- * `horses` gives each horse's breed and colour, so it runs in its own coat. `readOnly`: watched by the
- * owner, without the trainer's tools (the scenario button).
+ * `horses` gives each horse's breed and colour, so it runs in its own coat. `onEnd` / `onAbort`: the trainer
+ * ends or stops a run from its tile. `readOnly`: watched by the owner, without the trainer's tools.
  */
-export default function LiveSessionMonitor({ sessions = [], horses = [], plans = [], onSessionCompleted, readOnly = false }) {
+export default function LiveSessionMonitor({ sessions = [], horses = [], plans = [], onSessionCompleted, onEnd, onAbort, readOnly = false }) {
   const { token } = theme.useToken();
   const running = sessions.filter((s) => s.status === 'in_progress');
   const [readings, setReadings] = useState(() => Object.fromEntries(liveCache));
@@ -481,6 +504,8 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], plans =
                   open={openNow === s._id}
                   onToggle={() => setOpenId(openNow === s._id ? null : s._id)}
                   readOnly={readOnly}
+                  onEnd={onEnd}
+                  onAbort={onAbort}
                 />
               ))}
             </div>

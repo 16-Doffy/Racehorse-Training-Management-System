@@ -1,6 +1,6 @@
 name: Defense data (live)
 # Daily 3-shift live auto-test on the REAL site (server/scripts/defenseData.js): 05:00, 11:00, 16:00 Vietnam time.
-# Four test horses (Orion, Pegasus, "Demo · Sẵn sàng tập", "Demo · Diễn tập chấn thương") rotate through all
+# Four test horses (Orion, Pegasus, Apollo, Titan) rotate through all
 # roles and edge cases every week; real horses stay untouched here and are managed by auto-operate.yml.
 # Each shift reads the clock, waits until its window, and runs its cases; once a shift begins it dispatches the
 # next one itself via workflow_dispatch (server/scripts/defenseClock.js):

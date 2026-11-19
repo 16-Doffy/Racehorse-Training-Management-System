@@ -101,9 +101,14 @@ function PlannedChip({ entry }) {
   );
 }
 
-function SessionChip({ session, replaced = [], onStart, onPreCheck, onEvaluate, onSchedule, onChangeWork, onCancel, onEnd, onAbort, onRequestExam, onReplay, starting, scheduling }) {
+function SessionChip({ session, replaced = [], focused = false, onStart, onPreCheck, onEvaluate, onSchedule, onChangeWork, onCancel, onEnd, onAbort, onRequestExam, onReplay, starting, scheduling }) {
   const policy = useClubPolicy();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(Boolean(focused));
+  const [prevFocused, setPrevFocused] = useState(focused);
+  if (focused !== prevFocused) {
+    setPrevFocused(focused);
+    if (focused) setOpen(true);
+  }
   const kind = SESSION_KINDS[session.kind];
   const status = statusMeta(session.status);
   const met = session.outcome?.met;
@@ -196,8 +201,9 @@ function SessionChip({ session, replaced = [], onStart, onPreCheck, onEvaluate, 
     <Popover content={detail} trigger="click" placement="bottom" open={open} onOpenChange={setOpen}>
       <button
         type="button"
+        data-focus={focused ? 'session' : undefined}
         aria-label={`${kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}, ${slotLabel(session.scheduledAt)} ${timeWindow}, ${rescheduled ? 'Đã xếp lại lịch' : status.label}`}
-        className={`w-full cursor-pointer rounded-md border border-black/10 border-l-[3px] ${status.accent} ${status.fill} px-1.5 py-0.5 text-left transition-shadow hover:shadow-xs ${session.status === 'cancelled' ? 'opacity-60 line-through' : ''}`}
+        className={`w-full cursor-pointer rounded-md border border-black/10 border-l-[3px] ${status.accent} ${status.fill} px-1.5 py-0.5 text-left transition-shadow hover:shadow-xs ${focused ? 'ring-2 ring-[var(--st-action,#EAB308)] ring-offset-1 shadow-sm' : ''} ${session.status === 'cancelled' ? 'opacity-60 line-through' : ''}`}
       >
         <div className="flex flex-wrap items-baseline justify-between gap-x-1 text-[11px] leading-4">
           <span className="whitespace-nowrap font-semibold text-gray-900">{kind?.short || kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}</span>
@@ -228,6 +234,7 @@ export default function WeekCalendar({
   onWeekChange,
   sessions = [],
   plans = [],
+  focusSessionId = null,
   onGenerate,
   generatingPlanId,
   onStart,
@@ -277,14 +284,14 @@ export default function WeekCalendar({
   return (
     <div className="st-workbench-frame">
       {/* One row: the page's own switches (`toolbar`), the horse search, the week. */}
-      <div className="st-toolbar justify-between">
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="st-toolbar justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2.5">
           {toolbar}
-          <Input allowClear prefix={<SearchOutlined className="text-gray-400" />} placeholder="Tìm ngựa" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-44" aria-label="Tìm ngựa trong lịch tuần" />
+          <Input allowClear prefix={<SearchOutlined className="text-gray-400" />} placeholder="Tìm ngựa" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-40" aria-label="Tìm ngựa trong lịch tuần" />
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
           <Button size="small" icon={<LeftOutlined />} aria-label="Tuần trước" onClick={() => onWeekChange(weekStart.subtract(7, 'day'))} />
-          <Text strong className="px-1 text-sm tabular-nums text-gray-800">
+          <Text strong className="px-1 text-sm tabular-nums text-gray-800 whitespace-nowrap">
             {weekStart.format('DD/MM')} – {weekStart.add(6, 'day').format('DD/MM/YYYY')}
           </Text>
           <Button size="small" icon={<RightOutlined />} aria-label="Tuần sau" onClick={() => onWeekChange(weekStart.add(7, 'day'))} />
@@ -293,7 +300,7 @@ export default function WeekCalendar({
               Về tuần này
             </Button>
           )}
-          <span className="pl-1 text-xs font-semibold tabular-nums text-gray-500">
+          <span className="pl-1 text-xs font-semibold tabular-nums text-gray-500 whitespace-nowrap">
             {rows.size} ngựa, {inWeek.length} buổi
           </span>
         </div>
@@ -308,10 +315,10 @@ export default function WeekCalendar({
       ) : (
         // Scrolls inside its frame when the club is large: the day row and the horse column stay put.
         <div className="light-surface-box max-h-[calc(100vh-230px)] min-h-[240px] overflow-auto bg-white">
-          <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
+          <table className="w-full min-w-[860px] table-fixed border-collapse text-sm">
             <thead>
               <tr>
-                <th className="wc-sticky sticky left-0 top-0 z-[3] w-[190px] border-b border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-gray-700">Ngựa</th>
+                <th className="wc-sticky sticky left-0 top-0 z-[3] w-[168px] border-b border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-gray-700">Ngựa</th>
                 {days.map((d) => {
                   const today = d.date.isSame(dayjs(), 'day');
                   return (
@@ -333,7 +340,7 @@ export default function WeekCalendar({
                     <td className="wc-sticky sticky left-0 z-[1] bg-white px-3 py-2 group-hover:bg-[var(--st-hover,#F1F5F9)]">
                       <div className="flex items-center gap-1.5">
                         <RaceFormDot form={plan?.progress?.form} />
-                        <Link to={`?horse=${horse?._id}`} title="Xem lịch của riêng ngựa này" className="min-w-0 truncate text-[13px] font-bold text-[var(--st-ink,#0F172A)] hover:text-[var(--st-primary,#B45309)]">
+                        <Link to={`?horse=${horse?._id}`} title="Xem lịch của riêng ngựa này" className="min-w-0 truncate text-[13px] font-bold !text-[var(--st-ink,#0F172A)] hover:!text-[var(--st-primary,#B45309)]">
                           {horse?.name}
                         </Link>
                         {plan && (
@@ -393,6 +400,7 @@ export default function WeekCalendar({
                                 key={s._id}
                                 session={s}
                                 replaced={replaced.filter((r) => slotOf(r.scheduledAt) === slotOf(s.scheduledAt))}
+                                focused={Boolean(focusSessionId && String(s._id) === String(focusSessionId))}
                                 onStart={onStart}
                                 onPreCheck={onPreCheck}
                                 onEvaluate={onEvaluate}
@@ -413,7 +421,7 @@ export default function WeekCalendar({
                               <Link
                                 to={`/races?horse=${horse?._id}`}
                                 title={`${race.raceName || 'Giải đua'}: mở trang Giải đua`}
-                                className="flex min-w-0 flex-col gap-0.5 rounded-md border border-[var(--st-action,#EAB308)] bg-[var(--st-action,#EAB308)] px-2 py-1.5 text-[var(--st-action-ink,#1A1D21)] no-underline shadow-sm transition-colors hover:brightness-105"
+                                className="flex min-w-0 flex-col gap-0.5 rounded-md border !border-[var(--st-action,#EAB308)] !bg-[var(--st-action,#EAB308)] px-2 py-1.5 !text-[var(--st-action-ink,#1A1D21)] no-underline shadow-sm transition-colors hover:brightness-105"
                               >
                                 <span className="flex items-center gap-1 text-[12px] font-bold"><TrophyOutlined /> Ngày đua</span>
                                 {race.raceName && <span className="truncate text-[11.5px] font-semibold">{race.raceName}</span>}
