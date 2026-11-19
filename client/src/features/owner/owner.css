@@ -2,81 +2,83 @@
    set again for the dark canvas (MainLayout puts wdp-dark-portals on <body> then, which also reaches
    the popups rendered on <body>), so every piece below reads in both. */
 .own-ui {
-  --o-card: #fffdf8;
-  --o-card-2: #f6f1e6;
-  --o-sunk: #f1ebdd;
-  --o-border: #e5dac6;
-  --o-border-soft: #eee6d6;
-  --o-ink: #1a2b22;
-  --o-muted: rgba(26, 43, 34, 0.72);
-  --o-faint: rgba(26, 43, 34, 0.55);
-  --o-primary: #0f5a43;
-  --o-primary-ink: #ffffff;
-  --o-link: #0f5a43;
-  --o-hover: #f4eee2;
-  --o-ring: rgba(15, 90, 67, 0.28);
-  --o-shadow: 0 1px 2px rgba(48, 40, 20, 0.06), 0 6px 18px -8px rgba(48, 40, 20, 0.12);
+  /* The workspace palette of the Manager's and Head Trainer's pages (styles/staff-workspace.css): white
+     and cool-slate surfaces, slate ink, the championship gold for the main action, amber for links. */
+  --o-card: #ffffff;
+  --o-card-2: #f8fafc;
+  --o-sunk: #f1f5f9;
+  --o-border: #cbd5e1;
+  --o-border-soft: #e2e8f0;
+  --o-ink: #0f172a;
+  --o-muted: #475569;
+  --o-faint: #64748b;
+  --o-primary: #eab308;
+  --o-primary-ink: #0f172a;
+  --o-link: #b45309;
+  --o-hover: #f1f5f9;
+  --o-ring: rgba(234, 179, 8, 0.35);
+  --o-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
 
-  --o-good: #2e7d4f;
-  --o-good-bg: #e2f1e6;
-  --o-watch: #8a5a00;
-  --o-watch-bg: #f8eccc;
-  --o-bad: #b3261e;
-  --o-bad-bg: #f8e2de;
-  --o-quar: #5b3e8a;
-  --o-quar-bg: #ece4f6;
-  --o-info: #1d4e89;
-  --o-info-bg: #e3ecf7;
-  --o-neutral: #4a5a50;
-  --o-neutral-bg: #ebe6dc;
-  --o-brass: #8f6a12;
-  --o-brass-bg: #f6ebcf;
+  --o-good: #15803d;
+  --o-good-bg: #dcfce7;
+  --o-watch: #b45309;
+  --o-watch-bg: #fef3c7;
+  --o-bad: #b91c1c;
+  --o-bad-bg: #fee2e2;
+  --o-quar: #6d28d9;
+  --o-quar-bg: #ede9fe;
+  --o-info: #1d4ed8;
+  --o-info-bg: #dbeafe;
+  --o-neutral: #475569;
+  --o-neutral-bg: #f1f5f9;
+  --o-brass: #b45309;
+  --o-brass-bg: #fef3c7;
   /* Charts (checked with the dataviz palette validator on this card surface): one blue for a single
      series, its lighter step for the rest of a part-to-whole bar, orange for a second series beside it. */
   --o-series-1: #2a78d6;
   --o-series-1-soft: #86b6ef;
   --o-series-2: #eb6834;
-  --o-grid: #ebe4d6;
-  --o-axis: #7d796b;
+  --o-grid: #e2e8f0;
+  --o-axis: #64748b;
 
   color: var(--o-ink);
   font-size: 14px;
 }
 body.wdp-dark-portals .own-ui {
-  --o-card: #0d211a;
-  --o-card-2: #11291f;
-  --o-sunk: #0a1a14;
-  --o-border: rgba(212, 175, 55, 0.22);
-  --o-border-soft: rgba(255, 255, 255, 0.07);
-  --o-ink: #f4f1e8;
-  --o-muted: rgba(230, 237, 232, 0.78);
-  --o-faint: rgba(230, 237, 232, 0.58);
-  --o-primary: #d4af37;
-  --o-primary-ink: #0d211a;
-  --o-link: #f6d57a;
-  --o-hover: rgba(255, 255, 255, 0.05);
-  --o-ring: rgba(212, 175, 55, 0.35);
-  --o-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --o-card: #111827;
+  --o-card-2: #1e293b;
+  --o-sunk: #0b0f17;
+  --o-border: #334155;
+  --o-border-soft: #1e293b;
+  --o-ink: #f8fafc;
+  --o-muted: #cbd5e1;
+  --o-faint: #94a3b8;
+  --o-primary: #eab308;
+  --o-primary-ink: #0f172a;
+  --o-link: #f59e0b;
+  --o-hover: #263349;
+  --o-ring: rgba(234, 179, 8, 0.4);
+  --o-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 
-  --o-good: #6ee7b7;
-  --o-good-bg: rgba(16, 185, 129, 0.15);
-  --o-watch: #fcd34d;
-  --o-watch-bg: rgba(245, 158, 11, 0.15);
-  --o-bad: #fda4af;
-  --o-bad-bg: rgba(244, 63, 94, 0.16);
+  --o-good: #34d399;
+  --o-good-bg: rgba(16, 185, 129, 0.18);
+  --o-watch: #fbbf24;
+  --o-watch-bg: rgba(245, 158, 11, 0.18);
+  --o-bad: #f87171;
+  --o-bad-bg: rgba(239, 68, 68, 0.18);
   --o-quar: #c4b5fd;
   --o-quar-bg: rgba(139, 92, 246, 0.18);
-  --o-info: #93c5fd;
-  --o-info-bg: rgba(59, 130, 246, 0.17);
-  --o-neutral: #c3d4ca;
-  --o-neutral-bg: rgba(255, 255, 255, 0.07);
-  --o-brass: #f6d57a;
-  --o-brass-bg: rgba(212, 175, 55, 0.16);
+  --o-info: #60a5fa;
+  --o-info-bg: rgba(59, 130, 246, 0.18);
+  --o-neutral: #cbd5e1;
+  --o-neutral-bg: rgba(248, 250, 252, 0.08);
+  --o-brass: #fbbf24;
+  --o-brass-bg: rgba(245, 158, 11, 0.16);
   --o-series-1: #3987e5;
   --o-series-1-soft: #184f95;
   --o-series-2: #d95926;
   --o-grid: rgba(255, 255, 255, 0.08);
-  --o-axis: #93ab9e;
+  --o-axis: #94a3b8;
 }
 
 /* ---------- Page ---------- */
@@ -128,7 +130,7 @@ body.wdp-dark-portals .own-ui {
 }
 .own-ui h1.own-title {
   margin: 2px 0 0;
-  font-family: 'Lora', Georgia, serif;
+  font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 700;
   font-size: 28px;
   line-height: 1.2;
@@ -820,7 +822,7 @@ body.wdp-dark-portals .own-ui {
 }
 .own-ui h2.own-section-title {
   margin: 0;
-  font-family: 'Lora', Georgia, serif;
+  font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 19px;
   font-weight: 700;
   line-height: 1.3;
@@ -3153,10 +3155,10 @@ body.wdp-dark-portals .own-ui {
   font-size: 12px;
   color: var(--o-faint);
 }
-/* What is left: the tile that matters, on the club's green. */
+/* What is left: the tile that matters, on the workspace's obsidian (the sidebar's colour). */
 .own-ui .own-sum-tile.is-net {
   border-color: transparent;
-  background: linear-gradient(135deg, #0f5a43, #0b4634);
+  background: linear-gradient(135deg, #0f172a, #1e293b);
   color: #fff;
 }
 .own-ui .own-sum-tile.is-net.is-loss {
@@ -3164,7 +3166,7 @@ body.wdp-dark-portals .own-ui {
 }
 .own-ui .own-sum-tile.is-net .own-sum-icon {
   background: rgba(255, 255, 255, 0.14);
-  color: #f6d57a;
+  color: #eab308;
 }
 .own-ui .own-sum-tile.is-net .own-sum-label,
 .own-ui .own-sum-tile.is-net .own-sum-sub {

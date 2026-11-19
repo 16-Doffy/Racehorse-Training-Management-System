@@ -1035,6 +1035,14 @@ body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-dra
   background-color: var(--st-surface) !important;
 }
 
+/* Tags laid over a 3D scene (the stall's name and the hovered stall in stable/stall3d/Stall3D.jsx) are
+   bg-white/95 with dark words. The dark canvas turns those words light (text-gray-800 above) but not the
+   see-through white, which read white on white: they take the raised dark surface instead. */
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark .light-surface-box[class~="bg-white/95"] {
+  background-color: var(--st-surface-raised) !important;
+  border-color: var(--st-border) !important;
+}
+
 .forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is(
   [class~="border-gray-100"],
   [class~="border-gray-200"],

@@ -119,7 +119,8 @@ export default function MainLayout() {
   // A canvas saved in this browser by a Manager must not follow the next person who signs in here.
   const canvasKey = canvas ? canvasOf(canvasTheme) : 'parchment_old';
   const activePreset = CANVAS_PRESETS[canvasKey] || CANVAS_PRESETS.sand_bone;
-  const isWorkspace = user?.role === ROLES.MANAGER || user?.role === ROLES.HEAD_TRAINER;
+  // The Manager's and Head Trainer's look (obsidian sidebar, gold, slate pages), shared by the vet and the owner.
+  const isWorkspace = [ROLES.MANAGER, ROLES.HEAD_TRAINER, ROLES.VETERINARIAN, ROLES.OWNER].includes(user?.role);
   const baseTheme = getForestTheme(canvasKey);
   const currentTheme = isWorkspace ? staffWorkspaceTheme(baseTheme, canvasKey === DARK_CANVAS) : baseTheme;
   const isDarkCanvas = canvas && canvasKey === DARK_CANVAS;
