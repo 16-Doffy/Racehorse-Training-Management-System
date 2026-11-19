@@ -35,4 +35,4 @@ jobs:
           DEMO_ACCOUNTS: ${{ secrets.DEMO_ACCOUNTS }}
           OPERATE_CONFIRM: 'write'
           OPERATE_RUN_MIN: '340'
-          OPERATE_SKIP: 'Orion,Pegasus,Demo · Sẵn sàng tập,Demo · Diễn tập chấn thương'
+          OPERATE_SKIP: 'Orion,Pegasus,Apollo,Titan'
