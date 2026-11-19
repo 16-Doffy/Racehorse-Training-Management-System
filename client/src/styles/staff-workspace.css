@@ -47,10 +47,14 @@ body.wdp-staff-workspace {
   --st-sider-active-ink: #0F172A;
   --st-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
   --st-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
+  --bs-link-color-rgb: 180, 83, 9;
+  --bs-link-hover-color-rgb: 146, 64, 14;
 }
 
 .forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark,
 body.wdp-staff-workspace.wdp-dark-portals {
+  --bs-link-color-rgb: 245, 158, 11;
+  --bs-link-hover-color-rgb: 251, 191, 36;
   --st-bg: #0B0F17;
   --st-surface: #111827;
   --st-surface-raised: #1E293B;
@@ -956,11 +960,23 @@ body.wdp-staff-workspace .ant-modal .ant-btn-primary:not(.ant-btn-dangerous):hov
   [class~="text-gray-500"],
   [class~="text-slate-400"],
   [class~="text-slate-500"]
+),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is(
+  [class~="text-gray-400"],
+  [class~="text-gray-500"],
+  [class~="text-slate-400"],
+  [class~="text-slate-500"]
 ) {
   color: var(--st-ink-muted) !important;
 }
 
 .forest-layout.staff-workspace.is-canvas :is(
+  [class~="text-gray-600"],
+  [class~="text-gray-700"],
+  [class~="text-slate-600"],
+  [class~="text-slate-700"]
+),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is(
   [class~="text-gray-600"],
   [class~="text-gray-700"],
   [class~="text-slate-600"],
@@ -975,11 +991,19 @@ body.wdp-staff-workspace .ant-modal .ant-btn-primary:not(.ant-btn-dangerous):hov
   [class~="text-slate-800"],
   [class~="text-slate-900"],
   [class~="text-emerald-950"]
+),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown) :is(
+  [class~="text-gray-800"],
+  [class~="text-gray-900"],
+  [class~="text-slate-800"],
+  [class~="text-slate-900"],
+  [class~="text-emerald-950"]
 ) {
   color: var(--st-ink) !important;
 }
 
-.forest-layout.staff-workspace.is-canvas :is([class~="text-[#0F5A43]"]) {
+.forest-layout.staff-workspace.is-canvas :is([class~="text-[#0F5A43]"]),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer, .ant-dropdown) :is([class~="text-[#0F5A43]"]) {
   color: var(--st-primary) !important;
 }
 
@@ -1023,34 +1047,44 @@ body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-dra
   [class~="border-gray-100"],
   [class~="border-gray-200"],
   [class~="border-gray-300"],
+  [class~="border-slate-200"],
+  [class~="border-black/5"],
   [class~="border-[#E5DEC9]"],
   [class~="divide-gray-100"]
 ) {
   border-color: var(--st-border) !important;
 }
 
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-green-50"], [class~="bg-emerald-50"], [class~="bg-emerald-50/70"], [class~="bg-emerald-100"], [class~="bg-[#DCEFE3]"]) {
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-green-50"], [class~="bg-emerald-50"], [class~="bg-emerald-50/70"], [class~="bg-emerald-100"], [class~="bg-[#DCEFE3]"]),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer) :is([class~="bg-green-50"], [class~="bg-emerald-50"]) {
   background-color: var(--st-good-bg) !important;
 }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-amber-50"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/90"], [class~="bg-orange-50"]) {
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-amber-50"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/90"], [class~="bg-orange-50"]),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer) :is([class~="bg-amber-50"], [class~="bg-orange-50"]) {
   background-color: var(--st-warn-bg) !important;
 }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-red-50"], [class~="bg-rose-50"], [class~="bg-rose-50/50"], [class~="bg-pink-50"]) {
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-red-50"], [class~="bg-rose-50"], [class~="bg-rose-50/50"], [class~="bg-pink-50"]),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer) :is([class~="bg-red-50"], [class~="bg-rose-50"]) {
   background-color: var(--st-danger-bg) !important;
 }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-blue-50"], [class~="bg-cyan-50"]) {
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="bg-blue-50"], [class~="bg-cyan-50"]),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer) :is([class~="bg-blue-50"], [class~="bg-cyan-50"]) {
   background-color: var(--st-info-bg) !important;
 }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-emerald-900"], [class~="text-green-700"]) {
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-emerald-900"], [class~="text-green-700"]),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer) :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-green-600"], [class~="text-green-700"]) {
   color: var(--st-good-ink) !important;
 }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"], [class~="text-orange-700"], [class~="text-orange-800"]) {
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"], [class~="text-orange-700"], [class~="text-orange-800"]),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer) :is([class~="text-amber-700"], [class~="text-orange-700"]) {
   color: var(--st-warn-ink) !important;
 }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-red-600"], [class~="text-red-700"], [class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-pink-700"]) {
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-red-600"], [class~="text-red-700"], [class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-pink-700"]),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer) :is([class~="text-red-600"], [class~="text-red-700"], [class~="text-rose-600"], [class~="text-rose-700"]) {
   color: var(--st-danger-ink) !important;
 }
-.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-blue-700"], [class~="text-blue-800"], [class~="text-cyan-700"]) {
+.forest-layout.staff-workspace.is-canvas.is-dark-canvas.staff-dark :is([class~="text-blue-700"], [class~="text-blue-800"], [class~="text-cyan-700"]),
+body.wdp-staff-workspace.wdp-dark-portals :is(.ant-popover, .ant-modal, .ant-drawer) :is([class~="text-blue-700"], [class~="text-cyan-700"]) {
   color: var(--st-info-ink) !important;
 }
 

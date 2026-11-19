@@ -59,11 +59,11 @@ export default function SessionOutcome({ session }) {
   const judged = done && outcome?.met != null;
 
   return (
-    <div className="min-w-[210px]">
-      <div className="flex items-center gap-2 mb-1.5">
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
         {status === 'in_progress' && <Tag color="processing" className="!m-0">Đang đo</Tag>}
         {status === 'aborted' && (
-          <Tag color="volcano" className="!m-0">
+          <Tag color="volcano" className="!m-0 !whitespace-normal">
             Dừng giữa chừng{session.abortReason ? `: ${session.abortReason}` : ''}
           </Tag>
         )}

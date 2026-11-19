@@ -340,7 +340,7 @@ export default function WeekCalendar({
                     <td className="wc-sticky sticky left-0 z-[1] bg-white px-3 py-2 group-hover:bg-[var(--st-hover,#F1F5F9)]">
                       <div className="flex items-center gap-1.5">
                         <RaceFormDot form={plan?.progress?.form} />
-                        <Link to={`?horse=${horse?._id}`} title="Xem lịch của riêng ngựa này" className="min-w-0 truncate text-[13px] font-bold text-[var(--st-ink,#0F172A)] hover:text-[var(--st-primary,#B45309)]">
+                        <Link to={`?horse=${horse?._id}`} title="Xem lịch của riêng ngựa này" className="min-w-0 truncate text-[13px] font-bold !text-[var(--st-ink,#0F172A)] hover:!text-[var(--st-primary,#B45309)]">
                           {horse?.name}
                         </Link>
                         {plan && (
@@ -421,7 +421,7 @@ export default function WeekCalendar({
                               <Link
                                 to={`/races?horse=${horse?._id}`}
                                 title={`${race.raceName || 'Giải đua'}: mở trang Giải đua`}
-                                className="flex min-w-0 flex-col gap-0.5 rounded-md border border-[var(--st-action,#EAB308)] bg-[var(--st-action,#EAB308)] px-2 py-1.5 text-[var(--st-action-ink,#1A1D21)] no-underline shadow-sm transition-colors hover:brightness-105"
+                                className="flex min-w-0 flex-col gap-0.5 rounded-md border !border-[var(--st-action,#EAB308)] !bg-[var(--st-action,#EAB308)] px-2 py-1.5 !text-[var(--st-action-ink,#1A1D21)] no-underline shadow-sm transition-colors hover:brightness-105"
                               >
                                 <span className="flex items-center gap-1 text-[12px] font-bold"><TrophyOutlined /> Ngày đua</span>
                                 {race.raceName && <span className="truncate text-[11.5px] font-semibold">{race.raceName}</span>}
