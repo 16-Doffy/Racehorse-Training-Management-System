@@ -12,7 +12,7 @@ import FeedingDaysTable from './FeedingDaysTable';
 import FeedingGroupsTable from './FeedingGroupsTable';
 import { PhaseStrip, StockNeedList } from './FeedingPlanParts';
 import { DIET_KINDS, RAMP_TEXT } from '../../constants/diet';
-import { SLOTS, SLOT_LABELS, amountText, dayTotals, idOf, planEnd, stockNeed } from './feedingPlan';
+import { SICK_DIET_TEXT, SLOTS, SLOT_LABELS, amountText, dayTotals, idOf, planEnd, stockNeed } from './feedingPlan';
 
 // Whether to say the ration is still a suggestion the trainer has not confirmed: off until the ration flow is settled.
 const SHOW_UNCONFIRMED_NOTE = false;

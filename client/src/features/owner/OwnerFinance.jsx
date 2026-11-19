@@ -145,14 +145,15 @@ export default function OwnerFinance() {
               <EmptyNote>Chưa có khoản chi nào.</EmptyNote>
             ) : (
               <div className="own-bars">
+                {/* Each kind of cost beside the largest; the ledger's columns show them horse by horse. */}
                 {byCategory.map(([c, value]) => (
-                  <button key={c} type="button" className="own-bar-row own-bar-btn" onClick={() => setCategory(c === category ? 'all' : c)} title="Lọc sổ theo hạng mục này">
-                    <span className={`truncate ${c === category ? 'own-ink font-semibold' : 'own-muted'}`}>{label(c)}</span>
+                  <div key={c} className="own-bar-row">
+                    <span className="truncate own-muted">{label(c)}</span>
                     <div className="own-bar-track">
                       <span style={{ width: `${Math.max(2, (value / topCategory) * 100)}%` }} />
                     </div>
                     <b className="own-num text-[13px]">{money(value)}</b>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}
