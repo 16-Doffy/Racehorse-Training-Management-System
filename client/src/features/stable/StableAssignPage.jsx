@@ -598,6 +598,8 @@ function RationList() {
   const idOf = (ref) => String(ref?._id || ref || '');
   const assignmentOf = (horse) => (assignmentsData?.data || []).find((a) => idOf(a.horse) === idOf(horse));
   const planOf = (horse) => (plansData?.data || []).find((p) => p.status === 'active' && idOf(p.horse) === idOf(horse));
+  // The horses whose meals follow a confirmed calendar of their plan: a plan alone is not a ration.
+  const { data: calendarData } = useQuery({ queryKey: ['feeding', 'calendar-horses'], queryFn: () => feedingApi.calendarHorses() });
 
   const [proposeOpen, setProposeOpen] = useState(false);
   const [proposeForm] = Form.useForm();
@@ -640,6 +642,7 @@ function RationList() {
           tasks={tasksData?.data || []}
           assignmentOf={assignmentOf}
           planOf={planOf}
+          calendarHorses={calendarData?.data || []}
           onSelect={focus.select}
           loading={isLoading}
         />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Empty, Modal, Popover, Segmented, Select, Spin, Switch, Tag, TimePicker, Tooltip, Typography } from 'antd';
-import { InfoCircleOutlined, ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { Alert, Button, Empty, Modal, Popover, Segmented, Select, Spin, Switch, Tag, TimePicker, Typography } from 'antd';
+import { ClockCircleOutlined, QuestionCircleOutlined, ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import './ration.css';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -245,47 +246,59 @@ function PlanCalendarEditor({ plan, feedItems, policy, onDone, setDirty, onPropo
         />
       )}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+      {/* How to look at the days, the meal times for every day, and the tools — one tidy line. */}
+      <div className="rp-toolbar">
         <Segmented
           size="small"
           value={view}
           onChange={setView}
           options={[
-            { value: 'group', label: 'Gọn theo nhóm ngày' },
+            { value: 'group', label: 'Theo nhóm ngày' },
             { value: 'day', label: 'Từng ngày' },
           ]}
         />
-        <Segmented
+        <Select
           size="small"
           value={filter}
           onChange={setFilter}
+          className="!w-40"
+          aria-label="Lọc ngày"
           options={FILTERS.map((f) => ({ ...f, label: f.value === 'edited' ? `${f.label} (${editedDays})` : f.label }))}
         />
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-          {SLOTS.map((slot) => (
-            <label key={slot} className="!flex items-center gap-1 text-xs text-gray-600">
-              {SLOT_SHORT[slot]}
-              <TimePicker
-                size="small"
-                aria-label={`Giờ ${SLOT_LABELS[slot].toLowerCase()}`}
-                format="HH:mm"
-                minuteStep={5}
-                allowClear={false}
-                needConfirm={false}
-                suffixIcon={null}
-                value={times?.[slot] ? dayjs(times[slot], 'HH:mm') : null}
-                onChange={(_, value) => setSlotTime(slot, value)}
-                className="!w-[62px]"
-              />
-            </label>
-          ))}
-          <Tooltip
-            title={`Đổi giờ ở đây là đổi cho mọi ngày. Bữa sáng ${SLOT_RANGE_HINT}; hai bữa cách nhau ít nhất ${policy.mealMinGapHours} giờ.${morningBy ? ` Buổi tập sáng ${calendar.plan.sessionTime || policy.morningTime}: ăn sáng xong trước ${morningBy} để đủ ${policy.digestMinutes} phút tiêu hóa.` : ''}`}
-          >
-            <InfoCircleOutlined className="text-gray-400" aria-label="Quy định giờ ăn" />
-          </Tooltip>
-        </div>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        <Popover
+          trigger="click"
+          placement="bottomLeft"
+          title="Giờ các bữa (áp dụng cho mọi ngày)"
+          content={
+            <div className="rp-times">
+              {SLOTS.map((slot) => (
+                <label key={slot}>
+                  {SLOT_LABELS[slot]}
+                  <TimePicker
+                    size="small"
+                    aria-label={`Giờ ${SLOT_LABELS[slot].toLowerCase()}`}
+                    format="HH:mm"
+                    minuteStep={5}
+                    allowClear={false}
+                    needConfirm={false}
+                    value={times?.[slot] ? dayjs(times[slot], 'HH:mm') : null}
+                    onChange={(_, value) => setSlotTime(slot, value)}
+                    className="!w-24"
+                  />
+                </label>
+              ))}
+              <p>
+                Bữa sáng {SLOT_RANGE_HINT}; hai bữa cách nhau ít nhất {policy.mealMinGapHours} giờ.
+                {morningBy ? ` Buổi tập sáng ${calendar.plan.sessionTime || policy.morningTime}: ăn sáng xong trước ${morningBy} để đủ ${policy.digestMinutes} phút tiêu hóa.` : ''}
+              </p>
+            </div>
+          }
+        >
+          <Button size="small" icon={<ClockCircleOutlined />}>
+            {SLOTS.map((slot) => `${SLOT_SHORT[slot]} ${times?.[slot] || '—'}`).join(' · ')}
+          </Button>
+        </Popover>
+        <div className="rp-toolbar-end">
           <Popover
             trigger="click"
             placement="bottomRight"
@@ -316,7 +329,7 @@ function PlanCalendarEditor({ plan, feedItems, policy, onDone, setDirty, onPropo
               </div>
             }
           >
-            <Button size="small">Cách gợi ý</Button>
+            <Button size="small" icon={<QuestionCircleOutlined />} aria-label="Cách hệ thống gợi ý khẩu phần" />
           </Popover>
           <Button size="small" icon={<ReloadOutlined />} onClick={backToSuggestion} disabled={outdated}>
             Về gợi ý

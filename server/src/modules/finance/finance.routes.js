@@ -10,6 +10,9 @@ const Horse = require('../../models/Horse');
 const HealthRecord = require('../../models/HealthRecord');
 const Treatment = require('../../models/Treatment');
 const RaceEntry = require('../../models/RaceEntry');
+const mongoose = require('mongoose');
+const { getScopedHorseIds, isHorseInScope, FORBIDDEN_HORSE_MESSAGE } = require('../../utils/horseScope');
+const { costReport } = require('./costReport.service');
 
 /** Records from before `source` existed: a prize that a race result wrote is race_prize, the rest manual. */
 async function withSource(records) {
@@ -97,7 +100,26 @@ const summarizeMine = asyncHandler(async (req, res) => {
   return ok(res, { year, period, totals, byCategory, periods, byHorse: [...byHorse.values()] }, 'Financial summary computed.');
 });
 
+/**
+ * GET /finance/costs?year=&horse= — what the horses cost the club, worked out from the feeding calendar,
+ * the prescriptions, the stalls and the care visits (costReport.service.js). To read only: the Manager
+ * sees every horse, the owner their own.
+ */
+const costs = asyncHandler(async (req, res) => {
+  const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) return fail(res, 'Năm không hợp lệ.', 400);
+  const scoped = await getScopedHorseIds(req.user);
+  let horseIds = scoped;
+  if (req.query.horse) {
+    if (!mongoose.isValidObjectId(req.query.horse)) return fail(res, 'Ngựa không hợp lệ.', 400);
+    if (!isHorseInScope(scoped, req.query.horse)) return fail(res, FORBIDDEN_HORSE_MESSAGE, 403);
+    horseIds = [req.query.horse];
+  }
+  return ok(res, await costReport({ horseIds, year }), 'Cost report computed.');
+});
+
 router.use(protect);
+router.get('/costs', authorize(ROLES.MANAGER, ROLES.OWNER), costs);
 router.get('/mine/summary', authorize(ROLES.OWNER), summarizeMine);
 router.get('/mine', authorize(ROLES.OWNER), listMine);
 router.get(

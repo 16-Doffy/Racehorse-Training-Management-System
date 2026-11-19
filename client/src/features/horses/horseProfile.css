@@ -168,6 +168,87 @@
   -webkit-box-orient: vertical;
 }
 
+/* ---------- What holds the horse back or changes its meals: small cards in a row ---------- */
+.hp-notes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-items: stretch;
+  gap: 10px;
+}
+.hp-note {
+  --tone: var(--hp-ink-2);
+  --tone-bg: var(--hp-sunk);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--hp-border);
+  border-left: 4px solid var(--tone);
+  border-radius: 12px;
+  background: var(--hp-surface);
+  box-shadow: var(--hp-shadow);
+}
+.hp-note.is-danger {
+  --tone: var(--hp-danger);
+  --tone-bg: var(--hp-danger-bg);
+}
+.hp-note.is-warn {
+  --tone: var(--hp-warn);
+  --tone-bg: var(--hp-warn-bg);
+}
+.hp-note.is-info {
+  --tone: var(--st-info, #1d4ed8);
+  --tone-bg: var(--st-info-bg, #dbeafe);
+}
+.hp-note-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--tone-bg);
+  color: var(--tone);
+  font-size: 14px;
+}
+.hp-note-title {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--hp-ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hp-note-text {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--hp-muted);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.hp-notes-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px dashed var(--hp-border);
+  border-radius: 12px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--hp-ink-2);
+  cursor: pointer;
+}
+.hp-notes-more:hover {
+  border-color: var(--hp-accent);
+  color: var(--hp-ink);
+}
+
 /* ---------- The horse in 3D beside its record ---------- */
 .hp-body {
   display: grid;

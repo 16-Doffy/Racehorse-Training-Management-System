@@ -6,15 +6,19 @@ import { Table, Card, Breadcrumb, Empty, Button, Alert, Tabs, Select, Tooltip } 
 import { HORSE_SEX_LABELS, formatVnd } from '../../constants/horse';
 import {
   CalendarOutlined,
+  CoffeeOutlined,
   HeartOutlined,
   HomeOutlined,
   LeftOutlined,
+  LockOutlined,
   MedicineBoxOutlined,
+  PauseCircleOutlined,
   RightOutlined,
   ScheduleOutlined,
   ThunderboltOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
+import HorseHealthPanel from './HorseHealthPanel';
 import { fold } from '../../utils/fold';
 import { horsesApi } from './horsesApi';
 import HorseTimeline from './HorseTimeline';
@@ -47,7 +51,33 @@ function calcAge(dob) {
 }
 
 const HEALTH_TONE = { eligible: 'good', monitoring: 'warn', injured: 'danger', quarantined: 'danger' };
-const TABS = ['history', 'care', 'stall', 'races'];
+const TABS = ['history', 'health', 'care', 'stall', 'races'];
+
+/** "hôm nay", "ngày mai", "còn 5 ngày nữa", "quá hạn 2 ngày" — for the follow-up exam. */
+function followUpText(date) {
+  const days = dayjs(date).startOf('day').diff(dayjs().startOf('day'), 'day');
+  const left = days === 0 ? 'Hôm nay' : days === 1 ? 'Ngày mai' : days > 1 ? `Còn ${days} ngày` : `Quá hạn ${-days} ngày`;
+  return `${left} — chừa thời gian trong lịch tập, chờ kết luận của bác sĩ.`;
+}
+
+/** One thing that holds the horse back or changes its meals, in a small card. */
+function Note({ tone, icon, title, text }) {
+  return (
+    <div className={`hp-note is-${tone}`}>
+      <span className="hp-note-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <div className="hp-note-title">{title}</div>
+        {text && (
+          <div className="hp-note-text" title={text}>
+            {text}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /** One figure in the header: what it is, its value in its colour, a line under it. */
 function Kpi({ icon, label, value, sub, tone = 'neutral', title }) {
@@ -178,6 +208,7 @@ export default function HorseDetailPage() {
 
   const clearanceLevel = horse.trainingClearance?.level || 'high';
   const clearance = horse.trainingClearance;
+  const followUp = horse.careSchedule?.nextExamDue;
   const at = herd.findIndex((h) => h._id === id);
   const prev = at > 0 ? herd[at - 1] : null;
   const next = at >= 0 && at < herd.length - 1 ? herd[at + 1] : null;
@@ -278,23 +309,38 @@ export default function HorseDetailPage() {
         </div>
       </section>
 
-      {/* What holds the horse back or changes its meals, in a line each. */}
-      {horse.examHold && <Alert type="error" showIcon title="Tạm dừng tập, chờ bác sĩ khám" description={horse.examHold.reason} />}
-      {clearance?.restricted && (
-        <Alert
-          type="warning"
-          showIcon
-          title={`${TRAINING_LEVEL_META[clearanceLevel]?.label || 'Hạn chế tập'}${clearance.reason ? `: ${clearance.reason}` : ''}`}
-          description={`Theo phác đồ của bác sĩ ${clearance.prescribedBy || ''}${clearance.since ? ` từ ${dayjs(clearance.since).format('DD/MM')}` : ''}. Hết hạn chế khi bác sĩ nâng mức hoặc kết thúc điều trị.`}
-        />
-      )}
-      {horse.feedingDiet && (
-        <Alert
-          type={horse.feedingDiet.diet === 'sick' ? 'warning' : 'info'}
-          showIcon
-          title={horse.feedingDiet.diet === 'sick' ? `Chế độ ăn theo y lệnh: ${horse.feedingDiet.label}` : horse.feedingDiet.label}
-          description={[horse.feedingDiet.care, horse.feedingDiet.note ? `Lưu ý bác sĩ: ${horse.feedingDiet.note}` : null].filter(Boolean).join(' ')}
-        />
+      {/* What holds the horse back or changes its meals: one small card each, the whole story in its tab. */}
+      {(horse.examHold || clearance?.restricted || horse.feedingDiet || followUp) && (
+        <section className="hp-notes" aria-label="Lưu ý y tế">
+          {horse.examHold && <Note tone="danger" icon={<PauseCircleOutlined />} title="Tạm dừng tập, chờ bác sĩ khám" text={horse.examHold.reason} />}
+          {clearance?.restricted && (
+            <Note
+              tone={clearanceLevel === 'none' ? 'danger' : 'warn'}
+              icon={<LockOutlined />}
+              title={TRAINING_LEVEL_META[clearanceLevel]?.label || 'Hạn chế tập'}
+              text={`${clearance.reason || 'Theo phác đồ của bác sĩ'}${clearance.prescribedBy ? ` · BS ${clearance.prescribedBy}` : ''}${clearance.since ? ` · từ ${dayjs(clearance.since).format('DD/MM')}` : ''}`}
+            />
+          )}
+          {horse.feedingDiet && (
+            <Note
+              tone={horse.feedingDiet.diet === 'sick' ? 'warn' : 'info'}
+              icon={<CoffeeOutlined />}
+              title={horse.feedingDiet.diet === 'sick' ? `Chế độ ăn: ${horse.feedingDiet.label}` : horse.feedingDiet.label}
+              text={[horse.feedingDiet.care, horse.feedingDiet.note ? `Lưu ý bác sĩ: ${horse.feedingDiet.note}` : null].filter(Boolean).join(' ')}
+            />
+          )}
+          {followUp && (
+            <Note
+              tone={dayjs(followUp).startOf('day').diff(dayjs().startOf('day'), 'day') <= 2 ? 'warn' : 'info'}
+              icon={<CalendarOutlined />}
+              title={`Tái khám ${dayjs(followUp).format('DD/MM/YYYY')}`}
+              text={followUpText(followUp)}
+            />
+          )}
+          <button type="button" className="hp-notes-more" onClick={() => setSearchParams({ tab: 'health' }, { replace: true })}>
+            Xem sức khỏe chi tiết <RightOutlined />
+          </button>
+        </section>
       )}
 
       {/* ---------- The horse in 3D, beside its record and its people ---------- */}
@@ -435,6 +481,7 @@ export default function HorseDetailPage() {
         onChange={(key) => setSearchParams(key === 'history' ? {} : { tab: key }, { replace: true })}
         items={[
           { key: 'history', label: 'Dòng thời gian', children: <HorseTimeline horseId={horse._id} /> },
+          { key: 'health', label: 'Sức khỏe', children: <HorseHealthPanel horse={horse} /> },
           { key: 'care', label: 'Chăm sóc định kỳ', children: <CareHistoryCard horseId={horse._id} /> },
           { key: 'stall', label: stallCode ? `Chuồng ${stallCode}` : 'Chuồng', children: <HorseStallCard horseId={horse._id} canManage={isManager} /> },
           {

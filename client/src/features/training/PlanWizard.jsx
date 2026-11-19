@@ -140,7 +140,7 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
     mutationFn: (payload) => trainingPlanApi.create(payload),
     onSuccess: (res) => {
       // The server books this week and next straight away (and keeps two weeks booked from then on).
-      message.success('Đã lập kế hoạch — lịch tập tuần này và tuần sau đã được xếp sẵn.');
+      message.success({ content: 'Đã lập kế hoạch — lịch tập tuần này và tuần sau đã được xếp sẵn. Khẩu phần ăn là bước riêng: vào "Khẩu phần & Chăm sóc" để tạo theo kế hoạch này.', duration: 6 });
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
       close();
       onCreated?.(res?.data);

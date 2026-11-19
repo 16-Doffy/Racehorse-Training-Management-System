@@ -227,7 +227,7 @@ export default function OwnerHorse() {
           { key: 'races', label: <span><TrophyOutlined /> Giải đua</span>, children: <RaceDetail horses={[horse]} horseId={id} /> },
           { key: 'stall', label: <span><HomeOutlined /> Chuồng & chăm sóc</span>, children: <StableDetail horse={horse} /> },
           // The same record every role sees; the API lets an owner read their own horse.
-          { key: 'journal', label: <span><HistoryOutlined /> Nhật ký</span>, children: <HorseTimeline horseId={id} /> },
+          { key: 'journal', label: <span><HistoryOutlined /> Nhật ký</span>, children: <HorseTimeline horseId={id} audience="owner" /> },
         ]}
       />
     </OwnerPage>

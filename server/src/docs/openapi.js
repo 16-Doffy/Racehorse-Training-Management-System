@@ -1894,6 +1894,19 @@ module.exports = {
       put: { tags: ['Races'], summary: 'Update race entry (Head Trainer)', description: 'Fields: horse, raceName, raceDate, distance, venue, surface. Status changes go through /decision and /results. Once the entry has a result (completed), horse, raceName, raceDate and distance no longer change (409): the prize and the achievement are booked from them.', parameters: [idParam('id')], requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/RaceEntry' } } } }, responses: { 200: responses[200]({ $ref: '#/components/schemas/RaceEntry' }), 404: responses[404] } },
       delete: { tags: ['Races'], summary: 'Delete race entry (Head Trainer, Manager)', parameters: [idParam('id')], responses: { 200: responses[200]({ nullable: true }), 404: responses[404] } },
     },
+    '/finance/costs': {
+      get: {
+        tags: ['Finance'],
+        summary: 'Cost report (Manager: all horses, Owner: their own) — view only',
+        description:
+          'What each horse costs, month by month for a year, worked out from the data: feed (confirmed feeding calendar days, else standing rations, at the stock price per unit), medical (each prescribed medicine: amount a dose × doses a day × days, at its stock price, plus the exam fee per exam), upkeep (stall days at the club rate for the stall kind, the groom\'s daily care, farrier / vaccination / deworming visits). Rates: club policy costRates (COST_* env). Items without a stock price count 0 and are listed in missingPrices. Nothing is billed: payment is settled outside the system.',
+        parameters: [
+          { name: 'year', in: 'query', schema: { type: 'integer', example: 2026 } },
+          { name: 'horse', in: 'query', schema: { type: 'string' }, description: 'One horse (must be in the caller\'s scope).' },
+        ],
+        responses: { 200: responses[200]({ type: 'object' }), 400: responses[400], 403: responses[403] },
+      },
+    },
     '/finance/mine/summary': {
       get: {
         tags: ['Finance'],

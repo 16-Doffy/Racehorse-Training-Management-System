@@ -60,9 +60,23 @@ function formatDayGroupHeader(d) {
   return `${weekdays[date.day()]} · ${date.format('DD/MM/YYYY')}`;
 }
 
-/** Deep-link target from a timeline event so staff can jump straight to the underlying session/race/task. */
-function actionForEvent(event, horseId) {
+/**
+ * Deep-link target from a timeline event, to the underlying session/race/task. The owner has none of
+ * the staff pages (they answer 403): their links open the matching tab of their own horse's page.
+ */
+function actionForEvent(event, horseId, owner = false) {
   const kind = String(event.kind || '').toLowerCase();
+  if (owner) {
+    if (kind.includes('session') || kind.includes('train') || event.role === 'head_trainer') {
+      return { to: { search: `?tab=training${event.refId ? `&session=${event.refId}` : ''}` }, label: 'Xem buổi tập' };
+    }
+    if (kind.includes('race')) return { to: { search: '?tab=races' }, label: 'Xem giải đua' };
+    if (kind.includes('exam') || kind.includes('health') || kind.includes('treat') || kind.includes('injur') || event.role === 'veterinarian') {
+      return { to: { search: '?tab=health' }, label: 'Xem sức khỏe' };
+    }
+    if (kind.includes('feed') || kind.includes('task') || kind.includes('care') || event.role === 'groom') return { to: { search: '?tab=stall' }, label: 'Chuồng & chăm sóc' };
+    return null;
+  }
   if (kind.includes('session') || kind.includes('train') || event.role === 'head_trainer') {
     const query = event.refId ? `?horse=${horseId}&session=${event.refId}` : `?horse=${horseId}`;
     return { to: `/training/sessions${query}`, label: 'Xem buổi tập' };
@@ -82,7 +96,7 @@ function actionForEvent(event, horseId) {
  * - Fast text search + 7/14/30/90-day range selector + role filter
  * - Day-grouped event cards with status badges, actor attribution, and direct deep-links
  */
-export default function HorseTimeline({ horseId }) {
+export default function HorseTimeline({ horseId, audience = 'staff' }) {
   const { token } = theme.useToken();
   const [days, setDays] = useState(14);
   const [role, setRole] = useState('all');
@@ -272,7 +286,7 @@ export default function HorseTimeline({ horseId }) {
                 {dayEvents.map((e) => {
                   const meta = ROLE_META[e.role] || ROLE_META.manager;
                   const sev = SEVERITY_META[e.severity];
-                  const link = actionForEvent(e, horseId);
+                  const link = actionForEvent(e, horseId, audience === 'owner');
                   return (
                     <div
                       key={`${e.kind}-${e.refId}-${e.at}`}

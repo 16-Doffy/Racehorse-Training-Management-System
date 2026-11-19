@@ -1,4 +1,5 @@
 const Horse = require('../models/Horse');
+const HealthRecord = require('../models/HealthRecord');
 const { notifyHorseStaff, pushNotification } = require('../modules/alerts/notification.service');
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly is plenty for day-granularity due dates
@@ -33,7 +34,8 @@ function whenText(due, now) {
  * Reminders of the horse's recurring care (vaccination, deworming, farrier) and of the exam the vet
  * booked (a follow-up or a periodic check):
  *  - the horse's vet when a date falls due, again every 24 hours while it stays due;
- *  - the horse's trainer once on the day a follow-up exam falls due, since it bears on the training;
+ *  - the horse's trainer once, OWNER_AHEAD_DAYS before a follow-up exam (or when it is due), with what
+ *    the vet is following up, since it bears on the training week;
  *  - the owner once, OWNER_AHEAD_DAYS before a visit (or on the day when it was booked late).
  * Each reminder is sent once per date: a date the vet moves is reminded afresh.
  */
@@ -56,6 +58,13 @@ async function checkCare(now = new Date()) {
   }
 }
 
+/** " — theo dõi: <diagnosis>" from the exam that booked this follow-up, or "". */
+async function followUpReason(horseId, due) {
+  const record = await HealthRecord.findOne({ horse: horseId, followUpAt: due }).sort({ date: -1 }).select('diagnosis').lean();
+  const text = String(record?.diagnosis || '').trim();
+  return text ? ` — theo dõi: ${text.length > 90 ? `${text.slice(0, 87)}…` : text}` : '';
+}
+
 async function remindHorse(horse, now) {
   let changed = false;
   for (const item of CARE_ITEMS) {
@@ -65,6 +74,9 @@ async function remindHorse(horse, now) {
 
     // The owner: a visit coming up within the next days (not one already past).
     const upcoming = due >= startOfDay(now) && due < new Date(startOfDay(now).getTime() + (OWNER_AHEAD_DAYS + 1) * DAY_MS);
+    // A follow-up exam: why the vet booked it (the exam that set this date), told with the reminder.
+    // eslint-disable-next-line no-await-in-loop
+    const why = item.kind === 'exam' && (upcoming || due <= now) ? await followUpReason(horse._id, due) : '';
     if (horse.owner && upcoming && !sameDate(horse.careSchedule.ownerRemindedFor?.[item.kind], due)) {
       // eslint-disable-next-line no-await-in-loop
       await pushNotification({
@@ -72,9 +84,23 @@ async function remindHorse(horse, now) {
         horse: horse._id,
         type: item.type,
         severity: 'info',
-        message: `📅 ${horse.name} có lịch ${OWNER_LABELS[item.kind]} ${whenText(due, now)}${item.kind === 'exam' ? ' với bác sĩ' : ''}.`,
+        message: `📅 ${horse.name} có lịch ${OWNER_LABELS[item.kind]} ${whenText(due, now)}${item.kind === 'exam' ? ` với bác sĩ${why}` : ''}.`,
       });
       horse.set(`careSchedule.ownerRemindedFor.${item.kind}`, due);
+      changed = true;
+    }
+
+    // The trainer: a follow-up exam coming up (or due), once per date — it bears on the training week.
+    if (item.kind === 'exam' && (upcoming || due <= now) && !sameDate(horse.careSchedule.trainerRemindedFor?.exam, due)) {
+      // eslint-disable-next-line no-await-in-loop
+      await notifyHorseStaff({
+        staff: 'trainer',
+        horse: horse._id,
+        type: item.type,
+        severity: 'info',
+        message: `🩺 ${horse.name} tái khám ${whenText(due, now)}${due < startOfDay(now) ? ` (hạn ${vnDate(due)} đã qua)` : ''}${why}: chừa thời gian trong lịch tập và chờ kết luận của bác sĩ trước khi tăng cường độ.`,
+      });
+      horse.set('careSchedule.trainerRemindedFor.exam', due);
       changed = true;
     }
 
@@ -93,20 +119,6 @@ async function remindHorse(horse, now) {
         message: `Ngựa ${horse.name} đến hạn ${item.label} (hạn: ${vnDate(due)}).`,
       });
       horse.careSchedule[item.notifiedField] = now;
-      changed = true;
-    }
-
-    // The trainer: a follow-up exam falls due, once per date.
-    if (item.kind === 'exam' && !sameDate(horse.careSchedule.trainerRemindedFor?.exam, due)) {
-      // eslint-disable-next-line no-await-in-loop
-      await notifyHorseStaff({
-        staff: 'trainer',
-        horse: horse._id,
-        type: item.type,
-        severity: 'info',
-        message: `🩺 ${horse.name} đến hạn tái khám (hạn ${vnDate(due)}): bác sĩ cần khám lại. Nên chừa thời gian trong lịch tập và chờ kết luận trước khi tăng cường độ.`,
-      });
-      horse.set('careSchedule.trainerRemindedFor.exam', due);
       changed = true;
     }
   }

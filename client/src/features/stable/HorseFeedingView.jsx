@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Alert, Button, Segmented, Spin, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Button, Segmented, Spin, Tabs, Tag, Tooltip, Typography } from 'antd';
+import './ration.css';
 import { CloseOutlined, EditOutlined, PlusOutlined, ProfileOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -9,7 +10,7 @@ import { PHASE_LABELS } from '../training/trainingVocab';
 import FeedingTimetable from './FeedingTimetable';
 import FeedingDaysTable from './FeedingDaysTable';
 import FeedingGroupsTable from './FeedingGroupsTable';
-import { Fact, PhaseStrip, StockNeedList } from './FeedingPlanParts';
+import { PhaseStrip, StockNeedList } from './FeedingPlanParts';
 import { DIET_KINDS, RAMP_TEXT } from '../../constants/diet';
 import { SLOTS, SLOT_LABELS, amountText, dayTotals, idOf, planEnd, stockNeed } from './feedingPlan';
 
@@ -94,13 +95,13 @@ function PlanDays({ calendar, feedItems }) {
           value={view}
           onChange={setView}
           options={[
-            { value: 'group', label: 'Gọn theo nhóm ngày' },
+            { value: 'group', label: 'Theo nhóm ngày' },
             { value: 'day', label: 'Từng ngày' },
           ]}
         />
         {view === 'group' && (
           <Text type="secondary" className="!text-xs">
-            Mỗi dòng là các ngày ăn giống nhau; rê chuột vào dãy ngày để xem đủ.
+            Mỗi thẻ là các ngày ăn giống nhau; rê chuột vào ô ngày để xem đủ các ngày.
           </Text>
         )}
       </div>
@@ -223,6 +224,7 @@ export default function HorseFeedingView({ horseId, horses, plans, rations, assi
   const stale = ahead.filter((d) => d.stale).length;
   const phaseNow = calendar?.days.find((d) => d.date === dayjs().format('YYYY-MM-DD'))?.phase || plan?.phase;
   const hasRations = plan ? confirmed > 0 : mine.length > 0;
+  const [part, setPart] = useState('week');
 
   let status = null;
   if (plan && calendar) {
@@ -235,68 +237,8 @@ export default function HorseFeedingView({ horseId, horses, plans, rations, assi
     status = mine.length ? <Tag color="green" className="!m-0">Khẩu phần hằng ngày</Tag> : <Tag color="orange" className="!m-0">Chưa có khẩu phần</Tag>;
   }
 
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="light-surface-box sticky top-0 z-10 flex flex-col gap-3 rounded-xl border border-[#D4AF37]/40 bg-slate-50/95 px-4 py-3 shadow-2xs">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="text-xs text-gray-500">Đang xem riêng:</span>
-            <span className="text-lg font-semibold text-gray-900">{horse?.name || 'Ngựa'}</span>
-            <Tooltip title="Hồ sơ ngựa">
-              <Link to={`/horses/${horseId}`} aria-label={`Hồ sơ ${horse?.name || 'ngựa'}`} className="text-gray-400 hover:text-emerald-700">
-                <ProfileOutlined />
-              </Link>
-            </Tooltip>
-            {status}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="primary" icon={hasRations ? <EditOutlined /> : <PlusOutlined />} onClick={() => onOpenPlanner(horseId)}>
-              {hasRations ? 'Sửa khẩu phần ăn' : 'Tạo khẩu phần ăn'}
-            </Button>
-            <Button icon={<CloseOutlined />} onClick={onBack}>
-              Xem tất cả ngựa
-            </Button>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2 md:grid-cols-4">
-          <Fact label="Cân nặng">{horse?.weightKg ? `${amountText(horse.weightKg)} kg` : <Text type="warning">Chưa nhập</Text>}</Fact>
-          <Fact label="Người cho ăn">
-            {assignment?.assignedCaretaker?.name ? (
-              <>
-                {assignment.assignedCaretaker.name}
-                {assignment.stableBlock ? <Text type="secondary"> · {assignment.stableBlock}</Text> : null}
-              </>
-            ) : (
-              <Text type="warning">Chưa xếp chuồng</Text>
-            )}
-          </Fact>
-          <Fact label="Kế hoạch tập">
-            {plan ? (
-              <span title={plan.goal}>
-                {plan.goal || 'Đang áp dụng'}
-                <Text type="secondary" className="!block !text-xs">
-                  {dayjs(plan.startDate).format('DD/MM')} – {planEnd(plan) ? dayjs(planEnd(plan)).format('DD/MM/YYYY') : '—'}
-                </Text>
-              </span>
-            ) : (
-              <Text type="secondary">Chưa có kế hoạch đang áp dụng</Text>
-            )}
-          </Fact>
-          <Fact label="Giai đoạn hôm nay">{plan ? PHASE_LABELS[phaseNow] || phaseNow || '—' : '—'}</Fact>
-        </div>
-      </div>
-
-      <nav className="st-care-nav" aria-label="Nội dung chăm sóc ngựa">
-        <a href="#horse-feeding-week">Lịch ăn tuần</a>
-        {careContent && <a href="#horse-care-work">Việc chăm sóc</a>}
-        <a href="#horse-ration-plan">Khẩu phần theo kế hoạch</a>
-      </nav>
-
-      <div id="horse-feeding-week" className="st-care-section"><FeedingTimetable horseId={horseId} /></div>
-
-      {careContent && <section id="horse-care-work" className="st-care-section" aria-label="Việc chăm sóc của ngựa đang xem">{careContent}</section>}
-
-      <div id="horse-ration-plan" className="st-care-section">{plan ? (
+  const planBlock = (
+    <div>{plan ? (
         <Section
           label="Lịch ăn theo kế hoạch huấn luyện"
           title="Lịch ăn từ hôm nay đến hết kế hoạch tập"
@@ -327,6 +269,62 @@ export default function HorseFeedingView({ horseId, horses, plans, rations, assi
           <DailyRations rations={mine} />
         </Section>
       )}</div>
+  );
+
+  return (
+    <div className="rp-horse-view flex flex-col gap-4">
+      {/* The horse in one compact card: who it is, where its meals stand, its facts as chips, the ways on. */}
+      <section className="rp-horse">
+        <div className="rp-horse-top">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="rp-horse-name">{horse?.name || 'Ngựa'}</span>
+            <Tooltip title="Hồ sơ ngựa">
+              <Link to={`/horses/${horseId}`} aria-label={`Hồ sơ ${horse?.name || 'ngựa'}`} className="text-gray-400 hover:text-emerald-700">
+                <ProfileOutlined />
+              </Link>
+            </Tooltip>
+            {status}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="primary" icon={hasRations ? <EditOutlined /> : <PlusOutlined />} onClick={() => onOpenPlanner(horseId)}>
+              {hasRations ? 'Sửa khẩu phần ăn' : 'Tạo khẩu phần ăn'}
+            </Button>
+            <Button icon={<CloseOutlined />} onClick={onBack}>
+              Tất cả ngựa
+            </Button>
+          </div>
+        </div>
+        <div className="rp-horse-facts">
+          <span>
+            <small>Cân nặng</small>
+            {horse?.weightKg ? `${amountText(horse.weightKg)} kg` : <Text type="warning">Chưa nhập</Text>}
+          </span>
+          <span>
+            <small>Người cho ăn</small>
+            {assignment?.assignedCaretaker?.name ? `${assignment.assignedCaretaker.name}${assignment.stableBlock ? ` · ${assignment.stableBlock}` : ''}` : <Text type="warning">Chưa xếp chuồng</Text>}
+          </span>
+          <span title={plan?.goal}>
+            <small>Kế hoạch tập</small>
+            {plan ? `${plan.goal || 'Đang áp dụng'} (${dayjs(plan.startDate).format('DD/MM')} – ${planEnd(plan) ? dayjs(planEnd(plan)).format('DD/MM/YYYY') : '—'})` : 'Chưa có kế hoạch'}
+          </span>
+          <span>
+            <small>Giai đoạn hôm nay</small>
+            {plan ? PHASE_LABELS[phaseNow] || phaseNow || '—' : '—'}
+          </span>
+        </div>
+      </section>
+
+      {/* One part at a time instead of a long page to scroll. */}
+      <Tabs
+        className="rp-horse-tabs"
+        activeKey={part}
+        onChange={setPart}
+        items={[
+          { key: 'week', label: 'Lịch ăn tuần này', children: <FeedingTimetable horseId={horseId} /> },
+          ...(careContent ? [{ key: 'care', label: 'Việc chăm sóc', children: <section aria-label="Việc chăm sóc của ngựa đang xem">{careContent}</section> }] : []),
+          { key: 'plan', label: plan ? 'Khẩu phần theo kế hoạch tập' : 'Khẩu phần hằng ngày', children: planBlock },
+        ]}
+      />
     </div>
   );
 }

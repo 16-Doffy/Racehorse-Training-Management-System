@@ -1,12 +1,13 @@
 import { Tooltip } from 'antd';
+import { CalendarOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { PHASE_COLORS, PHASE_LABELS, SESSION_KINDS } from '../training/trainingVocab';
 import { MealCell } from './FeedingDaysTable';
 import { SLOTS, SLOT_LABELS, WORK_LABELS, amountText, dayLabel, dayTotals, dayWork, itemsKey } from './feedingPlan';
+import './ration.css';
 
 const ddmm = (date) => dayjs(date).format('DD/MM');
-const WORK_DOT = { rest: 'bg-gray-300', light: 'bg-emerald-500', moderate: 'bg-amber-500', high: 'bg-rose-500', sick: 'bg-rose-700' };
-const SHOWN_DATES = 6;
+const SHOWN_DATES = 3;
 
 /** The days with the same work and the same meals, phase by phase, in the order they first come. */
 function groupDays(days) {
@@ -34,107 +35,79 @@ function groupDays(days) {
 }
 
 /**
- * The plan's days folded: per phase, one row for each set of days that eat the same (a phase of four
- * weeks is two or three rows: its training days, its rest days, any day changed on its own). A meal
- * opens for all the days of its row: `onEditMeal(dates, slot)`.
+ * The plan's days folded: a card per phase, and in it a card for each set of days that eat the same (a
+ * phase of four weeks is two or three: its training days, its rest days, any day changed on its own) with
+ * its three meals side by side. Why the ration is what it is, and every date of a group, are on hover. A
+ * meal opens for all the days of its group: `onEditMeal(dates, slot)`.
  */
 export default function FeedingGroupsTable({ days, onEditMeal, edited = () => false }) {
   const phases = groupDays(days);
   return (
-    <div className="light-surface-box overflow-x-auto rounded-xl border border-gray-200 bg-white">
-      <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
-        <colgroup>
-          <col className="w-[190px]" />
-          {SLOTS.map((s) => (
-            <col key={s} />
-          ))}
-          <col className="w-[84px]" />
-        </colgroup>
-        <thead>
-          <tr className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            <th className="px-3 py-1.5">Nhóm ngày</th>
-            {SLOTS.map((s) => (
-              <th key={s} className="px-3 py-1.5">
-                {SLOT_LABELS[s]}
-              </th>
-            ))}
-            <th className="whitespace-nowrap px-3 py-1.5 text-right">Mỗi ngày</th>
-          </tr>
-        </thead>
-        {phases.map((p, pi) => {
-          const training = p.days.filter((d) => d.work !== 'rest').length;
-          return (
-            <tbody key={`${p.phase}-${pi}`}>
-              <tr>
-                <td colSpan={5} className="border-y border-gray-200 bg-gray-50 px-3 py-1">
-                  <div className="flex flex-wrap items-center gap-x-3 border-l-4 pl-2 text-[11px]" style={{ borderColor: PHASE_COLORS[p.phase] || '#999' }}>
-                    <span className="font-semibold text-gray-900">{PHASE_LABELS[p.phase] || p.phase}</span>
-                    <span className="tabular-nums text-gray-600">
-                      {ddmm(p.days[0].date)} – {ddmm(p.days.at(-1).date)} · {p.days.length} ngày
-                    </span>
-                    <span className="text-gray-500">
-                      {training} ngày tập · {p.days.length - training} ngày nghỉ
-                    </span>
-                  </div>
-                </td>
-              </tr>
+    <div className="rp-groups">
+      {phases.map((p, pi) => {
+        const training = p.days.filter((d) => d.work !== 'rest').length;
+        return (
+          <section key={`${p.phase}-${pi}`} className="rp-phase" style={{ '--phase': PHASE_COLORS[p.phase] || '#94a3b8' }}>
+            <header className="rp-phase-head">
+              <span className="rp-phase-name">{PHASE_LABELS[p.phase] || p.phase}</span>
+              <span className="rp-phase-when">
+                {ddmm(p.days[0].date)} – {ddmm(p.days.at(-1).date)} · {p.days.length} ngày
+              </span>
+              <span className="rp-phase-count">
+                <span>{training} ngày tập</span>
+                <span>{p.days.length - training} ngày nghỉ</span>
+              </span>
+            </header>
+            <div className="rp-phase-body">
               {p.groups.map((g) => (
-                <tr key={g.key} className="border-b border-gray-100 align-top">
-                  <td className="px-3 py-1.5">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-900">
-                      <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${WORK_DOT[g.work] || 'bg-gray-300'}`} aria-hidden />
-                      {g.dates.length === 1 ? dayLabel(g.dates[0]) : `${WORK_LABELS[g.work]} · ${g.dates.length} ngày`}
-                    </div>
-                    <div className="mt-0.5 text-[11px] leading-4 text-gray-600">
-                      {g.dates.length === 1 ? WORK_LABELS[g.work] : null}
-                      {g.kinds.size > 0 && `${g.dates.length === 1 ? ' · ' : ''}${[...g.kinds].join(', ')}`}
-                    </div>
+                <div key={g.key} className="rp-group">
+                  <div className="rp-group-head">
+                    <span className={`rp-work is-${g.work}`}>{g.dates.length === 1 ? `${dayLabel(g.dates[0])} · ${WORK_LABELS[g.work]}` : `${WORK_LABELS[g.work]} · ${g.dates.length} ngày`}</span>
+                    {g.kinds.size > 0 && <span className="rp-sessions">{[...g.kinds].join(', ')}</span>}
                     {g.first?.rationNote && (
-                      <div className="mt-0.5 text-[10px] leading-3.5 text-amber-800">{g.first.rationNote}</div>
+                      <Tooltip title={g.first.rationNote}>
+                        <span className="rp-why" tabIndex={0}>
+                          <InfoCircleOutlined /> Vì sao
+                        </span>
+                      </Tooltip>
                     )}
                     {g.dates.length > 1 && (
                       <Tooltip title={g.dates.map((d) => ddmm(d)).join(', ')}>
-                        <div className="mt-0.5 cursor-default text-[10px] leading-4 tabular-nums text-gray-500">
-                          {g.dates.slice(0, SHOWN_DATES).map((d) => ddmm(d)).join(', ')}
-                          {g.dates.length > SHOWN_DATES ? ` … +${g.dates.length - SHOWN_DATES}` : ''}
-                        </div>
+                        <span className="rp-dates" tabIndex={0}>
+                          <CalendarOutlined /> {g.dates.slice(0, SHOWN_DATES).map((d) => ddmm(d)).join(', ')}
+                          {g.dates.length > SHOWN_DATES ? ` +${g.dates.length - SHOWN_DATES}` : ''}
+                        </span>
                       </Tooltip>
                     )}
-                  </td>
-                  {SLOTS.map((slot) => {
-                    const meal = g.first.meals.find((m) => m.slot === slot);
-                    if (!meal && !onEditMeal && !(g.first.removedSlots || []).includes(slot)) {
+                    <span className="rp-total">
+                      {dayTotals(g.first.meals)
+                        .map(([unit, n]) => `${amountText(n)} ${unit}`)
+                        .join(' + ') || '—'}{' '}
+                      / ngày
+                    </span>
+                  </div>
+                  <div className="rp-meals">
+                    {SLOTS.map((slot) => {
+                      const meal = g.first.meals.find((m) => m.slot === slot);
+                      const removed = !meal;
                       return (
-                        <td key={slot} className="px-3 py-1.5 text-xs text-gray-300">
-                          —
-                        </td>
+                        <div key={slot} className="rp-meal">
+                          <span className="rp-meal-label">{SLOT_LABELS[slot]}</span>
+                          {removed && !onEditMeal && !(g.first.removedSlots || []).includes(slot) ? (
+                            <span className="px-1.5 text-xs text-gray-400">—</span>
+                          ) : (
+                            <MealCell meal={meal} removed={removed} locked={g.first.locked?.[slot]} edited={Boolean(meal) && edited(g.first.date, slot)} onEdit={onEditMeal ? () => onEditMeal(g.dates, slot) : null} />
+                          )}
+                        </div>
                       );
-                    }
-                    return (
-                      <td key={slot} className="px-1.5 py-1">
-                        <MealCell
-                          meal={meal}
-                          removed={!meal}
-                          locked={g.first.locked?.[slot]}
-                          edited={Boolean(meal) && edited(g.first.date, slot)}
-                          onEdit={onEditMeal ? () => onEditMeal(g.dates, slot) : null}
-                        />
-                      </td>
-                    );
-                  })}
-                  <td className="px-3 py-1.5 text-right text-[11px] leading-4 tabular-nums text-gray-700">
-                    {dayTotals(g.first.meals).map(([unit, n]) => (
-                      <div key={unit}>
-                        <b>{amountText(n)}</b> {unit}
-                      </div>
-                    ))}
-                  </td>
-                </tr>
+                    })}
+                  </div>
+                </div>
               ))}
-            </tbody>
-          );
-        })}
-      </table>
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

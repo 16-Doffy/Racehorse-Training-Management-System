@@ -1,0 +1,297 @@
+/* The cost report (CostReport) on the owner's and the Manager's money pages. Colours from whichever theme
+   the page is in: the owner's (--o-*, owner.css) or the staff's (--st-*), light and dark alike. */
+.cr {
+  --cr-surface: var(--o-card, var(--st-surface, #ffffff));
+  --cr-sunk: var(--o-sunk, var(--st-sunk, #f1f5f9));
+  --cr-border: var(--o-border-soft, var(--st-border, #e2e8f0));
+  --cr-ink: var(--o-ink, var(--st-ink, #0f172a));
+  --cr-ink-2: var(--o-muted, var(--st-ink-secondary, #334155));
+  --cr-muted: var(--o-faint, var(--st-ink-muted, #64748b));
+  --cr-feed: #d97706;
+  --cr-medical: #e11d48;
+  --cr-upkeep: #0f766e;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--cr-ink);
+}
+
+/* ---------- The three kinds and the total ---------- */
+.cr-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+.cr-group {
+  --tone: var(--cr-ink-2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--cr-border);
+  border-top: 4px solid var(--tone);
+  border-radius: 14px;
+  background: var(--cr-surface);
+}
+.cr-group.is-feed {
+  --tone: var(--cr-feed);
+}
+.cr-group.is-medical {
+  --tone: var(--cr-medical);
+}
+.cr-group.is-upkeep {
+  --tone: var(--cr-upkeep);
+}
+.cr-group.is-total {
+  --tone: var(--cr-ink);
+  background: var(--cr-sunk);
+}
+.cr-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cr-group-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  color: var(--tone);
+}
+.cr-group-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cr-ink-2);
+}
+.cr-help {
+  margin-left: auto;
+  color: var(--cr-muted);
+  cursor: help;
+}
+.cr-group-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--cr-ink);
+  font-variant-numeric: tabular-nums;
+}
+.cr-group-sub {
+  font-size: 12px;
+  color: var(--cr-muted);
+}
+
+/* ---------- Cards ---------- */
+.cr-card {
+  padding: 14px 16px;
+  border: 1px solid var(--cr-border);
+  border-radius: 14px;
+  background: var(--cr-surface);
+}
+.cr-card-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 750;
+  color: var(--cr-ink);
+}
+.cr-legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cr-muted);
+}
+.cr-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+.cr-legend i.is-feed,
+.cr-seg.is-feed {
+  background: var(--cr-feed);
+}
+.cr-legend i.is-medical,
+.cr-seg.is-medical {
+  background: var(--cr-medical);
+}
+.cr-legend i.is-upkeep,
+.cr-seg.is-upkeep {
+  background: var(--cr-upkeep);
+}
+.cr-muted {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cr-ink-2);
+}
+
+/* ---------- Month by month ---------- */
+.cr-bars {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: end;
+  gap: 8px;
+  height: 200px;
+}
+.cr-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  min-width: 0;
+}
+.cr-bar-value {
+  margin-bottom: 4px;
+  font-size: 10.5px;
+  color: var(--cr-muted);
+  white-space: nowrap;
+}
+.cr-bar-stack {
+  display: flex;
+  flex-direction: column-reverse;
+  width: 70%;
+  max-width: 34px;
+  min-height: 0;
+  border-radius: 6px 6px 2px 2px;
+  overflow: hidden;
+}
+.cr-seg {
+  flex-basis: 0;
+  min-height: 2px;
+}
+.cr-seg.is-ahead {
+  opacity: 0.45;
+}
+.cr-bar-label {
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--cr-ink-2);
+}
+
+/* ---------- A row per horse ---------- */
+.cr-table {
+  display: flex;
+  flex-direction: column;
+}
+.cr-tr {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) repeat(4, minmax(90px, 1fr));
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-top: 1px solid var(--cr-border);
+  border-radius: 0;
+  background: transparent;
+  font-size: 13px;
+  text-align: right;
+  color: var(--cr-ink);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.cr-tr > span:first-child {
+  text-align: left;
+}
+.cr-tr.is-head {
+  border-top: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cr-muted);
+  cursor: default;
+}
+button.cr-tr:hover,
+.cr-tr.is-on {
+  background: var(--cr-sunk);
+}
+.cr-td-name {
+  font-weight: 700;
+}
+.cr-td-total {
+  font-weight: 800;
+}
+@media (max-width: 720px) {
+  .cr-tr {
+    grid-template-columns: minmax(100px, 1fr) minmax(90px, auto);
+  }
+  .cr-tr > span:not(:first-child):not(:last-child) {
+    display: none;
+  }
+}
+
+/* ---------- One horse, line by line ---------- */
+.cr-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.cr-detail {
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--cr-sunk);
+}
+.cr-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--cr-ink);
+}
+.cr-detail ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cr-detail li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--cr-border);
+}
+.cr-detail li:first-child {
+  border-top: 0;
+}
+.cr-detail li b {
+  display: block;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--cr-ink);
+}
+.cr-detail li small {
+  font-size: 12px;
+  color: var(--cr-muted);
+}
+.cr-detail-cost {
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cr-empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--cr-muted);
+}
+.cr-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--cr-muted);
+}

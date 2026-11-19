@@ -11,12 +11,12 @@ import '../../components/veterinarian/vet.css';
 import CareBodyMap from '../horses/CareBodyMap';
 import CareHistoryCard from '../horses/CareHistoryCard';
 import { horsesApi } from '../horses/horsesApi';
-import { TRAINING_LEVEL_META } from '../../constants/health';
 import { Card, ClearancePill, DateChip, EmptyNote, MoreButton, Pill, Row } from './kit';
 import { VitalsMultiples } from './charts';
 import { CareSchedule } from './lists';
 import { capFirst, clearanceOf, fmtDate, fmtDateTime, fmtShort, healthOf, idOf, relDay } from './ownerFormat';
 import { useHealthRecords, useInjuries, useTreatments } from './useOwnerData';
+import ExamSummary, { FollowUpPill, TreatmentBlock } from '../health/ExamSummary';
 
 const VITALS = [
   ['heartRate', 'Nhịp tim', 'bpm'],
@@ -45,6 +45,12 @@ export default function HealthDetail({ horse, examined = true }) {
   const [params] = useSearchParams();
   const [tab, setTab] = useState(() => (TABS.includes(params.get('tab')) ? params.get('tab') : null));
   const [examsShown, setExamsShown] = useState(6);
+  const [openExamId, setOpenExamId] = useState(null);
+  // An exam opened from elsewhere on the page: the exams tab, with it unfolded.
+  const openExam = (examId) => {
+    setTab('exams');
+    setOpenExamId(examId);
+  };
   const [bodyLayer, setBodyLayer] = useState(null); // 'injury' | 'care'; until chosen, injuries if any are open
   // The same request as the care history table below, so the two share one fetch.
   const careQuery = useQuery({ queryKey: ['care-events', id, 'all'], queryFn: () => horsesApi.careEvents(id), enabled: Boolean(id) });
@@ -129,12 +135,13 @@ export default function HealthDetail({ horse, examined = true }) {
                   {diet.note ? ` — ${diet.note}` : ''}
                 </span>
               )}
-              {followUp && (
-                <span>
-                  <b>Tái khám:</b> {fmtDate(followUp)} ({relDay(followUp)})
-                </span>
-              )}
+              {followUp && <FollowUpPill date={followUp} />}
             </div>
+          )}
+          {latest && (
+            <button type="button" className="own-link-btn self-start text-sm font-semibold" onClick={() => openExam(latest._id)}>
+              Xem chi tiết lần khám: chẩn đoán, đơn thuốc, chế độ ăn →
+            </button>
           )}
         </div>
       </section>
@@ -153,39 +160,26 @@ export default function HealthDetail({ horse, examined = true }) {
       </div>
 
       {shownTab === 'treatments' && (
-      <Card title="Điều trị & đơn thuốc" icon={<MedicineBoxOutlined />} flush extra={plans.some((t) => t.status === 'ongoing') && <Pill tone="info">{plans.filter((t) => t.status === 'ongoing').length} đang điều trị</Pill>}>
+      <Card title="Điều trị & đơn thuốc" icon={<MedicineBoxOutlined />} extra={plans.some((t) => t.status === 'ongoing') && <Pill tone="info">{plans.filter((t) => t.status === 'ongoing').length} đang điều trị</Pill>}>
         {plans.length === 0 ? (
           <EmptyNote>Ngựa chưa có phác đồ điều trị nào.</EmptyNote>
         ) : (
-          <ul className="own-list">
+          // Each prescription in full: every medicine with its dose, how and when it is given, from when to when.
+          <div className="flex flex-col gap-2.5">
             {plans.map((t) => {
-              const ongoing = t.status === 'ongoing';
-              const level = t.trainingLevel ? TRAINING_LEVEL_META[t.trainingLevel]?.label : null;
+              const exam = exams.find((r) => idOf(r) === idOf(t.healthRecord));
               return (
-                <li key={t._id}>
-                  <Row
-                    lead={<span className={`own-icon is-${ongoing ? 'info' : 'good'}`}><MedicineBoxOutlined /></span>}
-                    title={t.medications?.length ? t.medications.map((m) => m.name).join(', ') : 'Chăm sóc theo y lệnh'}
-                    sub={`${fmtDate(t.startDate || t.createdAt)} → ${t.endDate ? fmtDate(t.endDate) : 'chưa định ngày kết thúc'}${t.prescribedBy?.name ? ` · kê bởi ${t.prescribedBy.name}` : ''}`}
-                    side={
-                      <>
-                        <Pill tone={ongoing ? 'info' : 'good'}>{ongoing ? 'Đang điều trị' : 'Đã xong'}</Pill>
-                        {t.isTrainingLocked ? <Pill tone="bad">Khóa tập</Pill> : level && <Pill tone="watch">{level}</Pill>}
-                      </>
-                    }
-                  >
-                    {t.medications?.length > 0 && (
-                      <div className="own-row-sub">
-                        {t.medications.map((m) => [m.name, m.dosage, m.frequency].filter(Boolean).join(' · ')).join('  |  ')}
-                      </div>
-                    )}
-                    {t.careInstructions && <div className="own-quote">{t.careInstructions}</div>}
-                    {t.isTrainingLocked && t.lockReason && <div className="own-row-sub own-bad">Lý do khóa tập: {t.lockReason}</div>}
-                  </Row>
-                </li>
+                <div key={t._id} className="flex flex-col gap-1">
+                  {exam && (
+                    <button type="button" className="own-link-btn text-left text-xs" onClick={() => openExam(exam._id)}>
+                      Theo lần khám {fmtDate(exam.date)}: {exam.diagnosis}
+                    </button>
+                  )}
+                  <TreatmentBlock treatment={t} />
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
       </Card>
       )}
@@ -251,19 +245,31 @@ export default function HealthDetail({ horse, examined = true }) {
           <EmptyNote>Chưa có lần khám nào.</EmptyNote>
         ) : (
           <>
+            {/* A click opens the exam as the vet filed it: findings, diagnosis, prescriptions, diet, follow-up. */}
             <ul className="own-list">
               {exams.slice(0, examsShown).map((r) => {
                 const result = healthOf(r.resultStatus);
+                const shown = openExamId === r._id;
                 return (
                   <li key={r._id}>
-                    <Row
-                      lead={<DateChip date={r.date} sub={dayjs(r.date).format('MM/YY')} />}
-                      title={r.diagnosis}
-                      sub={[r.examinedBy?.name, vitalsText(r.vitalSigns)].filter(Boolean).join(' · ') || null}
-                      side={<Pill tone={result.tone}>{result.label}</Pill>}
-                    >
-                      {r.notes && <div className="own-row-sub">{r.notes}</div>}
-                    </Row>
+                    <button type="button" className="block w-full cursor-pointer border-0 bg-transparent p-0 text-left" onClick={() => setOpenExamId(shown ? null : r._id)} aria-expanded={shown}>
+                      <Row
+                        lead={<DateChip date={r.date} sub={dayjs(r.date).format('MM/YY')} />}
+                        title={r.diagnosis}
+                        sub={[r.examinedBy?.name, vitalsText(r.vitalSigns), r.followUpAt ? `tái khám ${fmtDate(r.followUpAt)}` : null].filter(Boolean).join(' · ') || null}
+                        side={
+                          <>
+                            <Pill tone={result.tone}>{result.label}</Pill>
+                            <span className="own-faint text-xs">{shown ? 'Thu gọn' : 'Xem chi tiết'}</span>
+                          </>
+                        }
+                      />
+                    </button>
+                    {shown && (
+                      <div style={{ padding: '4px 16px 16px' }}>
+                        <ExamSummary record={r} treatments={plans} />
+                      </div>
+                    )}
                   </li>
                 );
               })}

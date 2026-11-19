@@ -57,6 +57,24 @@ const clubPolicy = Object.freeze({
   // A horse is confirmed for its race only with a plan for it whose phases before the taper were each
   // judged done by the trainer (training/planProgress.js phaseCompletion).
   raceNeedsPhasesDone: flag('POLICY_RACE_NEEDS_PHASES_DONE', true),
+  // The club's rates (VND) for keeping a horse, for the cost report (finance/costReport.service.js): a
+  // stall a day by its kind, the groom's care a day, each routine care visit, each vet exam. Feed and
+  // medicines are priced from the stock list instead. Figures to read only: the money itself is settled
+  // outside the system.
+  costRates: Object.freeze({
+    stallDay: Object.freeze({
+      standard: num('COST_STALL_DAY', 150000),
+      recovery: num('COST_RECOVERY_STALL_DAY', 200000),
+      isolation: num('COST_ISOLATION_STALL_DAY', 250000),
+    }),
+    groomDay: num('COST_GROOM_DAY', 100000),
+    visit: Object.freeze({
+      farrier: num('COST_FARRIER_VISIT', 450000),
+      vaccination: num('COST_VACCINATION', 350000),
+      deworming: num('COST_DEWORMING', 150000),
+    }),
+    exam: num('COST_VET_EXAM', 300000),
+  }),
 });
 
 module.exports = clubPolicy;

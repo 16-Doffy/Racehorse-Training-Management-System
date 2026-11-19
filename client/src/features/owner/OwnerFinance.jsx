@@ -7,6 +7,9 @@ import { Card, EmptyNote, HorseAvatar, MoreButton, OwnerPage, PageHead } from '.
 import { MoneyBars } from './charts';
 import { capFirst, idOf, money } from './ownerFormat';
 import { useHorseParam, useMyFinance, useMyHorses } from './useOwnerData';
+import { useQuery } from '@tanstack/react-query';
+import { financeApi } from '../finance/financeApi';
+import CostReport from '../finance/CostReport';
 
 const AUTO = ['race_prize', 'system'];
 const label = (c) => capFirst(categoryLabel(c));
@@ -42,7 +45,13 @@ export default function OwnerFinance() {
   // The year (and the horse, when one is picked): what the summary and the charts add up.
   const inYear = useMemo(() => entries.filter((e) => dayjs(e.date).year() === year && (!horseId || idOf(e.horse) === horseId)), [entries, year, horseId]);
   const revenue = sum(inYear.filter((e) => e.type === 'revenue'));
-  const cost = sum(inYear.filter((e) => e.type === 'cost'));
+  // What the horses cost, worked out by the system from rations, prescriptions and stalls (view only),
+  // plus anything the Manager wrote in by hand.
+  const costQuery = useQuery({ queryKey: ['finance-costs', year, horseId || 'all'], queryFn: () => financeApi.costs({ year, horse: horseId || undefined }) });
+  const costReport = costQuery.data?.data;
+  const keep = costReport?.totals?.total || 0;
+  const manualCost = sum(inYear.filter((e) => e.type === 'cost'));
+  const cost = keep + manualCost;
   const net = revenue - cost;
   const categories = [...new Set(inYear.map((e) => e.category))].sort((a, b) => categoryLabel(a).localeCompare(categoryLabel(b), 'vi'));
   const term = fold(search.trim());
@@ -88,7 +97,7 @@ export default function OwnerFinance() {
 
   return (
     <OwnerPage>
-      <PageHead eyebrow="Chủ sở hữu" title="Thu chi" sub="Sổ thu chi của các chiến mã do CLB ghi nhận: tiền thưởng giải, tài trợ, chi phí thức ăn, y tế, huấn luyện…" />
+      <PageHead eyebrow="Chủ sở hữu" title="Thu chi" sub="Báo cáo tổng hợp: chi phí thức ăn, y tế, nuôi dưỡng do hệ thống tính từ dữ liệu của CLB, và doanh thu tiền thưởng giải. Chỉ để theo dõi — thanh toán thực hiện ngoài hệ thống." />
 
       <div className="own-fin-pick">
         <Select value={year} onChange={setYear} options={years.map((y) => ({ value: y, label: `Năm ${y}` }))} aria-label="Năm" style={{ width: 130 }} />
@@ -120,8 +129,12 @@ export default function OwnerFinance() {
           </span>
           <div>
             <span className="own-sum-label">Tổng chi</span>
-            <b className="own-sum-value">{isLoading ? '—' : money(cost)}</b>
-            <span className="own-sum-sub">{inYear.filter((e) => e.type === 'cost').length} khoản chi</span>
+            <b className="own-sum-value">{isLoading || costQuery.isLoading ? '—' : money(cost)}</b>
+            <span className="own-sum-sub">
+              {costReport
+                ? `Thức ăn ${money(costReport.totals.feed)} · Y tế ${money(costReport.totals.medical)} · Nuôi dưỡng ${money(costReport.totals.upkeep)}${manualCost ? ` · khác ${money(manualCost)}` : ''}`
+                : `${inYear.filter((e) => e.type === 'cost').length} khoản chi`}
+            </span>
           </div>
         </div>
         <div className={`own-sum-tile is-net${net < 0 ? ' is-loss' : ''}`}>
@@ -135,6 +148,11 @@ export default function OwnerFinance() {
           </div>
         </div>
       </div>
+
+      {/* What keeping the horses costs, in three kinds: feed, medical, upkeep. */}
+      <Card title={`Chi phí nuôi dưỡng năm ${year}${horseId ? ` · ${horsesById.get(horseId)?.name || ''}` : ''}`} icon={<FallOutlined />}>
+        <CostReport report={costReport} loading={costQuery.isLoading} year={year} />
+      </Card>
 
       <div className="own-fin-layout">
         <Card title="Sổ thu chi" icon={<BookOutlined />} flush className="own-ledger">

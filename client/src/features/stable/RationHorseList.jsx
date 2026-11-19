@@ -28,7 +28,10 @@ function mealOf(task, makeUp) {
  * meals went, its standing ration and what needs a look. A click opens the horse: its feeding week,
  * its plan's feeding calendar and its rations. Many horses: found by name, or only those needing a look.
  */
-export default function RationHorseList({ rations = [], horses = [], tasks = [], assignmentOf, planOf, onSelect, loading, action = null }) {
+export default function RationHorseList({ rations = [], horses = [], tasks = [], calendarHorses = [], assignmentOf, planOf, onSelect, loading, action = null }) {
+  // A training plan does not feed the horse by itself: its meals follow the plan only once the trainer made
+  // and confirmed a feeding calendar for it on this page (GET /feeding/calendar-horses).
+  const onCalendar = new Set((calendarHorses || []).map(String));
   const [search, setSearch] = useState('');
   const [only, setOnly] = useState('all');
   const today = (tasks || []).filter((t) => t.taskType === 'feeding' && dayjs(t.scheduledDate).isSame(dayjs(), 'day'));
@@ -57,9 +60,12 @@ export default function RationHorseList({ rations = [], horses = [], tasks = [],
       if (mine.some((r) => !r.approvedBy || !r.items?.length)) flags.push(['red', 'Khẩu phần chưa duyệt']);
       if (mine.some((r) => (r.items || []).some((i) => !i.inventoryItem))) flags.push(['orange', 'Có món chưa gắn kho']);
       if (mine.some((r) => (r.items || []).some((i) => typeof i.inventoryItem?.quantity === 'number' && i.inventoryItem.quantity < (i.amount || 0)))) flags.push(['red', 'Kho không đủ']);
-      if (!mine.length && !plan) flags.push(['gold', 'Chưa có khẩu phần']);
+      const followsPlan = Boolean(plan) && onCalendar.has(id);
+      if (plan && !followsPlan) flags.push(mine.length ? ['blue', 'Chưa theo kế hoạch tập'] : ['gold', 'Chưa tạo khẩu phần cho kế hoạch']);
+      else if (!mine.length && !plan) flags.push(['gold', 'Chưa có khẩu phần']);
       const look = flags.length > 0 || meals.some((m) => m.state === 'missed');
-      return { key: id, horse: h, plan, groom, meals, rations: mine, perDay, flags, look };
+      const source = followsPlan ? 'Theo kế hoạch tập · lịch ăn đã xác nhận' : mine.length ? 'Theo khẩu phần mẫu' : plan ? 'Có kế hoạch tập — chưa tạo khẩu phần' : 'Chưa có khẩu phần';
+      return { key: id, horse: h, plan, groom, meals, rations: mine, perDay, flags, look, source };
     })
     .filter((r) => r.rations.length || r.plan || r.groom)
     .sort((a, b) => Number(b.look) - Number(a.look) || b.flags.length - a.flags.length || a.horse.name.localeCompare(b.horse.name));
@@ -84,7 +90,7 @@ export default function RationHorseList({ rations = [], horses = [], tasks = [],
           </div>
           <Tooltip title={r.plan?.goal}>
             <div className="text-[11px] text-gray-500">
-              {r.plan ? 'Theo kế hoạch tập' : 'Theo khẩu phần mẫu'}
+              {r.source}
               {r.perDay.size > 0 && `, ${[...r.perDay].map(([unit, n]) => `${amountText(n)} ${unit}`).join(' + ')} mỗi ngày`}
             </div>
           </Tooltip>

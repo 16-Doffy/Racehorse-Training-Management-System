@@ -1,0 +1,359 @@
+/* The read-only health views shared by the trainer's and the owner's horse pages (ExamSummary,
+   HorseHealthPanel). Colours from whichever theme the page is in: the owner's (--o-*, owner.css) or the
+   staff's (--st-*, staff-workspace.css), so they read on the light and the dark canvas. */
+.hv-exam,
+.hv-panel,
+.hv-meds,
+.hv-rx,
+.hv-pill {
+  --hv-surface: var(--o-card, var(--st-surface, #ffffff));
+  --hv-sunk: var(--o-sunk, var(--st-sunk, #f1f5f9));
+  --hv-border: var(--o-border-soft, var(--st-border, #e2e8f0));
+  --hv-ink: var(--o-ink, var(--st-ink, #0f172a));
+  --hv-ink-2: var(--o-muted, var(--st-ink-secondary, #334155));
+  --hv-muted: var(--o-faint, var(--st-ink-muted, #64748b));
+  --hv-good: var(--o-good, var(--st-good, #15803d));
+  --hv-good-bg: var(--o-good-bg, var(--st-good-bg, #dcfce7));
+  --hv-watch: var(--o-watch, var(--st-warn, #b45309));
+  --hv-watch-bg: var(--o-watch-bg, var(--st-warn-bg, #fef3c7));
+  --hv-bad: var(--o-bad, var(--st-danger, #b91c1c));
+  --hv-bad-bg: var(--o-bad-bg, var(--st-danger-bg, #fee2e2));
+  --hv-info: var(--o-info, var(--st-info, #1d4ed8));
+  --hv-info-bg: var(--o-info-bg, var(--st-info-bg, #dbeafe));
+  --hv-quar: var(--o-quar, #6d28d9);
+  --hv-quar-bg: var(--o-quar-bg, #ede9fe);
+}
+
+/* ---------- Pills ---------- */
+.hv-pill {
+  --tone: var(--hv-ink-2);
+  --tone-bg: var(--hv-sunk);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--tone-bg);
+  color: var(--tone);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.hv-pill.is-good {
+  --tone: var(--hv-good);
+  --tone-bg: var(--hv-good-bg);
+}
+.hv-pill.is-watch {
+  --tone: var(--hv-watch);
+  --tone-bg: var(--hv-watch-bg);
+}
+.hv-pill.is-bad {
+  --tone: var(--hv-bad);
+  --tone-bg: var(--hv-bad-bg);
+}
+.hv-pill.is-info {
+  --tone: var(--hv-info);
+  --tone-bg: var(--hv-info-bg);
+}
+.hv-pill.is-quar {
+  --tone: var(--hv-quar);
+  --tone-bg: var(--hv-quar-bg);
+}
+
+/* ---------- One exam ---------- */
+.hv-exam {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--hv-ink);
+}
+.hv-exam-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 14px;
+}
+.hv-exam-when {
+  font-size: 12.5px;
+  color: var(--hv-muted);
+}
+.hv-exam-diag {
+  margin-top: 2px;
+  font-size: 15.5px;
+  font-weight: 750;
+  line-height: 1.35;
+  color: var(--hv-ink);
+}
+.hv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+}
+.hv-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.hv-row.is-wide {
+  grid-column: 1 / -1;
+}
+.hv-row dt {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hv-muted);
+}
+.hv-row dd {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--hv-ink);
+}
+.hv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid var(--hv-border);
+  border-radius: 8px;
+  background: var(--hv-sunk);
+  font-size: 12.5px;
+  color: var(--hv-ink);
+}
+.hv-chip b {
+  font-weight: 750;
+}
+.hv-chip.is-off {
+  border-color: color-mix(in srgb, var(--hv-bad) 40%, transparent);
+  background: var(--hv-bad-bg);
+  color: var(--hv-bad);
+}
+a.hv-chip.is-link:hover {
+  border-color: var(--hv-info);
+  color: var(--hv-info);
+}
+.hv-muted {
+  color: var(--hv-muted);
+}
+.hv-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--hv-border);
+}
+.hv-section-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hv-muted);
+}
+
+/* ---------- A prescription ---------- */
+.hv-rx {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--hv-border);
+  border-radius: 12px;
+  background: var(--hv-surface);
+}
+.hv-rx-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+}
+.hv-rx-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--hv-ink);
+}
+.hv-meds {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hv-meds li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--hv-sunk);
+}
+.hv-meds li.is-done {
+  opacity: 0.7;
+}
+.hv-med-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.hv-med-icon {
+  margin-top: 3px;
+  color: var(--hv-info);
+}
+.hv-med-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--hv-ink);
+}
+.hv-med-dose {
+  font-weight: 500;
+  color: var(--hv-ink-2);
+}
+.hv-med-sub {
+  font-size: 12.5px;
+  color: var(--hv-muted);
+}
+.hv-quote {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--hv-watch);
+  border-radius: 6px;
+  background: var(--hv-watch-bg);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--hv-ink);
+}
+.hv-line {
+  margin: 0;
+  font-size: 12.5px;
+}
+.hv-line.is-bad {
+  color: var(--hv-bad);
+}
+
+/* ---------- The trainer's health tab ---------- */
+.hv-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.hv-card {
+  padding: 16px 18px;
+  border: 1px solid var(--hv-border);
+  border-radius: 16px;
+  background: var(--hv-surface);
+}
+.hv-card-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  margin: 0 0 12px;
+  font-size: 14.5px;
+  font-weight: 750;
+  color: var(--hv-ink);
+}
+.hv-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+@media (min-width: 1100px) {
+  .hv-top {
+    grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr);
+  }
+}
+.hv-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hv-fact {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--hv-sunk);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--hv-ink);
+}
+.hv-fact-icon {
+  margin-top: 2px;
+  font-size: 15px;
+}
+.hv-fact.is-bad .hv-fact-icon {
+  color: var(--hv-bad);
+}
+.hv-fact.is-watch .hv-fact-icon {
+  color: var(--hv-watch);
+}
+.hv-fact.is-info .hv-fact-icon {
+  color: var(--hv-info);
+}
+.hv-fact.is-good .hv-fact-icon {
+  color: var(--hv-good);
+}
+.hv-fact b {
+  display: block;
+  font-size: 13px;
+}
+.hv-history {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hv-history > li + li {
+  border-top: 1px dashed var(--hv-border);
+}
+.hv-history-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--hv-ink);
+}
+.hv-history-date {
+  flex: none;
+  width: 52px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--hv-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.hv-history-diag {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hv-history-open {
+  padding: 4px 4px 14px 64px;
+}
+@media (max-width: 640px) {
+  .hv-history-open {
+    padding-left: 4px;
+  }
+}
