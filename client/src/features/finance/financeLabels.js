@@ -4,6 +4,7 @@ export const FINANCE_CATEGORIES = {
   cost: [
     { value: 'feed', label: 'Thức ăn' },
     { value: 'medical', label: 'Y tế' },
+    { value: 'upkeep', label: 'Nuôi dưỡng' },
     { value: 'training', label: 'Huấn luyện' },
     { value: 'equipment', label: 'Trang thiết bị' },
     { value: 'transport', label: 'Vận chuyển' },

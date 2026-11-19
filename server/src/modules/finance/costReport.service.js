@@ -73,7 +73,8 @@ async function costReport({ horseIds = null, year = new Date().getFullYear(), no
   const lastPast = today < yearEnd ? today : yearEnd;
   const monthKeys = Array.from({ length: 12 }, (_, i) => `${year}-${pad(i + 1)}`);
 
-  const horses = await Horse.find(horseIds ? { _id: { $in: horseIds } } : { isArchived: { $ne: true } })
+  // Only the horses the club still keeps: one sold, retired or dead (archived) is no longer reported.
+  const horses = await Horse.find({ ...(horseIds ? { _id: { $in: horseIds } } : {}), isArchived: { $ne: true } })
     .select('name createdAt isArchived')
     .sort({ name: 1 })
     .lean();

@@ -1,75 +1,52 @@
-import { Fragment, useMemo, useState } from 'react';
-import { Input, Segmented, Select } from 'antd';
-import { ArrowDownOutlined, ArrowUpOutlined, BarChartOutlined, BookOutlined, FallOutlined, PieChartOutlined, RiseOutlined, SearchOutlined, TeamOutlined, WalletOutlined } from '@ant-design/icons';
+import { useMemo, useState } from 'react';
+import { Select } from 'antd';
+import { BarChartOutlined, BookOutlined, FallOutlined, PieChartOutlined, RiseOutlined, TeamOutlined, WalletOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { categoryLabel } from '../finance/financeLabels';
-import { Card, EmptyNote, HorseAvatar, MoreButton, OwnerPage, PageHead } from './kit';
+import { Card, EmptyNote, HorseAvatar, OwnerPage, PageHead } from './kit';
 import { MoneyBars } from './charts';
 import { capFirst, idOf, money } from './ownerFormat';
 import { useHorseParam, useMyFinance, useMyHorses } from './useOwnerData';
 import { useQuery } from '@tanstack/react-query';
 import { financeApi } from '../finance/financeApi';
 import CostReport from '../finance/CostReport';
+import { costEntries } from '../finance/costEntries';
+import LedgerTable from '../finance/LedgerTable';
 
-const AUTO = ['race_prize', 'system'];
 const label = (c) => capFirst(categoryLabel(c));
 const sum = (list) => list.reduce((t, e) => t + (Number(e.amount) || 0), 0);
 const signed = (v) => `${v >= 0 ? '+' : '−'}${money(Math.abs(v))}`;
-// "Sao Mai" is found by "sao mai" and by "Sáo Mãi".
-const fold = (s) =>
-  String(s || '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/đ/g, 'd');
-// Months of entries shown before "show more".
-const MONTHS_SHOWN = 4;
 
 /**
- * The owner's ledger, read-only (the Manager keeps it): every entry of the year for their horses, month
- * by month with each month's totals and the year's, narrowed by type, horse, category or a word. What
- * it adds up to is on top; the charts (by month, by category, by horse) sit beside it.
+ * The owner's statement, read-only: what came in (prizes, sponsorship) and what the horses cost — feed,
+ * medical, upkeep, worked out by the system, and anything written in by hand — for the year, one horse
+ * or all. The cost report on top; the ledger as a short table beside the charts.
  */
 export default function OwnerFinance() {
-  const { horses } = useMyHorses();
-  const { entries, isLoading } = useMyFinance();
+  const { horses: allHorses } = useMyHorses();
+  // Only the horses still kept: one sold, retired or dead (archived) is out of the statement.
+  const horses = useMemo(() => allHorses.filter((h) => !h.isArchived), [allHorses]);
+  const { entries: written, isLoading } = useMyFinance();
   const [horseId, setHorse] = useHorseParam(horses);
-  const years = useMemo(() => [...new Set([dayjs().year(), ...entries.map((e) => dayjs(e.date).year())])].sort((a, b) => b - a), [entries]);
   const [year, setYear] = useState(dayjs().year());
-  const [type, setType] = useState('all');
-  const [category, setCategory] = useState('all');
-  const [search, setSearch] = useState('');
-  const [monthsShown, setMonthsShown] = useState(MONTHS_SHOWN);
+  // What the horses cost, worked out by the system from rations, prescriptions and stalls (view only):
+  // its lines join the ledger, so the ledger, the totals and the report add up to the same.
+  const costQuery = useQuery({ queryKey: ['finance-costs', year, 'all'], queryFn: () => financeApi.costs({ year }) });
+  const costReport = costQuery.data?.data;
+  const kept = useMemo(() => new Set(horses.map((h) => idOf(h))), [horses]);
+  const entries = useMemo(() => [...written.filter((e) => kept.has(idOf(e.horse))), ...costEntries(costReport)], [written, kept, costReport]);
+  const years = useMemo(() => [...new Set([dayjs().year(), ...written.map((e) => dayjs(e.date).year())])].sort((a, b) => b - a), [written]);
+  // The report for the horse picked, or for all.
+  const shownReport = costReport && horseId ? { ...costReport, horses: costReport.horses.filter((h) => String(h.horse._id) === horseId) } : costReport;
 
   const horsesById = useMemo(() => new Map(horses.map((h) => [idOf(h), h])), [horses]);
   // The year (and the horse, when one is picked): what the summary and the charts add up.
   const inYear = useMemo(() => entries.filter((e) => dayjs(e.date).year() === year && (!horseId || idOf(e.horse) === horseId)), [entries, year, horseId]);
   const revenue = sum(inYear.filter((e) => e.type === 'revenue'));
-  // What the horses cost, worked out by the system from rations, prescriptions and stalls (view only),
-  // plus anything the Manager wrote in by hand.
-  const costQuery = useQuery({ queryKey: ['finance-costs', year, horseId || 'all'], queryFn: () => financeApi.costs({ year, horse: horseId || undefined }) });
-  const costReport = costQuery.data?.data;
-  const keep = costReport?.totals?.total || 0;
-  const manualCost = sum(inYear.filter((e) => e.type === 'cost'));
-  const cost = keep + manualCost;
+  const cost = sum(inYear.filter((e) => e.type === 'cost'));
+  const costOf = (category) => sum(inYear.filter((e) => e.type === 'cost' && e.category === category));
+  const otherCost = cost - costOf('feed') - costOf('medical') - costOf('upkeep');
   const net = revenue - cost;
-  const categories = [...new Set(inYear.map((e) => e.category))].sort((a, b) => categoryLabel(a).localeCompare(categoryLabel(b), 'vi'));
-  const term = fold(search.trim());
-  // The ledger as filtered, newest first, month by month.
-  const ledger = inYear
-    .filter((e) => (type === 'all' || e.type === type) && (category === 'all' || e.category === category))
-    .filter((e) => !term || fold(`${label(e.category)} ${e.note || ''} ${e.horse?.name || ''}`).includes(term))
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-  const months = Object.values(
-    ledger.reduce((acc, e) => {
-      const key = dayjs(e.date).format('YYYY-MM');
-      acc[key] = acc[key] || { key, label: `Tháng ${dayjs(e.date).month() + 1}/${dayjs(e.date).year()}`, entries: [] };
-      acc[key].entries.push(e);
-      return acc;
-    }, {}),
-  ).sort((a, b) => b.key.localeCompare(a.key));
-  const shownIn = sum(ledger.filter((e) => e.type === 'revenue'));
-  const shownOut = sum(ledger.filter((e) => e.type === 'cost'));
 
   const periods = useMemo(
     () =>
@@ -93,7 +70,6 @@ export default function OwnerFinance() {
         return { ...acc, [id]: row };
       }, {}),
   ).sort((a, b) => b.net - a.net);
-  const filtered = type !== 'all' || category !== 'all' || term;
 
   return (
     <OwnerPage>
@@ -131,8 +107,8 @@ export default function OwnerFinance() {
             <span className="own-sum-label">Tổng chi</span>
             <b className="own-sum-value">{isLoading || costQuery.isLoading ? '—' : money(cost)}</b>
             <span className="own-sum-sub">
-              {costReport
-                ? `Thức ăn ${money(costReport.totals.feed)} · Y tế ${money(costReport.totals.medical)} · Nuôi dưỡng ${money(costReport.totals.upkeep)}${manualCost ? ` · khác ${money(manualCost)}` : ''}`
+              {cost
+                ? `Thức ăn ${money(costOf('feed'))} · Y tế ${money(costOf('medical'))} · Nuôi dưỡng ${money(costOf('upkeep'))}${otherCost ? ` · khác ${money(otherCost)}` : ''}`
                 : `${inYear.filter((e) => e.type === 'cost').length} khoản chi`}
             </span>
           </div>
@@ -151,101 +127,13 @@ export default function OwnerFinance() {
 
       {/* What keeping the horses costs, in three kinds: feed, medical, upkeep. */}
       <Card title={`Chi phí nuôi dưỡng năm ${year}${horseId ? ` · ${horsesById.get(horseId)?.name || ''}` : ''}`} icon={<FallOutlined />}>
-        <CostReport report={costReport} loading={costQuery.isLoading} year={year} />
+        <CostReport report={shownReport} loading={costQuery.isLoading} year={year} />
       </Card>
 
       <div className="own-fin-layout">
-        <Card title="Sổ thu chi" icon={<BookOutlined />} flush className="own-ledger">
-          <div className="own-ledger-bar">
-            <Segmented
-              value={type}
-              onChange={setType}
-              options={[
-                { value: 'all', label: 'Tất cả' },
-                { value: 'revenue', label: 'Thu' },
-                { value: 'cost', label: 'Chi' },
-              ]}
-            />
-            <Select value={category} onChange={setCategory} options={[{ value: 'all', label: 'Mọi hạng mục' }, ...categories.map((c) => ({ value: c, label: label(c) }))]} style={{ width: 170 }} aria-label="Hạng mục" />
-            <Input allowClear prefix={<SearchOutlined />} placeholder="Tìm khoản, ghi chú, ngựa…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 240 }} aria-label="Tìm trong sổ" />
-          </div>
-
-          {ledger.length === 0 ? (
-            <EmptyNote>{isLoading ? 'Đang tải…' : filtered ? 'Không có khoản nào khớp bộ lọc.' : `Năm ${year} chưa có khoản thu chi nào${horseId ? ' của chiến mã này' : ''}.`}</EmptyNote>
-          ) : (
-            <div className={`own-lg${horseId ? ' is-one' : ''}`} role="table" aria-label="Sổ thu chi">
-              <div className="own-lg-head" role="row">
-                <span>Ngày</span>
-                <span>Nội dung</span>
-                {!horseId && <span>Chiến mã</span>}
-                <span className="text-right">Số tiền</span>
-              </div>
-              {months.slice(0, monthsShown).map((m) => {
-                const mIn = sum(m.entries.filter((e) => e.type === 'revenue'));
-                const mOut = sum(m.entries.filter((e) => e.type === 'cost'));
-                return (
-                  <Fragment key={m.key}>
-                    <div className="own-lg-month" role="row">
-                      <span className="own-lg-month-chip">{m.label}</span>
-                      <span className="own-faint">{m.entries.length} khoản</span>
-                      <span className="own-lg-month-sum">
-                        {mIn > 0 && (
-                          <span>
-                            Thu <b className="own-good">+{money(mIn)}</b>
-                          </span>
-                        )}
-                        {mOut > 0 && (
-                          <span>
-                            Chi <b className="own-bad">−{money(mOut)}</b>
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    {m.entries.map((e) => {
-                      const inflow = e.type === 'revenue';
-                      return (
-                        <div key={e._id} className="own-lg-row" role="row">
-                          <span className="own-num own-muted">{dayjs(e.date).format('DD/MM')}</span>
-                          <span className="own-lg-what">
-                            <span className={`own-lg-icon ${inflow ? 'is-in' : 'is-out'}`} aria-label={inflow ? 'Thu' : 'Chi'}>
-                              {inflow ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-                            </span>
-                            <span className="min-w-0">
-                              <b>
-                                {label(e.category)}
-                                {AUTO.includes(e.source) && <span className="own-lg-auto">Tự động</span>}
-                              </b>
-                              <span>{e.note || (inflow ? 'Khoản thu' : 'Khoản chi')}</span>
-                            </span>
-                          </span>
-                          {!horseId && (
-                            <span className="own-lg-horse">
-                              <HorseAvatar horse={horsesById.get(idOf(e.horse)) || e.horse} size={22} />
-                              <span className="truncate">{e.horse?.name || '—'}</span>
-                            </span>
-                          )}
-                          <b className={`own-num text-right ${inflow ? 'own-good' : 'own-bad'}`}>{inflow ? '+' : '−'}{money(e.amount)}</b>
-                        </div>
-                      );
-                    })}
-                  </Fragment>
-                );
-              })}
-              <div className="own-lg-total" role="row">
-                <b>{filtered ? 'Tổng các khoản đang lọc' : `Tổng năm ${year}`}</b>
-                <span>
-                  Thu <b className="own-good">+{money(shownIn)}</b>
-                </span>
-                <span>
-                  Chi <b className="own-bad">−{money(shownOut)}</b>
-                </span>
-                <span>
-                  Còn <b className={shownIn - shownOut >= 0 ? 'own-good' : 'own-bad'}>{signed(shownIn - shownOut)}</b>
-                </span>
-              </div>
-            </div>
-          )}
-          {months.length > monthsShown && <MoreButton shown={monthsShown} total={months.length} onMore={() => setMonthsShown((n) => n + MONTHS_SHOWN)} />}
+        {/* The ledger as a short table: a row per horse a month, its money in columns; a row opens on its entries. */}
+        <Card title="Sổ thu chi" icon={<BookOutlined />} className="own-ledger">
+          <LedgerTable entries={inYear} loading={isLoading || costQuery.isLoading} emptyText={`Năm ${year} chưa có khoản thu chi nào${horseId ? " của chiến mã này" : ""}.`} />
         </Card>
 
         <div className="flex min-w-0 flex-col gap-4">

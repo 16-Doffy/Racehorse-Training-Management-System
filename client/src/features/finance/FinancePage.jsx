@@ -1,47 +1,17 @@
 import { useState } from 'react';
-import { Table, Tag, Button, Modal, Form, Select, InputNumber, Input, Empty, Alert, Card, Segmented } from 'antd';
+import { Button, Modal, Form, Select, InputNumber, Input, Alert, Card, Segmented } from 'antd';
 import { message } from '../../lib/antdStatic';
 import { PlusOutlined, DownloadOutlined } from '@ant-design/icons';
 import { downloadFile } from '../../lib/files';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { financeApi } from './financeApi';
 import { horsesApi } from '../horses/horsesApi';
-import dayjs from 'dayjs';
-import { FINANCE_CATEGORIES, categoryLabel } from './financeLabels';
+import { FINANCE_CATEGORIES } from './financeLabels';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
-import { newestFirst } from '../../utils/newestFirst';
 import CostReport from './CostReport';
+import { costEntries } from './costEntries';
+import LedgerTable from './LedgerTable';
 
-const columns = [
-  { title: 'Ngựa', dataIndex: ['horse', 'name'], key: 'horse' },
-  {
-    title: 'Loại',
-    dataIndex: 'type',
-    key: 'type',
-    render: (t) => <Tag color={t === 'revenue' ? 'green' : 'red'}>{t === 'revenue' ? 'Doanh thu' : 'Chi phí'}</Tag>,
-  },
-  { title: 'Hạng mục', dataIndex: 'category', key: 'category', render: categoryLabel },
-  {
-    title: 'Nguồn',
-    dataIndex: 'source',
-    key: 'source',
-    // Written by the system from a race result (corrected there) vs typed in by the Manager.
-    render: (s) => (s === 'race_prize' ? <Tag color="gold">Tự động · kết quả giải</Tag> : s === 'system' ? <Tag>Tự động</Tag> : <Tag color="default">Nhập tay</Tag>),
-  },
-  {
-    title: 'Số tiền',
-    dataIndex: 'amount',
-    key: 'amount',
-    align: 'right',
-    render: (v, r) => (
-      <span className={`font-semibold tabular-nums whitespace-nowrap ${r.type === 'revenue' ? 'text-emerald-800 staff-revenue-text' : 'text-rose-700 staff-cost-text'}`}>
-        {r.type === 'revenue' ? '+' : '−'}{v.toLocaleString('vi-VN')} đ
-      </span>
-    ),
-  },
-  { title: 'Ngày', dataIndex: 'date', key: 'date', render: (d) => <span className="tabular-nums">{dayjs(d).format('DD/MM/YYYY')}</span> },
-  { title: 'Ghi chú', dataIndex: 'note', key: 'note' },
-];
 
 // The Manager records cost/revenue entries. The Horse Owner reads their own statement on its own page
 // (features/owner/OwnerFinance.jsx).
@@ -58,20 +28,21 @@ export default function FinancePage() {
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['finance', 'all'], queryFn: () => financeApi.list() });
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const entryType = Form.useWatch('type', form);
-  const records = data?.data || [];
-  const filteredRecords = records.filter((r) => {
-    if (filterType !== 'all' && r.type !== filterType) return false;
-    if (filterHorse && (r.horse?._id || r.horse) !== filterHorse) return false;
-    return true;
-  });
-  const inYear = records.filter((r) => new Date(r.date).getFullYear() === year && (!filterHorse || (r.horse?._id || r.horse) === filterHorse));
-  const revenue = inYear.filter((r) => r.type === 'revenue').reduce((acc, r) => acc + (r.amount || 0), 0);
-  const manualCost = inYear.filter((r) => r.type === 'cost').reduce((acc, r) => acc + (r.amount || 0), 0);
+  const written = data?.data || [];
+  // What the horses cost, worked out by the system (view only): its lines join the ledger, so the
+  // ledger, the totals and the report add up to the same.
   const costQuery = useQuery({ queryKey: ['finance-costs', year, filterHorse || 'all'], queryFn: () => financeApi.costs({ year, horse: filterHorse || undefined }) });
   const costReport = costQuery.data?.data;
-  const cost = (costReport?.totals?.total || 0) + manualCost;
+  const sumOf = (list) => list.reduce((acc, r) => acc + (r.amount || 0), 0);
+  const ofHorse = (r) => !filterHorse || (r.horse?._id || r.horse) === filterHorse;
+  const inYear = [...written.filter((r) => new Date(r.date).getFullYear() === year && ofHorse(r)), ...costEntries(costReport)];
+  const filteredRecords = inYear.filter((r) => filterType === 'all' || r.type === filterType);
+  const revenue = sumOf(inYear.filter((r) => r.type === 'revenue'));
+  const cost = sumOf(inYear.filter((r) => r.type === 'cost'));
+  const costOf = (category) => sumOf(inYear.filter((r) => r.type === 'cost' && r.category === category));
+  const otherCost = cost - costOf('feed') - costOf('medical') - costOf('upkeep');
   const net = revenue - cost;
-  const years = [...new Set([new Date().getFullYear(), ...records.map((r) => new Date(r.date).getFullYear())])].sort((a, b) => b - a);
+  const years = [...new Set([new Date().getFullYear(), ...written.map((r) => new Date(r.date).getFullYear())])].sort((a, b) => b - a);
 
   const createMutation = useMutation({
     mutationFn: (payload) => financeApi.create(payload),
@@ -137,8 +108,8 @@ export default function FinancePage() {
           <div className="st-kpi-label">Chi phí vận hành năm {year}</div>
           <div className="st-kpi-value text-rose-700 staff-cost-text">{cost ? '−' : ''}{cost.toLocaleString('vi-VN')} đ</div>
           <div className="st-kpi-sub">
-            {costReport
-              ? `Thức ăn ${costReport.totals.feed.toLocaleString('vi-VN')} · Y tế ${costReport.totals.medical.toLocaleString('vi-VN')} · Nuôi dưỡng ${costReport.totals.upkeep.toLocaleString('vi-VN')}${manualCost ? ` · khác ${manualCost.toLocaleString('vi-VN')}` : ''}`
+            {cost
+              ? `Thức ăn ${costOf('feed').toLocaleString('vi-VN')} · Y tế ${costOf('medical').toLocaleString('vi-VN')} · Nuôi dưỡng ${costOf('upkeep').toLocaleString('vi-VN')}${otherCost ? ` · khác ${otherCost.toLocaleString('vi-VN')}` : ''}`
               : `${inYear.filter((r) => r.type === 'cost').length} khoản chi`}
           </div>
         </div>
@@ -157,7 +128,7 @@ export default function FinancePage() {
           onChange={setView}
           options={[
             { value: 'report', label: 'Báo cáo chi phí nuôi dưỡng' },
-            { value: 'ledger', label: `Sổ thu chi (${records.length})` },
+            { value: 'ledger', label: 'Sổ thu chi' },
           ]}
         />
         <Select value={year} onChange={setYear} options={years.map((y) => ({ value: y, label: `Năm ${y}` }))} className="!w-32" aria-label="Năm" />
@@ -195,28 +166,12 @@ export default function FinancePage() {
         </Card>
       )}
 
-      <Card className={`!rounded-xl !border-[#E2D9C8] overflow-hidden${view === 'ledger' ? '' : ' !hidden'}`} styles={{ body: { padding: 0 } }}>
-        <Table
-          rowKey="_id"
-          columns={columns}
-          dataSource={newestFirst(filteredRecords)}
-          loading={isLoading && !data}
-          scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 10, hideOnSinglePage: true }}
-          locale={{
-            emptyText: (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="Chưa có khoản thu chi nào được ghi nhận"
-              >
-                <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-                  Ghi nhận khoản mục đầu tiên
-                </Button>
-              </Empty>
-            ),
-          }}
-        />
-      </Card>
+      {view === 'ledger' && (
+        // The ledger as a short table: a row per horse a month, its money in columns; a row opens on its entries.
+        <Card className="!rounded-xl">
+          <LedgerTable entries={filteredRecords} loading={(isLoading && !data) || costQuery.isLoading} pageSize={10} emptyText="Chưa có khoản thu chi nào trong năm này." />
+        </Card>
+      )}
 
       <Modal
         title="Ghi nhận khoản chi phí / doanh thu"

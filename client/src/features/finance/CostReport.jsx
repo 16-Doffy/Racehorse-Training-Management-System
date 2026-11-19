@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Empty, Skeleton, Tooltip } from 'antd';
-import { CoffeeOutlined, HomeOutlined, InfoCircleOutlined, MedicineBoxOutlined } from '@ant-design/icons';
+import { Empty, Input, Pagination, Skeleton, Tooltip } from 'antd';
+import { CoffeeOutlined, HomeOutlined, InfoCircleOutlined, MedicineBoxOutlined, SearchOutlined } from '@ant-design/icons';
 import './costReport.css';
 
 const vnd = (n) => `${Math.round(Number(n) || 0).toLocaleString('vi-VN')} đ`;
@@ -19,6 +19,26 @@ const COST_GROUPS = [
   { key: 'medical', label: 'Y tế', icon: <MedicineBoxOutlined />, what: 'Thuốc bác sĩ kê trong mỗi đơn điều trị (liều × số lần/ngày × số ngày) theo đơn giá kho, cộng phí mỗi lần khám.' },
   { key: 'upkeep', label: 'Nuôi dưỡng', icon: <HomeOutlined />, what: 'Tiền chuồng mỗi ngày theo loại chuồng, công chăm sóc hằng ngày, và các lần đóng móng, tiêm phòng, tẩy giun theo bảng giá CLB.' },
 ];
+
+const HORSES_A_PAGE = 6;
+// "Sao Mai" is found by "sao mai" and by "Sáo Mãi".
+const fold = (s) =>
+  String(s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/đ/g, 'd');
+const MONTH_FIELDS = ['feed', 'medical', 'upkeep', 'feedAhead', 'medicalAhead', 'total'];
+/** The totals of these horses, and month by month (the server's add up every horse it reported). */
+function totalsOf(horses) {
+  const add = (field) => horses.reduce((n, h) => n + (h[field] || 0), 0);
+  const months = (horses[0]?.months || []).map((m, i) => {
+    const row = { month: m.month };
+    for (const f of MONTH_FIELDS) row[f] = horses.reduce((n, h) => n + (h.months[i]?.[f] || 0), 0);
+    return row;
+  });
+  return { feed: add('feed'), medical: add('medical'), upkeep: add('upkeep'), ahead: add('ahead'), total: add('total'), months };
+}
 
 /** The year's costs month by month: a column per month, its three kinds stacked, the planned part paler. */
 function MonthBars({ months }) {
@@ -94,12 +114,22 @@ function DetailList({ title, icon, lines }) {
  */
 export default function CostReport({ report, loading = false, year }) {
   const [picked, setPicked] = useState(null);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [showMissing, setShowMissing] = useState(false);
   if (loading && !report) return <Skeleton active paragraph={{ rows: 6 }} />;
   if (!report) return null;
-  const horses = report.horses || [];
+  // Only the horses still kept (one sold, retired or dead is archived), and the totals of those.
+  const horses = (report.horses || []).filter((h) => !h.horse?.isArchived);
   if (!horses.length) return <Empty description="Chưa có ngựa nào để tính chi phí." />;
-  const totals = report.totals;
+  const totals = totalsOf(horses);
   const one = horses.length === 1 ? horses[0] : horses.find((h) => String(h.horse._id) === picked) || null;
+  // The table a page at a time, the costliest first, found by name.
+  const term = fold(search.trim());
+  const listed = horses.filter((h) => !term || fold(h.horse.name).includes(term)).sort((a, b) => b.total - a.total);
+  const lastPage = Math.max(1, Math.ceil(listed.length / HORSES_A_PAGE));
+  const shownPage = Math.min(page, lastPage);
+  const pageRows = listed.slice((shownPage - 1) * HORSES_A_PAGE, shownPage * HORSES_A_PAGE);
   const missing = [...new Set(horses.flatMap((h) => h.missingPrices || []))];
 
   return (
@@ -149,7 +179,26 @@ export default function CostReport({ report, loading = false, year }) {
 
       {horses.length > 1 && (
         <div className="cr-card">
-          <div className="cr-card-title">Theo chiến mã · bấm một ngựa để xem chi tiết</div>
+          <div className="cr-card-title">
+            <span>
+              Theo chiến mã <span className="cr-muted">· {horses.length} ngựa · bấm một ngựa để xem chi tiết</span>
+            </span>
+            {horses.length > HORSES_A_PAGE && (
+              <Input
+                size="small"
+                allowClear
+                prefix={<SearchOutlined />}
+                placeholder="Tìm ngựa"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                className="!w-48"
+                aria-label="Tìm ngựa"
+              />
+            )}
+          </div>
           <div className="cr-table" role="table">
             <div className="cr-tr is-head" role="row">
               <span>Ngựa</span>
@@ -158,19 +207,24 @@ export default function CostReport({ report, loading = false, year }) {
               ))}
               <span>Tổng</span>
             </div>
-            {horses
-              .slice()
-              .sort((a, b) => b.total - a.total)
-              .map((h) => (
-                <button key={h.horse._id} type="button" role="row" className={`cr-tr${picked === String(h.horse._id) ? ' is-on' : ''}`} onClick={() => setPicked(picked === String(h.horse._id) ? null : String(h.horse._id))}>
-                  <span className="cr-td-name">{h.horse.name}</span>
-                  {COST_GROUPS.map((g) => (
-                    <span key={g.key}>{vnd(h[g.key])}</span>
-                  ))}
-                  <span className="cr-td-total">{vnd(h.total)}</span>
-                </button>
-              ))}
+            {pageRows.map((h) => (
+              <button key={h.horse._id} type="button" role="row" className={`cr-tr${picked === String(h.horse._id) ? ' is-on' : ''}`} onClick={() => setPicked(picked === String(h.horse._id) ? null : String(h.horse._id))}>
+                <span className="cr-td-name">{h.horse.name}</span>
+                {COST_GROUPS.map((g) => (
+                  <span key={g.key} className={h[g.key] ? '' : 'cr-zero'}>
+                    {h[g.key] ? vnd(h[g.key]) : '—'}
+                  </span>
+                ))}
+                <span className="cr-td-total">{vnd(h.total)}</span>
+              </button>
+            ))}
+            {!pageRows.length && <p className="cr-empty">Không có ngựa nào khớp.</p>}
           </div>
+          {listed.length > HORSES_A_PAGE && (
+            <div className="cr-pager">
+              <Pagination size="small" current={shownPage} pageSize={HORSES_A_PAGE} total={listed.length} onChange={setPage} showSizeChanger={false} showTotal={(total, [from, to]) => `${from}–${to} / ${total} ngựa`} />
+            </div>
+          )}
         </div>
       )}
 
@@ -188,10 +242,25 @@ export default function CostReport({ report, loading = false, year }) {
         </div>
       )}
 
-      <p className="cr-note">
-        <InfoCircleOutlined /> Chi phí được hệ thống tự tính từ khẩu phần ăn, đơn thuốc, chuồng trại và lịch chăm sóc theo đơn giá kho và bảng giá CLB — chỉ để theo dõi; việc thanh toán thực hiện ngoài hệ thống.
-        {missing.length > 0 && ` Chưa có đơn giá trong kho: ${missing.join(', ')} (tính 0 đ).`}
-      </p>
+      {/* One short line; the items without a stock price open on a click. */}
+      <div className="cr-note">
+        <span>
+          <InfoCircleOutlined /> Hệ thống tự tính theo đơn giá kho và bảng giá CLB — chỉ để theo dõi, thanh toán ngoài hệ thống.
+        </span>
+        {missing.length > 0 && (
+          <button type="button" className="cr-note-toggle" onClick={() => setShowMissing(!showMissing)} aria-expanded={showMissing}>
+            {missing.length} món chưa có đơn giá (tính 0 đ) · {showMissing ? 'thu gọn' : 'xem'}
+          </button>
+        )}
+        {showMissing && (
+          <div className="cr-missing">
+            {missing.map((name) => (
+              <span key={name}>{name}</span>
+            ))}
+            <small>Quản lý nhập đơn giá cho các món này trong Kho vật tư để chi phí tính đúng.</small>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
