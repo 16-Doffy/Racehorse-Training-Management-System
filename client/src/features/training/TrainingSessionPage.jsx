@@ -19,7 +19,6 @@ import {
   Tooltip,
   Space,
   Dropdown,
-  Grid,
 } from 'antd';
 import { message, notification } from '../../lib/antdStatic';
 import {
@@ -90,7 +89,6 @@ import {
 import { newestFirst } from '../../utils/newestFirst';
 
 const { Text } = Typography;
-const { useBreakpoint } = Grid;
 
 const SESSION_TYPE_LABELS = { training: 'Buổi tập thường', trial_run: 'Lượt chạy thử' };
 const futureTimeRule = {
@@ -126,18 +124,16 @@ function NextReadiness({ sessions }) {
 }
 
 export default function TrainingSessionPage() {
-  const screens = useBreakpoint();
-  const isDesktop = screens.md ?? (typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
   const [searchParams, setSearchParams] = useSearchParams();
   // ?new=1 (the dashboard's "Lập buổi tập mới") lands with the create form already open.
   const [createOpen, setCreateOpen] = useState(() => searchParams.get('new') === '1');
   const [evalOpen, setEvalOpen] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
   const [typeFilter, setTypeFilter] = useState('all');
-  // The week view is how a trainer reads training: what each horse does each day.
-  // A notification about one session (?session=<id>) opens the list on that row, highlighted.
+  // The week view is always the primary entry point; a ?session=<id> deep-link jumps to that session's week
+  // and highlights/opens its chip right on the calendar instead of forcing the flat list view.
   const focusSession = searchParams.get('session');
-  const [view, setView] = useState(() => (searchParams.get('session') ? 'list' : 'week'));
+  const [view, setView] = useState('week');
   const [weekStart, setWeekStart] = useState(() => mondayOf(dayjs()));
   const [selectedDay, setSelectedDay] = useState(() => dayjs());
   const [createForm] = Form.useForm();
@@ -197,11 +193,14 @@ export default function TrainingSessionPage() {
   const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list() });
   const listRows = newestFirst(sessionsData?.data);
   const focusIndex = focusSession ? listRows.findIndex((r) => r._id === focusSession) : -1;
+  const focusedSessionObj = focusIndex >= 0 ? listRows[focusIndex] : null;
   useEffect(() => {
-    if (focusIndex < 0) return undefined;
+    if (!focusedSessionObj?.scheduledAt) return undefined;
+    setWeekStart(mondayOf(dayjs(focusedSessionObj.scheduledAt)));
+    setView('week');
     const timer = setTimeout(() => document.querySelector('[data-focus="session"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
     return () => clearTimeout(timer);
-  }, [focusIndex]);
+  }, [focusedSessionObj?._id, focusedSessionObj?.scheduledAt]);
   const { data: horsesData } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const { data: racesData } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
   const draftSessionType = Form.useWatch('sessionType', createForm);
@@ -641,12 +640,13 @@ export default function TrainingSessionPage() {
     {
       title: 'Kết quả',
       key: 'outcome',
+      width: 220,
       render: (_, r) => <SessionOutcome session={r} />,
     },
     {
-      title: '',
+      title: 'Thao tác',
       key: 'actions',
-      fixed: isDesktop ? 'right' : false,
+      width: 240,
       render: (_, record) => {
         const moreItems = [];
         const canSchedule = (['scheduled', 'ready', 'blocked'].includes(record.status) || (record.status === 'missed' && !record.rescheduledTo));
@@ -903,7 +903,16 @@ export default function TrainingSessionPage() {
                 <Button size="small">Hồ sơ ngựa</Button>
               </Link>
             )}
-            <Button size="small" type="text" icon={<CloseOutlined />} onClick={() => setSearchParams({})}>
+            <Button
+              size="small"
+              type="text"
+              icon={<CloseOutlined />}
+              onClick={() => {
+                setSearchParams({});
+                setWeekStart(mondayOf(dayjs()));
+                setView('week');
+              }}
+            >
               Bỏ lọc
             </Button>
           </div>
@@ -933,7 +942,14 @@ export default function TrainingSessionPage() {
           }
         />
       )}
-      <LiveSessionMonitor sessions={sessionsData?.data || []} horses={horsesData?.data || []} plans={plansData?.data || []} onSessionCompleted={offerEvaluation} />
+      <LiveSessionMonitor
+        sessions={sessionsData?.data || []}
+        horses={horsesData?.data || []}
+        plans={plansData?.data || []}
+        onSessionCompleted={offerEvaluation}
+        onEnd={setEndSession}
+        onAbort={setAbortSession}
+      />
 
       {view === 'list' && <div className="st-toolbar mb-4">{toolbar}</div>}
 
@@ -944,6 +960,7 @@ export default function TrainingSessionPage() {
           onWeekChange={(w) => setWeekStart(w || mondayOf(dayjs()))}
           sessions={sessionsData?.data || []}
           plans={(plansData?.data || []).filter((p) => (!planFilter || p._id === planFilter) && (!horseFilter || String(p.horse?._id) === horseFilter))}
+          focusSessionId={focusSession}
           onGenerate={(plan, start) => generateMutation.mutate({ plan, start })}
           generatingPlanId={generateMutation.isPending ? generateMutation.variables?.plan._id : null}
           onStart={(session) => startMutation.mutate({ id: session._id })}

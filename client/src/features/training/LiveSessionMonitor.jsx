@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Card, Dropdown, Progress, Tag, Typography, theme } from 'antd';
-import { ExperimentOutlined, LineChartOutlined } from '@ant-design/icons';
+import { Button, Card, Dropdown, Progress, Segmented, Tag, Typography, theme } from 'antd';
+import {
+  AimOutlined,
+  AppstoreOutlined,
+  CheckCircleOutlined,
+  ExperimentOutlined,
+  EyeOutlined,
+  PauseCircleOutlined,
+} from '@ant-design/icons';
 import { LineChart, Line, XAxis, YAxis, ReferenceLine, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { useQueryClient } from '@tanstack/react-query';
 import { message } from '../../lib/antdStatic';
@@ -133,13 +140,63 @@ const CARD_STYLES = {
   title: { whiteSpace: 'normal', overflow: 'visible' },
 };
 
-function LiveCard({ session, readings, horse, surface, readOnly = false }) {
+function HeartRateChart({ readings, target, gridColor, axisColor, heightClass = 'h-24' }) {
+  const data = readings.map((r, i) => ({ i, hr: r.hr, speed: r.speed }));
+  if (data.length <= 1) {
+    return <p className="m-0 mt-2 text-xs text-gray-500">Biểu đồ nhịp tim hiện khi cảm biến gửi lần đo thứ hai.</p>;
+  }
+  return (
+    <div className={`mt-2 ${heightClass} w-full`}>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
+          <CartesianGrid stroke={gridColor} vertical={false} />
+          <XAxis dataKey="i" hide />
+          <YAxis
+            domain={[60, Math.max(target.heartRateMax + 20, ...data.map((d) => d.hr + 5))]}
+            tick={{ fontSize: 11, fill: axisColor }}
+            axisLine={false}
+            tickLine={false}
+            width={44}
+          />
+          <Tooltip formatter={(v, name) => [name === 'hr' ? `${v} bpm` : `${v} km/h`, name === 'hr' ? 'Nhịp tim' : 'Tốc độ']} labelFormatter={() => ''} />
+          <ReferenceLine
+            y={target.heartRateMax}
+            stroke={STATUS_TONES.bad.color}
+            strokeDasharray="4 4"
+            label={{ value: `ngưỡng ${target.heartRateMax}`, position: 'insideTopRight', fontSize: 11, fill: STATUS_TONES.bad.color }}
+          />
+          <Line type="monotone" dataKey="hr" stroke={FOREST.primary} strokeWidth={2} dot={false} isAnimationActive={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function SessionQuickControls({ session, readOnly, onEnd, onAbort }) {
+  if (readOnly) return null;
+  return (
+    <>
+      <ScenarioButton session={session} />
+      {onEnd && (
+        <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => onEnd(session)}>
+          Kết thúc
+        </Button>
+      )}
+      {onAbort && (
+        <Button size="small" danger icon={<PauseCircleOutlined />} onClick={() => onAbort(session)}>
+          Dừng
+        </Button>
+      )}
+    </>
+  );
+}
+
+function LiveCard({ session, readings, horse, surface, readOnly = false, onEnd, onAbort }) {
   const { token } = theme.useToken();
   const gridColor = token.colorBorderSecondary || GRID;
   const axisColor = token.colorTextTertiary || AXIS;
   const figures = liveFigures(session, readings);
   const { target, heartRate, speed, distance, targetDistance, over, segmentIndex, segmentCount, segmentLabel, segmentNote } = figures;
-  const data = readings.map((r, i) => ({ i, hr: r.hr, speed: r.speed }));
   // The horse runs as the sensors say: its gait and pace follow the latest speed.
   const motion = motionNow(session, figures, readings) || { clip: 'Idle_Look', label: 'Đã bắt đầu, chờ tín hiệu cảm biến' };
 
@@ -161,43 +218,17 @@ function LiveCard({ session, readings, horse, surface, readOnly = false }) {
               Vượt ngưỡng nhịp tim
             </Tag>
           )}
-          {!readOnly && <ScenarioButton session={session} />}
+          <SessionQuickControls session={session} readOnly={readOnly} onEnd={onEnd} onAbort={onAbort} />
         </CardTitle>
       }
     >
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         <div className="lg:col-span-5 min-w-0">
-          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={motion} surface={surface} hour={hourOfSession(session)} height={236} />
+          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={motion} surface={surface} hour={hourOfSession(session)} height={204} />
         </div>
         <div className="lg:col-span-7 min-w-0">
           <Telemetry heartRate={heartRate} heartRateMax={target.heartRateMax} speed={speed} targetSpeed={target.speed} distance={distance} targetDistance={targetDistance} />
-          {data.length > 1 ? (
-            <div className="mt-2 h-28 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
-                  <CartesianGrid stroke={gridColor} vertical={false} />
-                  <XAxis dataKey="i" hide />
-                  <YAxis
-                    domain={[60, Math.max(target.heartRateMax + 20, ...data.map((d) => d.hr + 5))]}
-                    tick={{ fontSize: 11, fill: axisColor }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={44}
-                  />
-                  <Tooltip formatter={(v, name) => [name === 'hr' ? `${v} bpm` : `${v} km/h`, name === 'hr' ? 'Nhịp tim' : 'Tốc độ']} labelFormatter={() => ''} />
-                  <ReferenceLine
-                    y={target.heartRateMax}
-                    stroke={STATUS_TONES.bad.color}
-                    strokeDasharray="4 4"
-                    label={{ value: `ngưỡng ${target.heartRateMax}`, position: 'insideTopRight', fontSize: 11, fill: STATUS_TONES.bad.color }}
-                  />
-                  <Line type="monotone" dataKey="hr" stroke={FOREST.primary} strokeWidth={2} dot={false} isAnimationActive={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <p className="m-0 mt-3 text-xs text-gray-500">Biểu đồ nhịp tim hiện khi cảm biến gửi lần đo thứ hai.</p>
-          )}
+          <HeartRateChart readings={readings} target={target} gridColor={gridColor} axisColor={axisColor} heightClass="h-24" />
           <Text type="secondary" className="!text-[11px] block mt-1">
             Cảm biến mô phỏng gửi số liệu mỗi 5 giây (mỗi lần tương ứng 30 giây tập). Buổi tự kết thúc khi chạy đủ cự ly.
           </Text>
@@ -207,63 +238,240 @@ function LiveCard({ session, readings, horse, surface, readOnly = false }) {
   );
 }
 
-// From this many horses at once, one row each instead of one card each: the board stays readable.
-const COMPACT_FROM = 3;
+// From 2 horses at once, show a single compact multi-horse control deck instead of stacked 3D cards.
+const COMPACT_FROM = 2;
+const fmtNum = (n, digits = 0) => (n == null ? '—' : Number(n).toLocaleString('vi-VN', { maximumFractionDigits: digits }));
 
-/** Several horses at once: a row per horse, the ones over their heart-rate ceiling first; a row opens its card. */
-function LiveBoard({ running, readings, horseOf, surfaceFor, readOnly = false }) {
-  const [openId, setOpenId] = useState(null);
+/**
+ * Compact multi-horse live deck (2+ concurrent horses in the same time slot):
+ * - "Tiêu điểm" (default): left roster lists every concurrent horse at once; right stage mounts one smooth 3D + HR chart for the selected horse.
+ * - "Lưới tất cả": 2–3 column telemetry grid so every concurrent horse stays visible side by side with zero vertical bloat.
+ */
+function MultiLiveDeck({ running, readings, horseOf, surfaceFor, readOnly = false, onEnd, onAbort }) {
+  const { token } = theme.useToken();
+  const gridColor = token.colorBorderSecondary || GRID;
+  const axisColor = token.colorTextTertiary || AXIS;
+  const [mode, setMode] = useState('focus');
+  const [selectedId, setSelectedId] = useState(null);
+
   const rows = running
-    .map((s) => ({ s, f: liveFigures(s, readings[s._id] || []) }))
-    .sort((a, b) => Number(b.f.over) - Number(a.f.over) || b.f.distance / b.f.targetDistance - a.f.distance / a.f.targetDistance);
-  const open = running.find((s) => s._id === openId);
+    .map((s) => {
+      const list = readings[s._id] || [];
+      const f = liveFigures(s, list);
+      const pct = f.targetDistance ? Math.min(100, Math.round((f.distance / f.targetDistance) * 100)) : 0;
+      const motion = motionNow(s, f, list) || { clip: 'Idle_Look', label: 'Chờ cảm biến' };
+      return { s, list, f, pct, motion };
+    })
+    .sort((a, b) => Number(b.f.over) - Number(a.f.over) || b.pct - a.pct);
+
+  const overCount = rows.filter((r) => r.f.over).length;
+  const active = rows.find((r) => r.s._id === selectedId) || rows[0];
+  const activeHorse = active ? horseOf(active.s) : null;
+
   return (
-    <Card size="small" className="mb-4 rounded-xl" title={`Đang tập: ${running.length} ngựa, cập nhật mỗi 5 giây`}>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead>
-            <tr className="text-left text-xs text-gray-500">
-              <th className="py-1.5 pr-3 font-medium">Ngựa</th>
-              <th className="py-1.5 pr-3 font-medium">Dáng chạy</th>
-              <th className="py-1.5 pr-3 font-medium text-right">Nhịp tim</th>
-              <th className="py-1.5 pr-3 font-medium text-right">Tốc độ</th>
-              <th className="py-1.5 pr-3 font-medium w-[28%]">Cự ly</th>
-              <th className="py-1.5 font-medium" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {rows.map(({ s, f }) => (
-              <tr key={s._id} className={`cursor-pointer ${s._id === openId ? 'bg-emerald-50/60' : 'hover:bg-gray-50'}`} onClick={() => setOpenId(s._id === openId ? null : s._id)}>
-                <td className="py-2 pr-3">
-                  <div className="font-semibold text-gray-900">{s.horse?.name}</div>
-                  <div className="text-xs text-gray-500">{SESSION_KINDS[s.kind]?.label || OBJECTIVE_LABELS[s.objective] || 'Buổi tập'}</div>
-                </td>
-                <td className="py-2 pr-3 text-gray-700">{motionNow(s, f)?.label || 'Chờ cảm biến'}</td>
-                <td className="py-2 pr-3 tabular-nums text-right whitespace-nowrap">
-                  <span className={f.over ? 'font-bold text-rose-700' : 'font-semibold'}>{f.heartRate ?? '—'}</span>
-                  <span className="text-xs text-gray-400"> / {f.target.heartRateMax} bpm</span>
-                  {f.over && <Tag color="error" className="!ml-2 !text-xs">Vượt ngưỡng</Tag>}
-                </td>
-                <td className="py-2 pr-3 tabular-nums text-right whitespace-nowrap">
-                  <span className="font-semibold">{f.speed ?? '—'}</span>
-                  <span className="text-xs text-gray-400"> km/h</span>
-                </td>
-                <td className="py-2 pr-3">
-                  <Progress className="!m-0" size="small" strokeColor={FOREST.primary} percent={Math.min(100, Math.round((f.distance / f.targetDistance) * 100))} format={() => `${f.distance}/${f.targetDistance} m`} />
-                </td>
-                <td className="py-2 text-right whitespace-nowrap">
-                  <Button size="small" type="link" icon={<LineChartOutlined />}>
-                    {s._id === openId ? 'Thu gọn' : 'Xem ngựa chạy'}
+    <Card
+      size="small"
+      className="min-w-0 rounded-xl border-gray-200/80 shadow-xs overflow-hidden"
+      styles={CARD_STYLES}
+      title={
+        <div className="flex flex-wrap items-center justify-between gap-2 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+            <span className="font-semibold text-sm text-[var(--st-ink,#0F172A)]">
+              Đang tập cùng khung giờ: {running.length} ngựa
+            </span>
+            {overCount > 0 && (
+              <Tag color="error" className="!m-0 text-xs font-medium">
+                {overCount} vượt ngưỡng nhịp tim
+              </Tag>
+            )}
+            <span className="hidden sm:inline text-xs font-normal text-[var(--st-ink-muted,#64748B)]">
+              Cập nhật mỗi 5 giây
+            </span>
+          </div>
+          <Segmented
+            size="small"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'focus', label: 'Tiêu điểm', icon: <AimOutlined /> },
+              { value: 'grid', label: 'Lưới tất cả', icon: <AppstoreOutlined /> },
+            ]}
+          />
+        </div>
+      }
+    >
+      {mode === 'focus' && active ? (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-12 items-start">
+          {/* Left roster: every horse running in this time slot visible in one compact column */}
+          <div
+            role="listbox"
+            aria-label="Danh sách ngựa đang tập cùng khung giờ"
+            className="lg:col-span-5 min-w-0 max-h-[296px] overflow-y-auto rounded-lg border border-[var(--st-border,#E5E7EB)] divide-y divide-[var(--st-border,#F1F5F9)]"
+          >
+            {rows.map(({ s, f, pct }) => {
+              const isSelected = s._id === active.s._id;
+              const kindLabel = SESSION_KINDS[s.kind]?.short || SESSION_KINDS[s.kind]?.label || OBJECTIVE_LABELS[s.objective] || 'Buổi tập';
+              return (
+                <button
+                  key={s._id}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => setSelectedId(s._id)}
+                  className={`w-full cursor-pointer border-0 border-l-[3px] px-3 py-2 text-left transition-colors ${
+                    isSelected
+                      ? 'border-l-[var(--st-action,#EAB308)] bg-[var(--st-primary-soft,rgba(234,179,8,0.12))]'
+                      : 'border-l-transparent bg-transparent hover:bg-[var(--st-hover,#F8FAFC)]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-baseline gap-1.5">
+                      <span className="truncate text-[13px] font-semibold text-[var(--st-ink,#0F172A)]">{s.horse?.name}</span>
+                      <span className="shrink-0 text-[11px] text-[var(--st-ink-muted,#64748B)]">{kindLabel}</span>
+                    </div>
+                    <span className={`shrink-0 text-xs tabular-nums ${f.over ? 'font-bold text-rose-600' : 'font-semibold text-[var(--st-ink,#0F172A)]'}`}>
+                      {f.heartRate ?? '—'}
+                      <span className="font-normal text-[var(--st-ink-muted,#64748B)]">/{f.target.heartRateMax} bpm</span>
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-[11px] tabular-nums text-[var(--st-ink-muted,#64748B)]">
+                    <span className="shrink-0">{fmtNum(f.speed, 1)} km/h</span>
+                    <div className="flex-1 min-w-[48px]">
+                      <Progress
+                        className="!m-0"
+                        size="small"
+                        showInfo={false}
+                        strokeColor={f.over ? STATUS_TONES.bad.color : FOREST.primary}
+                        percent={pct}
+                      />
+                    </div>
+                    <span className="shrink-0">
+                      {fmtNum(f.distance)}/{fmtNum(f.targetDistance)} m
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Right focused stage: single WebGL 3D view + telemetry + HR chart for selected horse */}
+          <div className="lg:col-span-7 min-w-0 rounded-lg border border-[var(--st-border,#E5E7EB)] p-2.5">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
+                <span className="text-sm font-semibold text-[var(--st-ink,#0F172A)]">{active.s.horse?.name}</span>
+                <span className="text-xs text-[var(--st-ink-muted,#64748B)]">
+                  {SESSION_KINDS[active.s.kind]?.label || OBJECTIVE_LABELS[active.s.objective] || 'Buổi tập'}
+                </span>
+                {active.f.segmentCount > 0 && (
+                  <Tag color="gold" className="!m-0 text-[11px]">
+                    Đoạn {(active.f.segmentIndex ?? 0) + 1}/{active.f.segmentCount}: {active.f.segmentLabel}
+                  </Tag>
+                )}
+                {active.f.over && (
+                  <Tag color="error" className="!m-0 text-[11px]">
+                    Vượt ngưỡng nhịp tim
+                  </Tag>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <SessionQuickControls session={active.s} readOnly={readOnly} onEnd={onEnd} onAbort={onAbort} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
+              <div className="sm:col-span-5 min-w-0">
+                <MovingHorse3D
+                  breed={activeHorse?.breed}
+                  color={activeHorse?.color}
+                  motion={active.motion}
+                  surface={surfaceFor(active.s)}
+                  hour={hourOfSession(active.s)}
+                  height={186}
+                />
+              </div>
+              <div className="sm:col-span-7 min-w-0">
+                <Telemetry
+                  heartRate={active.f.heartRate}
+                  heartRateMax={active.f.target.heartRateMax}
+                  speed={active.f.speed}
+                  targetSpeed={active.f.target.speed}
+                  distance={active.f.distance}
+                  targetDistance={active.f.targetDistance}
+                />
+                <HeartRateChart readings={active.list} target={active.f.target} gridColor={gridColor} axisColor={axisColor} heightClass="h-[88px]" />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Grid mode: every horse side-by-side without heavy multiple 3D canvases */
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+          {rows.map(({ s, f, pct, motion }) => {
+            const kindLabel = SESSION_KINDS[s.kind]?.short || SESSION_KINDS[s.kind]?.label || OBJECTIVE_LABELS[s.objective] || 'Buổi tập';
+            return (
+              <div
+                key={s._id}
+                className={`min-w-0 rounded-lg border p-2.5 ${
+                  f.over ? 'border-rose-400/70' : 'border-[var(--st-border,#E5E7EB)]'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="truncate text-sm font-semibold text-[var(--st-ink,#0F172A)]">{s.horse?.name}</span>
+                      <span className="text-xs text-[var(--st-ink-muted,#64748B)]">{kindLabel}</span>
+                      {f.over && <Tag color="error" className="!m-0 !text-[10px]">Vượt ngưỡng</Tag>}
+                    </div>
+                    <div className="truncate text-[11px] text-[var(--st-ink-muted,#64748B)]">{motion.label}</div>
+                  </div>
+                  <Button
+                    size="small"
+                    type="link"
+                    className="!px-1 shrink-0"
+                    icon={<EyeOutlined />}
+                    onClick={() => {
+                      setSelectedId(s._id);
+                      setMode('focus');
+                    }}
+                  >
+                    Xem 3D
                   </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {open && (
-        <div className="mt-3">
-          <LiveCard session={open} readings={readings[open._id] || []} horse={horseOf(open)} surface={surfaceFor(open)} readOnly={readOnly} />
+                </div>
+
+                <dl className="m-0 mt-2 grid grid-cols-3 gap-2 border-t border-[var(--st-border,#F1F5F9)] pt-2 text-xs tabular-nums">
+                  <div>
+                    <dt className="text-[10px] text-[var(--st-ink-muted,#64748B)]">Nhịp tim</dt>
+                    <dd className={`m-0 font-semibold ${f.over ? 'text-rose-600' : 'text-[var(--st-ink,#0F172A)]'}`}>
+                      {f.heartRate ?? '—'} <span className="text-[10px] font-normal text-[var(--st-ink-muted,#64748B)]">/{f.target.heartRateMax}</span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[10px] text-[var(--st-ink-muted,#64748B)]">Tốc độ</dt>
+                    <dd className="m-0 font-semibold text-[var(--st-ink,#0F172A)]">
+                      {fmtNum(f.speed, 1)} <span className="text-[10px] font-normal text-[var(--st-ink-muted,#64748B)]">km/h</span>
+                    </dd>
+                  </div>
+                  <div className="text-right">
+                    <dt className="text-[10px] text-[var(--st-ink-muted,#64748B)]">Cự ly</dt>
+                    <dd className="m-0 font-semibold text-[var(--st-ink,#0F172A)]">
+                      {fmtNum(f.distance)}/{fmtNum(f.targetDistance)} m
+                    </dd>
+                  </div>
+                </dl>
+                <Progress
+                  className="!m-0 !mt-1.5"
+                  size="small"
+                  strokeColor={f.over ? STATUS_TONES.bad.color : FOREST.primary}
+                  percent={pct}
+                />
+                {!readOnly && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <SessionQuickControls session={s} readOnly={readOnly} onEnd={onEnd} onAbort={onAbort} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </Card>
@@ -319,7 +527,7 @@ function StoppedCard({ session, horse, surface, onClose }) {
  * `horses` gives each horse's breed and colour, so it runs in its own coat. `readOnly`: watched by the owner,
  * without the trainer's tools (the scenario button).
  */
-export default function LiveSessionMonitor({ sessions = [], horses = [], plans = [], onSessionCompleted, readOnly = false }) {
+export default function LiveSessionMonitor({ sessions = [], horses = [], plans = [], onSessionCompleted, onEnd, onAbort, readOnly = false }) {
   const running = sessions.filter((s) => s.status === 'in_progress');
   const [readings, setReadings] = useState(() => Object.fromEntries(liveCache));
   // Runs just stopped as a suspected injury: { session, at }.
@@ -406,9 +614,9 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], plans =
         <StoppedCard key={session._id} session={session} horse={horseOf(session)} surface={surfaceFor(session)} onClose={() => closeStopped(session._id)} />
       ))}
       {running.length >= COMPACT_FROM ? (
-        <LiveBoard running={running} readings={readings} horseOf={horseOf} surfaceFor={surfaceFor} readOnly={readOnly} />
+        <MultiLiveDeck running={running} readings={readings} horseOf={horseOf} surfaceFor={surfaceFor} readOnly={readOnly} onEnd={onEnd} onAbort={onAbort} />
       ) : (
-        running.map((s) => <LiveCard key={s._id} session={s} readings={readings[s._id] || []} horse={horseOf(s)} surface={surfaceFor(s)} readOnly={readOnly} />)
+        running.map((s) => <LiveCard key={s._id} session={s} readings={readings[s._id] || []} horse={horseOf(s)} surface={surfaceFor(s)} readOnly={readOnly} onEnd={onEnd} onAbort={onAbort} />)
       )}
     </section>
   );
