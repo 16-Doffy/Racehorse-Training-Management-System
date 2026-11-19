@@ -2,79 +2,81 @@
    again for Bootstrap's dark mode (MainLayout puts data-bs-theme="dark" on <body> on the dark canvas),
    so every piece below reads in both. Modals render on <body>, outside the page: they carry .vet-ui too. */
 .vet-ui {
-  --vet-card: #fffdf8;
-  --vet-card-2: #f6f1e6;
-  --vet-sunk: #f1ebdd;
-  --vet-border: #e5dac6;
-  --vet-border-soft: #eee6d6;
-  --vet-ink: #1a2b22;
-  --vet-muted: rgba(26, 43, 34, 0.72);
-  --vet-faint: rgba(26, 43, 34, 0.55);
-  --vet-primary: #0f5a43;
-  --vet-primary-hover: #0b4634;
-  --vet-primary-ink: #ffffff;
-  --vet-link: #0f5a43;
-  --vet-hover: #f4eee2;
-  --vet-focus: rgba(15, 90, 67, 0.28);
-  --vet-shadow: 0 1px 2px rgba(48, 40, 20, 0.06), 0 6px 18px -8px rgba(48, 40, 20, 0.12);
+  /* The workspace palette of the Manager's and Head Trainer's pages (styles/staff-workspace.css): white
+     and cool-slate surfaces, slate ink, the championship gold for the main action, amber for links. */
+  --vet-card: #ffffff;
+  --vet-card-2: #f8fafc;
+  --vet-sunk: #f1f5f9;
+  --vet-border: #cbd5e1;
+  --vet-border-soft: #e2e8f0;
+  --vet-ink: #0f172a;
+  --vet-muted: #475569;
+  --vet-faint: #64748b;
+  --vet-primary: #eab308;
+  --vet-primary-hover: #ca8a04;
+  --vet-primary-ink: #0f172a;
+  --vet-link: #b45309;
+  --vet-hover: #f1f5f9;
+  --vet-focus: rgba(234, 179, 8, 0.35);
+  --vet-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
   --vet-input-bg: #ffffff;
 
-  --vet-good: #2e7d4f;
-  --vet-good-bg: #e2f1e6;
-  --vet-watch: #8a5a00;
-  --vet-watch-bg: #f8eccc;
-  --vet-bad: #b3261e;
-  --vet-bad-bg: #f8e2de;
-  --vet-quar: #5b3e8a;
-  --vet-quar-bg: #ece4f6;
-  --vet-info: #1d4e89;
-  --vet-info-bg: #e3ecf7;
-  --vet-neutral: #4a5a50;
-  --vet-neutral-bg: #ebe6dc;
-  --vet-brass: #8f6a12;
-  --vet-brass-bg: #f6ebcf;
+  --vet-good: #15803d;
+  --vet-good-bg: #dcfce7;
+  --vet-watch: #b45309;
+  --vet-watch-bg: #fef3c7;
+  --vet-bad: #b91c1c;
+  --vet-bad-bg: #fee2e2;
+  --vet-quar: #6d28d9;
+  --vet-quar-bg: #ede9fe;
+  --vet-info: #1d4ed8;
+  --vet-info-bg: #dbeafe;
+  --vet-neutral: #475569;
+  --vet-neutral-bg: #f1f5f9;
+  --vet-brass: #b45309;
+  --vet-brass-bg: #fef3c7;
 
   color: var(--vet-ink);
   font-size: 14px;
 }
 
 body[data-bs-theme='dark'] .vet-ui {
-  --vet-card: #0d211a;
-  --vet-card-2: #11291f;
-  --vet-sunk: #0a1a14;
-  --vet-border: rgba(212, 175, 55, 0.22);
-  --vet-border-soft: rgba(255, 255, 255, 0.07);
-  --vet-ink: #f4f1e8;
-  --vet-muted: rgba(230, 237, 232, 0.78);
-  --vet-faint: rgba(230, 237, 232, 0.6);
-  --vet-primary: #d4af37;
-  --vet-primary-hover: #e2c058;
-  --vet-primary-ink: #0d211a;
-  --vet-link: #f6d57a;
-  --vet-hover: rgba(255, 255, 255, 0.05);
-  --vet-focus: rgba(212, 175, 55, 0.35);
-  --vet-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --vet-input-bg: #0a1a14;
+  --vet-card: #111827;
+  --vet-card-2: #1e293b;
+  --vet-sunk: #0b0f17;
+  --vet-border: #334155;
+  --vet-border-soft: #1e293b;
+  --vet-ink: #f8fafc;
+  --vet-muted: #cbd5e1;
+  --vet-faint: #94a3b8;
+  --vet-primary: #eab308;
+  --vet-primary-hover: #facc15;
+  --vet-primary-ink: #0f172a;
+  --vet-link: #f59e0b;
+  --vet-hover: #263349;
+  --vet-focus: rgba(234, 179, 8, 0.4);
+  --vet-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  --vet-input-bg: #0b0f17;
 
-  --vet-good: #6ee7b7;
-  --vet-good-bg: rgba(16, 185, 129, 0.15);
-  --vet-watch: #fcd34d;
-  --vet-watch-bg: rgba(245, 158, 11, 0.15);
-  --vet-bad: #fda4af;
-  --vet-bad-bg: rgba(244, 63, 94, 0.16);
+  --vet-good: #34d399;
+  --vet-good-bg: rgba(16, 185, 129, 0.18);
+  --vet-watch: #fbbf24;
+  --vet-watch-bg: rgba(245, 158, 11, 0.18);
+  --vet-bad: #f87171;
+  --vet-bad-bg: rgba(239, 68, 68, 0.18);
   --vet-quar: #c4b5fd;
   --vet-quar-bg: rgba(139, 92, 246, 0.18);
-  --vet-info: #93c5fd;
-  --vet-info-bg: rgba(59, 130, 246, 0.17);
-  --vet-neutral: #c3d4ca;
-  --vet-neutral-bg: rgba(255, 255, 255, 0.07);
-  --vet-brass: #f6d57a;
-  --vet-brass-bg: rgba(212, 175, 55, 0.16);
+  --vet-info: #60a5fa;
+  --vet-info-bg: rgba(59, 130, 246, 0.18);
+  --vet-neutral: #cbd5e1;
+  --vet-neutral-bg: rgba(248, 250, 252, 0.08);
+  --vet-brass: #fbbf24;
+  --vet-brass-bg: rgba(245, 158, 11, 0.16);
 }
 
 /* ---------- Type ---------- */
 .vet-ui .vet-title {
-  font-family: 'Lora', Georgia, serif;
+  font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 700;
   color: var(--vet-ink);
   letter-spacing: -0.01em;
@@ -198,7 +200,7 @@ body[data-bs-theme='dark'] .vet-ui {
   color: var(--vet-muted);
 }
 .vet-ui .vet-sheet-diagnosis {
-  font-family: 'Lora', Georgia, serif;
+  font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 21px;
   font-weight: 700;
   line-height: 1.35;
@@ -377,7 +379,7 @@ body[data-bs-theme='dark'] .vet-ui {
   --bs-btn-disabled-color: var(--vet-primary-ink);
   --bs-btn-disabled-bg: var(--vet-primary);
   --bs-btn-disabled-border-color: var(--vet-primary);
-  --bs-btn-focus-shadow-rgb: 15, 90, 67;
+  --bs-btn-focus-shadow-rgb: 234, 179, 8;
 }
 .vet-ui .btn-vet-outline {
   --bs-btn-color: var(--vet-ink);
@@ -409,17 +411,17 @@ body[data-bs-theme='dark'] .vet-ui {
 }
 .vet-ui .btn-vet-danger {
   --bs-btn-color: #ffffff;
-  --bs-btn-bg: #b3261e;
-  --bs-btn-border-color: #b3261e;
+  --bs-btn-bg: #b91c1c;
+  --bs-btn-border-color: #b91c1c;
   --bs-btn-hover-color: #ffffff;
-  --bs-btn-hover-bg: #93201a;
-  --bs-btn-hover-border-color: #93201a;
+  --bs-btn-hover-bg: #991b1b;
+  --bs-btn-hover-border-color: #991b1b;
   --bs-btn-active-color: #ffffff;
-  --bs-btn-active-bg: #93201a;
-  --bs-btn-active-border-color: #93201a;
+  --bs-btn-active-bg: #991b1b;
+  --bs-btn-active-border-color: #991b1b;
   --bs-btn-disabled-color: #ffffff;
-  --bs-btn-disabled-bg: #b3261e;
-  --bs-btn-disabled-border-color: #b3261e;
+  --bs-btn-disabled-bg: #b91c1c;
+  --bs-btn-disabled-border-color: #b91c1c;
 }
 /* On the dark hero banner (both canvases): brass, as the other roles' banners. */
 .vet-ui .btn-vet-hero {
@@ -482,7 +484,7 @@ body[data-bs-theme='dark'] .vet-ui {
 }
 .vet-ui .dropdown-item.is-danger,
 .vet-menu .dropdown-item.is-danger {
-  color: #b3261e;
+  color: #b91c1c;
 }
 body[data-bs-theme='dark'] .vet-ui .dropdown-item.is-danger,
 body[data-bs-theme='dark'] .vet-menu .dropdown-item.is-danger {
@@ -1259,8 +1261,8 @@ body[data-bs-theme='dark'] .vet-menu .dropdown-item.is-danger {
 }
 body[data-bs-theme='dark'] .vet-ui .vet-chip.is-active {
   background: var(--vet-brass-bg);
-  border-color: rgba(212, 175, 55, 0.55);
-  color: #f6d57a;
+  border-color: rgba(234, 179, 8, 0.55);
+  color: #fbbf24;
 }
 .vet-ui .vet-chip .vet-dot {
   width: 7px;
@@ -1303,7 +1305,7 @@ body[data-bs-theme='dark'] .vet-ui .vet-chip.is-active {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-family: 'Lora', Georgia, serif;
+  font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #fff;
   overflow: hidden;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
@@ -3278,7 +3280,7 @@ body[data-bs-theme='dark'] .vet-ui.vet-drawer .btn-close {
 }
 .vet-ui .vet-tool:hover {
   transform: translateY(-2px);
-  box-shadow: 0 2px 4px rgba(48, 40, 20, 0.06), 0 14px 28px -12px rgba(48, 40, 20, 0.22);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.06), 0 14px 28px -12px rgba(15, 23, 42, 0.18);
 }
 .vet-ui .vet-tool-watch {
   --tool: var(--vet-watch);
@@ -3321,7 +3323,7 @@ body[data-bs-theme='dark'] .vet-ui.vet-drawer .btn-close {
 }
 .vet-ui .vet-tool-name {
   margin: 0;
-  font-family: 'Lora', Georgia, serif;
+  font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 17px;
   font-weight: 700;
   line-height: 1.3;
@@ -3412,3 +3414,42 @@ body[data-bs-theme='dark'] .vet-ui.vet-drawer .btn-close {
   border-color: var(--vet-primary);
   color: var(--vet-ink);
 }
+/* ---------- Bootstrap on the dark canvas, in the workspace palette ----------
+   MainLayout recolours Bootstrap's dark mode to the old forest green; the vet now shares the Manager's
+   and Head Trainer's look (obsidian and slate, gold, amber links), so the same pieces take that palette.
+   One class more than MainLayout's rules (body.wdp-staff-workspace), so these win. */
+body.wdp-staff-workspace[data-bs-theme='dark'] {
+  --bs-body-bg: #0b0f17; --bs-body-bg-rgb: 11, 15, 23;
+  --bs-body-color: #e2e8f0; --bs-body-color-rgb: 226, 232, 240;
+  --bs-emphasis-color: #f8fafc; --bs-emphasis-color-rgb: 248, 250, 252;
+  --bs-heading-color: #f8fafc;
+  --bs-secondary-color: rgba(226, 232, 240, 0.75); --bs-secondary-color-rgb: 226, 232, 240;
+  --bs-tertiary-color: rgba(226, 232, 240, 0.6);
+  --bs-secondary-bg: #1e293b; --bs-secondary-bg-rgb: 30, 41, 59;
+  --bs-tertiary-bg: #111827; --bs-tertiary-bg-rgb: 17, 24, 39;
+  --bs-border-color: #334155;
+  --bs-border-color-translucent: rgba(148, 163, 184, 0.25);
+  --bs-link-color: #f59e0b; --bs-link-color-rgb: 245, 158, 11;
+  --bs-link-hover-color: #fbbf24; --bs-link-hover-color-rgb: 251, 191, 36;
+}
+body.wdp-staff-workspace[data-bs-theme='dark'] .forest-layout {
+  --bs-link-color-rgb: 245, 158, 11;
+  --bs-link-hover-color-rgb: 251, 191, 36;
+}
+body.wdp-staff-workspace[data-bs-theme='dark'] .modal-content { --bs-modal-bg: #111827; --bs-modal-color: #e2e8f0; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .dropdown-menu { --bs-dropdown-bg: #111827; --bs-dropdown-link-color: #e2e8f0; --bs-dropdown-link-hover-bg: #263349; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .toast { --bs-toast-bg: rgba(17, 24, 39, 0.96); }
+body.wdp-staff-workspace[data-bs-theme='dark'] .list-group { --bs-list-group-bg: transparent; --bs-list-group-color: #e2e8f0; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .nav-tabs { --bs-nav-tabs-link-active-bg: #111827; --bs-nav-tabs-link-active-color: #f59e0b; --bs-nav-tabs-link-active-border-color: #334155 #334155 #111827; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .table { --bs-table-color: #e2e8f0; --bs-table-border-color: #1e293b; --bs-table-hover-bg: #263349; --bs-table-hover-color: #f8fafc; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .table-light,
+body.wdp-staff-workspace[data-bs-theme='dark'] .table > .table-light > tr > * { --bs-table-bg: #1e293b; --bs-table-color: #f8fafc; --bs-table-border-color: #334155; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .bg-white { background-color: #111827 !important; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .bg-light { background-color: #1e293b !important; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .text-dark { color: #f8fafc !important; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .text-secondary { color: #cbd5e1 !important; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .text-success { color: #34d399 !important; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .text-danger { color: #f87171 !important; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .btn-light { --bs-btn-bg: #1e293b; --bs-btn-color: #f8fafc; --bs-btn-border-color: #334155; --bs-btn-hover-bg: #263349; --bs-btn-hover-color: #ffffff; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .btn-outline-secondary { --bs-btn-color: #cbd5e1; --bs-btn-border-color: #475569; --bs-btn-hover-bg: #263349; --bs-btn-hover-color: #f8fafc; --bs-btn-hover-border-color: #64748b; }
+body.wdp-staff-workspace[data-bs-theme='dark'] .premium-card { background: #111827; border-color: #334155; }
