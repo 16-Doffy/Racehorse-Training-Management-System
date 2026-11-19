@@ -1395,6 +1395,88 @@ body[data-bs-theme='dark'] .vet-ui .vet-chip.is-active {
 .vet-ui .vet-table tbody tr.is-clickable:hover td {
   background: var(--vet-hover);
 }
+/* A horse to examine now: a red edge on its row (HorseHealthList). */
+.vet-ui .vet-table tbody tr.is-attention td:first-child {
+  box-shadow: inset 3px 0 0 var(--vet-bad);
+}
+/* The job and why on a row: the reason, then the button that does it. */
+.vet-ui .vet-next {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  white-space: nowrap;
+}
+.vet-ui .vet-next-why {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.vet-ui .vet-next-why.vet-text-faint {
+  color: var(--vet-faint);
+  font-weight: 500;
+}
+.vet-ui .vet-next-btn {
+  min-width: 132px;
+}
+.vet-ui .vet-text-faint {
+  color: var(--vet-faint);
+}
+/* The horse list (HorseHealthList): a line saying what the columns mean, then cells in plain words. */
+.vet-ui .vet-table-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--vet-border-soft);
+  background: var(--vet-card-2);
+  border-radius: 14px 14px 0 0;
+  font-size: 12.5px;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-table-legend .bi {
+  margin-right: 2px;
+}
+.vet-ui .vet-legend-edge {
+  display: inline-block;
+  width: 3px;
+  height: 12px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border-radius: 2px;
+  background: var(--vet-bad);
+}
+.vet-ui .vet-cell-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.vet-ui .vet-cell-sub {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.vet-ui .vet-cell-item {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.vet-ui .vet-exam-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .vet-ui .vet-next {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+}
 
 /* ---------- Stage stepper (injury recovery) ---------- */
 .vet-ui .vet-stepper {
@@ -2732,4 +2814,601 @@ body[data-bs-theme='dark'] .vet-ui.vet-drawer .btn-close {
   .vet-ui .vet-kpis {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* =====================================================================================================
+   Page figures as tiles that filter (StatTiles) — Treatments, Injuries, Care schedule, Exam tools.
+   ===================================================================================================== */
+.vet-ui .vet-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.vet-ui .vet-stat {
+  --stat: var(--vet-neutral);
+  --stat-bg: var(--vet-neutral-bg);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px 14px 12px 16px;
+  border: 1px solid var(--vet-border);
+  border-radius: 14px;
+  background: var(--vet-card);
+  box-shadow: var(--vet-shadow);
+  color: var(--vet-ink);
+  text-align: left;
+  overflow: hidden;
+}
+.vet-ui .vet-stat::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--stat);
+}
+.vet-ui .vet-stat-good {
+  --stat: var(--vet-good);
+  --stat-bg: var(--vet-good-bg);
+}
+.vet-ui .vet-stat-watch {
+  --stat: var(--vet-watch);
+  --stat-bg: var(--vet-watch-bg);
+}
+.vet-ui .vet-stat-bad {
+  --stat: var(--vet-bad);
+  --stat-bg: var(--vet-bad-bg);
+}
+.vet-ui .vet-stat-info {
+  --stat: var(--vet-info);
+  --stat-bg: var(--vet-info-bg);
+}
+.vet-ui .vet-stat.is-button {
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, transform 0.12s;
+}
+.vet-ui .vet-stat.is-button:hover {
+  border-color: var(--stat);
+  transform: translateY(-1px);
+}
+.vet-ui .vet-stat.is-on {
+  border-color: var(--stat);
+  background: var(--stat-bg);
+  box-shadow: 0 0 0 2px var(--stat-bg);
+}
+.vet-ui .vet-stat-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-stat-top .bi {
+  color: var(--stat);
+}
+.vet-ui .vet-stat-value {
+  font-size: 26px;
+  font-weight: 750;
+  line-height: 1.15;
+  color: var(--stat);
+  font-variant-numeric: tabular-nums;
+}
+.vet-ui .vet-stat-neutral .vet-stat-value {
+  color: var(--vet-ink);
+}
+.vet-ui .vet-stat-hint {
+  font-size: 12px;
+  color: var(--vet-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* An injury's four stages with their names (RecoveryStepper labeled). */
+.vet-ui .vet-stages {
+  display: flex;
+  flex: 1 1 320px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vet-ui .vet-stages-step {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--vet-faint);
+  text-align: center;
+}
+.vet-ui .vet-stages-step + .vet-stages-step::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--vet-border);
+}
+.vet-ui .vet-stages-step.is-done + .vet-stages-step::before {
+  background: var(--vet-good);
+}
+.vet-ui .vet-stages-dot {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--vet-border);
+  background: var(--vet-card);
+  color: var(--vet-faint);
+  font-size: 12px;
+  font-weight: 700;
+}
+.vet-ui .vet-stages-step.is-done .vet-stages-dot {
+  border-color: var(--vet-good);
+  background: var(--vet-good);
+  color: var(--vet-card);
+}
+.vet-ui .vet-stages-step.is-current .vet-stages-dot {
+  border-color: currentColor;
+  border-width: 3px;
+  color: inherit;
+}
+.vet-ui .vet-stages-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.vet-ui .vet-stages-step.is-current .vet-stages-label {
+  font-weight: 750;
+}
+.vet-ui .vet-stage:has(.vet-stages) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+/* Stacked under each other: the stages take their own height, not the 320px meant as a width beside the button. */
+.vet-ui .vet-stage:has(.vet-stages) .vet-stages {
+  flex: none;
+}
+.vet-ui .vet-stage:has(.vet-stages) .vet-stage-actions {
+  justify-content: flex-end;
+}
+
+/* Injuries: the stage on each row, the parts of the detail panel, how stages move. */
+.vet-ui .vet-inj-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex: none;
+}
+.vet-ui .vet-inj-section-label {
+  margin: 14px 0 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vet-faint);
+}
+.vet-ui .vet-inj-howto {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--vet-card-2);
+  font-size: 12.5px;
+  color: var(--vet-muted);
+}
+
+/* Treatments as cards (TreatmentsPage). */
+.vet-ui .vet-rx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr));
+  gap: 14px;
+}
+.vet-ui .vet-rx-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--vet-border);
+  border-radius: 14px;
+  background: var(--vet-card);
+  box-shadow: var(--vet-shadow);
+  overflow: hidden;
+}
+.vet-ui .vet-rx-card.is-late {
+  border-color: var(--vet-bad);
+}
+.vet-ui .vet-rx-card.is-ended {
+  opacity: 0.85;
+}
+.vet-ui .vet-rx-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--vet-border-soft);
+  background: var(--vet-card-2);
+}
+.vet-ui .vet-rx-card-horse {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vet-ink);
+  text-align: left;
+}
+.vet-ui .vet-rx-card-name {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+}
+.vet-ui .vet-rx-card-by {
+  display: block;
+  font-size: 12px;
+  color: var(--vet-faint);
+}
+.vet-ui .vet-rx-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.vet-ui .vet-rx-card-body {
+  padding: 12px 16px 4px;
+}
+.vet-ui .vet-rx-card-label {
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vet-faint);
+}
+.vet-ui .vet-rx-meds {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vet-ui .vet-rx-meds li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: baseline;
+}
+.vet-ui .vet-rx-med-name {
+  font-weight: 650;
+}
+.vet-ui .vet-rx-med-how {
+  grid-column: 2;
+  font-size: 12.5px;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-rx-care {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--vet-card-2);
+  font-size: 13px;
+  white-space: pre-line;
+}
+.vet-ui .vet-rx-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 16px 0;
+  padding: 12px 0;
+  border-top: 1px dashed var(--vet-border-soft);
+}
+.vet-ui .vet-rx-fact {
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.vet-ui .vet-rx-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding: 10px 16px;
+  border-top: 1px solid var(--vet-border-soft);
+}
+@media (max-width: 560px) {
+  .vet-ui .vet-rx-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Care schedule: what is due soon, by date (MedicalSchedule). */
+.vet-ui .vet-agenda-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--vet-border-soft);
+}
+.vet-ui .vet-agenda-row:last-child {
+  border-bottom: 0;
+}
+.vet-ui .vet-agenda-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 4px;
+  border-radius: 10px;
+  line-height: 1.15;
+}
+.vet-ui .vet-agenda-day {
+  font-size: 15px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.vet-ui .vet-agenda-wd {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+.vet-ui .vet-agenda-what {
+  font-weight: 650;
+}
+.vet-ui .vet-agenda-horse {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vet-muted);
+  font-size: 13px;
+}
+.vet-ui .vet-agenda-horse:hover {
+  color: var(--vet-link);
+}
+.vet-ui .vet-agenda-when {
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.vet-ui .vet-agenda-actions {
+  display: flex;
+  gap: 6px;
+}
+@media (max-width: 720px) {
+  .vet-ui .vet-agenda-row {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+  .vet-ui .vet-agenda-when,
+  .vet-ui .vet-agenda-actions {
+    grid-column: 2;
+  }
+}
+
+/* Care schedule: every horse against the four kinds of care. */
+.vet-ui .vet-care-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--vet-border-soft);
+  background: var(--vet-card-2);
+  font-size: 12.5px;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-care-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+}
+.vet-ui .vet-care-date {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 104px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 10px;
+  line-height: 1.2;
+  text-align: left;
+  font-weight: 700;
+}
+.vet-ui .vet-care-rel {
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.vet-ui .vet-care-add {
+  padding: 4px 8px;
+  border: 1px dashed transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--vet-faint);
+  font-size: 12.5px;
+}
+.vet-ui .vet-care-table tr:hover .vet-care-add,
+.vet-ui .vet-care-add:focus-visible {
+  border-color: var(--vet-border);
+  color: var(--vet-link);
+}
+
+/* Exam tools as cards (MedicalInventoryPage). */
+.vet-ui .vet-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 16px;
+}
+.vet-ui .vet-tool {
+  --tool: var(--vet-good);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--vet-border);
+  border-radius: 16px;
+  background: var(--vet-card);
+  box-shadow: var(--vet-shadow);
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+.vet-ui .vet-tool:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 4px rgba(48, 40, 20, 0.06), 0 14px 28px -12px rgba(48, 40, 20, 0.22);
+}
+.vet-ui .vet-tool-watch {
+  --tool: var(--vet-watch);
+}
+.vet-ui .vet-tool-bad {
+  --tool: var(--vet-bad);
+  border-color: var(--vet-bad);
+}
+.vet-ui .vet-tool-info {
+  --tool: var(--vet-info);
+}
+.vet-ui .vet-tool::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  border-radius: 16px 16px 0 0;
+  background: var(--tool);
+  opacity: 0.85;
+}
+.vet-ui .vet-tool-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.vet-ui .vet-tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  font-size: 22px;
+}
+.vet-ui .vet-tool-state {
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.vet-ui .vet-tool-name {
+  margin: 0;
+  font-family: 'Lora', Georgia, serif;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--vet-ink);
+}
+.vet-ui .vet-tool-en {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--vet-faint);
+}
+.vet-ui .vet-tool-desc {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-tool-qty {
+  font-size: 30px;
+  font-weight: 750;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.vet-ui .vet-tool-unit {
+  font-size: 13px;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-tool-bar {
+  position: relative;
+  height: 8px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: var(--vet-sunk);
+  overflow: hidden;
+}
+.vet-ui .vet-tool-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--tool);
+}
+.vet-ui .vet-tool-bar > i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--vet-ink);
+  opacity: 0.25;
+}
+.vet-ui .vet-tool-proposed {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--vet-info-bg);
+  color: var(--vet-info);
+  font-size: 13px;
+}
+.vet-ui .vet-tool-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-tool-meta:empty {
+  display: none;
+}
+.vet-ui .vet-tool-action {
+  margin-top: auto;
+  width: 100%;
+}
+.vet-ui .vet-tool-new {
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  border: 2px dashed var(--vet-border);
+  background: transparent;
+  box-shadow: none;
+  color: var(--vet-muted);
+  text-align: center;
+  cursor: pointer;
+}
+.vet-ui .vet-tool-new::after {
+  display: none;
+}
+.vet-ui .vet-tool-new .vet-tool-icon {
+  background: var(--vet-card-2);
+  color: var(--vet-primary);
+}
+.vet-ui .vet-tool-new:hover {
+  border-color: var(--vet-primary);
+  color: var(--vet-ink);
 }

@@ -84,7 +84,7 @@ test('a horse added with its papers shows them on its profile', async ({ page })
   await expect(dialog).toBeHidden({ timeout: 30000 });
   await page.locator('.ant-table-row', { hasText: 'TEST Papers Horse' }).first().click();
   await expect(page).toHaveURL(/\/horses\/[0-9a-f]{24}$/);
-  const papers = page.locator('.ant-card', { hasText: 'Hồ sơ lý lịch' }).first();
+  const papers = page.locator('.hp-card', { hasText: 'Hồ sơ lý lịch' }).first();
   await expect(papers.getByText('Ngựa đực giống', { exact: true })).toBeVisible();
   await expect(papers.getByText('985141000123456', { exact: true })).toBeVisible();
   await expect(papers.getByText('VN-2026-777', { exact: true })).toBeVisible();

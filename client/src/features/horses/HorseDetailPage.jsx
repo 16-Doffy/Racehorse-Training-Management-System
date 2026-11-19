@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useQuery } from '@tanstack/react-query';
-import { Table, Card, Breadcrumb, Row, Col, Empty, Button, Alert, Tabs, Select, Tooltip } from 'antd';
+import { Table, Card, Breadcrumb, Empty, Button, Alert, Tabs, Select, Tooltip } from 'antd';
 import { HORSE_SEX_LABELS, formatVnd } from '../../constants/horse';
-import { MedicineBoxOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
+import { HeartOutlined, HomeOutlined, LeftOutlined, MedicineBoxOutlined, RightOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { fold } from '../../utils/fold';
 import { horsesApi } from './horsesApi';
 import HorseTimeline from './HorseTimeline';
@@ -18,13 +18,13 @@ import { breedLabel, coatFor, coatLabel } from './horse3d/horseBreeds';
 import { HEALTH_LABELS, TRAINING_LEVEL_META } from '../../constants/health';
 import RequestExamModal from '../health/RequestExamModal';
 import { ROLES, ROLE_LABELS } from '../../constants/roles';
-import PageHeroBanner from '../../components/common/PageHeroBanner';
 import dayjs from 'dayjs';
-import { examLine, useLastExam } from '../health/useLastExam';
+import { EXAM_CONCLUSIONS, useLastExam, when } from '../health/useLastExam';
+import './horseProfile.css';
 
 /** Calculate age string from date of birth */
 function calcAge(dob) {
-  if (!dob) return 'Chưa rõ';
+  if (!dob) return 'Chưa rõ tuổi';
   const now = dayjs();
   const birth = dayjs(dob);
   const years = now.diff(birth, 'year');
@@ -33,21 +33,40 @@ function calcAge(dob) {
   return months > 0 ? `${years} tuổi ${months} tháng` : `${years} tuổi`;
 }
 
-/** Facts in a grid, the label small above its value; `items` are [label, value] or null. */
-function Facts({ items, className = '' }) {
+const HEALTH_TONE = { eligible: 'good', monitoring: 'warn', injured: 'danger', quarantined: 'danger' };
+const EXAM_TONE = HEALTH_TONE;
+const TABS = ['history', 'care', 'stall', 'races'];
+
+/** One figure in the header: what it is, its value in its colour, a line under it. */
+function Kpi({ icon, label, value, sub, tone = 'neutral', title }) {
   return (
-    <dl className={`m-0 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 min-[992px]:grid-cols-2 2xl:grid-cols-3 ${className}`}>
-      {items.filter(Boolean).map(([label, value]) => (
-        <div key={label} className="min-w-0">
-          <dt className="text-xs text-gray-500">{label}</dt>
-          <dd className="m-0 mt-0.5 break-words text-[13px] text-gray-900">{value}</dd>
-        </div>
-      ))}
-    </dl>
+    <div className={`hp-kpi is-${tone}`} title={title}>
+      <span className="hp-kpi-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <div className="hp-kpi-label">{label}</div>
+        <div className="hp-kpi-value">{value}</div>
+        {sub && <div className="hp-kpi-sub">{sub}</div>}
+      </div>
+    </div>
   );
 }
 
-const TABS = ['history', 'stall', 'races'];
+/** A person who looks after the horse: initial, name, role. */
+function Person({ name, role, empty }) {
+  return (
+    <li className={`hp-person${name ? '' : ' is-empty'}`}>
+      <span className="hp-person-initial" aria-hidden="true">
+        {name ? name.trim().split(/\s+/).pop()[0] : '?'}
+      </span>
+      <span className="min-w-0">
+        <span className="hp-person-name">{name || empty}</span>
+        <span className="hp-person-role">{role}</span>
+      </span>
+    </li>
+  );
+}
 
 // The Horse Owner has their own horse page (features/owner/OwnerHorse.jsx); this one is the staff's.
 export default function HorseDetailPage() {
@@ -57,7 +76,7 @@ export default function HorseDetailPage() {
   const canRequestExam = user?.role === ROLES.HEAD_TRAINER || user?.role === ROLES.MANAGER;
   const isManager = user?.role === ROLES.MANAGER;
   const [examModalOpen, setExamModalOpen] = useState(false);
-  // ?tab=stall|races opens that part of the page (a link from the stable map, say).
+  // ?tab=care|stall|races opens that part of the page (a link from the stable map, say).
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   // The other horses (the same list as the horse list page, cached): the page moves from one to the next.
@@ -89,8 +108,8 @@ export default function HorseDetailPage() {
   if (isLoading && !horse) {
     return (
       <div className="space-y-4">
-        <Card loading className="!rounded-xl !border-[#E2D9C8]" />
-        <Card loading className="!rounded-xl !border-[#E2D9C8]" />
+        <Card loading className="!rounded-xl" />
+        <Card loading className="!rounded-xl" />
       </div>
     );
   }
@@ -122,19 +141,38 @@ export default function HorseDetailPage() {
       title: 'Ngày',
       dataIndex: 'date',
       key: 'date',
-      render: (d) => <span className="tabular-nums text-xs text-slate-600">{d ? dayjs(d).format('DD/MM/YYYY') : '—'}</span>,
+      render: (d) => <span className="tabular-nums text-xs">{d ? dayjs(d).format('DD/MM/YYYY') : '—'}</span>,
     },
   ];
 
   const clearanceLevel = horse.trainingClearance?.level || 'high';
+  const clearance = horse.trainingClearance;
   const at = herd.findIndex((h) => h._id === id);
   const prev = at > 0 ? herd[at - 1] : null;
   const next = at >= 0 && at < herd.length - 1 ? herd[at + 1] : null;
   const goTo = (to) => navigate(`/horses/${to}${tab === 'history' ? '' : `?tab=${tab}`}`);
   const coat = coatFor({ breed: horse.breed, color: horse.color });
-  const clearance = horse.trainingClearance;
+
+  // The four things a trainer looks for first, each in words and a colour.
+  const health = horse.examHold ? { value: 'Chờ bác sĩ khám', tone: 'danger' } : { value: HEALTH_LABELS[horse.healthStatus] || horse.healthStatus, tone: HEALTH_TONE[horse.healthStatus] || 'neutral' };
+  const sick = ['injured', 'quarantined'].includes(horse.healthStatus);
+  const training = horse.examHold
+    ? { value: 'Tạm dừng tập', tone: 'danger', sub: 'Chờ kết luận của bác sĩ' }
+    : sick || clearanceLevel === 'none'
+      ? { value: 'Không được tập', tone: 'danger', sub: clearance?.reason || 'Theo y lệnh của bác sĩ' }
+      : clearance?.restricted
+        ? { value: TRAINING_LEVEL_META[clearanceLevel]?.label || 'Hạn chế tập', tone: 'warn', sub: clearance.reason || 'Theo phác đồ đang điều trị' }
+        : { value: 'Tập bình thường', tone: 'good', sub: 'Không có hạn chế' };
+  const exam = lastExam
+    ? {
+        value: `${dayjs(when(lastExam)).format('DD/MM')} · ${EXAM_CONCLUSIONS[lastExam.resultStatus] || lastExam.resultStatus}`,
+        sub: lastExam.diagnosis || `${dayjs().diff(dayjs(when(lastExam)), 'day')} ngày trước`,
+        tone: EXAM_TONE[lastExam.resultStatus] || 'neutral',
+      }
+    : { value: 'Chưa khám', sub: 'Chưa có phiếu khám nào', tone: 'warn' };
+
   return (
-    <div className="space-y-4">
+    <div className="hp space-y-4">
       {/* Where it sits, and the way to the next horse without going back to the list (same tab kept). */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Breadcrumb items={[{ title: <Link to="/horses">Danh sách đàn ngựa</Link> }, { title: horse.name }]} />
@@ -160,141 +198,145 @@ export default function HorseDetailPage() {
         )}
       </div>
 
-      <PageHeroBanner
-        eyebrow="Hồ sơ lý lịch"
-        roleLabel={ROLE_LABELS[user?.role] || 'Nhân sự CLB'}
-        title={horse.name}
-        subtitle={`${breedLabel(horse.breed)} · ${HORSE_SEX_LABELS[horse.sex] || '—'} · ${calcAge(horse.dob) || 'Chưa rõ tuổi'}`}
-        stats={[
-          { label: 'Sức khỏe', value: horse.examHold ? 'Chờ bác sĩ khám' : HEALTH_LABELS[horse.healthStatus] || horse.healthStatus },
-          { label: 'Mức cho phép tập', value: horse.examHold ? 'Tạm dừng tập' : TRAINING_LEVEL_META[clearanceLevel]?.label || clearanceLevel },
-          { label: 'Lần khám gần nhất', value: examLine(lastExam) },
-        ]}
-        actionButton={
-          canRequestExam ? (
-            <Button
-              type="primary"
-              icon={<MedicineBoxOutlined />}
-              onClick={() => setExamModalOpen(true)}
-              className="!h-9 !px-4 !rounded-lg !bg-[#D4AF37] hover:!bg-[#E2C058] !border-[#D4AF37] !text-[#061812] font-semibold cursor-pointer"
-            >
+      {/* ---------- Who the horse is, and its state in four figures ---------- */}
+      <section className="hp-hero">
+        <div className="hp-hero-top">
+          <span className="hp-avatar" style={{ background: coat.swatch }} aria-hidden="true">
+            {horse.name?.[0]}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="hp-eyebrow">Hồ sơ ngựa · {ROLE_LABELS[user?.role] || 'Nhân sự CLB'}</div>
+            <h1 className="hp-name">{horse.name}</h1>
+            <div className="hp-sub">
+              <span>{breedLabel(horse.breed) || 'Chưa rõ giống'}</span>
+              <span>{HORSE_SEX_LABELS[horse.sex] || 'Chưa rõ giới tính'}</span>
+              <span>{calcAge(horse.dob)}</span>
+              {horse.weightKg ? <span>{horse.weightKg} kg</span> : null}
+            </div>
+          </div>
+          {canRequestExam && (
+            <Button type="primary" size="large" icon={<MedicineBoxOutlined />} onClick={() => setExamModalOpen(true)} className="hp-cta">
               Yêu cầu bác sĩ kiểm tra
             </Button>
-          ) : null
-        }
-      />
-      {horse.examHold && <Alert className="!mb-4" type="error" showIcon title="Tạm dừng tập, chờ bác sĩ khám" description={horse.examHold.reason} />}
+          )}
+        </div>
+        <div className="hp-kpis">
+          <Kpi icon={<HeartOutlined />} label="Sức khỏe" value={health.value} tone={health.tone} sub={horse.examHold?.reason || 'Theo kết luận gần nhất của bác sĩ'} />
+          <Kpi icon={<ThunderboltOutlined />} label="Được tập" value={training.value} tone={training.tone} sub={training.sub} />
+          <Kpi icon={<MedicineBoxOutlined />} label="Khám gần nhất" value={exam.value} tone={exam.tone} sub={exam.sub} title={lastExam?.diagnosis || undefined} />
+          <Kpi icon={<HomeOutlined />} label="Chuồng & chăm sóc" value={stallCode ? `Chuồng ${stallCode}` : 'Chưa xếp chuồng'} sub={groom ? `NV chăm sóc: ${groom}` : 'Chưa có nhân viên chăm sóc'} />
+        </div>
+      </section>
 
-      <Row gutter={[16, 16]}>
-        {/* The horse in 3D, in the breed and coat the Manager set, doing what its health allows. */}
-        <Col xs={24} lg={14}>
-          {/* At rest it is out in the pasture (the sessions page shows it on its training track). As tall as
-              the card beside it, so no gap is left under the frame. */}
-          <MovingHorse3D fill breed={horse.breed} color={horse.color} motion={restingMotion(horse, injury)} surface="pasture" height="clamp(320px, 36vw, 520px)" />
-        </Col>
-        <Col xs={24} lg={10}>
-          <Card className="h-full !rounded-xl !border-[#E2D9C8]" title="Hồ sơ lý lịch">
-            <Facts
-              items={[
-                ['Giống', breedLabel(horse.breed) || '—'],
-                [
-                  'Màu lông',
-                  <span key="coat" className="inline-flex items-center gap-1.5">
-                    <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/15" style={{ background: coat.swatch }} />
-                    {coatLabel(horse.color) || coat.label}
-                  </span>,
-                ],
-                ['Giới tính', HORSE_SEX_LABELS[horse.sex] || '—'],
-                ['Ngày sinh', <span key="dob" className="tabular-nums">{horse.dob ? `${dayjs(horse.dob).format('DD/MM/YYYY')} (${calcAge(horse.dob)})` : '—'}</span>],
-                ['Cân nặng', <span key="kg" className="tabular-nums">{horse.weightKg ? `${horse.weightKg} kg` : '—'}</span>],
-                ['Số vi mạch', <span key="chip" className="font-mono tabular-nums text-xs">{horse.microchipNumber || '—'}</span>],
-                ['Số đăng ký', <span key="reg" className="font-mono tabular-nums text-xs">{horse.registrationNumber || '—'}</span>],
-                // Sent only to the Manager and the owner.
-                'valuationVnd' in horse ? ['Định giá', <span key="vnd" className="tabular-nums font-semibold">{formatVnd(horse.valuationVnd)}</span>] : null,
-              ]}
-            />
+      {/* What holds the horse back or changes its meals, in a line each. */}
+      {horse.examHold && <Alert type="error" showIcon title="Tạm dừng tập, chờ bác sĩ khám" description={horse.examHold.reason} />}
+      {clearance?.restricted && (
+        <Alert
+          type="warning"
+          showIcon
+          title={`${TRAINING_LEVEL_META[clearanceLevel]?.label || 'Hạn chế tập'}${clearance.reason ? `: ${clearance.reason}` : ''}`}
+          description={`Theo phác đồ của bác sĩ ${clearance.prescribedBy || ''}${clearance.since ? ` từ ${dayjs(clearance.since).format('DD/MM')}` : ''}. Hết hạn chế khi bác sĩ nâng mức hoặc kết thúc điều trị.`}
+        />
+      )}
+      {horse.feedingDiet && (
+        <Alert
+          type={horse.feedingDiet.diet === 'sick' ? 'warning' : 'info'}
+          showIcon
+          title={horse.feedingDiet.diet === 'sick' ? `Chế độ ăn theo y lệnh: ${horse.feedingDiet.label}` : horse.feedingDiet.label}
+          description={[horse.feedingDiet.care, horse.feedingDiet.note ? `Lưu ý bác sĩ: ${horse.feedingDiet.note}` : null].filter(Boolean).join(' ')}
+        />
+      )}
 
-            {/* Who looks after the horse: the people the Manager assigns on the horse form, and its stall and groom. */}
-            <div className="st-sub-panel light-surface-box mt-4">
-              <div className="mb-2 text-[13px] font-semibold text-gray-900">Người phụ trách</div>
-              <Facts
-                items={[
-                  ['Chủ sở hữu', horse.owner?.name || 'CLB sở hữu'],
-                  ['HLV phụ trách', horse.assignedTrainer?.name || 'Chưa phân công'],
-                  ['Bác sĩ phụ trách', horse.assignedVet?.name || 'Chưa phân công'],
-                  ['Nhân viên chăm sóc', groom || 'Chưa có'],
-                  [
-                    'Chuồng',
-                    <span key="stall" className="flex flex-wrap items-baseline gap-x-2">
-                      <span className="tabular-nums">{stallCode || 'Chưa xếp'}</span>
-                      {isManager && <Link to={`/admin/stables?horse=${horse._id}`}>Đổi chuồng trên sơ đồ</Link>}
-                    </span>,
-                  ],
-                ]}
-              />
-            </div>
+      {/* ---------- The horse in 3D, beside its record and its people ---------- */}
+      <div className="hp-body">
+        {/* At rest it is out in the pasture (the sessions page shows it on its training track), in the breed and
+            coat the Manager set, doing what its health allows. */}
+        <div className="hp-stage">
+          <MovingHorse3D fill breed={horse.breed} color={horse.color} motion={restingMotion(horse, injury)} surface="pasture" height="clamp(340px, 38vw, 560px)" />
+        </div>
 
-            {clearance?.restricted && (
-              <Alert
-                className="!mt-4"
-                type="warning"
-                showIcon
-                title={`${TRAINING_LEVEL_META[clearanceLevel]?.label || 'Hạn chế tập'}${clearance.reason ? `: ${clearance.reason}` : ''}`}
-                description={`Theo phác đồ của bác sĩ ${clearance.prescribedBy || ''}${clearance.since ? ` từ ${dayjs(clearance.since).format('DD/MM')}` : ''}. Hết hạn chế khi bác sĩ nâng mức hoặc kết thúc điều trị.`}
-              />
+        <aside className="hp-side">
+          <section className="hp-card">
+            <h2 className="hp-card-title">Hồ sơ lý lịch</h2>
+            <dl className="hp-facts">
+              <div>
+                <dt>Giống</dt>
+                <dd>{breedLabel(horse.breed) || '—'}</dd>
+              </div>
+              <div>
+                <dt>Màu lông</dt>
+                <dd>
+                  <span className="hp-swatch" style={{ background: coat.swatch }} aria-hidden="true" />
+                  {coatLabel(horse.color) || coat.label}
+                </dd>
+              </div>
+              <div>
+                <dt>Giới tính</dt>
+                <dd>{HORSE_SEX_LABELS[horse.sex] || '—'}</dd>
+              </div>
+              <div>
+                <dt>Ngày sinh</dt>
+                <dd className="tabular-nums">{horse.dob ? `${dayjs(horse.dob).format('DD/MM/YYYY')} (${calcAge(horse.dob)})` : '—'}</dd>
+              </div>
+              <div>
+                <dt>Cân nặng</dt>
+                <dd className="tabular-nums">{horse.weightKg ? `${horse.weightKg} kg` : '—'}</dd>
+              </div>
+              <div>
+                <dt>Số vi mạch</dt>
+                <dd className="font-mono text-xs">{horse.microchipNumber || '—'}</dd>
+              </div>
+              <div>
+                <dt>Số đăng ký</dt>
+                <dd className="font-mono text-xs">{horse.registrationNumber || '—'}</dd>
+              </div>
+              {/* Sent only to the Manager and the owner. */}
+              {'valuationVnd' in horse && (
+                <div>
+                  <dt>Định giá</dt>
+                  <dd className="tabular-nums font-semibold">{formatVnd(horse.valuationVnd)}</dd>
+                </div>
+              )}
+            </dl>
+          </section>
+
+          {/* Who looks after the horse: the people the Manager assigns on the horse form, and its stall's groom. */}
+          <section className="hp-card">
+            <h2 className="hp-card-title">Người phụ trách</h2>
+            <ul className="hp-people">
+              <Person name={horse.owner?.name} role="Chủ sở hữu" empty="CLB sở hữu" />
+              <Person name={horse.assignedTrainer?.name} role="HLV phụ trách" empty="Chưa phân công HLV" />
+              <Person name={horse.assignedVet?.name} role="Bác sĩ phụ trách" empty="Chưa phân công bác sĩ" />
+              <Person name={groom} role={stallCode ? `Nhân viên chăm sóc · chuồng ${stallCode}` : 'Nhân viên chăm sóc'} empty="Chưa có nhân viên chăm sóc" />
+            </ul>
+            {isManager && (
+              <Link className="hp-link" to={`/admin/stables?horse=${horse._id}`}>
+                Đổi chuồng trên sơ đồ →
+              </Link>
             )}
-            {horse.feedingDiet && (
-              <Alert
-                className="!mt-3"
-                type={horse.feedingDiet.diet === 'sick' ? 'warning' : 'info'}
-                showIcon
-                title={
-                  horse.feedingDiet.diet === 'sick'
-                    ? `Chế độ ăn theo y lệnh: ${horse.feedingDiet.label}`
-                    : horse.feedingDiet.label
-                }
-                description={[
-                  horse.feedingDiet.care,
-                  horse.feedingDiet.note ? `Lưu ý bác sĩ: ${horse.feedingDiet.note}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              />
-            )}
-          </Card>
-        </Col>
-      </Row>
+          </section>
+        </aside>
+      </div>
 
-      {/* The rest of the record, one part at a time: the stall's 3D barn is drawn only when its tab is open. */}
+      {/* ---------- The rest of the record, one part at a time (the stall's 3D barn is drawn only when its tab is open) ---------- */}
       <Tabs
+        className="hp-tabs"
         activeKey={tab}
         onChange={(key) => setSearchParams(key === 'history' ? {} : { tab: key }, { replace: true })}
         items={[
-          {
-            key: 'history',
-            label: 'Hành trình & chăm sóc',
-            children: (
-              <div className="space-y-4">
-                <HorseTimeline horseId={horse._id} />
-                <CareHistoryCard horseId={horse._id} />
-              </div>
-            ),
-          },
-          {
-            key: 'stall',
-            label: stallCode ? `Chuồng ${stallCode}` : 'Chuồng',
-            children: <HorseStallCard horseId={horse._id} canManage={isManager} />,
-          },
+          { key: 'history', label: 'Dòng thời gian', children: <HorseTimeline horseId={horse._id} /> },
+          { key: 'care', label: 'Chăm sóc định kỳ', children: <CareHistoryCard horseId={horse._id} /> },
+          { key: 'stall', label: stallCode ? `Chuồng ${stallCode}` : 'Chuồng', children: <HorseStallCard horseId={horse._id} canManage={isManager} /> },
           {
             key: 'races',
             label: `Thành tích thi đấu${horse.achievements?.length ? ` (${horse.achievements.length})` : ''}`,
             children: (
-              <Card className="!rounded-xl !border-[#E2D9C8]">
+              <Card className="!rounded-xl">
                 <Table
                   rowKey={(r) => `${r.race}-${r.date}`}
                   columns={achievementColumns}
                   dataSource={horse.achievements}
-                  pagination={false}
+                  pagination={{ pageSize: 8, hideOnSinglePage: true, size: 'small', showTotal: (total) => `${total} giải` }}
                   scroll={{ x: 'max-content' }}
                   locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa ghi nhận thành tích thi đấu chính thức" /> }}
                 />

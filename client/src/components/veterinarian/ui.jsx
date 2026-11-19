@@ -282,13 +282,57 @@ export function Vitals({ vitalSigns }) {
   );
 }
 
-/** Where an injury is in its recovery; a dot can be clicked to move it there. */
-export function RecoveryStepper({ value, onChange, disabled = false }) {
+/**
+ * A page's figures in a row of tiles, each one a filter: pressing one shows only what it counts, pressing it
+ * again shows everything. items: [{ key, label, value, tone, icon, hint }]; `value`: the tile in use.
+ */
+export function StatTiles({ items, value, onChange, label = 'Tổng quan' }) {
+  return (
+    <div className="vet-stats" role="group" aria-label={label}>
+      {items.map((t) => {
+        const on = value === t.key;
+        const Tag = onChange && !t.static ? 'button' : 'div';
+        return (
+          <Tag
+            key={t.key}
+            {...(Tag === 'button' ? { type: 'button', onClick: () => onChange(on ? null : t.key), 'aria-pressed': on } : {})}
+            className={`vet-stat vet-stat-${t.tone || 'neutral'}${on ? ' is-on' : ''}${Tag === 'button' ? ' is-button' : ''}`}
+            title={t.title}
+          >
+            <span className="vet-stat-top">
+              {t.icon && <i className={`bi ${t.icon}`} aria-hidden="true" />}
+              <span className="vet-stat-label">{t.label}</span>
+            </span>
+            <span className="vet-stat-value">{t.value}</span>
+            {t.hint && <span className="vet-stat-hint">{t.hint}</span>}
+          </Tag>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Where an injury is in its recovery; a dot can be clicked to move it there. `labeled`: each stage named under its dot. */
+export function RecoveryStepper({ value, onChange, disabled = false, labeled = false }) {
   const current = Math.max(
     0,
     RECOVERY_STEPS.findIndex((s) => s.key === value)
   );
   const meta = RECOVERY_STEPS[current];
+  if (labeled) {
+    return (
+      <ol className="vet-stages" aria-label={`Giai đoạn hồi phục: ${meta.label}`}>
+        {RECOVERY_STEPS.map((step, i) => (
+          <li key={step.key} className={`vet-stages-step${i < current ? ' is-done' : ''}${i === current ? ` is-current vet-text-${meta.tone}` : ''}`}>
+            <span className="vet-stages-dot" aria-hidden="true">
+              {i < current ? <i className="bi bi-check-lg" /> : i + 1}
+            </span>
+            <span className="vet-stages-label">{step.label}</span>
+          </li>
+        ))}
+      </ol>
+    );
+  }
   return (
     <div className="vet-stepper">
       {RECOVERY_STEPS.map((step, i) => (

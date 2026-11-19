@@ -1,0 +1,340 @@
+/* The horse list (HorseListPage): the counts as tiles, and the trainer's roster as cards. Colours from the staff
+   theme (staff-workspace.css for the Manager and the Head Trainer, staff-ui.css otherwise), light and dark. */
+.hl-tiles,
+.hl-grid {
+  --hl-surface: var(--st-surface, var(--st-card, #ffffff));
+  --hl-sunk: var(--st-sunk, #f1f5f9);
+  --hl-border: var(--st-border, #e2e8f0);
+  --hl-ink: var(--st-ink, #0f172a);
+  --hl-ink-2: var(--st-ink-secondary, #334155);
+  --hl-muted: var(--st-ink-muted, #64748b);
+  --hl-accent: var(--st-action, var(--st-gold, #eab308));
+  --hl-accent-soft: var(--st-accent-soft, var(--st-gold-soft, #fef3c7));
+  --hl-shadow: var(--st-shadow, var(--st-shadow-card, 0 1px 3px rgba(15, 23, 42, 0.06)));
+  --hl-shadow-up: var(--st-shadow-md, var(--st-shadow-hover, 0 10px 24px -10px rgba(15, 23, 42, 0.25)));
+  --hl-good: var(--st-good, var(--st-good-ink, #15803d));
+  --hl-good-bg: var(--st-good-bg, #dcfce7);
+  --hl-warn: var(--st-warn, var(--st-watch-ink, #b45309));
+  --hl-warn-bg: var(--st-warn-bg, var(--st-watch-bg, #fef3c7));
+  --hl-danger: var(--st-danger, var(--st-bad-ink, #b91c1c));
+  --hl-danger-bg: var(--st-danger-bg, var(--st-bad-bg, #fee2e2));
+  --hl-pink: #be185d;
+}
+
+/* ---------- Counts as tiles (each a filter) ---------- */
+.hl-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.hl-tile {
+  --tone: var(--hl-ink-2);
+  --tone-bg: var(--hl-sunk);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--hl-border);
+  border-radius: 16px;
+  background: var(--hl-surface);
+  box-shadow: var(--hl-shadow);
+  color: var(--hl-ink);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+.hl-tile::after {
+  content: '';
+  position: absolute;
+  right: -28px;
+  bottom: -28px;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: var(--tone-bg);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.hl-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--hl-shadow-up);
+  border-color: var(--tone);
+}
+.hl-tile.is-on {
+  border-color: var(--tone);
+  box-shadow: 0 0 0 3px var(--tone-bg), var(--hl-shadow);
+}
+.hl-tile.is-accent {
+  --tone: var(--hl-accent);
+  --tone-bg: var(--hl-accent-soft);
+}
+.hl-tile.is-good {
+  --tone: var(--hl-good);
+  --tone-bg: var(--hl-good-bg);
+}
+.hl-tile.is-warn {
+  --tone: var(--hl-warn);
+  --tone-bg: var(--hl-warn-bg);
+}
+.hl-tile.is-danger {
+  --tone: var(--hl-danger);
+  --tone-bg: var(--hl-danger-bg);
+}
+.hl-tile-icon {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--tone-bg);
+  color: var(--tone);
+  font-size: 22px;
+}
+.hl-tile-label,
+.hl-tile-value,
+.hl-tile-note {
+  position: relative;
+  z-index: 1;
+  display: block;
+}
+.hl-tile-label {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--hl-muted);
+}
+.hl-tile-value {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--tone);
+  font-variant-numeric: tabular-nums;
+}
+.hl-tile.is-neutral .hl-tile-value {
+  color: var(--hl-ink);
+}
+.hl-tile-value small {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--hl-muted);
+}
+.hl-tile-note {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--hl-muted);
+}
+
+/* ---------- The roster as cards ---------- */
+.hl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr));
+  gap: 16px;
+}
+.hl-card {
+  --tone: var(--hl-good);
+  --tone-bg: var(--hl-good-bg);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px 18px 14px;
+  border: 1px solid var(--hl-border);
+  border-radius: 18px;
+  background: var(--hl-surface);
+  box-shadow: var(--hl-shadow);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+.hl-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 5px;
+  background: var(--tone);
+}
+.hl-card:hover,
+.hl-card:focus-visible {
+  transform: translateY(-3px);
+  box-shadow: var(--hl-shadow-up);
+  border-color: var(--tone);
+  outline: none;
+}
+.hl-card.is-warn {
+  --tone: var(--hl-warn);
+  --tone-bg: var(--hl-warn-bg);
+}
+.hl-card.is-danger {
+  --tone: var(--hl-danger);
+  --tone-bg: var(--hl-danger-bg);
+}
+.hl-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hl-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  color: #fff;
+  font-family: 'Lora', Georgia, serif;
+  font-size: 21px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 3px var(--hl-surface), 0 0 0 5px var(--tone-bg);
+}
+.hl-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--hl-ink);
+}
+.hl-facts {
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--hl-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hl-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--tone-bg);
+  color: var(--tone);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.hl-training {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--hl-ink);
+}
+.hl-reason {
+  overflow: hidden;
+  font-weight: 400;
+  color: var(--hl-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hl-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone);
+  transform: translateY(-1px);
+}
+.hl-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--hl-sunk);
+  font-size: 12.5px;
+  color: var(--hl-ink-2);
+}
+.hl-meta .anticon {
+  margin-right: 4px;
+  color: var(--hl-muted);
+}
+.hl-section-label {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--hl-muted);
+}
+.hl-plan-where {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--hl-ink);
+}
+.hl-plan-bar {
+  height: 6px;
+  margin: 6px 0 8px;
+  border-radius: 999px;
+  background: var(--hl-sunk);
+  overflow: hidden;
+}
+.hl-plan-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--hl-accent), var(--hl-warn));
+}
+.hl-plan-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12.5px;
+  color: var(--hl-ink-2);
+}
+.hl-plan-lines .anticon {
+  margin-right: 4px;
+}
+.hl-race {
+  align-self: flex-start;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(190, 24, 93, 0.1);
+  color: var(--hl-pink);
+  font-weight: 650;
+}
+.hl-plan.is-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--hl-border);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--hl-muted);
+}
+.hl-step {
+  min-height: 40px;
+}
+.hl-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px dashed var(--hl-border);
+  cursor: default;
+}
+.hl-card-foot:first-child {
+  margin-top: 0;
+}
+.hl-step + .hl-card-foot {
+  margin-top: 14px;
+}
+.hl-open.ant-btn {
+  font-weight: 650;
+  color: var(--hl-ink);
+}
