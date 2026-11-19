@@ -125,3 +125,17 @@ body {
   background: rgba(212, 175, 55, 0.18);
 }
 
+
+/* A radio group shown as separate chips that wrap (the session form's kind, purpose, intensity). */
+.choice-chips.ant-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.choice-chips .ant-radio-button-wrapper {
+  border-radius: 8px !important;
+  border-inline-start-width: 1px !important;
+}
+.choice-chips .ant-radio-button-wrapper::before {
+  display: none !important;
+}

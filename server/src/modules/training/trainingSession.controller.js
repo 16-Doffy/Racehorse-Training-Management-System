@@ -33,6 +33,7 @@ const {
   slotKindProblem,
 } = require('../../constants/training');
 const { announceSessionToGroom, announceSessionChange, buildFromKind, closeRun } = require('./trainingSession.service');
+const { dayClashProblem, dayClashFailure, bookedMinutes } = require('./sessionDay');
 const { INTENSITY_RANK, getTrainingClearance, allows } = require('../health/trainingClearance');
 const { flagConfirmedEntries } = require('../race/raceDecision.service');
 const { ROLES } = require('../../constants/roles');
@@ -378,6 +379,10 @@ const createSession = asyncHandler(async (req, res) => {
     kindSpeedProblem(body.kind, body.prescription?.targetSpeedKmh) ||
     slotKindProblem(body.kind, body.scheduledAt);
   if (problem) return fail(res, problem, 400);
+  // One session a morning and one an afternoon, never two at once (sessionDay.js).
+  // A second session in that part of the day goes ahead with the trainer's reason, kept on the session.
+  const dayFail = dayClashFailure(await dayClashProblem({ horse, scheduledAt: body.scheduledAt, endAt: body.endAt, durationMinutes: body.prescription?.durationMinutes }), overrideReason);
+  if (dayFail) return fail(res, dayFail.message, dayFail.status, dayFail.data);
   const trial = await trialEntryFor({ horse, ...body, plan });
   if (trial.error) return fail(res, trial.error, 400);
   body.raceEntry = trial.raceEntry;
@@ -428,20 +433,27 @@ const updateSession = asyncHandler(async (req, res) => {
     if (!(scheduledAt > new Date())) return fail(res, 'Giờ tập mới phải ở tương lai.', 400);
     const slotProblem = slotKindProblem(session.kind, scheduledAt);
     if (slotProblem) return fail(res, slotProblem, 400);
+    // The booking keeps its length: its planned end moves with it.
+    const minutes = bookedMinutes({ scheduledAt: session.scheduledAt, endAt: session.endAt, durationMinutes: session.prescription?.durationMinutes });
+    const dayFail = dayClashFailure(await dayClashProblem({ horse: session.horse, scheduledAt, durationMinutes: minutes, excludeId: session._id }), req.body.overrideReason);
+    if (dayFail) return fail(res, dayFail.message, dayFail.status, dayFail.data);
     if (session.raceEntry) {
       const trial = await trialEntryFor({ horse: session.horse, kind: session.kind, sessionType: session.sessionType, scheduledAt, raceEntry: session.raceEntry });
       if (trial.error) return fail(res, trial.error, 400);
     }
+    const endAt = session.endAt ? new Date(scheduledAt.getTime() + minutes * 60000) : null;
     const moved = await TrainingSession.findOneAndUpdate(
       { _id: session._id, status: session.status, scheduledAt: session.scheduledAt },
-      { $set: { scheduledAt, status: SESSION_STATUS.SCHEDULED }, $unset: { readiness: 1, blockedReason: 1 } },
+      { $set: { scheduledAt, endAt, status: SESSION_STATUS.SCHEDULED }, $unset: { readiness: 1, blockedReason: 1 } },
       { new: true }
     );
     if (!moved) return fail(res, 'Buổi tập đã thay đổi hoặc bắt đầu — tải lại trước khi đổi giờ.', 409, { code: SESSION_ERROR.NOT_EDITABLE });
     const horse = await Horse.findById(moved.horse).select('name');
     await announceSessionToGroom(moved, horse?.name || 'Ngựa');
     await feedForSessions(moved.horse, [session.scheduledAt, moved.scheduledAt]);
-    await logAction({ actorId: req.user._id, action: 'trainingSession.update', targetModel: 'TrainingSession', targetId: moved._id });
+    // The reason for a second session in that part of the day, on record (the move clears the readiness snapshot).
+    const reason = String(req.body.overrideReason || '').trim();
+    await logAction({ actorId: req.user._id, action: 'trainingSession.update', targetModel: 'TrainingSession', targetId: moved._id, metadata: reason ? { overrideReason: reason } : undefined });
     return ok(res, moved, 'Training session updated.');
   }
   // The work of a session not yet started can change: a pre-check done for the old work no longer counts.
@@ -482,6 +494,19 @@ const updateSession = asyncHandler(async (req, res) => {
   // The planned end follows the new work.
   if (changesWork && changes.endAt === undefined && changes.prescription?.durationMinutes > 0) {
     changes.endAt = new Date(new Date(changes.scheduledAt || session.scheduledAt).getTime() + Number(changes.prescription.durationMinutes) * 60000);
+  }
+  // A new time or a longer workout must still fit the horse's day (sessionDay.js); a note or a cancellation does not move it.
+  const takesTime = changes.scheduledAt !== undefined || changes.endAt !== undefined || changes.segments !== undefined || changes.prescription?.durationMinutes !== undefined;
+  if (takesTime) {
+    const clash = await dayClashProblem({
+      horse: session.horse,
+      scheduledAt: changes.scheduledAt ?? session.scheduledAt,
+      endAt: changes.endAt !== undefined ? changes.endAt : changes.scheduledAt !== undefined ? null : session.endAt,
+      durationMinutes: changes.prescription?.durationMinutes ?? session.prescription?.durationMinutes,
+      excludeId: session._id,
+    });
+    const dayFail = req.body.status === SESSION_STATUS.CANCELLED ? null : dayClashFailure(clash, req.body.overrideReason);
+    if (dayFail) return fail(res, dayFail.message, dayFail.status, dayFail.data);
   }
   if (Object.keys(changes).length > 0) {
     const merged = { kind: changes.kind ?? session.kind, sessionType: changes.sessionType ?? session.sessionType, scheduledAt: changes.scheduledAt ?? session.scheduledAt };
@@ -934,7 +959,13 @@ const rescheduleSession = asyncHandler(async (req, res) => {
     if (trial.error) return fail(res, trial.error, 400);
   }
 
+  // The booking keeps its length at the new time, and must fit the horse's day there (sessionDay.js).
+  const minutes = bookedMinutes({ scheduledAt: session.scheduledAt, endAt: session.endAt, durationMinutes: session.prescription?.durationMinutes });
+  const dayFail = dayClashFailure(await dayClashProblem({ horse: session.horse, scheduledAt, durationMinutes: minutes, excludeId: session._id }), req.body?.overrideReason);
+  if (dayFail) return fail(res, dayFail.message, dayFail.status, dayFail.data);
+
   const booking = pick(session.toObject(), BOOKING_FIELDS);
+  if (booking.endAt) booking.endAt = new Date(scheduledAt.getTime() + minutes * 60000);
   const next = new TrainingSession({ ...booking, scheduledAt, status: SESSION_STATUS.SCHEDULED, generated: false });
   // Reserve this booking before saving it: simultaneous requests must not both create a copy.
   const claimed = await TrainingSession.updateOne(
@@ -958,7 +989,7 @@ const rescheduleSession = asyncHandler(async (req, res) => {
     action: 'trainingSession.reschedule',
     targetModel: 'TrainingSession',
     targetId: session._id,
-    metadata: { newSession: next._id, scheduledAt },
+    metadata: { newSession: next._id, scheduledAt, ...(String(req.body?.overrideReason || '').trim() ? { overrideReason: String(req.body.overrideReason).trim() } : {}) },
   });
   const horse = await Horse.findById(session.horse).select('name');
   await announceSessionToGroom(next, horse?.name || 'Ngựa');

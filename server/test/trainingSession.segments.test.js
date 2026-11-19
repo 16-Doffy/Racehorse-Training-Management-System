@@ -30,6 +30,8 @@ notifications.notifyHorseStaff = async () => {};
 TrainingPlan.findById = async () => ({ _id: ids.plan, horse: ids.horse, status: 'active' });
 Horse.findById = () => ({ select: async () => ({ name: 'Demo Horse' }) });
 TrainingSession.exists = async () => false;
+// The horse has nothing else booked that day (sessionDay.js reads its other sessions).
+TrainingSession.find = () => ({ select: () => ({ lean: async () => [] }) });
 TrainingSession.create = async (body) => {
   const doc = new TrainingSession(body);
   createdDocs.push(doc.toObject());

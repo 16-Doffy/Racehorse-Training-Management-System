@@ -46,6 +46,21 @@ export default function usePrescription({ from = null, catalog = [], customTempl
     return undefined;
   };
 
+  /**
+   * Starts again from an ongoing prescription — the one a new prescription replaces: its medicines still
+   * given, its care orders and level, from today (its end date kept only if it is still ahead).
+   */
+  const loadFrom = (source) => {
+    const active = (source?.medications || []).filter((m) => !['completed', 'cancelled'].includes(m.status));
+    setMeds(active.length ? active.map((m) => medFromSaved(m, catalog)) : [blankMed()]);
+    setStart(today);
+    setEnd(source?.endDate && toInputDate(source.endDate) >= today ? toInputDate(source.endDate) : '');
+    setLevel(source ? treatmentLevel(source) : 'high');
+    setReason(source?.lockReason || '');
+    setCare(source?.careInstructions || '');
+    setTemplateKey('');
+  };
+
   /** What stops the prescription from being saved, or null. `fallbackReason`: the reason for a lock when none was written (the exam's diagnosis). */
   const problem = ({ fallbackReason = '' } = {}) => {
     if (empty) return 'Thêm ít nhất một thuốc, một y lệnh chăm sóc, hoặc chọn mức hạn chế tập.';
@@ -87,6 +102,7 @@ export default function usePrescription({ from = null, catalog = [], customTempl
     dosesPerDay,
     empty,
     applyTemplate,
+    loadFrom,
     problem,
     payload,
   };

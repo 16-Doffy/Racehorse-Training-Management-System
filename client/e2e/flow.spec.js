@@ -682,7 +682,8 @@ test('a trial much shorter than its race gets a warning, and can still be saved'
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: option }).first().click();
   };
   await pickOption('Ngựa', 'TEST Browser Horse');
-  await pickOption('Loại buổi tập', 'Chạy thử');
+  // The kinds of work are chips: one press fills in the workout.
+  await modal.locator('.ant-form-item', { hasText: 'Loại buổi tập' }).first().getByText('Chạy thử', { exact: true }).click();
   await pickOption('Chạy thử cho giải', 'TEST Long Cup');
   const distance = modal.locator('.ant-form-item', { hasText: 'Cự ly (m)' });
   // Filled in with the race's distance, which shows beside the field.

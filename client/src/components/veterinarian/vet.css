@@ -568,22 +568,6 @@ body[data-bs-theme='dark'] .vet-menu .dropdown-item.is-danger {
 }
 
 /* ---------- The exam form in three parts: found, concluded, ordered (MedicalExaminationForm) ---------- */
-.vet-ui .vet-exam-step {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin: 28px -18px 18px;
-  padding: 12px 18px;
-  background: var(--vet-card-2);
-  border-top: 1px solid var(--vet-border-soft);
-  border-bottom: 1px solid var(--vet-border-soft);
-}
-.vet-ui .vet-exam-step:first-child {
-  margin-top: -16px;
-  border-top: 0;
-  border-radius: 14px 14px 0 0;
-}
 .vet-ui .vet-exam-step-n {
   flex: none;
   display: inline-flex;
@@ -632,6 +616,461 @@ body[data-bs-theme='dark'] .vet-menu .dropdown-item.is-danger {
   gap: 6px;
   min-width: 0;
   font-size: 12.5px;
+}
+
+/* The exam page: three cards on the left, a sticky summary with the save button on the right (wide screens). */
+.vet-ui.vet-exam-page {
+  max-width: 1280px;
+}
+.vet-ui .vet-exam-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.vet-ui .vet-exam-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.vet-ui .vet-exam-card {
+  scroll-margin-top: 80px;
+}
+.vet-ui .vet-exam-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 18px;
+  background: var(--vet-card-2);
+  border-bottom: 1px solid var(--vet-border-soft);
+  border-radius: 14px 14px 0 0;
+}
+.vet-ui .vet-exam-only-wide {
+  display: none;
+}
+.vet-ui .vet-exam-only-narrow {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vet-ui .vet-exam-footer {
+  position: static;
+  border: 1px solid var(--vet-border);
+  border-radius: 14px;
+  box-shadow: var(--vet-shadow);
+}
+@media (min-width: 1400px) {
+  .vet-ui .vet-exam-layout {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+  .vet-ui .vet-exam-only-wide {
+    display: block;
+  }
+  .vet-ui .vet-exam-only-narrow {
+    display: none;
+  }
+}
+
+/* A labelled line: label (with a status dot or an icon) on the left, the answer on the right. */
+.vet-ui .vet-lines {
+  display: flex;
+  flex-direction: column;
+}
+.vet-ui .vet-line {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 6px 16px;
+  align-items: start;
+  padding: 12px 0;
+  border-top: 1px dashed var(--vet-border-soft);
+}
+.vet-ui .vet-line:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+.vet-ui .vet-line:last-child {
+  padding-bottom: 0;
+}
+.vet-ui .vet-line-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.vet-ui .vet-line-body {
+  min-width: 0;
+}
+.vet-ui .vet-line-hint {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--vet-muted);
+}
+.vet-ui .vet-line-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--vet-border);
+}
+@media (max-width: 640px) {
+  .vet-ui .vet-line {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vet-ui .vet-line-label {
+    min-height: 0;
+  }
+}
+/* Not examined: a hollow dot; examined: filled in the colour of the answer. */
+.vet-ui .vet-state-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--vet-faint);
+  background: transparent;
+}
+.vet-ui .vet-state-dot.vet-tone-good {
+  border-color: var(--vet-good);
+  background: var(--vet-good);
+}
+.vet-ui .vet-state-dot.vet-tone-info {
+  border-color: var(--vet-info);
+  background: var(--vet-info);
+}
+.vet-ui .vet-state-dot.vet-tone-watch {
+  border-color: var(--vet-watch);
+  background: var(--vet-watch);
+}
+.vet-ui .vet-state-dot.vet-tone-bad {
+  border-color: var(--vet-bad);
+  background: var(--vet-bad);
+}
+.vet-ui .vet-choices.is-compact {
+  gap: 6px;
+}
+.vet-ui .vet-choices.is-compact .vet-choice {
+  min-width: 38px;
+  justify-content: center;
+  padding: 6px 11px;
+}
+
+/* Vital signs: a tile each, with − / + around a big number. */
+.vet-ui .vet-vital-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+.vet-ui .vet-vital-tile {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vet-border-soft);
+  border-radius: 12px;
+  background: var(--vet-card-2);
+}
+.vet-ui .vet-vital-tile.is-off {
+  border-color: var(--vet-bad);
+  background: var(--vet-bad-bg);
+}
+.vet-ui .vet-vital-tile-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.vet-ui .vet-vital-tile-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--vet-faint);
+}
+.vet-ui .vet-num-stepper {
+  display: flex;
+  align-items: stretch;
+  height: 42px;
+  border: 1px solid var(--vet-border);
+  border-radius: 10px;
+  background: var(--vet-input-bg);
+  overflow: hidden;
+}
+.vet-ui .vet-num-stepper:focus-within {
+  border-color: var(--vet-primary);
+  box-shadow: 0 0 0 3px var(--vet-focus);
+}
+.vet-ui .vet-num-stepper.is-out-of-range {
+  border-color: var(--vet-bad);
+}
+.vet-ui .vet-num-stepper .form-control {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: auto;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 650;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.vet-ui .vet-num-stepper .form-control:focus {
+  box-shadow: none;
+}
+.vet-ui .vet-num-stepper .form-control::-webkit-outer-spin-button,
+.vet-ui .vet-num-stepper .form-control::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.vet-ui .vet-num-stepper button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  border: 0;
+  background: transparent;
+  color: var(--vet-muted);
+  font-size: 15px;
+}
+.vet-ui .vet-num-stepper button:hover {
+  background: var(--vet-hover);
+  color: var(--vet-ink);
+}
+.vet-ui .vet-num-stepper button:active {
+  background: var(--vet-neutral-bg);
+}
+
+/* Quick picks: dashed until pressed, a press writes the words into the field. */
+.vet-ui .vet-picks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.vet-ui .vet-picks-label {
+  margin-right: 2px;
+  font-size: 12px;
+  color: var(--vet-faint);
+}
+.vet-ui .vet-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 300px;
+  padding: 3px 10px 3px 7px;
+  border: 1px dashed var(--vet-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--vet-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vet-ui .vet-pick:hover {
+  border-style: solid;
+  background: var(--vet-hover);
+  color: var(--vet-ink);
+}
+.vet-ui .vet-pick.is-accent {
+  border-style: solid;
+  border-color: var(--vet-watch);
+  background: var(--vet-watch-bg);
+  color: var(--vet-watch);
+}
+.vet-ui .vet-pick.is-on {
+  border-style: solid;
+  border-color: var(--vet-good);
+  background: var(--vet-good-bg);
+  color: var(--vet-good);
+}
+
+/* Injuries and files side by side; files can be dropped on their box. */
+.vet-ui .vet-exam-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.vet-ui .vet-exam-box {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--vet-border-soft);
+  border-radius: 12px;
+  background: var(--vet-card-2);
+}
+.vet-ui .vet-dropzone {
+  border-style: dashed;
+  border-color: var(--vet-border);
+}
+.vet-ui .vet-dropzone.is-dragging {
+  border-color: var(--vet-good);
+  background: var(--vet-good-bg);
+}
+.vet-ui .vet-exam-injury {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--vet-border-soft);
+  border-radius: 10px;
+  background: var(--vet-card);
+}
+
+/* What part 1 found, at the top of the conclusion. */
+.vet-ui .vet-exam-found {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--vet-good-bg);
+  color: var(--vet-good);
+  font-size: 13px;
+}
+.vet-ui .vet-exam-found.is-off {
+  background: var(--vet-watch-bg);
+  color: var(--vet-watch);
+}
+.vet-ui .vet-exam-found.is-empty {
+  background: var(--vet-neutral-bg);
+  color: var(--vet-muted);
+}
+.vet-ui .vet-exam-found-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+  font-weight: 650;
+}
+
+/* A follow-up: the last exam in a line, then each injury and prescription still running with what this exam does to it. */
+.vet-ui .vet-exam-last {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--vet-card-2);
+  font-size: 13px;
+}
+.vet-ui .vet-follow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vet-ui .vet-follow-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 16px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--vet-border-soft);
+  border-radius: 12px;
+  background: var(--vet-card);
+}
+.vet-ui .vet-follow-main {
+  min-width: 0;
+}
+.vet-ui .vet-follow-act {
+  min-width: 0;
+  justify-self: end;
+}
+@media (max-width: 900px) {
+  .vet-ui .vet-follow-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vet-ui .vet-follow-act {
+    justify-self: start;
+  }
+}
+
+/* The summary rail. */
+.vet-ui .vet-exam-rail {
+  position: sticky;
+  top: 76px;
+}
+.vet-ui .vet-exam-rail-head {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--vet-border-soft);
+}
+.vet-ui .vet-exam-rail-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vet-ui .vet-exam-rail-step {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  column-gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--vet-ink);
+  text-align: left;
+}
+.vet-ui .vet-exam-rail-step:hover {
+  background: var(--vet-hover);
+}
+.vet-ui .vet-exam-rail-n {
+  grid-row: span 2;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--vet-neutral-bg);
+  color: var(--vet-muted);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.vet-ui .vet-exam-rail-step.is-done .vet-exam-rail-n {
+  background: var(--vet-good);
+  color: var(--vet-card);
+}
+.vet-ui .vet-exam-rail-step.is-warn .vet-exam-rail-n {
+  background: var(--vet-watch-bg);
+  color: var(--vet-watch);
+}
+.vet-ui .vet-exam-rail-title {
+  font-size: 13.5px;
+  font-weight: 650;
+}
+.vet-ui .vet-exam-rail-note {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--vet-faint);
+}
+.vet-ui .vet-exam-rail-step.is-warn .vet-exam-rail-note {
+  color: var(--vet-watch);
+}
+.vet-ui .vet-exam-rail-label {
+  margin-bottom: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vet-faint);
 }
 
 /* ---------- Choice pills (radio-like) ---------- */

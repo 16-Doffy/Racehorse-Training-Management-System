@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Card,
   Table,
@@ -20,6 +20,7 @@ import {
   Space,
   Dropdown,
   Grid,
+  Radio,
 } from 'antd';
 import { message, notification } from '../../lib/antdStatic';
 import {
@@ -88,6 +89,8 @@ import {
   segmentSafetyWarnings,
 } from './trainingVocab';
 import { newestFirst } from '../../utils/newestFirst';
+import { coachNoteFor, kindAllowed, kindForObjective, phaseOn, recentDone, suggestWorkout, templateDayOn } from './workoutSuggest';
+import { dayClash, horseDay, stateOf } from './sessionDay';
 
 const { Text } = Typography;
 const { useBreakpoint } = Grid;
@@ -149,6 +152,7 @@ export default function TrainingSessionPage() {
   const [replaySession, setReplaySession] = useState(null);
   const [abortForm] = Form.useForm();
   const draftKind = Form.useWatch('kind', createForm);
+  const draftObjective = Form.useWatch('objective', createForm);
   const draftSpeed = Form.useWatch(['prescription', 'targetSpeedKmh'], createForm);
   const draftPlanId = Form.useWatch('trainingPlan', createForm);
   // The exam request being written: { horseId, session?, defaults? }.
@@ -176,6 +180,21 @@ export default function TrainingSessionPage() {
   // The readiness board has to follow what the trainer is currently typing, so these mirror the
   // form fields it depends on.
   const [draft, setDraft] = useState({});
+  // The workout filled in for the horse, and why (workoutSuggest.js). `rxEdited`: the trainer changed the
+  // numbers by hand, so a later change of horse or time no longer rewrites them.
+  const [suggestion, setSuggestion] = useState(null);
+  const [rxEdited, setRxEdited] = useState(false);
+  const auto = useRef({ rxEdited: false, kindFromPlan: false, note: '' });
+  const markEdited = (value) => {
+    auto.current.rxEdited = value;
+    setRxEdited(value);
+  };
+  useEffect(() => {
+    if (!createOpen) return;
+    auto.current = { rxEdited: false, kindFromPlan: false, note: '' };
+    setRxEdited(false);
+    setSuggestion(null);
+  }, [createOpen]);
 
   const { data: sessionsData, isLoading, isError, error, refetch } = useQuery({
     // Re-fetches whenever the filter changes, letting the server do the filtering rather than
@@ -220,6 +239,7 @@ export default function TrainingSessionPage() {
   const policy = useClubPolicy();
   const draftAt = Form.useWatch('scheduledAt', createForm);
   const draftEndAt = Form.useWatch('endAt', createForm);
+  const draftDuration = Form.useWatch(['prescription', 'durationMinutes'], createForm);
   const draftSegments = Form.useWatch('segments', createForm);
   const segmentWarnings = segmentSafetyWarnings(draftSegments);
   const draftSlotProblem = afternoonProblem(policy, draftKind, draftAt);
@@ -273,6 +293,183 @@ export default function TrainingSessionPage() {
       }
     }
   };
+
+  // The horse's own past sessions (whatever the list is filtered on), for what it did in the last days.
+  const { data: horseSessionsData } = useQuery({
+    queryKey: ['training-sessions', 'horse-recent', draft.horse],
+    queryFn: () => trainingSessionApi.list({ horse: draft.horse }),
+    enabled: Boolean(createOpen && draft.horse),
+  });
+  const activePlanOf = (horseId) => (plansData?.data || []).find((p) => String(p.horse?._id) === String(horseId) && p.status === 'active');
+
+  /**
+   * Fills the workout for `kind` and `objective`, fitted to the horse picked and the time: intensity, type and
+   * every number of the prescription, and the rider's brief while the trainer has not written one. Returns the
+   * values it set, for the change handler to carry on with.
+   */
+  const applySuggestion = ({ kind, objective, values }) => {
+    const horseId = values.horse;
+    const horse = (horsesData?.data || []).find((h) => String(h._id) === String(horseId));
+    const plan = (plansData?.data || []).find((p) => String(p._id) === String(values.trainingPlan)) || activePlanOf(horseId);
+    const phase = phaseOn(plan, values.scheduledAt);
+    const raceId = values.raceEntry || plan?.targetRace?._id || plan?.targetRace;
+    const race = (racesData?.data || []).find((r) => String(r._id) === String(raceId));
+    const s = suggestWorkout({
+      kind,
+      objective,
+      horse,
+      clearance: clearances.get(String(horseId)),
+      phase,
+      templateDay: templateDayOn(phase, values.scheduledAt),
+      race,
+      recent: recentDone(horseSessionsData?.data, horseId, values.scheduledAt),
+      at: values.scheduledAt,
+    });
+    if (!s) return {};
+    createForm.setFieldsValue({ kind: s.kind, objective: s.objective, intensity: s.intensity, sessionType: s.sessionType });
+    // One field at a time, so a number the new workout does not use (rest between reps…) is cleared.
+    Object.entries(s.prescription).forEach(([field, value]) => createForm.setFieldValue(['prescription', field], value));
+    const note = createForm.getFieldValue('coachNote');
+    if (!note || note === auto.current.note) {
+      const brief = coachNoteFor({ kind: s.kind, prescription: s.prescription, horse });
+      createForm.setFieldValue('coachNote', brief);
+      auto.current.note = brief;
+    }
+    markEdited(false);
+    setSuggestion({ ...s, horseName: horse?.name, phaseKey: phase?.key });
+    return { kind: s.kind, objective: s.objective, intensity: s.intensity, sessionType: s.sessionType, prescription: { ...(values.prescription || {}), ...s.prescription } };
+  };
+
+  /** Everything the form works out by itself when a field changes (antd onValuesChange). */
+  const onCreateChange = (changed, allValues) => {
+    let all = allValues;
+    // The trainer's own numbers from now on.
+    if (changed.prescription || changed.intensity) markEdited(true);
+    // A horse follows one plan at a time: file the session under it.
+    if (changed.horse) {
+      const plan = activePlanOf(changed.horse);
+      createForm.setFieldValue('trainingPlan', plan?._id);
+      // A trial defaults to the race the plan prepares for.
+      createForm.setFieldValue('raceEntry', plan?.targetRace?._id || plan?.targetRace || undefined);
+      all = { ...all, trainingPlan: plan?._id, raceEntry: plan?.targetRace?._id || plan?.targetRace || undefined };
+    }
+    // What to fill in: the kind picked; the kind that serves the purpose picked; or, for a new horse or time,
+    // the plan's normal week for that day (when no kind was chosen by hand) or the same work fitted again.
+    const clearance = clearances.get(String(all.horse));
+    let pick = null;
+    if (changed.kind) {
+      auto.current.kindFromPlan = false;
+      pick = { kind: changed.kind, objective: SESSION_KINDS[changed.kind]?.objective };
+    } else if (changed.objective) {
+      const kind = kindForObjective(changed.objective, all.kind, clearance);
+      if (kind) pick = { kind, objective: changed.objective };
+      else {
+        message.warning('Bác sĩ đang giới hạn mức tập của ngựa này — chưa tập cho mục đích đó được.');
+        const back = all.kind ? SESSION_KINDS[all.kind].objective : 'recovery';
+        createForm.setFieldValue('objective', back);
+        all = { ...all, objective: back };
+      }
+    } else if (changed.horse || changed.scheduledAt || changed.raceEntry) {
+      const template = templateDayOn(phaseOn(activePlanOf(all.horse), all.scheduledAt), all.scheduledAt);
+      if ((!all.kind || auto.current.kindFromPlan) && template && kindAllowed(clearance, template.kind)) {
+        auto.current.kindFromPlan = true;
+        pick = { kind: template.kind, objective: SESSION_KINDS[template.kind].objective };
+      } else if (all.kind && !auto.current.rxEdited) {
+        pick = { kind: all.kind, objective: all.objective };
+      }
+    }
+    if (pick) all = { ...all, ...applySuggestion({ ...pick, values: all }) };
+    // A trial is run over its race's distance, even when the other numbers were set by hand.
+    else if (changed.raceEntry && (all.kind === 'trial' || all.sessionType === 'trial_run')) {
+      const r = (racesData?.data || []).find((x) => String(x._id) === String(changed.raceEntry));
+      if (r?.distance) createForm.setFieldValue(['prescription', 'distanceM'], r.distance);
+    }
+
+    // A recovering horse can't be booked above the vet's level: pull the intensity down to
+    // the highest one allowed as soon as the horse is picked — never below what the kind of
+    // work is (a canter stays moderate; the readiness panel then says it isn't allowed).
+    let intensity = all.intensity;
+    if (changed.horse || changed.kind) {
+      const kindFloor = INTENSITY_RANK[SESSION_KINDS[all.kind]?.intensity] || 0;
+      if (clearance?.restricted && !intensityAllowed(clearance, intensity)) {
+        const allowed = Object.keys(INTENSITY_RANK).filter((i) => INTENSITY_RANK[i] <= LEVEL_RANK[clearance.level] && INTENSITY_RANK[i] >= kindFloor);
+        if (allowed.length) {
+          intensity = allowed[allowed.length - 1];
+          createForm.setFieldValue('intensity', intensity);
+        }
+      }
+    }
+    const activeSegments = (all.segments || []).filter((seg) => seg?.kind);
+    if ((changed.segments || changed.scheduledAt || pick) && activeSegments.length > 0) {
+      const totalMin = activeSegments.reduce((s, seg) => s + (Number(seg?.durationMinutes) || 0), 0);
+      const totalDist = activeSegments.reduce((s, seg) => s + (Number(seg?.distanceM) || 0), 0);
+      if (totalMin > 0) {
+        createForm.setFieldValue(['prescription', 'durationMinutes'], totalMin);
+        if (all.scheduledAt) createForm.setFieldValue('endAt', dayjs(all.scheduledAt).add(totalMin, 'minute'));
+      }
+      if (totalDist > 0) createForm.setFieldValue(['prescription', 'distanceM'], totalDist);
+    } else if ((changed.scheduledAt || pick || changed.prescription?.durationMinutes !== undefined) && all.scheduledAt) {
+      const mins = Number(all.prescription?.durationMinutes);
+      if (mins > 0) createForm.setFieldValue('endAt', dayjs(all.scheduledAt).add(mins, 'minute'));
+      // A distance workout ends when the distance is run: an end time left from a timed one would mislead.
+      else if (pick) createForm.setFieldValue('endAt', undefined);
+    } else if (changed.endAt && all.endAt && all.scheduledAt) {
+      const diff = dayjs(all.endAt).diff(dayjs(all.scheduledAt), 'minute');
+      if (diff > 0) createForm.setFieldValue(['prescription', 'durationMinutes'], diff);
+    }
+    setDraft({
+      horse: all.horse,
+      scheduledAt: all.scheduledAt?.toISOString(),
+      // The adjusted value: setFieldValue doesn't re-trigger this handler.
+      intensity,
+      sessionType: all.sessionType,
+      objective: all.objective,
+    });
+  };
+
+  // The horse's last sessions arrive after it is picked: fit the workout again with them, unless edited by hand.
+  const recentKey = (horseSessionsData?.data || []).length;
+  useEffect(() => {
+    if (!createOpen || !draft.horse || auto.current.rxEdited) return;
+    const values = createForm.getFieldsValue(true);
+    if (values.kind) applySuggestion({ kind: values.kind, objective: values.objective, values });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentKey, draft.horse, createOpen]);
+
+  /** "Điền lại theo gợi ý": the numbers worked out again for the kind and purpose on the form. */
+  const refillSuggestion = () => {
+    const values = createForm.getFieldsValue(true);
+    if (!values.kind && !values.objective) return;
+    onCreateChange(values.objective ? { objective: values.objective } : { kind: values.kind }, values);
+  };
+
+  // Start times in one press: the club's morning and afternoon slots, today and tomorrow.
+  const startChoices = (() => {
+    const now = dayjs();
+    const at = (day, hhmm) => {
+      const [h, m] = String(hhmm).split(':').map(Number);
+      return day.hour(h).minute(m || 0).second(0).millisecond(0);
+    };
+    return [
+      { label: 'Sáng nay', value: at(now, policy.morningTime) },
+      { label: 'Chiều nay', value: at(now, policy.afternoonTime) },
+      { label: 'Sáng mai', value: at(now.add(1, 'day'), policy.morningTime) },
+      { label: 'Chiều mai', value: at(now.add(1, 'day'), policy.afternoonTime) },
+    ].filter((c) => c.value.isAfter(now.add(10, 'minute')));
+  })();
+  const pickStart = (value) => {
+    createForm.setFieldValue('scheduledAt', value);
+    createForm.validateFields(['scheduledAt']).catch(() => {});
+    onCreateChange({ scheduledAt: value }, createForm.getFieldsValue(true));
+  };
+
+  // The horse's day at the time picked (sessionDay.js): what it already has, and whether this booking fits.
+  const draftMinutes = draftAt && draftEndAt && dayjs(draftEndAt).isAfter(draftAt) ? dayjs(draftEndAt).diff(draftAt, 'minute') : draftDuration;
+  const horseSessions = horseSessionsData?.data || [];
+  const clashAt = (at) => (draft.horse && at ? dayClash(horseSessions, draft.horse, { at, minutes: draftMinutes }) : null);
+  const draftClash = clashAt(draftAt);
+  const draftDay = draft.horse && draftAt ? horseDay(horseSessions, draft.horse, draftAt) : null;
+  const daySlotText = (list) => (list.length ? list.map((s) => `${SESSION_KINDS[s.kind]?.short || SESSION_KINDS[s.kind]?.label || 'Buổi tập'} (${stateOf(s)})`).join(', ') : 'trống');
 
   const submitCreate = (values, overrideReason) => {
     const { prescription, segments, ...rest } = values;
@@ -467,10 +664,10 @@ export default function TrainingSessionPage() {
   const scheduleSlotProblem = afternoonProblem(policy, scheduleSession?.kind, scheduleAt);
 
   const scheduleMutation = useMutation({
-    mutationFn: ({ session, scheduledAt }) =>
+    mutationFn: ({ session, scheduledAt, overrideReason }) =>
       session.status === 'missed'
-        ? trainingSessionApi.reschedule(session._id, { scheduledAt })
-        : trainingSessionApi.update(session._id, { scheduledAt }),
+        ? trainingSessionApi.reschedule(session._id, { scheduledAt, ...(overrideReason ? { overrideReason } : {}) })
+        : trainingSessionApi.update(session._id, { scheduledAt, ...(overrideReason ? { overrideReason } : {}) }),
     onSuccess: (res, { session, scheduledAt }) => {
       message.success(session.status === 'missed' ? 'Đã xếp lại buổi tập. Buổi lỡ giờ được giữ trong lịch sử.' : 'Đã đổi giờ. Hãy kiểm tra sẵn sàng lại trước khi bắt đầu.');
       invalidate();
@@ -479,7 +676,16 @@ export default function TrainingSessionPage() {
       setScheduleSession(null);
       scheduleForm.resetFields();
     },
-    onError: (err) => {
+    onError: (err, vars) => {
+      // A part of the day that already has a session: the trainer's call, with a reason (sessionDay.js).
+      if (needsOverride(err)) {
+        confirmReadinessOverride({
+          readiness: err.data.readiness,
+          okText: 'Vẫn đổi giờ',
+          onConfirm: (reason) => scheduleMutation.mutate({ ...vars, overrideReason: reason }),
+        });
+        return;
+      }
       if (err?.status === 409) invalidate();
       message.error(err.message || 'Không đổi được giờ tập.');
     },
@@ -1041,69 +1247,7 @@ export default function TrainingSessionPage() {
           form={createForm}
           layout="vertical"
           onFinish={(values) => submitCreate(values)}
-          onValuesChange={(changed, all) => {
-            // Picking a kind of work fills in what it normally means; every field stays editable.
-            if (changed.kind && SESSION_KINDS[changed.kind]) {
-              const k = SESSION_KINDS[changed.kind];
-              createForm.setFieldsValue({ objective: k.objective, intensity: k.intensity, sessionType: k.sessionType, prescription: { ...k.prescription } });
-              all = { ...all, objective: k.objective, intensity: k.intensity, sessionType: k.sessionType };
-            }
-            // A horse follows one plan at a time: file the session under it.
-            if (changed.horse) {
-              const plan = (plansData?.data || []).find((p) => String(p.horse?._id) === String(changed.horse) && p.status === 'active');
-              createForm.setFieldValue('trainingPlan', plan?._id);
-              // A trial defaults to the race the plan prepares for.
-              createForm.setFieldValue('raceEntry', plan?.targetRace?._id || plan?.targetRace || undefined);
-            }
-            // A trial is run over its race's distance.
-            const isTrialNow = (changed.kind || all.kind) === 'trial' || all.sessionType === 'trial_run';
-            if (isTrialNow && (changed.raceEntry || changed.kind || changed.horse)) {
-              const raceId = changed.raceEntry || createForm.getFieldValue('raceEntry');
-              const r = (racesData?.data || []).find((x) => String(x._id) === String(raceId));
-              if (r?.distance) createForm.setFieldValue(['prescription', 'distanceM'], r.distance);
-            }
-            // A recovering horse can't be booked above the vet's level: pull the intensity down to
-            // the highest one allowed as soon as the horse is picked — never below what the kind of
-            // work is (a canter stays moderate; the readiness panel then says it isn't allowed).
-            let intensity = all.intensity;
-            if (changed.horse || changed.kind) {
-              const c = clearances.get(String(all.horse));
-              const kindFloor = INTENSITY_RANK[SESSION_KINDS[all.kind]?.intensity] || 0;
-              if (c?.restricted && !intensityAllowed(c, intensity)) {
-                const allowed = Object.keys(INTENSITY_RANK).filter((i) => INTENSITY_RANK[i] <= LEVEL_RANK[c.level] && INTENSITY_RANK[i] >= kindFloor);
-                if (allowed.length) {
-                  intensity = allowed[allowed.length - 1];
-                  createForm.setFieldValue('intensity', intensity);
-                }
-              }
-            }
-            const activeSegments = (all.segments || []).filter((seg) => seg?.kind);
-            if ((changed.segments || changed.scheduledAt || changed.kind) && activeSegments.length > 0) {
-              const totalMin = activeSegments.reduce((s, seg) => s + (Number(seg?.durationMinutes) || 0), 0);
-              const totalDist = activeSegments.reduce((s, seg) => s + (Number(seg?.distanceM) || 0), 0);
-              if (totalMin > 0) {
-                createForm.setFieldValue(['prescription', 'durationMinutes'], totalMin);
-                if (all.scheduledAt) createForm.setFieldValue('endAt', dayjs(all.scheduledAt).add(totalMin, 'minute'));
-              }
-              if (totalDist > 0) createForm.setFieldValue(['prescription', 'distanceM'], totalDist);
-            } else if ((changed.scheduledAt || changed.kind || changed.prescription?.durationMinutes !== undefined) && all.scheduledAt) {
-              const mins = changed.kind
-                ? Number(SESSION_KINDS[changed.kind]?.prescription?.durationMinutes)
-                : Number(all.prescription?.durationMinutes);
-              if (mins > 0) createForm.setFieldValue('endAt', dayjs(all.scheduledAt).add(mins, 'minute'));
-            } else if (changed.endAt && all.endAt && all.scheduledAt) {
-              const diff = dayjs(all.endAt).diff(dayjs(all.scheduledAt), 'minute');
-              if (diff > 0) createForm.setFieldValue(['prescription', 'durationMinutes'], diff);
-            }
-            setDraft({
-              horse: all.horse,
-              scheduledAt: all.scheduledAt?.toISOString(),
-              // The adjusted value: setFieldValue doesn't re-trigger this handler.
-              intensity,
-              sessionType: all.sessionType,
-              objective: all.objective,
-            });
-          }}
+          onValuesChange={onCreateChange}
         >
           {/* Two columns on desktop so the readiness board stays in view and visibly reacts as the
               trainer picks a horse and a time — that live feedback is the point of the board. */}
@@ -1137,16 +1281,21 @@ export default function TrainingSessionPage() {
               <Form.Item
                 name="kind"
                 label="Loại buổi tập"
-                extra={SESSION_KINDS[draftKind]?.hint || 'Chọn loại buổi để điền sẵn bài tập theo thông số thường dùng.'}
+                extra={SESSION_KINDS[draftKind]?.hint || 'Bấm một loại buổi: mục đích, cường độ và thông số bên dưới tự điền theo tình trạng của ngựa.'}
               >
-                <Select
-                  placeholder="Phi chậm, phi nhanh, tập dốc…"
+                <Radio.Group
+                  className="choice-chips"
+                  optionType="button"
+                  buttonStyle="solid"
                   // A recovering horse: work above the vet's level is not offered (the kind is the work).
-                  options={kindOptions.map((o) => ({
-                    value: o.value,
-                    label: o.label,
-                    disabled: !intensityAllowed(clearances.get(String(draft.horse)), SESSION_KINDS[o.value]?.intensity),
-                  }))}
+                  options={kindOptions.map((o) => {
+                    const allowed = kindAllowed(clearances.get(String(draft.horse)), o.value);
+                    return {
+                      value: o.value,
+                      label: <Tooltip title={allowed ? o.hint : 'Vượt mức tập bác sĩ đang cho phép'}>{o.label}</Tooltip>,
+                      disabled: !allowed,
+                    };
+                  })}
                 />
               </Form.Item>
 
@@ -1161,29 +1310,27 @@ export default function TrainingSessionPage() {
                 </Form.Item>
               )}
 
-              {draftSlotProblem && <Alert className="!mb-3" type="error" showIcon title={draftSlotProblem} />}
-
               <Form.Item
                 name="objective"
                 label="Mục đích buổi tập"
                 initialValue="endurance"
                 rules={[{ required: true }]}
+                extra={OBJECTIVE_DESCRIPTIONS[draftObjective]}
               >
-                <Select
+                <Radio.Group
+                  className="choice-chips"
+                  optionType="button"
+                  // A purpose no allowed kind of work serves (a horse on light work only) is not offered.
                   options={objectiveOptions.map((o) => ({
                     value: o.value,
-                    label: (
-                      <div className="py-0.5">
-                        <div className="font-medium">{o.label}</div>
-                        <div className="text-xs text-gray-500">{o.description}</div>
-                      </div>
-                    ),
+                    label: <Tooltip title={o.description}>{o.label}</Tooltip>,
+                    disabled: !kindForObjective(o.value, null, clearances.get(String(draft.horse))),
                   }))}
                 />
               </Form.Item>
 
               <Row gutter={16}>
-                <Col xs={24} md={8}>
+                <Col xs={24} md={12}>
                   <Form.Item
                     name="intensity"
                     label="Cường độ"
@@ -1194,7 +1341,10 @@ export default function TrainingSessionPage() {
                         : null
                     }
                   >
-                    <Select
+                    <Radio.Group
+                      className="choice-chips"
+                      optionType="button"
+                      buttonStyle="solid"
                       options={intensityOptions.map((o) => ({
                         ...o,
                         disabled: !intensityAllowed(clearances.get(String(draft.horse)), o.value) || INTENSITY_RANK[o.value] < (INTENSITY_RANK[SESSION_KINDS[draftKind]?.intensity] || 0),
@@ -1202,28 +1352,163 @@ export default function TrainingSessionPage() {
                     />
                   </Form.Item>
                 </Col>
-                <Col xs={24} md={8}>
+                <Col xs={24} md={12}>
                   <Form.Item name="sessionType" label="Hình thức" initialValue="training">
-                    <Select options={Object.entries(SESSION_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
+                    <Radio.Group className="choice-chips" optionType="button" options={Object.entries(SESSION_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
                   </Form.Item>
                 </Col>
-                <Col xs={24} md={8}>
+              </Row>
+
+              <Row gutter={16}>
+                <Col xs={24} md={12}>
                   <Form.Item
                     name="scheduledAt"
                     label="Giờ bắt đầu dự kiến"
+                    tooltip="Giờ thực tế được ghi khi bấm Bắt đầu."
                     rules={[{ required: true, message: 'Chọn ngày giờ dự kiến bắt đầu' }, futureTimeRule]}
-                    extra="Giờ thực tế được ghi khi bấm Bắt đầu."
+                    extra={
+                      startChoices.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {startChoices.map((c) => {
+                            // Over another session: not offered; a part of the day already used: offered, marked.
+                            const clash = clashAt(c.value);
+                            const problem = afternoonProblem(policy, draftKind, c.value) || (clash?.hard ? clash.message : null);
+                            const on = Boolean(draftAt) && dayjs(draftAt).isSame(c.value, 'minute');
+                            return (
+                              <Tooltip key={c.label} title={problem || clash?.message}>
+                                <Button size="small" type={on ? 'primary' : 'default'} disabled={Boolean(problem)} onClick={() => pickStart(c.value)}>
+                                  {c.label} {c.value.format('HH:mm')}
+                                  {clash && !clash.hard && <span className="ml-1 text-[11px] text-amber-600">· đã có buổi</span>}
+                                </Button>
+                              </Tooltip>
+                            );
+                          })}
+                        </div>
+                      )
+                    }
                   >
                     <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
                   </Form.Item>
                 </Col>
-                <Col xs={24} md={8}>
+                <Col xs={24} md={12}>
                   <Form.Item
                     name="endAt"
                     label="Giờ kết thúc dự kiến"
                     extra="Tự tính từ thời lượng hoặc chọn trực tiếp."
                   >
                     <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              {/* The horse's day: one session a morning, one an afternoon (a session run early still counts). */}
+              {draftDay && (
+                <div className="-mt-1 mb-3 text-xs text-gray-600">
+                  Lịch {dayjs(draftAt).format('DD/MM')} của {draftHorse?.name || 'ngựa'}: <span className="font-medium">Sáng</span> — {daySlotText(draftDay.morning)} ·{' '}
+                  <span className="font-medium">Chiều</span> — {daySlotText(draftDay.afternoon)}
+                </div>
+              )}
+              {draftClash && (
+                <Alert
+                  className="!mb-3"
+                  type={draftClash.hard ? 'error' : 'warning'}
+                  showIcon
+                  title={draftClash.hard ? 'Trùng giờ với buổi khác của ngựa' : 'Buổi này ngựa đã có buổi tập'}
+                  description={
+                    <span className="text-xs">
+                      {draftClash.message} {draftClash.hard ? 'Chọn giờ khác.' : 'Vẫn tạo được nếu cần — hệ thống sẽ hỏi lý do để lưu vào hồ sơ buổi tập.'}
+                    </span>
+                  }
+                />
+              )}
+              {draftSlotProblem && <Alert className="!mb-3" type="error" showIcon title={draftSlotProblem} />}
+
+              <Divider titlePlacement="left" className="!my-2 !text-sm">
+                <AimOutlined className="mr-1" />
+                Nội dung dự kiến
+              </Divider>
+              {/* Why the numbers are what they are: the kind's usual workout, fitted to this horse. */}
+              {suggestion ? (
+                <Alert
+                  className="!mb-3"
+                  type={rxEdited ? 'info' : suggestion.notes.some((n) => n.tone === 'warning') ? 'warning' : 'success'}
+                  showIcon
+                  title={
+                    rxEdited
+                      ? 'Bạn đã sửa thông số bằng tay — đổi ngựa hoặc giờ sẽ không ghi đè nữa.'
+                      : `Đã điền sẵn: ${SESSION_KINDS[suggestion.kind]?.label} · ${OBJECTIVE_LABELS[suggestion.objective] || ''}${suggestion.horseName ? ` cho ${suggestion.horseName}` : ''}`
+                  }
+                  description={
+                    rxEdited ? null : suggestion.notes.length ? (
+                      <ul className="m-0 pl-4 text-xs">
+                        {suggestion.notes.map((n) => (
+                          <li key={n.text}>{n.text}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span className="text-xs">
+                        {suggestion.horseName
+                          ? 'Thông số chuẩn của bài — tuổi, sức khỏe và lịch tập gần đây của ngựa không cần điều chỉnh gì.'
+                          : 'Thông số chuẩn của bài — chọn ngựa để điều chỉnh theo tuổi, sức khỏe và lịch tập gần đây.'}
+                      </span>
+                    )
+                  }
+                  action={
+                    rxEdited ? (
+                      <Button size="small" onClick={refillSuggestion}>
+                        Điền lại theo gợi ý
+                      </Button>
+                    ) : null
+                  }
+                />
+              ) : (
+                <Text type="secondary" className="!text-xs block mb-2">
+                  Bấm loại buổi hoặc mục đích ở trên để điền sẵn. Sau buổi tập hệ thống đối chiếu thực tế với các mục tiêu này để kết luận đạt hay chưa đạt.
+                </Text>
+              )}
+              <Row gutter={16}>
+                <Col xs={12} md={8}>
+                  <Form.Item
+                    name={['prescription', 'distanceM']}
+                    label="Cự ly (m)"
+                    validateStatus={trialTooShort ? 'warning' : undefined}
+                    help={trialTooShort ? `Chỉ bằng ${Math.round(trialShare * 100)}% cự ly giải (${draftRace.distance} m): khó nói lên sức bền cho giải. Vẫn lưu được.` : undefined}
+                    extra={draftRace?.distance && !trialTooShort ? `Cự ly giải: ${draftRace.distance} m` : undefined}
+                  >
+                    <InputNumber min={PRESCRIPTION_LIMITS.distanceM[0]} max={PRESCRIPTION_LIMITS.distanceM[1]} step={100} className="w-full" placeholder="1200" />
+                  </Form.Item>
+                </Col>
+                <Col xs={12} md={8}>
+                  <Form.Item name={['prescription', 'reps']} label="Số hiệp">
+                    <InputNumber min={PRESCRIPTION_LIMITS.reps[0]} max={PRESCRIPTION_LIMITS.reps[1]} className="w-full" placeholder="3" />
+                  </Form.Item>
+                </Col>
+                <Col xs={12} md={8}>
+                  <Form.Item name={['prescription', 'restMinutes']} label="Nghỉ giữa hiệp (phút)">
+                    <InputNumber min={PRESCRIPTION_LIMITS.restMinutes[0]} max={PRESCRIPTION_LIMITS.restMinutes[1]} className="w-full" placeholder="8" />
+                  </Form.Item>
+                </Col>
+                <Col xs={12} md={8}>
+                  <Form.Item
+                    name={['prescription', 'targetSpeedKmh']}
+                    label="Tốc độ mục tiêu (km/h)"
+                    extra={KIND_SPEED_RANGES[draftKind] ? `${SESSION_KINDS[draftKind].label}: ${KIND_SPEED_RANGES[draftKind][0]}–${KIND_SPEED_RANGES[draftKind][1]} km/h` : null}
+                  >
+                    <InputNumber min={PRESCRIPTION_LIMITS.targetSpeedKmh[0]} max={PRESCRIPTION_LIMITS.targetSpeedKmh[1]} className="w-full" placeholder="35" />
+                  </Form.Item>
+                </Col>
+                <Col xs={12} md={8}>
+                  <Form.Item name={['prescription', 'targetHeartRateMax']} label="Nhịp tim tối đa (bpm)">
+                    <InputNumber min={PRESCRIPTION_LIMITS.targetHeartRateMax[0]} max={PRESCRIPTION_LIMITS.targetHeartRateMax[1]} className="w-full" placeholder="170" />
+                  </Form.Item>
+                </Col>
+                <Col xs={12} md={8}>
+                  <Form.Item
+                    name={['prescription', 'durationMinutes']}
+                    label="Thời lượng dự kiến (phút)"
+                    extra="Cho bài tính theo thời gian (đi bộ). Bài phi kết thúc khi đủ cự ly."
+                  >
+                    <InputNumber min={PRESCRIPTION_LIMITS.durationMinutes[0]} max={PRESCRIPTION_LIMITS.durationMinutes[1]} className="w-full" placeholder="45" />
                   </Form.Item>
                 </Col>
               </Row>
@@ -1384,62 +1669,7 @@ export default function TrainingSessionPage() {
                 }}
               </Form.List>
 
-              <Divider titlePlacement="left" className="!my-2 !text-sm">
-                <AimOutlined className="mr-1" />
-                Nội dung dự kiến
-              </Divider>
-              <Text type="secondary" className="!text-xs block mb-2">
-                Đặt mục tiêu ở đây để sau buổi tập hệ thống tự đối chiếu thực tế và kết luận đạt hay
-                chưa đạt. Ngưỡng cảnh báo thể lực cũng lấy theo mục tiêu này thay vì ngưỡng chung.
-              </Text>
-              <Row gutter={16}>
-                <Col xs={12} md={8}>
-                  <Form.Item
-                    name={['prescription', 'distanceM']}
-                    label="Cự ly (m)"
-                    validateStatus={trialTooShort ? 'warning' : undefined}
-                    help={trialTooShort ? `Chỉ bằng ${Math.round(trialShare * 100)}% cự ly giải (${draftRace.distance} m): khó nói lên sức bền cho giải. Vẫn lưu được.` : undefined}
-                    extra={draftRace?.distance && !trialTooShort ? `Cự ly giải: ${draftRace.distance} m` : undefined}
-                  >
-                    <InputNumber min={PRESCRIPTION_LIMITS.distanceM[0]} max={PRESCRIPTION_LIMITS.distanceM[1]} step={100} className="w-full" placeholder="1200" />
-                  </Form.Item>
-                </Col>
-                <Col xs={12} md={8}>
-                  <Form.Item name={['prescription', 'reps']} label="Số hiệp">
-                    <InputNumber min={PRESCRIPTION_LIMITS.reps[0]} max={PRESCRIPTION_LIMITS.reps[1]} className="w-full" placeholder="3" />
-                  </Form.Item>
-                </Col>
-                <Col xs={12} md={8}>
-                  <Form.Item name={['prescription', 'restMinutes']} label="Nghỉ giữa hiệp (phút)">
-                    <InputNumber min={PRESCRIPTION_LIMITS.restMinutes[0]} max={PRESCRIPTION_LIMITS.restMinutes[1]} className="w-full" placeholder="8" />
-                  </Form.Item>
-                </Col>
-                <Col xs={12} md={8}>
-                  <Form.Item
-                    name={['prescription', 'targetSpeedKmh']}
-                    label="Tốc độ mục tiêu (km/h)"
-                    extra={KIND_SPEED_RANGES[draftKind] ? `${SESSION_KINDS[draftKind].label}: ${KIND_SPEED_RANGES[draftKind][0]}–${KIND_SPEED_RANGES[draftKind][1]} km/h` : null}
-                  >
-                    <InputNumber min={PRESCRIPTION_LIMITS.targetSpeedKmh[0]} max={PRESCRIPTION_LIMITS.targetSpeedKmh[1]} className="w-full" placeholder="35" />
-                  </Form.Item>
-                </Col>
-                <Col xs={12} md={8}>
-                  <Form.Item name={['prescription', 'targetHeartRateMax']} label="Nhịp tim tối đa (bpm)">
-                    <InputNumber min={PRESCRIPTION_LIMITS.targetHeartRateMax[0]} max={PRESCRIPTION_LIMITS.targetHeartRateMax[1]} className="w-full" placeholder="170" />
-                  </Form.Item>
-                </Col>
-                <Col xs={12} md={8}>
-                  <Form.Item
-                    name={['prescription', 'durationMinutes']}
-                    label="Thời lượng dự kiến (phút)"
-                    extra="Cho bài tính theo thời gian (đi bộ). Bài phi kết thúc khi đủ cự ly."
-                  >
-                    <InputNumber min={PRESCRIPTION_LIMITS.durationMinutes[0]} max={PRESCRIPTION_LIMITS.durationMinutes[1]} className="w-full" placeholder="45" />
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Form.Item name="coachNote" label="Dặn dò trước buổi tập">
+              <Form.Item name="coachNote" label="Dặn dò trước buổi tập" extra="Tự soạn theo bài đã chọn — sửa thêm nếu cần, hệ thống sẽ không ghi đè phần bạn đã viết.">
                 <Input.TextArea rows={2} placeholder="VD: Giữ nhịp đều 2 hiệp đầu, bung sức hiệp cuối. Chú ý chân trước phải." />
               </Form.Item>
             </Col>

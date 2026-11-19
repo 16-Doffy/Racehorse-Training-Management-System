@@ -187,10 +187,13 @@ export function ActionMenu({ items, label, icon = 'bi-three-dots', size = 'sm', 
   );
 }
 
-/** A small set of mutually exclusive options shown side by side (a radio group). */
-export function Choices({ value, onChange, options, disabled = false, label }) {
+/**
+ * A small set of mutually exclusive options shown side by side (a radio group). `clearable`: pressing the
+ * chosen option again clears it (to ''), so a list needs no "none" option of its own.
+ */
+export function Choices({ value, onChange, options, disabled = false, label, clearable = false, className = '' }) {
   return (
-    <div className="vet-choices" role="radiogroup" aria-label={label}>
+    <div className={`vet-choices${className ? ` ${className}` : ''}`} role="radiogroup" aria-label={label}>
       {options.map((o) => {
         const active = value === o.value;
         return (
@@ -200,9 +203,9 @@ export function Choices({ value, onChange, options, disabled = false, label }) {
             role="radio"
             aria-checked={active}
             disabled={disabled}
-            title={o.title}
+            title={o.title || (active && clearable ? 'Bấm lại để bỏ chọn' : undefined)}
             className={`vet-choice${active ? ` is-active vet-tone-${o.tone || 'neutral'}` : ''}`}
-            onClick={() => onChange(o.value)}
+            onClick={() => onChange(active && clearable ? '' : o.value)}
           >
             {o.icon && <i className={`bi ${o.icon}`} aria-hidden="true" />}
             {o.label}

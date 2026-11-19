@@ -141,6 +141,8 @@ const SESSION_ERROR = Object.freeze({
   NOT_READY: 'NOT_READY',
   PRECHECK_EXPIRED: 'PRECHECK_EXPIRED',
   ANOTHER_SESSION_RUNNING: 'ANOTHER_SESSION_RUNNING',
+  // Over another session of the horse, or in a morning / afternoon that already has one (sessionDay.js).
+  DAY_CLASH: 'SESSION_DAY_CLASH',
 });
 
 const PHASE_LABELS = {

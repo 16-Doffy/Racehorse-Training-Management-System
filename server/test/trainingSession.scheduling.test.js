@@ -45,6 +45,9 @@ function matches(row, filter) {
     const actual = valueAt(row, key);
     if (value && !(value instanceof Date) && typeof value === 'object' && !value.toHexString) {
       if ('$in' in value) return value.$in.some((v) => equal(actual, v));
+      if ('$nin' in value) return !value.$nin.some((v) => equal(actual, v));
+      if ('$ne' in value) return !equal(actual, value.$ne);
+      if ('$gte' in value) return actual != null && actual >= value.$gte && (!('$lt' in value) || actual < value.$lt);
       if ('$lt' in value) return actual != null && actual < value.$lt;
     }
     return equal(actual, value);
@@ -60,6 +63,8 @@ TrainingSession.findById = async (id) => {
 };
 TrainingSession.exists = async () => false;
 TrainingSession.find = (filter) => ({
+  // The horse's other sessions that day (sessionDay.js).
+  select: () => ({ lean: async () => rows.filter((row) => matches(row, filter)).map((row) => structuredClone(row)) }),
   populate: async () => rows.filter((row) => matches(row, filter)).map((row) => ({ ...structuredClone(row), horse: { _id: ids.horse, name: 'Thunder' } })),
 });
 TrainingSession.updateOne = async (filter, change) => {
@@ -203,6 +208,71 @@ test('booking or moving a session rejects invalid and past times', async () => {
     assert.equal((await call(controller.updateSession, { scheduledAt })).code, 400);
   }
   assert.equal(booked.length, 0);
+});
+
+// ---- A horse's day: one session a morning, one an afternoon, never two at once (sessionDay.js) ----
+const tomorrowAt = (hh, mm = 0) => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(hh, mm, 0, 0);
+  return d;
+};
+
+test('a walk run early still uses its afternoon: a second one at its old time needs the trainer\'s reason', async () => {
+  rows = [
+    session({
+      _id: 'walk1', kind: 'walk', status: 'completed', prescription: { durationMinutes: 30 },
+      scheduledAt: tomorrowAt(14, 30), actualStartAt: tomorrowAt(13, 45), actualEndAt: tomorrowAt(14, 15),
+    }),
+  ];
+  const res = await call(controller.createSession, { horse: ids.horse, trainingPlan: ids.plan, kind: 'walk', scheduledAt: tomorrowAt(14, 30).toISOString() });
+  assert.equal(res.code, 409);
+  assert.equal(res.payload.data.code, 'SESSION_DAY_CLASH');
+  assert.equal(res.payload.data.requiresOverride, true, 'asked like an amber readiness gate');
+  assert.equal(res.payload.data.readiness.gates[0].status, 'caution');
+  assert.match(res.payload.message, /Buổi chiều .* đã có "Đi bộ & chạy kiệu" \(đã tập xong 13:45–14:15 \(sớm hơn giờ hẹn 14:30\)\)/);
+  assert.equal(booked.length, 0);
+});
+
+test('the other part of the day stays open, called-off sessions hold nothing, a reason lets a second one through', async () => {
+  const { dayClashProblem, dayClashFailure } = require('../src/modules/training/sessionDay');
+  rows = [session({ _id: 'walk1', kind: 'walk', status: 'completed', scheduledAt: tomorrowAt(14, 30), actualStartAt: tomorrowAt(13, 45), actualEndAt: tomorrowAt(14, 15) })];
+  assert.equal(await dayClashProblem({ horse: ids.horse, scheduledAt: tomorrowAt(7, 30) }), null, 'the morning is free');
+  const second = await dayClashProblem({ horse: ids.horse, scheduledAt: tomorrowAt(16, 0) });
+  assert.equal(second.hard, false);
+  assert.equal(dayClashFailure(second, '  ').data.requiresOverride, true, 'a blank reason is no reason');
+  assert.equal(dayClashFailure(second, 'Ngựa cần đi bộ thêm để giãn cơ'), null);
+  rows = [session({ _id: 'gone', status: 'cancelled', scheduledAt: tomorrowAt(14, 30) }), session({ _id: 'lost', status: 'missed', scheduledAt: tomorrowAt(16, 0) })];
+  assert.equal(await dayClashProblem({ horse: ids.horse, scheduledAt: tomorrowAt(14, 30) }), null, 'cancelled and missed do not hold the afternoon');
+});
+
+test('a booking over the time of another session of the horse is refused, even across noon and with a reason', async () => {
+  const { dayClashProblem, dayClashFailure } = require('../src/modules/training/sessionDay');
+  rows = [session({ _id: 'canter', kind: 'canter', scheduledAt: tomorrowAt(11, 30), endAt: tomorrowAt(12, 30) })];
+  const clash = await dayClashProblem({ horse: ids.horse, scheduledAt: tomorrowAt(12, 15) });
+  assert.equal(clash.hard, true);
+  assert.match(clash.message, /Trùng giờ với buổi "Phi chậm" 11:30–12:30/);
+  assert.equal(dayClashFailure(clash, 'any reason').data.requiresOverride, false, 'no reason overrides being in two places');
+  assert.equal(await dayClashProblem({ horse: ids.horse, scheduledAt: tomorrowAt(12, 15), excludeId: 'canter' }), null, 'a session moved within its own time');
+  // Stopped at its pre-check, a session does not run: it holds its part of the day, not the time itself.
+  rows = [session({ _id: 'held', status: 'blocked', kind: 'walk', scheduledAt: tomorrowAt(15, 0), endAt: tomorrowAt(15, 30) })];
+  const blocked = await dayClashProblem({ horse: ids.horse, scheduledAt: tomorrowAt(15, 10) });
+  assert.equal(blocked.hard, false);
+  assert.match(blocked.message, /bị chặn ở bước kiểm tra sẵn sàng/);
+});
+
+test('a missed session booked again keeps its length and asks before landing on a taken afternoon', async () => {
+  rows = [
+    session({ status: 'missed', kind: 'walk', scheduledAt: new Date(Date.now() - 120 * MIN), endAt: new Date(Date.now() - 90 * MIN) }),
+    session({ _id: 'walk2', kind: 'walk', status: 'scheduled', scheduledAt: tomorrowAt(16, 0) }),
+  ];
+  const refused = await call(controller.rescheduleSession, { scheduledAt: tomorrowAt(15, 0).toISOString() });
+  assert.equal(refused.code, 409);
+  assert.equal(refused.payload.data.requiresOverride, true);
+  assert.match(refused.payload.message, /Buổi chiều .* đã có "Đi bộ & chạy kiệu" \(hẹn 16:00\)/);
+  const res = await call(controller.rescheduleSession, { scheduledAt: tomorrowAt(8, 0).toISOString() });
+  assert.equal(res.code, 201);
+  assert.equal(new Date(booked[0].endAt).getTime(), tomorrowAt(8, 30).getTime(), 'its planned end moves with it');
 });
 
 test('the missed job respects the 30-minute window and the ready pre-check lifetime', async () => {

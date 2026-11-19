@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Card, Dropdown, Progress, Tag, Typography, theme } from 'antd';
-import { ExperimentOutlined, LineChartOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Dropdown, Progress, Tag, Typography, theme } from 'antd';
+import { DownOutlined, ExperimentOutlined, HeartFilled, ThunderboltOutlined, UpOutlined } from '@ant-design/icons';
 import { LineChart, Line, XAxis, YAxis, ReferenceLine, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { useQueryClient } from '@tanstack/react-query';
 import { message } from '../../lib/antdStatic';
@@ -10,7 +10,6 @@ import { trainingSessionApi } from './trainingApi';
 import { SESSION_KINDS, OBJECTIVE_LABELS, segmentAtDistance, sessionTargets } from './trainingVocab';
 import { FOREST, STATUS_TONES } from '../../layouts/forestTheme';
 import MovingHorse3D from '../horses/horse3d/MovingHorse3D';
-import Telemetry from './Telemetry';
 import { hourOf, liveMotion, surfaceOf } from '../horses/horse3d/horseMotion';
 
 const { Text } = Typography;
@@ -33,6 +32,8 @@ const toPoint = (r) => ({
 });
 const GRID = '#E4DFD3';
 const AXIS = '#8A8578';
+const RED = STATUS_TONES.bad.color;
+const num = (n, digits = 0) => (n == null ? '—' : Number(n).toLocaleString('vi-VN', { maximumFractionDigits: digits }));
 
 /** What a running session shows now: the latest reading, else the last one the server kept. */
 function liveFigures(session, readings) {
@@ -72,6 +73,8 @@ function motionNow(session, f, readings = []) {
 }
 // The session's sky: the hour it started (or was booked for).
 const hourOfSession = (session) => hourOf(session.actualStartAt || session.scheduledAt);
+const kindLabel = (session) => SESSION_KINDS[session.kind]?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập';
+const share = (f) => (f.targetDistance ? Math.min(100, Math.round((f.distance / f.targetDistance) * 100)) : 0);
 
 // Demo only (simulated sensors): make the running horse tire, or go lame on a leg so the system stops the run.
 const LEGS = { fore_left: 'Chân trước trái', fore_right: 'Chân trước phải', hind_left: 'Chân sau trái', hind_right: 'Chân sau phải' };
@@ -84,7 +87,7 @@ const SCENARIO_ITEMS = [
     children: Object.entries(LEGS).map(([leg, label]) => ({ key: `injury:${leg}`, label })),
   },
 ];
-function ScenarioButton({ session }) {
+function ScenarioButton({ session, iconOnly = false }) {
   const queryClient = useQueryClient();
   const play = ({ key }) => {
     const [scenario, leg] = key.split(':');
@@ -101,229 +104,206 @@ function ScenarioButton({ session }) {
   };
   return (
     <Dropdown menu={{ items: SCENARIO_ITEMS, onClick: play }} trigger={['click']}>
-      <Button size="small" icon={<ExperimentOutlined />}>
-        Mô phỏng sự cố
+      <Button size="small" type={iconOnly ? 'text' : 'default'} icon={<ExperimentOutlined />} title="Mô phỏng sự cố" aria-label={`Mô phỏng sự cố cho ${session.horse?.name || 'ngựa'}`}>
+        {iconOnly ? null : 'Mô phỏng sự cố'}
       </Button>
     </Dropdown>
   );
 }
 
-/** The card's title row: the horse, the work, when it started. */
-function CardTitle({ session, children }) {
-  const kind = SESSION_KINDS[session.kind];
-  const startedAt = session.actualStartAt ? dayjs(session.actualStartAt) : null;
+/** The heart rate of the last minutes as a thin line, against the ceiling (dashed): the trend at a glance. */
+function Sparkline({ values, ceiling, over, color }) {
+  const pts = values.filter((v) => v != null);
+  if (pts.length < 2) return <span className="text-[11px] opacity-60">chờ số liệu…</span>;
+  const W = 100;
+  const H = 26;
+  const lo = Math.min(...pts, ceiling) - 6;
+  const hi = Math.max(...pts, ceiling) + 6;
+  const x = (i) => (i / (pts.length - 1)) * W;
+  const y = (v) => H - ((v - lo) / (hi - lo)) * H;
+  const d = pts.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 min-w-0">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0 flex-1">
-        <span className="font-semibold text-gray-900 text-sm break-words">{session.horse?.name}</span>
-        <span className="text-xs text-gray-600 font-normal">{kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}</span>
-        {startedAt && (
-          <span className="text-xs text-gray-500 font-normal tabular-nums">
-            bắt đầu {startedAt.format('HH:mm')}
-            {dayjs().diff(startedAt, 'minute') >= 1 ? `, đã chạy ${dayjs().diff(startedAt, 'minute')} phút` : ', vừa bắt đầu'}
-          </span>
-        )}
-      </div>
-      <div className="flex items-center gap-1.5 shrink-0">{children}</div>
-    </div>
+    <svg className="block w-full" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
+      <line x1="0" x2={W} y1={y(ceiling)} y2={y(ceiling)} stroke={RED} strokeWidth="1" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" opacity="0.7" />
+      <path d={d} fill="none" stroke={over ? RED : color} strokeWidth="1.75" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </svg>
   );
 }
-const CARD_STYLES = {
-  header: { whiteSpace: 'normal', height: 'auto', minHeight: 'auto', padding: '8px 12px' },
-  title: { whiteSpace: 'normal', overflow: 'visible' },
-};
 
-function LiveCard({ session, readings, horse, surface, readOnly = false }) {
+/** The open tile: the horse running in 3D at its live speed, and its heart-rate line against the ceiling. */
+function LiveDetail({ session, readings, horse, surface, figures, readOnly }) {
   const { token } = theme.useToken();
-  const gridColor = token.colorBorderSecondary || GRID;
-  const axisColor = token.colorTextTertiary || AXIS;
-  const figures = liveFigures(session, readings);
-  const { target, heartRate, speed, distance, targetDistance, over, segmentIndex, segmentCount, segmentLabel, segmentNote } = figures;
+  const { target, segmentCount, segmentIndex, segmentLabel, segmentNote } = figures;
   const data = readings.map((r, i) => ({ i, hr: r.hr, speed: r.speed }));
   // The horse runs as the sensors say: its gait and pace follow the latest speed.
   const motion = motionNow(session, figures, readings) || { clip: 'Idle_Look', label: 'Đã bắt đầu, chờ tín hiệu cảm biến' };
-
   return (
-    <Card
-      size="small"
-      className="min-w-0 rounded-xl border-gray-200/80 shadow-xs overflow-hidden"
-      styles={CARD_STYLES}
-      title={
-        <CardTitle session={session}>
-          {segmentCount > 0 && (
-            <Tag color="gold" className="!m-0 text-xs font-medium">
-              Đoạn {(segmentIndex ?? 0) + 1}/{segmentCount}: {segmentLabel}
-              {segmentNote ? ` · ${segmentNote}` : ''}
-            </Tag>
-          )}
-          {over && (
-            <Tag color="error" className="!m-0 text-xs font-medium">
-              Vượt ngưỡng nhịp tim
-            </Tag>
-          )}
-          {!readOnly && <ScenarioButton session={session} />}
-        </CardTitle>
-      }
-    >
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-        <div className="lg:col-span-5 min-w-0">
-          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={motion} surface={surface} hour={hourOfSession(session)} height={236} />
-        </div>
-        <div className="lg:col-span-7 min-w-0">
-          <Telemetry heartRate={heartRate} heartRateMax={target.heartRateMax} speed={speed} targetSpeed={target.speed} distance={distance} targetDistance={targetDistance} />
-          {data.length > 1 ? (
-            <div className="mt-2 h-28 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
-                  <CartesianGrid stroke={gridColor} vertical={false} />
-                  <XAxis dataKey="i" hide />
-                  <YAxis
-                    domain={[60, Math.max(target.heartRateMax + 20, ...data.map((d) => d.hr + 5))]}
-                    tick={{ fontSize: 11, fill: axisColor }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={44}
-                  />
-                  <Tooltip formatter={(v, name) => [name === 'hr' ? `${v} bpm` : `${v} km/h`, name === 'hr' ? 'Nhịp tim' : 'Tốc độ']} labelFormatter={() => ''} />
-                  <ReferenceLine
-                    y={target.heartRateMax}
-                    stroke={STATUS_TONES.bad.color}
-                    strokeDasharray="4 4"
-                    label={{ value: `ngưỡng ${target.heartRateMax}`, position: 'insideTopRight', fontSize: 11, fill: STATUS_TONES.bad.color }}
-                  />
-                  <Line type="monotone" dataKey="hr" stroke={FOREST.primary} strokeWidth={2} dot={false} isAnimationActive={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <p className="m-0 mt-3 text-xs text-gray-500">Biểu đồ nhịp tim hiện khi cảm biến gửi lần đo thứ hai.</p>
-          )}
-          <Text type="secondary" className="!text-[11px] block mt-1">
-            Cảm biến mô phỏng gửi số liệu mỗi 5 giây (mỗi lần tương ứng 30 giây tập). Buổi tự kết thúc khi chạy đủ cự ly.
-          </Text>
-        </div>
+    <div className="grid grid-cols-1 gap-3 border-t px-3 pb-3 pt-3 lg:grid-cols-12" style={{ borderColor: token.colorBorderSecondary }}>
+      <div className="min-w-0 lg:col-span-5">
+        <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={motion} surface={surface} hour={hourOfSession(session)} height={210} />
       </div>
-    </Card>
+      <div className="flex min-w-0 flex-col lg:col-span-7">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs" style={{ color: token.colorTextSecondary }}>
+            <span>{motion.label}</span>
+            {segmentCount > 0 && (
+              <Tag color="gold" className="!m-0 text-xs">
+                Đoạn {(segmentIndex ?? 0) + 1}/{segmentCount}: {segmentLabel}
+                {segmentNote ? ` · ${segmentNote}` : ''}
+              </Tag>
+            )}
+          </div>
+          {!readOnly && <ScenarioButton session={session} />}
+        </div>
+        {data.length > 1 ? (
+          <div className="h-40 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
+                <CartesianGrid stroke={token.colorBorderSecondary || GRID} vertical={false} />
+                <XAxis dataKey="i" hide />
+                <YAxis
+                  domain={[60, Math.max(target.heartRateMax + 20, ...data.map((d) => d.hr + 5))]}
+                  tick={{ fontSize: 11, fill: token.colorTextTertiary || AXIS }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={44}
+                />
+                <Tooltip formatter={(v, name) => [name === 'hr' ? `${v} bpm` : `${v} km/h`, name === 'hr' ? 'Nhịp tim' : 'Tốc độ']} labelFormatter={() => ''} />
+                <ReferenceLine y={target.heartRateMax} stroke={RED} strokeDasharray="4 4" label={{ value: `ngưỡng ${target.heartRateMax}`, position: 'insideTopRight', fontSize: 11, fill: RED }} />
+                <Line type="monotone" dataKey="hr" stroke={FOREST.primary} strokeWidth={2} dot={false} isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <p className="m-0 mt-3 text-xs" style={{ color: token.colorTextTertiary }}>
+            Biểu đồ nhịp tim hiện khi cảm biến gửi lần đo thứ hai.
+          </p>
+        )}
+        <Text type="secondary" className="!text-[11px] mt-auto block pt-1">
+          Cảm biến mô phỏng gửi số liệu mỗi 5 giây (mỗi lần tương ứng 30 giây tập). Buổi tự kết thúc khi chạy đủ cự ly.
+        </Text>
+      </div>
+    </div>
   );
 }
 
-// From this many horses at once, one row each instead of one card each: the board stays readable.
-const COMPACT_FROM = 3;
-
-/** Several horses at once: a row per horse, the ones over their heart-rate ceiling first; a row opens its card. */
-function LiveBoard({ running, readings, horseOf, surfaceFor, readOnly = false }) {
-  const [openId, setOpenId] = useState(null);
-  const rows = running
-    .map((s) => ({ s, f: liveFigures(s, readings[s._id] || []) }))
-    .sort((a, b) => Number(b.f.over) - Number(a.f.over) || b.f.distance / b.f.targetDistance - a.f.distance / a.f.targetDistance);
-  const open = running.find((s) => s._id === openId);
+/**
+ * One running horse as a small tile: the horse and its work, heart rate against the ceiling (red above it),
+ * speed against the target, the distance done and a line of the heart rate. Pressed, it opens across the
+ * whole row with the 3D horse and the full chart.
+ */
+function LiveTile({ session, readings, horse, surface, open, onToggle, readOnly }) {
+  const { token } = theme.useToken();
+  const f = liveFigures(session, readings);
+  const startedAt = session.actualStartAt ? dayjs(session.actualStartAt) : null;
+  const minutes = startedAt ? dayjs().diff(startedAt, 'minute') : null;
+  const pct = share(f);
+  const border = f.over ? RED : open ? token.colorPrimary : token.colorBorderSecondary;
   return (
-    <Card size="small" className="mb-4 rounded-xl" title={`Đang tập: ${running.length} ngựa, cập nhật mỗi 5 giây`}>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead>
-            <tr className="text-left text-xs text-gray-500">
-              <th className="py-1.5 pr-3 font-medium">Ngựa</th>
-              <th className="py-1.5 pr-3 font-medium">Dáng chạy</th>
-              <th className="py-1.5 pr-3 font-medium text-right">Nhịp tim</th>
-              <th className="py-1.5 pr-3 font-medium text-right">Tốc độ</th>
-              <th className="py-1.5 pr-3 font-medium w-[28%]">Cự ly</th>
-              <th className="py-1.5 font-medium" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {rows.map(({ s, f }) => (
-              <tr key={s._id} className={`cursor-pointer ${s._id === openId ? 'bg-emerald-50/60' : 'hover:bg-gray-50'}`} onClick={() => setOpenId(s._id === openId ? null : s._id)}>
-                <td className="py-2 pr-3">
-                  <div className="font-semibold text-gray-900">{s.horse?.name}</div>
-                  <div className="text-xs text-gray-500">{SESSION_KINDS[s.kind]?.label || OBJECTIVE_LABELS[s.objective] || 'Buổi tập'}</div>
-                </td>
-                <td className="py-2 pr-3 text-gray-700">{motionNow(s, f)?.label || 'Chờ cảm biến'}</td>
-                <td className="py-2 pr-3 tabular-nums text-right whitespace-nowrap">
-                  <span className={f.over ? 'font-bold text-rose-700' : 'font-semibold'}>{f.heartRate ?? '—'}</span>
-                  <span className="text-xs text-gray-400"> / {f.target.heartRateMax} bpm</span>
-                  {f.over && <Tag color="error" className="!ml-2 !text-xs">Vượt ngưỡng</Tag>}
-                </td>
-                <td className="py-2 pr-3 tabular-nums text-right whitespace-nowrap">
-                  <span className="font-semibold">{f.speed ?? '—'}</span>
-                  <span className="text-xs text-gray-400"> km/h</span>
-                </td>
-                <td className="py-2 pr-3">
-                  <Progress className="!m-0" size="small" strokeColor={FOREST.primary} percent={Math.min(100, Math.round((f.distance / f.targetDistance) * 100))} format={() => `${f.distance}/${f.targetDistance} m`} />
-                </td>
-                <td className="py-2 text-right whitespace-nowrap">
-                  <Button size="small" type="link" icon={<LineChartOutlined />}>
-                    {s._id === openId ? 'Thu gọn' : 'Xem ngựa chạy'}
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {open && (
-        <div className="mt-3">
-          <LiveCard session={open} readings={readings[open._id] || []} horse={horseOf(open)} surface={surfaceFor(open)} readOnly={readOnly} />
+    <div
+      className="relative min-w-0 overflow-hidden rounded-xl border transition-shadow"
+      style={{ gridColumn: open ? '1 / -1' : undefined, borderColor: border, background: token.colorBgContainer, boxShadow: open ? token.boxShadowTertiary : undefined }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="block w-full cursor-pointer border-0 bg-transparent p-0 text-left"
+        style={{ color: token.colorText }}
+        title={open ? 'Thu gọn' : 'Bấm để xem ngựa chạy 3D và biểu đồ'}
+      >
+        <div className="flex flex-col gap-1.5 px-3 py-2.5">
+          {/* The horse, its work, how long it has run. */}
+          <div className={`flex min-w-0 items-center gap-2 ${readOnly || open ? 'pr-6' : 'pr-14'}`}>
+            <span className="relative inline-flex h-2 w-2 shrink-0" aria-hidden="true">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: f.over ? RED : FOREST.primary }} />
+              <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: f.over ? RED : FOREST.primary }} />
+            </span>
+            <span className="truncate text-sm font-semibold">{session.horse?.name}</span>
+            <span className="truncate text-xs" style={{ color: token.colorTextSecondary }}>
+              {kindLabel(session)}
+              {f.segmentCount > 0 ? ` · đoạn ${(f.segmentIndex ?? 0) + 1}/${f.segmentCount}` : ''}
+            </span>
+            <span className="ml-auto shrink-0 text-[11px] tabular-nums" style={{ color: token.colorTextTertiary }}>
+              {minutes == null ? '' : minutes >= 1 ? `${minutes} phút` : 'vừa bắt đầu'}
+            </span>
+          </div>
+          {/* Heart rate and speed, with the heart-rate line beside them. */}
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex shrink-0 items-baseline gap-3 tabular-nums">
+              <span className="whitespace-nowrap" style={{ color: f.over ? RED : token.colorText }} title={`Nhịp tim · ngưỡng ${f.target.heartRateMax} bpm`}>
+                <HeartFilled className="mr-1 text-xs" style={{ color: f.over ? RED : token.colorTextTertiary }} />
+                <span className="text-base font-semibold">{num(f.heartRate)}</span>
+                <span className="text-[11px] opacity-70">/{f.target.heartRateMax}</span>
+              </span>
+              <span className="whitespace-nowrap" title={f.target.speed ? `Tốc độ · mục tiêu ${num(f.target.speed, 1)} km/h` : 'Tốc độ'}>
+                <ThunderboltOutlined className="mr-1 text-xs" style={{ color: token.colorTextTertiary }} />
+                <span className="text-base font-semibold">{num(f.speed, 1)}</span>
+                <span className="text-[11px] opacity-70"> km/h</span>
+              </span>
+            </div>
+            <div className="min-w-[60px] flex-1">
+              <Sparkline values={readings.map((r) => r.hr)} ceiling={f.target.heartRateMax} over={f.over} color={FOREST.primary} />
+            </div>
+          </div>
+          {/* The distance done. */}
+          <div className="flex items-center gap-2">
+            <Progress className="!m-0 flex-1" percent={pct} size="small" showInfo={false} strokeColor={FOREST.primary} aria-label={`Đã chạy ${pct}% cự ly`} />
+            <span className="shrink-0 text-[11px] tabular-nums" style={{ color: token.colorTextSecondary }}>
+              {num(f.distance)}/{num(f.targetDistance)} m
+            </span>
+          </div>
+          {f.over && (
+            <span className="text-[11px] font-semibold" style={{ color: RED }}>
+              Vượt ngưỡng nhịp tim
+            </span>
+          )}
+        </div>
+      </button>
+      <span className="pointer-events-none absolute right-2.5 top-2.5 text-[10px]" style={{ color: token.colorTextTertiary }} aria-hidden="true">
+        {open ? <UpOutlined /> : <DownOutlined />}
+      </span>
+      {/* The demo tool, beside the tile's own button rather than inside it (open, it sits by the chart). */}
+      {!readOnly && !open && (
+        <div className="absolute right-6 top-1">
+          <ScenarioButton session={session} iconOnly />
         </div>
       )}
-    </Card>
+      {open && <LiveDetail session={session} readings={readings} horse={horse} surface={surface} figures={f} readOnly={readOnly} />}
+    </div>
   );
 }
 
 // A run the sensor feed stopped (a suspected injury) stays on the board this long, so the trainer sees it.
 const STOPPED_SHOWN_MS = 60 * 1000;
-
-/** A run the system stopped as a suspected injury: the horse pulls up and stands; what was done about it. */
-function StoppedCard({ session, horse, surface, onClose }) {
-  return (
-    <Card
-      size="small"
-      className="min-w-0 rounded-xl overflow-hidden !border-rose-200"
-      styles={CARD_STYLES}
-      title={
-        <CardTitle session={session}>
-          <Tag color="error" className="!m-0 text-xs font-medium">
-            Đã dừng: nghi chấn thương
-          </Tag>
-          <Button size="small" onClick={onClose}>
-            Đóng
-          </Button>
-        </CardTitle>
-      }
-    >
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-        <div className="lg:col-span-5 min-w-0">
-          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={liveMotion(session, 0, { stopped: true })} surface={surface} hour={hourOfSession(session)} height={236} />
-        </div>
-        <div className="lg:col-span-7 min-w-0 flex flex-col gap-2 text-sm text-gray-800">
-          <p className="m-0">Tốc độ tụt hẳn và nhịp tim vọt lên giữa buổi: hệ thống đã dừng buổi tập để bảo vệ ngựa.</p>
-          <ul className="m-0 pl-5 text-gray-700">
-            <li>Đã gửi yêu cầu khám gấp cho bác sĩ phụ trách.</li>
-            <li>Đã giao nhân viên chăm sóc chườm lạnh và theo dõi.</li>
-            <li>Chủ ngựa đã được báo.</li>
-          </ul>
-          <Text type="secondary" className="!text-xs">
-            Buổi này không cần đánh giá. Lịch tập tiếp theo chờ kết luận của bác sĩ.
-          </Text>
-        </div>
-      </div>
-    </Card>
-  );
-}
+// Whether the board is folded to its one line: the viewer's own choice, kept in this browser.
+const FOLD_KEY = 'liveBoard.folded';
+const readFolded = () => {
+  try {
+    return window.localStorage.getItem(FOLD_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
 
 /**
- * The sessions running right now, each with the horse running in 3D at its live speed, its heart rate,
- * speed and distance from the sensor feed (`sensor:reading`, sent to the horse's trainer) and a
- * heart-rate line against the session's own ceiling. Shown only while something is running (or was
- * just stopped as a suspected injury): a card per horse, or a row per horse from COMPACT_FROM at once.
- * `horses` gives each horse's breed and colour, so it runs in its own coat. `readOnly`: watched by the owner,
- * without the trainer's tools (the scenario button).
+ * The sessions running right now, from the sensor feed (`sensor:reading`, sent to the horse's trainer): one
+ * small tile per horse — heart rate against the session's own ceiling, speed, distance and a line of the
+ * heart rate — so ten or twenty horses at once still fit in a few rows. A tile opens across the row with
+ * the horse running in 3D and the full chart (one at a time; a lone horse opens by itself). The board folds
+ * to one line. Shown only while something is running (or was just stopped as a suspected injury).
+ * `horses` gives each horse's breed and colour, so it runs in its own coat. `readOnly`: watched by the
+ * owner, without the trainer's tools (the scenario button).
  */
 export default function LiveSessionMonitor({ sessions = [], horses = [], plans = [], onSessionCompleted, readOnly = false }) {
+  const { token } = theme.useToken();
   const running = sessions.filter((s) => s.status === 'in_progress');
   const [readings, setReadings] = useState(() => Object.fromEntries(liveCache));
   // Runs just stopped as a suspected injury: { session, at }.
   const [stopped, setStopped] = useState([]);
+  // The tile opened by the viewer (null: none); undefined until they choose, when a lone horse opens by itself.
+  const [openId, setOpenId] = useState(undefined);
+  const [folded, setFolded] = useState(readFolded);
   const queryClient = useQueryClient();
   const runningIds = running.map((s) => s._id).join(',');
   const horseById = new Map(horses.map((h) => [String(h._id), h]));
@@ -400,15 +380,112 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], plans =
   const closeStopped = (id) => setStopped((prev) => prev.filter((x) => String(x.session._id) !== String(id)));
 
   if (!running.length && !stopped.length) return null;
+
+  const figures = new Map(running.map((s) => [s._id, liveFigures(s, readings[s._id] || [])]));
+  // Horses over their ceiling first; otherwise a steady order (by name), so tiles do not jump at every reading.
+  const tiles = [...running].sort((a, b) => Number(figures.get(b._id).over) - Number(figures.get(a._id).over) || String(a.horse?.name || '').localeCompare(String(b.horse?.name || ''), 'vi'));
+  const overCount = tiles.filter((s) => figures.get(s._id).over).length;
+  const openNow = openId === undefined ? (running.length === 1 ? running[0]._id : null) : openId;
+  const toggleFold = () => {
+    setFolded((v) => {
+      try {
+        window.localStorage.setItem(FOLD_KEY, v ? '0' : '1');
+      } catch {
+        /* the choice is only a convenience */
+      }
+      return !v;
+    });
+  };
+  const openTile = (id) => {
+    setFolded(false);
+    setOpenId(id);
+  };
+
   return (
-    <section aria-label="Buổi tập đang diễn ra" className="mb-4 flex flex-col gap-3">
+    <section aria-label="Buổi tập đang diễn ra" className="mb-4 flex flex-col gap-2">
+      {/* A run the system stopped as a suspected injury: one line each, with what was done about it. */}
       {stopped.map(({ session }) => (
-        <StoppedCard key={session._id} session={session} horse={horseOf(session)} surface={surfaceFor(session)} onClose={() => closeStopped(session._id)} />
+        <Alert
+          key={session._id}
+          type="error"
+          showIcon
+          closable
+          onClose={() => closeStopped(session._id)}
+          title={`${session.horse?.name || 'Ngựa'} · ${kindLabel(session)}: hệ thống đã dừng buổi vì nghi chấn thương`}
+          description={
+            <span className="text-xs">
+              Tốc độ tụt hẳn và nhịp tim vọt lên giữa buổi. Đã gửi yêu cầu khám gấp cho bác sĩ, giao nhân viên chăm sóc chườm lạnh và theo dõi, báo chủ ngựa. Buổi này không cần đánh giá.
+            </span>
+          }
+        />
       ))}
-      {running.length >= COMPACT_FROM ? (
-        <LiveBoard running={running} readings={readings} horseOf={horseOf} surfaceFor={surfaceFor} readOnly={readOnly} />
-      ) : (
-        running.map((s) => <LiveCard key={s._id} session={s} readings={readings[s._id] || []} horse={horseOf(s)} surface={surfaceFor(s)} readOnly={readOnly} />)
+
+      {running.length > 0 && (
+        <Card
+          size="small"
+          className="rounded-xl"
+          styles={{ header: { minHeight: 'auto', padding: '8px 12px' }, body: { padding: folded ? 0 : 10 } }}
+          title={
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="relative inline-flex h-2 w-2" aria-hidden="true">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: FOREST.primary }} />
+                <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: FOREST.primary }} />
+              </span>
+              <span className="text-sm font-semibold">Đang tập · {running.length} ngựa</span>
+              {overCount > 0 && (
+                <Tag color="error" className="!m-0 text-xs">
+                  {overCount} vượt ngưỡng nhịp tim
+                </Tag>
+              )}
+              {!folded && (
+                <span className="text-xs font-normal" style={{ color: token.colorTextTertiary }}>
+                  cập nhật mỗi 5 giây · bấm một ngựa để xem chạy 3D
+                </span>
+              )}
+              {/* Folded: each horse in a word, its heart rate coloured; pressing one opens it. */}
+              {folded && (
+                <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                  {tiles.map((s) => {
+                    const f = figures.get(s._id);
+                    return (
+                      <button
+                        key={s._id}
+                        type="button"
+                        onClick={() => openTile(s._id)}
+                        className="cursor-pointer rounded-full border px-2 py-0.5 text-xs tabular-nums"
+                        style={{ borderColor: f.over ? RED : token.colorBorderSecondary, color: f.over ? RED : token.colorText, background: 'transparent' }}
+                      >
+                        {s.horse?.name} · {num(f.heartRate)} bpm · {share(f)}%
+                      </button>
+                    );
+                  })}
+                </span>
+              )}
+            </div>
+          }
+          extra={
+            <Button size="small" type="text" icon={folded ? <DownOutlined /> : <UpOutlined />} onClick={toggleFold}>
+              {folded ? 'Mở' : 'Thu gọn'}
+            </Button>
+          }
+        >
+          {!folded && (
+            <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gridAutoFlow: 'dense' }}>
+              {tiles.map((s) => (
+                <LiveTile
+                  key={s._id}
+                  session={s}
+                  readings={readings[s._id] || []}
+                  horse={horseOf(s)}
+                  surface={surfaceFor(s)}
+                  open={openNow === s._id}
+                  onToggle={() => setOpenId(openNow === s._id ? null : s._id)}
+                  readOnly={readOnly}
+                />
+              ))}
+            </div>
+          )}
+        </Card>
       )}
     </section>
   );
