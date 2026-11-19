@@ -1,0 +1,304 @@
+/* The staff's horse page (HorseDetailPage): a header with the horse and four figures, the horse in 3D beside its
+   record and people, then the rest in tabs. Colours from the staff theme (staff-workspace.css for the Manager and
+   the Head Trainer, staff-ui.css otherwise), so the page follows the light and the dark canvas. */
+.hp {
+  --hp-surface: var(--st-surface, var(--st-card, #ffffff));
+  --hp-sunk: var(--st-sunk, #f1f5f9);
+  --hp-border: var(--st-border, #e2e8f0);
+  --hp-ink: var(--st-ink, #0f172a);
+  --hp-ink-2: var(--st-ink-secondary, #334155);
+  --hp-muted: var(--st-ink-muted, #64748b);
+  --hp-accent: var(--st-action, var(--st-gold, #eab308));
+  --hp-accent-ink: var(--st-action-ink, #0f172a);
+  --hp-accent-soft: var(--st-accent-soft, var(--st-gold-soft, #fef3c7));
+  --hp-shadow: var(--st-shadow, var(--st-shadow-card, 0 1px 3px rgba(15, 23, 42, 0.06)));
+  --hp-good: var(--st-good, var(--st-good-ink, #15803d));
+  --hp-good-bg: var(--st-good-bg, #dcfce7);
+  --hp-warn: var(--st-warn, var(--st-watch-ink, #b45309));
+  --hp-warn-bg: var(--st-warn-bg, var(--st-watch-bg, #fef3c7));
+  --hp-danger: var(--st-danger, var(--st-bad-ink, #b91c1c));
+  --hp-danger-bg: var(--st-danger-bg, var(--st-bad-bg, #fee2e2));
+}
+
+/* ---------- Header ---------- */
+.hp-hero {
+  position: relative;
+  padding: 20px 22px;
+  border: 1px solid var(--hp-border);
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, var(--hp-accent-soft) 0%, transparent 46%),
+    var(--hp-surface);
+  box-shadow: var(--hp-shadow);
+  overflow: hidden;
+}
+.hp-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--hp-accent);
+}
+.hp-hero-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+.hp-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  color: #fff;
+  font-family: 'Lora', Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 4px var(--hp-surface), 0 0 0 6px var(--hp-accent);
+}
+.hp-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hp-muted);
+}
+.hp-name {
+  margin: 2px 0 4px;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--hp-ink);
+}
+.hp-sub {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: var(--hp-ink-2);
+}
+.hp-sub span + span::before {
+  content: '·';
+  margin: 0 8px;
+  color: var(--hp-muted);
+}
+.hp .hp-cta.ant-btn {
+  border: 0;
+  border-radius: 12px;
+  background: var(--hp-accent);
+  color: var(--hp-accent-ink);
+  font-weight: 700;
+  box-shadow: 0 6px 16px -8px var(--hp-accent);
+}
+.hp .hp-cta.ant-btn:hover {
+  filter: brightness(1.06);
+  background: var(--hp-accent) !important;
+  color: var(--hp-accent-ink) !important;
+}
+
+/* The four figures: health, may it train, last exam, stall and groom. */
+.hp-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+.hp-kpi {
+  --tone: var(--hp-ink-2);
+  --tone-bg: var(--hp-sunk);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--hp-border);
+  border-radius: 14px;
+  background: var(--hp-surface);
+}
+.hp-kpi.is-good {
+  --tone: var(--hp-good);
+  --tone-bg: var(--hp-good-bg);
+}
+.hp-kpi.is-warn {
+  --tone: var(--hp-warn);
+  --tone-bg: var(--hp-warn-bg);
+}
+.hp-kpi.is-danger {
+  --tone: var(--hp-danger);
+  --tone-bg: var(--hp-danger-bg);
+  border-color: var(--hp-danger);
+}
+.hp-kpi-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--tone-bg);
+  color: var(--tone);
+  font-size: 18px;
+}
+.hp-kpi-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hp-muted);
+}
+.hp-kpi-value {
+  font-size: 15.5px;
+  font-weight: 750;
+  line-height: 1.3;
+  color: var(--tone);
+}
+.hp-kpi:not(.is-good):not(.is-warn):not(.is-danger) .hp-kpi-value {
+  color: var(--hp-ink);
+}
+.hp-kpi-sub {
+  display: -webkit-box;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--hp-muted);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ---------- The horse in 3D beside its record ---------- */
+.hp-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+@media (min-width: 1100px) {
+  .hp-body {
+    grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr);
+  }
+}
+.hp-stage {
+  min-width: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--hp-shadow);
+}
+.hp-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.hp-card {
+  padding: 16px 18px;
+  border: 1px solid var(--hp-border);
+  border-radius: 18px;
+  background: var(--hp-surface);
+  box-shadow: var(--hp-shadow);
+}
+.hp-card-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 750;
+  color: var(--hp-ink);
+}
+.hp-facts {
+  margin: 0;
+}
+.hp-facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px dashed var(--hp-border);
+}
+.hp-facts > div:first-child {
+  border-top: 0;
+}
+.hp-facts dt {
+  flex: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--hp-muted);
+}
+.hp-facts dd {
+  margin: 0;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--hp-ink);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.hp-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.hp-people {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hp-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+.hp-person + .hp-person {
+  border-top: 1px dashed var(--hp-border);
+}
+.hp-person-initial {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--hp-accent-soft);
+  color: var(--hp-ink);
+  font-weight: 750;
+}
+.hp-person-name {
+  display: block;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--hp-ink);
+}
+.hp-person-role {
+  display: block;
+  font-size: 12px;
+  color: var(--hp-muted);
+}
+.hp-person.is-empty .hp-person-name {
+  font-weight: 500;
+  font-style: italic;
+  color: var(--hp-muted);
+}
+.hp-person.is-empty .hp-person-initial {
+  background: var(--hp-sunk);
+  color: var(--hp-muted);
+}
+.hp-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---------- Tabs ---------- */
+.hp-tabs > .ant-tabs-nav .ant-tabs-tab {
+  padding: 10px 2px;
+  font-size: 15px;
+}
+.hp-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  font-weight: 700;
+}

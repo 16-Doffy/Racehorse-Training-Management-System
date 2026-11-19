@@ -51,7 +51,7 @@ export default function InjuryStageControl({ marker, refresh, compact = false })
 
   return (
     <div className={`vet-stage${compact ? ' is-compact' : ''}`}>
-      <RecoveryStepper value={current} />
+      <RecoveryStepper value={current} labeled={!compact} />
       <div className="vet-stage-actions">
         {next ? (
           <BusyButton size="sm" variant={next.to === 'recovered' ? 'vet' : 'vet-outline'} busy={busy} disabled={busy} onClick={() => move(next.to)}>

@@ -33,10 +33,13 @@ import { ROLES, ROLE_LABELS } from '../../constants/roles';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
 import dayjs from 'dayjs';
 import { examLine, useLastExam } from '../health/useLastExam';
+import './horseProfile.css';
+
+const TABS = ['history', 'care', 'stall', 'races'];
 
 /** Calculate age string from date of birth */
 function calcAge(dob) {
-  if (!dob) return 'Chưa rõ';
+  if (!dob) return 'Chưa rõ tuổi';
   const now = dayjs();
   const birth = dayjs(dob);
   if (!birth.isValid()) return 'Chưa rõ';
@@ -58,8 +61,6 @@ function Facts({ items, className = '' }) {
     </dl>
   );
 }
-
-const TABS = ['history', 'stall', 'races'];
 
 const INSPECTION_MODES = [
   { value: 'clinical', label: 'Theo sức khỏe hiện tại' },
@@ -141,8 +142,8 @@ export default function HorseDetailPage() {
   if (isLoading && !horse) {
     return (
       <div className="space-y-4">
-        <Card loading className="!rounded-xl !border-[#E2D9C8]" />
-        <Card loading className="!rounded-xl !border-[#E2D9C8]" />
+        <Card loading className="!rounded-xl" />
+        <Card loading className="!rounded-xl" />
       </div>
     );
   }
@@ -174,7 +175,7 @@ export default function HorseDetailPage() {
       title: 'Ngày',
       dataIndex: 'date',
       key: 'date',
-      render: (d) => <span className="tabular-nums text-xs text-slate-600">{d ? dayjs(d).format('DD/MM/YYYY') : '—'}</span>,
+      render: (d) => <span className="tabular-nums text-xs">{d ? dayjs(d).format('DD/MM/YYYY') : '—'}</span>,
     },
   ];
 
@@ -405,9 +406,9 @@ export default function HorseDetailPage() {
         {/* Right column: Equine Digital Passport & Training Readiness Dossier */}
         <Col xs={24} lg={10}>
           <Card
-            className="h-full !rounded-xl !border-[#E2D9C8]"
+            className="hp-card h-full !rounded-xl !border-[#E2D9C8]"
             styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 57px)' } }}
-            title="Hộ chiếu chiến mã & chỉ số huấn luyện"
+            title="Hồ sơ lý lịch & chỉ số huấn luyện"
             extra={stallCode ? <Tag color="gold" className="!m-0 font-semibold tabular-nums">Chuồng {stallCode}</Tag> : null}
           >
             {/* 4 Conformation & Identity Metric Tiles */}
@@ -425,7 +426,13 @@ export default function HorseDetailPage() {
                   <span>{coatLabel(horse.color) || coat.label}</span>
                 </div>
                 <div className="text-[11px] tabular-nums text-gray-500">
-                  {horse.microchipNumber ? `Vi mạch: ${horse.microchipNumber}` : stallCode ? `Khu chuồng ${stallCode}` : 'Đã định danh CLB'}
+                  {horse.microchipNumber ? (
+                    <span>Vi mạch: <span>{horse.microchipNumber}</span></span>
+                  ) : stallCode ? (
+                    `Khu chuồng ${stallCode}`
+                  ) : (
+                    'Đã định danh CLB'
+                  )}
                 </div>
               </div>
 
@@ -438,12 +445,18 @@ export default function HorseDetailPage() {
               </div>
 
               <div className="rounded-lg border px-3 py-2" style={{ borderColor: token.colorBorderSecondary, background: token.colorFillQuaternary }}>
-                <div className="text-[11px] text-gray-500">Cân nặng & thể trạng</div>
+                <div className="text-[11px] text-gray-500">Cân nặng & đăng ký</div>
                 <div className="mt-0.5 text-[13px] font-semibold tabular-nums text-gray-900">
                   {horse.weightKg ? `${horse.weightKg} kg` : '—'}
                 </div>
                 <div className="text-[11px] text-gray-500">
-                  {'valuationVnd' in horse && horse.valuationVnd ? formatVnd(horse.valuationVnd) : 'Thể hình tiêu chuẩn đua'}
+                  {horse.registrationNumber ? (
+                    <span>Số ĐK: <span>{horse.registrationNumber}</span></span>
+                  ) : 'valuationVnd' in horse && horse.valuationVnd ? (
+                    formatVnd(horse.valuationVnd)
+                  ) : (
+                    'Thể hình tiêu chuẩn đua'
+                  )}
                 </div>
               </div>
             </div>
@@ -581,34 +594,23 @@ export default function HorseDetailPage() {
       </Row>
 
       <Tabs
+        className="hp-tabs"
         activeKey={tab}
         onChange={(key) => setSearchParams(key === 'history' ? {} : { tab: key }, { replace: true })}
         items={[
-          {
-            key: 'history',
-            label: 'Hành trình & chăm sóc',
-            children: (
-              <div className="space-y-4">
-                <HorseTimeline horseId={horse._id} />
-                <CareHistoryCard horseId={horse._id} />
-              </div>
-            ),
-          },
-          {
-            key: 'stall',
-            label: stallCode ? `Chuồng ${stallCode}` : 'Chuồng',
-            children: <HorseStallCard horseId={horse._id} canManage={isManager} />,
-          },
+          { key: 'history', label: 'Dòng thời gian', children: <HorseTimeline horseId={horse._id} /> },
+          { key: 'care', label: 'Chăm sóc định kỳ', children: <CareHistoryCard horseId={horse._id} /> },
+          { key: 'stall', label: stallCode ? `Chuồng ${stallCode}` : 'Chuồng', children: <HorseStallCard horseId={horse._id} canManage={isManager} /> },
           {
             key: 'races',
             label: `Thành tích thi đấu${horse.achievements?.length ? ` (${horse.achievements.length})` : ''}`,
             children: (
-              <Card className="!rounded-xl !border-[#E2D9C8]">
+              <Card className="!rounded-xl">
                 <Table
                   rowKey={(r) => `${r.race}-${r.date}`}
                   columns={achievementColumns}
                   dataSource={horse.achievements}
-                  pagination={false}
+                  pagination={{ pageSize: 8, hideOnSinglePage: true, size: 'small', showTotal: (total) => `${total} giải` }}
                   scroll={{ x: 'max-content' }}
                   locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa ghi nhận thành tích thi đấu chính thức" /> }}
                 />

@@ -1,7 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Table, Tag, Typography, Button, Modal, Form, Input, Select, Alert, Empty, Tooltip, Popconfirm, Segmented, Grid, Card } from 'antd';
+import { Table, Tag, Typography, Button, Modal, Form, Input, Select, Alert, Empty, Tooltip, Popconfirm, Segmented, Grid, Card, Pagination } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { PlusOutlined, EditOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined, SearchOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  EditOutlined,
+  DownloadOutlined,
+  DeleteOutlined,
+  RollbackOutlined,
+  SearchOutlined,
+  AppstoreOutlined,
+  UnorderedListOutlined,
+  CheckCircleOutlined,
+  AlertOutlined,
+  CalendarOutlined,
+  UsergroupAddOutlined,
+} from '@ant-design/icons';
+import { HorseCard, RosterTiles } from './HorseRoster';
+import { breedVi } from './horseStanding';
 import { downloadFile } from '../../lib/files';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -90,6 +105,25 @@ export default function HorseListPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [focus, setFocus] = useState('all');
+  // The trainer's roster as cards (default) or the table; the choice is remembered in this browser.
+  const canCards = showsNextStep && !isManager;
+  const [layout, setLayoutState] = useState(() => {
+    try {
+      return window.localStorage.getItem('horseList.layout') || 'cards';
+    } catch {
+      return 'cards';
+    }
+  });
+  const setLayout = (v) => {
+    setLayoutState(v);
+    try {
+      window.localStorage.setItem('horseList.layout', v);
+    } catch {
+      /* a convenience only */
+    }
+  };
+  const [cardPage, setCardPage] = useState(1);
+  const CARD_PAGE = 12;
 
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['horses'], queryFn: () => horsesApi.list() });
   const horses = data?.data || [];
@@ -102,7 +136,9 @@ export default function HorseListPage() {
     ...(stallsData?.data?.stalls || []).filter((st) => st.occupant?.horse).map((st) => [String(st.occupant.horse._id), st.code]),
   ]);
   const mapStalls = stallsData?.data?.stalls || [];
-  const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list(), enabled: Boolean(showPlan) });
+  // The trainer's cards show each horse's plan on any screen; the table only on a wide one.
+  const isTrainer = user?.role === ROLES.HEAD_TRAINER;
+  const { data: plansData } = useQuery({ queryKey: ['training-plans'], queryFn: () => trainingPlanApi.list(), enabled: Boolean(showPlan) || isTrainer });
   const planByHorse = new Map((plansData?.data || []).filter((p) => p.status === 'active').map((p) => [String(p.horse?._id || p.horse), p]));
   // Has a vet examined the horse? true / false, or undefined while that is still loading.
   const examined = (h) => checklistByHorse.get(String(h._id))?.items?.find((i) => i.key === 'health')?.done;
@@ -305,8 +341,8 @@ export default function HorseListPage() {
           <div className="truncate font-semibold" title={h.name}>
             {h.name}
           </div>
-          <Text type="secondary" className="block truncate !text-xs" title={[h.breed, HORSE_SEX_LABELS[h.sex], h.color].filter(Boolean).join(' · ')}>
-            {[h.breed, HORSE_SEX_LABELS[h.sex], isManager ? h.color : ageOf(h.dob)].filter(Boolean).join(' · ') || 'Chưa có lý lịch'}
+          <Text type="secondary" className="block truncate !text-xs" title={[breedVi(h.breed), HORSE_SEX_LABELS[h.sex], h.color].filter(Boolean).join(' · ')}>
+            {[breedVi(h.breed), HORSE_SEX_LABELS[h.sex], isManager ? h.color : ageOf(h.dob)].filter(Boolean).join(' · ') || 'Chưa có lý lịch'}
           </Text>
           {/* Roles other than the Manager only see their own horses: the owner is all they need here, on a small line. */}
           {!isManager && !showPeople && <Text type="secondary" className="block truncate !text-xs">Chủ: {h.owner?.name || 'CLB sở hữu'}</Text>}
@@ -494,12 +530,23 @@ export default function HorseListPage() {
   // Newest first: a horse just added or changed is the first row.
   const rows = newestFirst(source.filter(matches).filter((h) => archived || (FOCUS[focus] || FOCUS.all)(h)));
 
+  const notes = TILE_NOTES(isManager);
   const tiles = [
-    { key: 'all', label: 'Tổng đàn ngựa', value: horses.length, tone: 'text-amber-600' },
-    { key: 'ready', label: 'Đủ điều kiện tập', value: readyCount, tone: 'text-emerald-700', hint: unexaminedCount ? `${unexaminedCount} ngựa chưa khám` : null },
-    { key: 'watch', label: 'Theo dõi y tế', value: watchCount, tone: watchCount ? 'text-amber-700' : 'text-slate-700', hint: restrictedCount ? `${restrictedCount} ngựa bị hạn chế tập` : null },
-    { key: 'gap', label: isManager ? 'Khuyết phụ trách' : 'Chưa có kế hoạch', value: gapCount, tone: gapCount ? 'text-rose-600' : 'text-slate-700' },
+    { key: 'all', label: 'Tổng đàn ngựa', value: horses.length, tone: 'accent', icon: <AppstoreOutlined />, note: notes.all },
+    { key: 'ready', label: 'Đủ điều kiện tập', value: readyCount, tone: 'good', icon: <CheckCircleOutlined />, note: unexaminedCount ? `${unexaminedCount} ngựa chưa khám` : notes.ready },
+    { key: 'watch', label: 'Theo dõi y tế', value: watchCount, tone: watchCount ? 'warn' : 'neutral', icon: <AlertOutlined />, note: restrictedCount ? `${restrictedCount} ngựa bị hạn chế tập` : notes.watch },
+    {
+      key: 'gap',
+      label: isManager ? 'Khuyết phụ trách' : 'Chưa có kế hoạch',
+      value: gapCount,
+      tone: gapCount ? 'danger' : 'neutral',
+      icon: isManager ? <UsergroupAddOutlined /> : <CalendarOutlined />,
+      note: notes.gap,
+    },
   ];
+  const showCards = canCards && layout === 'cards' && !archived;
+  const cardPages = Math.max(1, Math.ceil(rows.length / CARD_PAGE));
+  const cardRows = rows.slice((Math.min(cardPage, cardPages) - 1) * CARD_PAGE, Math.min(cardPage, cardPages) * CARD_PAGE);
 
   return (
     <div>
@@ -542,29 +589,15 @@ export default function HorseListPage() {
 
       {/* The counts double as filters: a tile narrows the list below to its horses. */}
       {showsNextStep && (
-        <div className="st-kpi-grid light-surface-box mb-4">
-          {tiles.map((t) => {
-            const on = focus === t.key && !archived;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                aria-pressed={on}
-                onClick={() => {
-                  setView('active');
-                  setFocus(on && t.key !== 'all' ? 'all' : t.key);
-                }}
-                className="st-kpi-tile"
-              >
-                <span className="block whitespace-nowrap text-xs font-semibold text-slate-600">{t.label}</span>
-                <span className={`mt-1.5 block whitespace-nowrap text-2xl font-bold tabular-nums ${t.tone}`}>
-                  {t.value} <span className="text-xs font-normal text-slate-500">ngựa</span>
-                </span>
-                <div className="mt-1 text-[11px] text-slate-500">{t.hint || TILE_NOTES(isManager)[t.key]}</div>
-              </button>
-            );
-          })}
-        </div>
+        <RosterTiles
+          tiles={tiles}
+          focus={archived ? null : focus}
+          onPick={(key, on) => {
+            setView('active');
+            setFocus(on && key !== 'all' ? 'all' : key);
+            setCardPage(1);
+          }}
+        />
       )}
 
       {isError && (
@@ -616,9 +649,23 @@ export default function HorseListPage() {
             prefix={<SearchOutlined className="text-slate-400" />}
             placeholder="Tìm tên, giống, chủ, HLV, bác sĩ, chuồng…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCardPage(1);
+            }}
             className="!w-full sm:!w-80"
           />
+          {canCards && (
+            <Segmented
+              value={layout}
+              onChange={setLayout}
+              options={[
+                { value: 'cards', label: 'Thẻ', icon: <AppstoreOutlined /> },
+                { value: 'table', label: 'Bảng', icon: <UnorderedListOutlined /> },
+              ]}
+              aria-label="Cách hiển thị"
+            />
+          )}
           {focus !== 'all' && !archived && (
             <Tag closable onClose={() => setFocus('all')} className="!m-0 !py-1">
               Đang lọc: {tiles.find((t) => t.key === focus)?.label}
@@ -630,7 +677,60 @@ export default function HorseListPage() {
         </Text>
       </div>
 
-      <Card className="!rounded-xl shadow-xs overflow-hidden" styles={{ body: { padding: 0 } }}>
+      {/* The trainer's roster as cards, twelve at a time. */}
+      {showCards && (
+        <>
+          {isLoading && !data ? (
+            <Card loading className="!rounded-xl" />
+          ) : rows.length === 0 ? (
+            <Card className="!rounded-xl">
+              <Empty description={source.length ? 'Không có ngựa nào khớp tìm kiếm / bộ lọc.' : 'Bạn chưa được phân công phụ trách con ngựa nào. Liên hệ Quản lý Câu lạc bộ để được phân công.'}>
+                {source.length > 0 && (
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setSearch('');
+                      setFocus('all');
+                    }}
+                  >
+                    Bỏ lọc
+                  </Button>
+                )}
+              </Empty>
+            </Card>
+          ) : (
+            <div className="hl-grid">
+              {cardRows.map((h) => (
+                <HorseCard
+                  key={h._id}
+                  h={h}
+                  stall={stallByHorse.get(String(h._id))}
+                  plan={planByHorse.get(String(h._id))}
+                  checklist={checklistByHorse.get(String(h._id))}
+                  examined={examined(h)}
+                  onOpen={() => navigate(`/horses/${h._id}`)}
+                  onSessions={() => navigate(`/training/sessions?horse=${h._id}`)}
+                  onPlan={() => navigate('/training/plans')}
+                />
+              ))}
+            </div>
+          )}
+          {rows.length > CARD_PAGE && (
+            <div className="mt-4 flex justify-end">
+              <Pagination
+                current={Math.min(cardPage, cardPages)}
+                pageSize={CARD_PAGE}
+                total={rows.length}
+                onChange={setCardPage}
+                showSizeChanger={false}
+                showTotal={(total, [from, to]) => `${from}–${to} / ${total} ngựa`}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      <Card className={`!rounded-xl shadow-xs overflow-hidden${showCards ? ' !hidden' : ''}`} styles={{ body: { padding: 0 } }}>
         <Table
           rowKey="_id"
           size="small"

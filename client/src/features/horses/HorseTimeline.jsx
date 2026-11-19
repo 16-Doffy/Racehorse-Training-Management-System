@@ -34,13 +34,15 @@ const ROLE_FILTERS = [
   { value: 'veterinarian', label: 'Bác sĩ' },
   { value: 'groom', label: 'Chăm sóc' },
 ];
-
 const RANGE_OPTIONS = [
   { value: 7, label: '7 ngày' },
   { value: 14, label: '14 ngày' },
   { value: 30, label: '30 ngày' },
   { value: 90, label: '90 ngày' },
 ];
+const PAGE_SIZE = 10;
+const LONG_DETAIL = 140;
+const WEEKDAYS = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 
 const SEVERITY_META = {
   critical: { label: 'Khẩn cấp', color: 'error', border: '#ef4444' },

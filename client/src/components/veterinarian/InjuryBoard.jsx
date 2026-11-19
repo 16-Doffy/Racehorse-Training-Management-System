@@ -1,8 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
 import HorseInjuryViewer from './HorseInjuryViewer';
 import InjuryStageControl from './InjuryStageControl';
-import { EmptyNote, FilterChips, HealthPill, HorseAvatar, LevelPill, Pill, SearchBox } from './ui';
-import { SEVERITY_META, ago, clearanceOf, fmtDate, idOf, isActiveInjury, recoveryMeta, shortBodyPart } from './vetFormat';
+import { EmptyNote, FilterChips, HealthPill, HorseAvatar, Pill, SearchBox } from './ui';
+import { LEVEL_META, SEVERITY_META, ago, clearanceOf, fmtDate, idOf, isActiveInjury, recoveryMeta, shortBodyPart } from './vetFormat';
+
+/** Whether the horse may train, in words: not at all, lighter work only, or as usual. */
+function TrainingText({ horse, clearance }) {
+  const blocked = ['injured', 'quarantined'].includes(horse.healthStatus) || clearance.level === 'none';
+  if (blocked) {
+    return (
+      <span className="vet-small fw-semibold vet-text-bad text-nowrap">
+        <i className="bi bi-lock-fill" aria-hidden="true" /> Không được tập
+      </span>
+    );
+  }
+  if (clearance.restricted) {
+    return (
+      <span className="vet-small fw-semibold vet-text-watch text-nowrap">
+        <i className="bi bi-exclamation-triangle-fill" aria-hidden="true" /> {LEVEL_META[clearance.level]?.label}
+      </span>
+    );
+  }
+  return <span className="vet-small vet-faint text-nowrap">Tập bình thường</span>;
+}
 
 const SEVERITY_RANK = { severe: 0, moderate: 1, mild: 2 };
 const byConcern = (a, b) =>
@@ -14,7 +34,7 @@ const byConcern = (a, b) =>
  * with its marks and that injury's details — its stage moves there, its exam opens in place
  * (onOpenExam). `horse`: one horse's injuries (its page), no grouping. `horses`: the horses to group by.
  */
-export default function InjuryBoard({ injuries, horse = null, horses = [], refresh, onOpenExam }) {
+export default function InjuryBoard({ injuries, horse = null, horses = [], refresh, onOpenExam, focus = null, onClearFocus }) {
   const [status, setStatus] = useState('active');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState(null);
@@ -24,8 +44,9 @@ export default function InjuryBoard({ injuries, horse = null, horses = [], refre
 
   const activeCount = injuries.filter(isActiveInjury).length;
   const q = query.trim().toLowerCase();
+  // `focus` ({ label, match }): a tile on the page picked a set (the severe ones, the new ones…) over the chips.
   const shown = injuries
-    .filter((m) => (status === 'active' ? isActiveInjury(m) : status === 'recovered' ? !isActiveInjury(m) : true))
+    .filter((m) => (focus ? focus.match(m) : status === 'active' ? isActiveInjury(m) : status === 'recovered' ? !isActiveInjury(m) : true))
     .filter((m) => !q || horseOf(m)?.name?.toLowerCase().includes(q) || m.bodyPart?.toLowerCase().includes(q) || m.notes?.toLowerCase().includes(q))
     .sort(byConcern);
 
@@ -60,14 +81,25 @@ export default function InjuryBoard({ injuries, horse = null, horses = [], refre
         <div className="vet-toolbar mb-2">
           {!horse && <SearchBox value={query} onChange={setQuery} placeholder="Tìm ngựa, vị trí tổn thương…" />}
           <FilterChips
-            value={status}
-            onChange={setStatus}
+            value={focus ? null : status}
+            onChange={(v) => {
+              setStatus(v);
+              onClearFocus?.();
+            }}
             options={[
               { value: 'active', label: 'Đang theo dõi', count: activeCount },
               { value: 'recovered', label: 'Đã khỏi', count: injuries.length - activeCount },
               { value: 'all', label: 'Tất cả', count: injuries.length },
             ]}
           />
+          {focus && (
+            <span className="vet-small vet-muted">
+              Đang xem: <strong>{focus.label}</strong>{' '}
+              <button type="button" className="vet-link vet-small" onClick={onClearFocus}>
+                Bỏ lọc
+              </button>
+            </span>
+          )}
         </div>
 
         {shown.length === 0 ? (
@@ -86,9 +118,9 @@ export default function InjuryBoard({ injuries, horse = null, horses = [], refre
                       <HorseAvatar horse={g.horse} size={32} />
                       <span className="vet-row-title text-truncate">{g.horse?.name || 'Ngựa'}</span>
                       <span className="vet-small vet-muted">{g.items.length} chấn thương</span>
-                      <span className="ms-auto d-flex flex-wrap align-items-center gap-1 justify-content-end">
+                      <span className="ms-auto d-flex flex-wrap align-items-center gap-2 justify-content-end">
                         {g.horse && <HealthPill status={g.horse.healthStatus} />}
-                        {clearance.restricted && <LevelPill level={clearance.level} short />}
+                        {g.horse && <TrainingText horse={g.horse} clearance={clearance} />}
                       </span>
                       <i className={`bi ${closed ? 'bi-chevron-down' : 'bi-chevron-up'} vet-faint`} aria-hidden="true" />
                     </button>
@@ -103,14 +135,17 @@ export default function InjuryBoard({ injuries, horse = null, horses = [], refre
                           <span className="vet-inj-text">
                             <span className="d-flex flex-wrap align-items-center gap-2">
                               <b title={m.bodyPart}>{shortBodyPart(m.bodyPart)}</b>
-                              <Pill tone={SEVERITY_META[m.severity]?.tone}>{SEVERITY_META[m.severity]?.label || m.severity}</Pill>
+                              <Pill tone={SEVERITY_META[m.severity]?.tone}>Mức {(SEVERITY_META[m.severity]?.label || m.severity).toLowerCase()}</Pill>
                             </span>
                             <span className="vet-small vet-muted d-block text-truncate">
-                              Ghi {fmtDate(m.createdAt)}
+                              Phát hiện {fmtDate(m.createdAt)} ({ago(m.createdAt)})
                               {m.notes ? ` · ${m.notes}` : ''}
                             </span>
                           </span>
-                          <Pill tone={stage.tone}>{stage.label}</Pill>
+                          <span className="vet-inj-stage">
+                            <span className="vet-small vet-faint">Giai đoạn</span>
+                            <Pill tone={stage.tone}>{stage.label}</Pill>
+                          </span>
                         </button>
                       );
                     })}
@@ -128,13 +163,13 @@ export default function InjuryBoard({ injuries, horse = null, horses = [], refre
             <div className="vet-inj-detail">
               <div className="d-flex flex-wrap align-items-center gap-2">
                 <span className="vet-sheet-horse">{shortBodyPart(selected.bodyPart)}</span>
-                <Pill tone={SEVERITY_META[selected.severity]?.tone}>{SEVERITY_META[selected.severity]?.label || selected.severity}</Pill>
+                <Pill tone={SEVERITY_META[selected.severity]?.tone}>Mức {(SEVERITY_META[selected.severity]?.label || selected.severity).toLowerCase()}</Pill>
               </div>
               {selected.bodyPart !== shortBodyPart(selected.bodyPart) && <div className="vet-small vet-muted">{selected.bodyPart}</div>}
-              <div className="mt-2">
-                <InjuryStageControl key={selected._id} marker={selected} refresh={refresh} />
-              </div>
-              <dl className="vet-sheet-facts mt-3">
+              <div className="vet-inj-section-label">Giai đoạn hồi phục</div>
+              <InjuryStageControl key={selected._id} marker={selected} refresh={refresh} />
+              <div className="vet-inj-section-label">Thông tin</div>
+              <dl className="vet-sheet-facts">
                 {!horse && (
                   <>
                     <dt>Ngựa</dt>
@@ -158,9 +193,18 @@ export default function InjuryBoard({ injuries, horse = null, horses = [], refre
                   )}
                 </dd>
               </dl>
-              <div className="vet-small vet-faint mt-2">
-                <i className="bi bi-arrow-repeat me-1" aria-hidden="true" />
-                Tự chuyển theo đơn thuốc: kê đơn → Đang điều trị; kết thúc đơn cuối → Đang hồi phục. “Đã khỏi” do bác sĩ xác nhận.
+              <div className="vet-inj-howto">
+                <div className="fw-semibold mb-1">
+                  <i className="bi bi-lightbulb me-1" aria-hidden="true" />
+                  Giai đoạn đổi thế nào?
+                </div>
+                <ul className="m-0 ps-3">
+                  <li>Kê đơn thuốc cho ngựa → tự chuyển sang <b>Đang điều trị</b>.</li>
+                  <li>Kết thúc đơn thuốc cuối cùng → tự chuyển sang <b>Đang hồi phục</b>.</li>
+                  <li>
+                    <b>Đã khỏi</b> chỉ khi bác sĩ bấm xác nhận (hoặc tái khám kết luận khỏi).
+                  </li>
+                </ul>
               </div>
             </div>
           ) : (
