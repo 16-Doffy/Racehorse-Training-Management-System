@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Dropdown, Progress, Tag, Typography, theme } from 'antd';
-import { CheckCircleOutlined, DownOutlined, ExperimentOutlined, EyeInvisibleOutlined, EyeOutlined, HeartFilled, PauseCircleOutlined, ThunderboltOutlined, UpOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Dropdown, Tag, Typography, theme } from 'antd';
+import { CheckCircleOutlined, DownOutlined, ExperimentOutlined, PauseCircleOutlined, UpOutlined } from '@ant-design/icons';
 import { LineChart, Line, XAxis, YAxis, ReferenceLine, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { useQueryClient } from '@tanstack/react-query';
 import { message } from '../../lib/antdStatic';
@@ -34,7 +34,15 @@ const toPoint = (r) => ({
 const GRID = '#E4DFD3';
 const AXIS = '#8A8578';
 const RED = STATUS_TONES.bad.color;
+const GOLD = '#eab308';
 const num = (n, digits = 0) => (n == null ? '—' : Number(n).toLocaleString('vi-VN', { maximumFractionDigits: digits }));
+
+function formatDistance(meters) {
+  if (meters == null) return { value: '—', unit: 'm' };
+  const m = Number(meters);
+  if (m >= 1000) return { value: num(m / 1000, 2), unit: 'km' };
+  return { value: num(Math.round(m)), unit: 'm' };
+}
 
 /** What a running session shows now: the latest reading, else the last one the server kept. */
 function liveFigures(session, readings) {
@@ -79,6 +87,7 @@ function motionNow(session, f, readings = [], { finishing = false, stopped = fal
     injuryElapsedMs,
   });
 }
+
 // The session's sky: the hour it started (or was booked for).
 const hourOfSession = (session) => hourOf(session.actualStartAt || session.scheduledAt);
 const kindLabel = (session) => SESSION_KINDS[session.kind]?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập';
@@ -95,7 +104,8 @@ const SCENARIO_ITEMS = [
     children: Object.entries(LEGS).map(([leg, label]) => ({ key: `injury:${leg}`, label })),
   },
 ];
-function ScenarioButton({ session, iconOnly = false, onSimulated }) {
+
+function ScenarioButton({ session, compact = false, block = false, onSimulated }) {
   const queryClient = useQueryClient();
   const play = ({ key }) => {
     const [scenario, leg] = key.split(':');
@@ -118,238 +128,413 @@ function ScenarioButton({ session, iconOnly = false, onSimulated }) {
   };
   return (
     <Dropdown menu={{ items: SCENARIO_ITEMS, onClick: play }} trigger={['click']}>
-      <Button size="small" type={iconOnly ? 'text' : 'default'} icon={<ExperimentOutlined />} title="Mô phỏng sự cố" aria-label={`Mô phỏng sự cố cho ${session.horse?.name || 'ngựa'}`}>
-        {iconOnly ? null : 'Mô phỏng sự cố'}
+      <Button
+        size="small"
+        block={block}
+        icon={compact ? undefined : <ExperimentOutlined />}
+        className={compact ? '!px-2 !text-xs font-medium' : undefined}
+        title="Mô phỏng sự cố"
+        aria-label={`Mô phỏng sự cố cho ${session.horse?.name || 'ngựa'}`}
+      >
+        Mô phỏng sự cố
       </Button>
     </Dropdown>
   );
 }
 
-/**
- * The trainer's hands on a running session: end it (the end-of-session form), stop it (with a reason), and
- * the demo's scenario button. `iconOnly`: the small tile's corner; open, the buttons carry their words.
- */
-function SessionControls({ session, onEnd, onAbort, onSimulated, iconOnly = false }) {
+/** Action bar inside focus detail view. */
+function SessionControls({ session, onEnd, onAbort, onSimulated }) {
   const name = session.horse?.name || 'ngựa';
   return (
-    <span className="inline-flex items-center gap-1">
-      <ScenarioButton session={session} iconOnly={iconOnly} onSimulated={onSimulated} />
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <ScenarioButton session={session} onSimulated={onSimulated} />
       {onEnd && (
-        <Button size="small" type={iconOnly ? 'text' : 'primary'} icon={<CheckCircleOutlined />} onClick={() => onEnd(session)} title="Kết thúc buổi" aria-label={`Kết thúc buổi của ${name}`}>
-          {iconOnly ? null : 'Kết thúc'}
+        <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => onEnd(session)} title="Kết thúc buổi" aria-label={`Kết thúc buổi của ${name}`}>
+          Kết thúc
         </Button>
       )}
       {onAbort && (
-        <Button size="small" type={iconOnly ? 'text' : 'default'} danger icon={<PauseCircleOutlined />} onClick={() => onAbort(session)} title="Dừng buổi" aria-label={`Dừng buổi của ${name}`}>
-          {iconOnly ? null : 'Dừng'}
+        <Button size="small" danger icon={<PauseCircleOutlined />} onClick={() => onAbort(session)} title="Dừng buổi" aria-label={`Dừng buổi của ${name}`}>
+          Dừng
         </Button>
       )}
     </span>
   );
 }
 
-/** The heart rate of the last minutes as a thin line, against the ceiling (dashed): the trend at a glance. */
-function Sparkline({ values, ceiling, over, color }) {
-  const pts = values.filter((v) => v != null);
-  if (pts.length < 2) return <span className="text-[11px] opacity-60">chờ số liệu…</span>;
-  const W = 100;
-  const H = 26;
-  const lo = Math.min(...pts, ceiling) - 6;
-  const hi = Math.max(...pts, ceiling) + 6;
-  const x = (i) => (i / (pts.length - 1)) * W;
-  const y = (v) => H - ((v - lo) / (hi - lo)) * H;
-  const d = pts.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-  return (
-    <svg className="block w-full" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
-      <line x1="0" x2={W} y1={y(ceiling)} y2={y(ceiling)} stroke={RED} strokeWidth="1" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" opacity="0.7" />
-      <path d={d} fill="none" stroke={over ? RED : color} strokeWidth="1.75" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
-
-/** The open tile: the horse running in 3D at its live speed, and its heart-rate line against the ceiling. */
-function LiveDetail({ session, readings, horse, surface, figures, motion, finishing, stopped, readOnly, onEnd, onAbort, onSimulated }) {
+/**
+ * Compact broadcast telemetry card directly under the panoramic 3D track:
+ * Horse header + 3 large scannable columns (Nhịp tim | Tốc độ | Cự ly) + slim gradient progress bar +
+ * full-label action buttons (Mô phỏng sự cố | Kết thúc | Dừng). Clicking the card zooms into Tiêu điểm.
+ */
+function LiveTelemetryCard({ session, figures, motion, finishing, stopped, selected, readOnly, onFocus, onEnd, onAbort, onSimulated }) {
   const { token } = theme.useToken();
-  const { target, segmentCount, segmentIndex, segmentLabel, segmentNote } = figures;
-  const data = readings.map((r, i) => ({ i, hr: r.hr, speed: r.speed }));
-  const shownMotion = motion || { clip: 'Idle_Look', label: 'Đã bắt đầu, chờ tín hiệu cảm biến' };
+  const f = figures;
+  const pct = finishing ? 100 : share(f);
+  const alert = Boolean(f.over || stopped || motion?.tone === 'alert');
+  const dist = formatDistance(f.distance);
+  const name = session.horse?.name || 'Ngựa';
+
+  const borderColor = stopped
+    ? RED
+    : alert
+      ? '#d97706'
+      : selected
+        ? GOLD
+        : token.colorBorderSecondary;
+  const cardShadow = alert
+    ? '0 0 0 1px rgba(234, 179, 8, 0.28), 0 8px 22px -10px rgba(234, 179, 8, 0.35)'
+    : selected
+      ? '0 0 0 1px rgba(234, 179, 8, 0.35)'
+      : undefined;
+
   return (
-    <div className="grid grid-cols-1 gap-3 border-t px-3 pb-3 pt-3 lg:grid-cols-12" style={{ borderColor: token.colorBorderSecondary }}>
-      <div className="min-w-0 lg:col-span-5">
-        <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={shownMotion} surface={surface} hour={hourOfSession(session)} height={210} />
-      </div>
-      <div className="flex min-w-0 flex-col lg:col-span-7">
-        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1.5 text-xs" style={{ color: token.colorTextSecondary }}>
-            <span>{shownMotion.label}</span>
-            {finishing && (
-              <Tag color="success" className="!m-0 text-xs">
-                Đang giảm tốc hạ nhiệt
-              </Tag>
-            )}
-            {stopped && (
-              <Tag color="error" className="!m-0 text-xs">
-                Đã tự dừng · Báo bác sĩ
-              </Tag>
-            )}
-            {segmentCount > 0 && !finishing && !stopped && (
-              <Tag color="gold" className="!m-0 text-xs">
-                Đoạn {(segmentIndex ?? 0) + 1}/{segmentCount}: {segmentLabel}
-                {segmentNote ? ` · ${segmentNote}` : ''}
-              </Tag>
-            )}
+    <div
+      className="flex min-w-0 flex-col justify-between rounded-xl border transition-all"
+      style={{
+        borderColor,
+        background: token.colorBgContainer,
+        boxShadow: cardShadow,
+      }}
+    >
+      <button
+        type="button"
+        onClick={onFocus}
+        className="block w-full cursor-pointer border-0 bg-transparent px-3.5 pb-2.5 pt-3 text-left"
+        style={{ color: token.colorText }}
+        title="Bấm để mở cận cảnh 3D và biểu đồ nhịp tim chi tiết"
+      >
+        {/* Row 1: Pulsing dot + Horse Name + concise exercise type */}
+        <div className="mb-2.5 flex min-w-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="relative inline-flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
+              <span
+                className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"
+                style={{ background: alert ? RED : finishing ? GOLD : '#22c55e' }}
+              />
+              <span
+                className="relative inline-flex h-2.5 w-2.5 rounded-full"
+                style={{ background: alert ? RED : finishing ? GOLD : '#22c55e' }}
+              />
+            </span>
+            <span className="truncate text-[15px] font-semibold tracking-tight">{name}</span>
           </div>
-          {!readOnly && !finishing && !stopped && <SessionControls session={session} onEnd={onEnd} onAbort={onAbort} onSimulated={onSimulated} />}
+          <span className="shrink-0 truncate text-[11px]" style={{ color: token.colorTextTertiary }}>
+            {kindLabel(session)}
+          </span>
         </div>
-        {data.length > 1 ? (
-          <div className="h-40 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
-                <CartesianGrid stroke={token.colorBorderSecondary || GRID} vertical={false} />
-                <XAxis dataKey="i" hide />
-                <YAxis
-                  domain={[60, Math.max(target.heartRateMax + 20, ...data.map((d) => d.hr + 5))]}
-                  tick={{ fontSize: 11, fill: token.colorTextTertiary || AXIS }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={44}
-                />
-                <Tooltip formatter={(v, name) => [name === 'hr' ? `${v} bpm` : `${v} km/h`, name === 'hr' ? 'Nhịp tim' : 'Tốc độ']} labelFormatter={() => ''} />
-                <ReferenceLine y={target.heartRateMax} stroke={RED} strokeDasharray="4 4" label={{ value: `ngưỡng ${target.heartRateMax}`, position: 'insideTopRight', fontSize: 11, fill: RED }} />
-                <Line type="monotone" dataKey="hr" stroke={FOREST.primary} strokeWidth={2} dot={false} isAnimationActive={false} />
-              </LineChart>
-            </ResponsiveContainer>
+
+        {/* Row 2: 3 clean scannable numeric columns (Nhịp tim | Tốc độ | Cự ly) */}
+        <div className="grid grid-cols-3 divide-x" style={{ borderColor: token.colorBorderSecondary }}>
+          <div className="pr-2" title={`Ngưỡng nhịp tim: ${f.target.heartRateMax} bpm`}>
+            <div className="text-[11px]" style={{ color: token.colorTextTertiary }}>
+              Nhịp tim
+            </div>
+            <div className="mt-0.5 flex items-baseline gap-1 tabular-nums">
+              <span
+                className="text-lg font-bold leading-none"
+                style={{ color: f.over ? '#f97316' : stopped ? RED : token.colorText }}
+              >
+                {num(f.heartRate)}
+              </span>
+              <span className="text-[11px] font-medium" style={{ color: f.over ? '#f59e0b' : token.colorTextSecondary }}>
+                bpm
+              </span>
+            </div>
           </div>
-        ) : (
-          <p className="m-0 mt-3 text-xs" style={{ color: token.colorTextTertiary }}>
-            Biểu đồ nhịp tim hiện khi cảm biến gửi lần đo thứ hai.
-          </p>
+
+          <div className="px-2.5" style={{ borderColor: token.colorBorderSecondary }} title={f.target.speed ? `Mục tiêu: ${num(f.target.speed, 1)} km/h` : 'Tốc độ hiện tại'}>
+            <div className="text-[11px]" style={{ color: token.colorTextTertiary }}>
+              Tốc độ
+            </div>
+            <div className="mt-0.5 flex items-baseline gap-1 tabular-nums">
+              <span className="text-lg font-bold leading-none">
+                {stopped ? '0' : num(f.speed, 1)}
+              </span>
+              <span className="text-[11px] font-medium" style={{ color: token.colorTextSecondary }}>
+                km/h
+              </span>
+            </div>
+          </div>
+
+          <div className="pl-2.5" style={{ borderColor: token.colorBorderSecondary }} title={`Đã chạy ${num(f.distance)}/${num(f.targetDistance)} m (${pct}%)`}>
+            <div className="text-[11px]" style={{ color: token.colorTextTertiary }}>
+              Cự ly
+            </div>
+            <div className="mt-0.5 flex items-baseline gap-1 tabular-nums">
+              <span className="text-lg font-bold leading-none">{dist.value}</span>
+              <span className="text-[11px] font-medium" style={{ color: token.colorTextSecondary }}>
+                {dist.unit}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 3: Slim gradient progress bar */}
+        <div
+          className="mt-3 h-1.5 w-full overflow-hidden rounded-full"
+          style={{ background: token.colorFillSecondary }}
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Đã chạy ${pct}% cự ly`}
+        >
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${Math.max(4, pct)}%`,
+              background: alert
+                ? 'linear-gradient(90deg, #ef4444 0%, #eab308 100%)'
+                : finishing
+                  ? 'linear-gradient(90deg, #eab308 0%, #22c55e 100%)'
+                  : 'linear-gradient(90deg, #059669 0%, #22c55e 100%)',
+            }}
+          />
+        </div>
+
+        {/* Contextual alert line only when injured / cooling down / over ceiling */}
+        {(stopped || finishing || motion?.tone === 'alert') && (
+          <div
+            className="mt-1.5 truncate text-[11px] font-semibold"
+            style={{ color: stopped || motion?.tone === 'alert' ? RED : '#10b981' }}
+          >
+            {stopped
+              ? 'Nghi chấn thương · Đang đứng bảo vệ chân đau'
+              : finishing
+                ? 'Hoàn tất cự ly · Đang giảm tốc hạ nhiệt'
+                : motion?.label}
+          </div>
         )}
-        <Text type="secondary" className="!text-[11px] mt-auto block pt-1">
-          {stopped
-            ? 'Tốc độ tụt mạnh & nhịp tim vọt: hệ thống đã tự dừng, gửi yêu cầu khám gấp cho bác sĩ và giao nhân viên chăm sóc chườm lạnh.'
-            : finishing
-              ? 'Buổi tập đã đủ cự ly — ngựa đang giảm tốc hạ nhiệt qua các nhịp phi → kiệu → đi bộ rồi dừng nghỉ.'
-              : 'Cảm biến mô phỏng gửi số liệu mỗi 5 giây (mỗi lần tương ứng 30 giây tập). Buổi tự kết thúc khi chạy đủ cự ly.'}
-        </Text>
-      </div>
+      </button>
+
+      {/* Row 4: Full-label compact trainer actions matching the broadcast control bar */}
+      {!readOnly && !finishing && !stopped && (
+        <div className="grid grid-cols-[1.35fr_1fr_0.75fr] gap-1.5 px-3.5 pb-3 pt-0.5">
+          <ScenarioButton session={session} compact block onSimulated={onSimulated} />
+          {onEnd && (
+            <Button
+              size="small"
+              block
+              className="!px-2 !text-xs font-medium"
+              onClick={() => onEnd(session)}
+              aria-label={`Kết thúc buổi của ${name}`}
+            >
+              Kết thúc
+            </Button>
+          )}
+          {onAbort && (
+            <Button
+              size="small"
+              block
+              danger
+              className="!px-2 !text-xs font-medium"
+              onClick={() => onAbort(session)}
+              aria-label={`Dừng buổi của ${name}`}
+            >
+              Dừng
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-/**
- * One running horse as a small tile: the horse and its work, heart rate against the ceiling (red above it),
- * speed against the target, the distance done and a line of the heart rate. Pressed, it opens across the
- * whole row with the 3D horse and the full chart.
- */
-function LiveTile({ session, readings, horse, surface, figures, motion, finishing, stopped, open, onToggle, readOnly, onEnd, onAbort, onSimulated }) {
+/** Full focus panel: close-up broadcast 3/4 3D horse + unified big-number KPI strip + Recharts HR chart. */
+function FocusDetailPanel({ session, readings, horse, surface, figures, motion, finishing, stopped, readOnly, onEnd, onAbort, onSimulated }) {
   const { token } = theme.useToken();
-  const f = figures;
+  const { target, heartRate, speed, distance, targetDistance, over, segmentCount, segmentIndex, segmentLabel, segmentNote } = figures;
+  const data = readings.map((r, i) => ({ i, hr: r.hr, speed: r.speed }));
+  const shownMotion = motion || { clip: 'Idle_Look', label: 'Đã bắt đầu, chờ tín hiệu cảm biến' };
   const startedAt = session.actualStartAt ? dayjs(session.actualStartAt) : null;
   const minutes = startedAt ? dayjs().diff(startedAt, 'minute') : null;
-  const pct = finishing ? 100 : share(f);
-  const alert = Boolean(f.over || stopped || motion?.tone === 'alert');
-  const border = alert ? RED : open ? token.colorPrimary : token.colorBorderSecondary;
+  const pct = finishing ? 100 : share(figures);
+  const dist = formatDistance(distance);
+  const alert = Boolean(over || stopped || motion?.tone === 'alert');
+
   return (
     <div
-      className="relative min-w-0 overflow-hidden rounded-xl border transition-shadow"
-      style={{ gridColumn: open ? '1 / -1' : undefined, borderColor: border, background: token.colorBgContainer, boxShadow: open ? token.boxShadowTertiary : undefined }}
+      className="overflow-hidden rounded-xl border"
+      style={{
+        borderColor: stopped ? RED : alert ? '#d97706' : token.colorBorderSecondary,
+        background: token.colorBgContainer,
+        boxShadow: alert ? '0 0 0 1px rgba(234, 179, 8, 0.25), 0 8px 22px -10px rgba(234, 179, 8, 0.32)' : undefined,
+      }}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className="block w-full cursor-pointer border-0 bg-transparent p-0 text-left"
-        style={{ color: token.colorText }}
-        title={open ? 'Thu gọn' : 'Bấm để xem cận cảnh 3D và biểu đồ nhịp tim'}
+      {/* Top identity & action bar */}
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 border-b px-3.5 py-2.5"
+        style={{ borderColor: token.colorBorderSecondary }}
       >
-        <div className="flex flex-col gap-1.5 px-3 py-2.5">
-          {/* The horse, its work, how long it has run. */}
-          <div className={`flex min-w-0 items-center gap-1.5 ${readOnly || open || finishing || stopped ? 'pr-6' : 'pr-24'}`}>
-            <span className="relative inline-flex h-2 w-2 shrink-0" aria-hidden="true">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: alert ? RED : finishing ? '#eab308' : FOREST.primary }} />
-              <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: alert ? RED : finishing ? '#eab308' : FOREST.primary }} />
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="relative inline-flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: alert ? RED : finishing ? GOLD : '#22c55e' }} />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ background: alert ? RED : finishing ? GOLD : '#22c55e' }} />
+          </span>
+          <span className="text-[15px] font-semibold tracking-tight">{session.horse?.name}</span>
+          <span className="text-xs" style={{ color: token.colorTextSecondary }}>
+            {kindLabel(session)}
+          </span>
+          {minutes != null && !stopped && !finishing && (
+            <span className="text-[11px] tabular-nums" style={{ color: token.colorTextTertiary }}>
+              · {minutes >= 1 ? `${minutes} phút` : 'vừa bắt đầu'}
             </span>
-            <span className="truncate text-sm font-semibold">{session.horse?.name}</span>
-            <span className="truncate text-xs" style={{ color: token.colorTextSecondary }}>
-              {kindLabel(session)}
-              {f.segmentCount > 0 ? ` · đoạn ${(f.segmentIndex ?? 0) + 1}/${f.segmentCount}` : ''}
-            </span>
-            {(stopped || finishing || open) && (
-              <span className="ml-auto shrink-0 text-[11px] tabular-nums" style={{ color: token.colorTextTertiary }}>
-                {stopped ? 'đã dừng' : finishing ? 'hạ nhiệt' : minutes == null ? '' : minutes >= 1 ? `${minutes} phút` : 'vừa bắt đầu'}
+          )}
+          {finishing && (
+            <Tag color="success" className="!m-0 text-xs">
+              Đang giảm tốc hạ nhiệt
+            </Tag>
+          )}
+          {stopped && (
+            <Tag color="error" className="!m-0 text-xs">
+              Đã tự dừng · Báo bác sĩ
+            </Tag>
+          )}
+          {segmentCount > 0 && !finishing && !stopped && (
+            <Tag color="gold" className="!m-0 text-xs">
+              Đoạn {(segmentIndex ?? 0) + 1}/{segmentCount}: {segmentLabel}
+              {segmentNote ? ` · ${segmentNote}` : ''}
+            </Tag>
+          )}
+        </div>
+        {!readOnly && !finishing && !stopped && <SessionControls session={session} onEnd={onEnd} onAbort={onAbort} onSimulated={onSimulated} />}
+      </div>
+
+      {/* Unified broadcast 3-column telemetry KPI bar + gradient progress bar (same signature style as multi-horse cards!) */}
+      <div className="border-b px-3.5 py-3" style={{ borderColor: token.colorBorderSecondary }}>
+        <div className="grid grid-cols-3 divide-x" style={{ borderColor: token.colorBorderSecondary }}>
+          <div className="pr-3" title={`Ngưỡng nhịp tim: ${target.heartRateMax} bpm`}>
+            <div className="text-[11px]" style={{ color: token.colorTextTertiary }}>
+              Nhịp tim
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-baseline gap-1 tabular-nums">
+              <span className="text-xl font-bold leading-none" style={{ color: over ? '#f97316' : stopped ? RED : token.colorText }}>
+                {num(heartRate)}
               </span>
-            )}
-          </div>
-          {/* Heart rate and speed, with the heart-rate line beside them. */}
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex shrink-0 items-baseline gap-3 tabular-nums">
-              <span className="whitespace-nowrap" style={{ color: f.over ? RED : token.colorText }} title={`Nhịp tim · ngưỡng ${f.target.heartRateMax} bpm`}>
-                <HeartFilled className="mr-1 text-xs" style={{ color: f.over ? RED : token.colorTextTertiary }} />
-                <span className="text-base font-semibold">{num(f.heartRate)}</span>
-                <span className="text-[11px] opacity-70">/{f.target.heartRateMax}</span>
+              <span className="text-xs font-medium" style={{ color: over ? '#f59e0b' : token.colorTextSecondary }}>
+                bpm
               </span>
-              <span className="whitespace-nowrap" title={f.target.speed ? `Tốc độ · mục tiêu ${num(f.target.speed, 1)} km/h` : 'Tốc độ'}>
-                <ThunderboltOutlined className="mr-1 text-xs" style={{ color: token.colorTextTertiary }} />
-                <span className="text-base font-semibold">{stopped ? '0' : num(f.speed, 1)}</span>
-                <span className="text-[11px] opacity-70"> km/h</span>
+              <span className="text-[11px]" style={{ color: token.colorTextTertiary }}>
+                / {target.heartRateMax}
               </span>
             </div>
-            <div className="min-w-[60px] flex-1">
-              <Sparkline values={readings.map((r) => r.hr)} ceiling={f.target.heartRateMax} over={f.over} color={FOREST.primary} />
+          </div>
+
+          <div className="px-3" style={{ borderColor: token.colorBorderSecondary }} title={target.speed ? `Mục tiêu: ${num(target.speed, 1)} km/h` : 'Tốc độ hiện tại'}>
+            <div className="text-[11px]" style={{ color: token.colorTextTertiary }}>
+              Tốc độ
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-baseline gap-1 tabular-nums">
+              <span className="text-xl font-bold leading-none">{stopped ? '0' : num(speed, 1)}</span>
+              <span className="text-xs font-medium" style={{ color: token.colorTextSecondary }}>
+                km/h
+              </span>
+              {target.speed ? (
+                <span className="hidden text-[11px] sm:inline" style={{ color: token.colorTextTertiary }}>
+                  · mục tiêu {num(target.speed, 1)}
+                </span>
+              ) : null}
             </div>
           </div>
-          {/* The distance done. */}
-          <div className="flex items-center gap-2">
-            <Progress className="!m-0 flex-1" percent={pct} size="small" showInfo={false} strokeColor={alert ? RED : FOREST.primary} aria-label={`Đã chạy ${pct}% cự ly`} />
-            <span className="shrink-0 text-[11px] tabular-nums" style={{ color: token.colorTextSecondary }}>
-              {num(f.distance)}/{num(f.targetDistance)} m
+
+          <div className="pl-3" style={{ borderColor: token.colorBorderSecondary }} title={`Đã chạy ${num(distance)}/${num(targetDistance)} m (${pct}%)`}>
+            <div className="text-[11px]" style={{ color: token.colorTextTertiary }}>
+              Cự ly
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-baseline gap-1 tabular-nums">
+              <span className="text-xl font-bold leading-none">{dist.value}</span>
+              <span className="text-xs font-medium" style={{ color: token.colorTextSecondary }}>
+                {dist.unit}
+              </span>
+              <span className="hidden text-[11px] sm:inline" style={{ color: token.colorTextTertiary }}>
+                / {num(targetDistance)} m ({pct}%)
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full"
+          style={{ background: token.colorFillSecondary }}
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Đã chạy ${pct}% cự ly`}
+        >
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${Math.max(4, pct)}%`,
+              background: alert
+                ? 'linear-gradient(90deg, #ef4444 0%, #eab308 100%)'
+                : finishing
+                  ? 'linear-gradient(90deg, #eab308 0%, #22c55e 100%)'
+                  : 'linear-gradient(90deg, #059669 0%, #22c55e 100%)',
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Close-up 3D broadcast view + full HR chart */}
+      <div className="grid grid-cols-1 gap-3 p-3.5 lg:grid-cols-12">
+        <div className="min-w-0 lg:col-span-6">
+          <MovingHorse3D breed={horse?.breed} color={horse?.color} motion={shownMotion} surface={surface} hour={hourOfSession(session)} height={235} />
+        </div>
+        <div className="flex min-w-0 flex-col lg:col-span-6">
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1.5 text-xs" style={{ color: token.colorTextSecondary }}>
+            <span className="font-medium" style={{ color: token.colorText }}>
+              {shownMotion.label}
+            </span>
+            <span className="tabular-nums text-[11px]" style={{ color: token.colorTextTertiary }}>
+              Đồ thị nhịp tim theo thời gian
             </span>
           </div>
-          {stopped ? (
-            <span className="text-[11px] font-semibold" style={{ color: RED }}>
-              Nghi chấn thương · Đang đứng bảo vệ chân đau
-            </span>
-          ) : finishing ? (
-            <span className="text-[11px] font-semibold text-emerald-500">
-              Hoàn tất cự ly · Đang giảm tốc hạ nhiệt
-            </span>
-          ) : motion?.tone === 'alert' ? (
-            <span className="text-[11px] font-semibold" style={{ color: RED }}>
-              {motion.label}
-            </span>
-          ) : f.over ? (
-            <span className="text-[11px] font-semibold" style={{ color: RED }}>
-              Vượt ngưỡng nhịp tim
-            </span>
-          ) : null}
+          {data.length > 1 ? (
+            <div className="h-44 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
+                  <CartesianGrid stroke={token.colorBorderSecondary || GRID} vertical={false} />
+                  <XAxis dataKey="i" hide />
+                  <YAxis
+                    domain={[60, Math.max(target.heartRateMax + 20, ...data.map((d) => d.hr + 5))]}
+                    tick={{ fontSize: 11, fill: token.colorTextTertiary || AXIS }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={44}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: token.colorBgElevated,
+                      borderColor: token.colorBorderSecondary,
+                      color: token.colorText,
+                      borderRadius: 8,
+                      fontSize: 12,
+                    }}
+                    itemStyle={{ color: token.colorText }}
+                    formatter={(v, name) => [name === 'hr' ? `${v} bpm` : `${v} km/h`, name === 'hr' ? 'Nhịp tim' : 'Tốc độ']}
+                    labelFormatter={() => ''}
+                  />
+                  <ReferenceLine y={target.heartRateMax} stroke={RED} strokeDasharray="4 4" label={{ value: `ngưỡng ${target.heartRateMax}`, position: 'insideTopRight', fontSize: 11, fill: RED }} />
+                  <Line type="monotone" dataKey="hr" stroke={FOREST.primary} strokeWidth={2.2} dot={false} isAnimationActive={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="m-0 mt-3 text-xs" style={{ color: token.colorTextTertiary }}>
+              Biểu đồ nhịp tim hiện khi cảm biến gửi lần đo thứ hai.
+            </p>
+          )}
+          <Text type="secondary" className="!text-[11px] mt-auto block pt-1.5">
+            {stopped
+              ? 'Tốc độ tụt mạnh & nhịp tim vọt: hệ thống đã tự dừng, gửi yêu cầu khám gấp cho bác sĩ và giao nhân viên chăm sóc chườm lạnh.'
+              : finishing
+                ? 'Buổi tập đã đủ cự ly — ngựa đang giảm tốc hạ nhiệt qua các nhịp phi → kiệu → đi bộ rồi dừng nghỉ.'
+                : 'Cảm biến mô phỏng gửi số liệu mỗi 5 giây (mỗi lần tương ứng 30 giây tập). Buổi tự kết thúc khi chạy đủ cự ly.'}
+          </Text>
         </div>
-      </button>
-      <span className="pointer-events-none absolute right-2.5 top-2.5 text-[10px]" style={{ color: token.colorTextTertiary }} aria-hidden="true">
-        {open ? <UpOutlined /> : <DownOutlined />}
-      </span>
-      {/* End, stop and the demo tool, beside the tile's own button rather than inside it (open, they sit by the chart). */}
-      {!readOnly && !open && !finishing && !stopped && (
-        <div className="absolute right-6 top-1">
-          <SessionControls session={session} onEnd={onEnd} onAbort={onAbort} onSimulated={onSimulated} iconOnly />
-        </div>
-      )}
-      {open && (
-        <LiveDetail
-          session={session}
-          readings={readings}
-          horse={horse}
-          surface={surface}
-          figures={f}
-          motion={motion}
-          finishing={finishing}
-          stopped={stopped}
-          readOnly={readOnly}
-          onEnd={onEnd}
-          onAbort={onAbort}
-          onSimulated={onSimulated}
-        />
-      )}
+      </div>
     </div>
   );
 }
@@ -369,36 +554,31 @@ const readFolded = () => {
 };
 
 /**
- * The sessions running right now, from the sensor feed (`sensor:reading`, sent to the horse's trainer):
- * - When 2+ horses run concurrently: renders ONE panoramic shared multi-lane 3D racetrack (`MultiHorseTrack3D`)
- *   showing EVERY running horse side-by-side simultaneously, above compact live telemetry tiles.
- * - Clicking any floating 3D horse pill or tile expands its close-up 3D view + full heart-rate chart.
- * - Supports graceful ~4s finish pull-up deceleration and 4-stage natural injury choreography (stumble -> limp ->
- *   careful halt -> guarded leg hold).
+ * Live sensor monitor for concurrent training sessions:
+ * - Multi-horse default ("Sân chạy chung 3D"): ONE panoramic curved broadcast 3D racetrack showing all
+ *   concurrent horses side-by-side with real shadows, billowing hoof dust, and floating live badges,
+ *   paired with a crisp 3-column telemetry card row right underneath (Nhịp tim | Tốc độ | Cự ly + action bar).
+ * - Focus mode ("Tiêu điểm", or single running horse): close-up broadcast 3/4 3D track + full Recharts HR chart.
+ * - Supports graceful ~4s finish pull-up deceleration and 4-stage natural injury choreography.
  */
 export default function LiveSessionMonitor({ sessions = [], horses = [], plans = [], onSessionCompleted, onEnd, onAbort, readOnly = false }) {
   const { token } = theme.useToken();
   const running = sessions.filter((s) => s.status === 'in_progress');
   const [readings, setReadings] = useState(() => Object.fromEntries(liveCache));
-  // Runs just stopped as a suspected injury: { session, at, readings }.
   const [stopped, setStopped] = useState([]);
-  // Runs that just finished normally: kept ~5.5s for natural Gallop -> Trot -> Walk -> Idle pull-up.
   const [finishing, setFinishing] = useState([]);
-  // Optimistic scenario triggers so clicking "Mô phỏng sự cố -> Chân đau" starts stumble -> limp immediately.
   const [simOverrides, setSimOverrides] = useState({});
   const [injuryTickMs, setInjuryTickMs] = useState(0);
-  // The tile opened by the viewer (null: none); undefined until they choose, when a lone horse opens by itself.
-  const [openId, setOpenId] = useState(undefined);
+  const [selectedId, setSelectedId] = useState(null);
+  const [viewMode, setViewMode] = useState('shared'); // 'shared' | 'focus'
   const [folded, setFolded] = useState(readFolded);
-  const [showSharedTrack, setShowSharedTrack] = useState(true);
   const queryClient = useQueryClient();
   const runningIds = running.map((s) => s._id).join(',');
   const horseById = new Map(horses.map((h) => [String(h._id), h]));
   const horseOf = (session) => horseById.get(String(session.horse?._id || session.horse));
-  // The track the plan trains on that day: the horse runs on it.
   const planById = new Map(plans.map((p) => [String(p._id), p]));
   const surfaceFor = (session) => surfaceOf(planById.get(String(session.trainingPlan?._id || session.trainingPlan)), session.scheduledAt);
-  // The sessions as last seen running: a stopped or finishing run has left the server list by the time socket fires.
+
   const lastSeen = useRef(new Map());
   const simRef = useRef(simOverrides);
   useEffect(() => {
@@ -432,7 +612,7 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], plans =
     return () => clearTimeout(timer);
   }, [activeStumble]);
 
-  // A run that was already going when this screen opened: fetch what the server kept of it.
+  // Fetch server-retained readings for already-running sessions.
   useEffect(() => {
     if (!runningIds) return;
     for (const id of runningIds.split(',')) {
@@ -460,7 +640,6 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], plans =
       liveCache.set(id, list);
       setReadings((prev) => ({ ...prev, [id]: list }));
     };
-    // A finished session plays its natural pull-up deceleration; an injury stop stays on stage protecting its leg.
     const onCompleted = (payload) => {
       queryClient.invalidateQueries({ queryKey: ['training-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
@@ -488,23 +667,22 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], plans =
     };
   }, [queryClient, onSessionCompleted]);
 
-  // Auto-expire stopped injury cards after 60s, and finishing cool-down horses after 5.5s.
   useEffect(() => {
     if (!stopped.length) return undefined;
     const next = Math.min(...stopped.map((x) => x.at)) + STOPPED_SHOWN_MS - Date.now();
     const timer = setTimeout(() => setStopped((prev) => prev.filter((x) => Date.now() - x.at < STOPPED_SHOWN_MS)), Math.max(0, next));
     return () => clearTimeout(timer);
   }, [stopped]);
+
   useEffect(() => {
     if (!finishing.length) return undefined;
     const next = Math.min(...finishing.map((x) => x.at)) + FINISHING_SHOWN_MS - Date.now();
     const timer = setTimeout(() => setFinishing((prev) => prev.filter((x) => Date.now() - x.at < FINISHING_SHOWN_MS)), Math.max(0, next));
     return () => clearTimeout(timer);
   }, [finishing]);
+
   const closeStopped = (id) => setStopped((prev) => prev.filter((x) => String(x.session._id) !== String(id)));
 
-  // Combine currently running + gracefully finishing + recently injury-stopped sessions onto one continuous stage
-  // so a horse never abruptly disappears or teleports onto a brand-new static canvas mid-stop.
   const runningIdSet = new Set(running.map((s) => String(s._id)));
   const activeEntries = [
     ...running.map((s) => {
@@ -541,9 +719,11 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], plans =
 
   const overCount = enriched.filter((e) => !e.stopped && e.figures.over).length;
   const multi = enriched.length >= 2;
-  const openNow = openId === undefined ? (enriched.length === 1 ? enriched[0].session._id : null) : openId;
+  const effectiveMode = multi ? viewMode : 'focus';
+  const focusedEntry = enriched.find((e) => String(e.session._id) === String(selectedId)) || enriched[0];
   const sharedSurface = enriched[0]?.surface || 'dirt';
   const sharedHour = hourOfSession(enriched[0]?.session);
+
   const trackItems = enriched.map((e) => ({
     id: String(e.session._id),
     name: e.session.horse?.name || 'Ngựa',
@@ -567,14 +747,23 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], plans =
       return !v;
     });
   };
-  const openTile = (id) => {
+
+  const focusHorse = (id) => {
     setFolded(false);
-    setOpenId((prev) => (String(prev) === String(id) ? null : id));
+    setSelectedId(id);
+    setViewMode('focus');
   };
+
+  const headerTitle = running.length > 0
+    ? multi
+      ? `Đang tập cùng khung giờ: ${running.length} ngựa`
+      : `Đang tập · ${running.length} ngựa`
+    : finishing.length > 0
+      ? 'Đang giảm tốc kết thúc buổi tập'
+      : 'Đã dừng nghi chấn thương';
 
   return (
     <section aria-label="Buổi tập đang diễn ra" className="mb-4 flex flex-col gap-2">
-      {/* A run the system stopped as a suspected injury: clear summary alert with dismiss button. */}
       {stopped.map(({ session }) => (
         <Alert
           key={session._id}
@@ -594,36 +783,38 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], plans =
       <Card
         size="small"
         className="rounded-xl"
-        styles={{ header: { minHeight: 'auto', padding: '8px 12px' }, body: { padding: folded ? 0 : 10 } }}
+        styles={{ header: { minHeight: 'auto', padding: '10px 14px' }, body: { padding: folded ? 0 : 12 } }}
         title={
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="relative inline-flex h-2 w-2" aria-hidden="true">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: overCount > 0 || stopped.length > 0 ? RED : FOREST.primary }} />
-              <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: overCount > 0 || stopped.length > 0 ? RED : FOREST.primary }} />
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className="relative inline-flex h-2.5 w-2.5" aria-hidden="true">
+              <span
+                className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"
+                style={{ background: overCount > 0 || stopped.length > 0 ? RED : '#22c55e' }}
+              />
+              <span
+                className="relative inline-flex h-2.5 w-2.5 rounded-full"
+                style={{ background: overCount > 0 || stopped.length > 0 ? RED : '#22c55e' }}
+              />
             </span>
-            <span className="text-sm font-semibold">
-              {running.length > 0 ? `Đang tập · ${running.length} ngựa` : finishing.length > 0 ? 'Đang giảm tốc kết thúc buổi tập' : 'Đã dừng nghi chấn thương'}
-            </span>
+            <span className="text-sm font-semibold tracking-tight">{headerTitle}</span>
             {overCount > 0 && (
-              <Tag color="error" className="!m-0 text-xs">
+              <Tag color="error" className="!m-0 rounded-full !px-2.5 text-xs font-medium">
                 {overCount} vượt ngưỡng nhịp tim
               </Tag>
             )}
-            {!folded && (
-              <span className="text-xs font-normal" style={{ color: token.colorTextTertiary }}>
-                {multi ? 'cập nhật mỗi 5 giây · bấm tên ngựa để mở biểu đồ chi tiết' : 'cập nhật mỗi 5 giây'}
-              </span>
-            )}
-            {/* Folded: each horse in a word, its heart rate coloured; pressing one opens it. */}
             {folded && (
               <span className="flex min-w-0 flex-wrap items-center gap-1.5">
                 {enriched.map((e) => (
                   <button
                     key={e.session._id}
                     type="button"
-                    onClick={() => openTile(e.session._id)}
+                    onClick={() => focusHorse(e.session._id)}
                     className="cursor-pointer rounded-full border px-2 py-0.5 text-xs tabular-nums"
-                    style={{ borderColor: e.figures.over || e.stopped ? RED : token.colorBorderSecondary, color: e.figures.over || e.stopped ? RED : token.colorText, background: 'transparent' }}
+                    style={{
+                      borderColor: e.figures.over || e.stopped ? RED : token.colorBorderSecondary,
+                      color: e.figures.over || e.stopped ? RED : token.colorText,
+                      background: 'transparent',
+                    }}
                   >
                     {e.session.horse?.name} · {num(e.figures.heartRate)} bpm · {e.finishing ? 100 : share(e.figures)}%
                   </button>
@@ -633,16 +824,43 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], plans =
           </div>
         }
         extra={
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             {multi && !folded && (
-              <Button
-                size="small"
-                type="text"
-                icon={showSharedTrack ? <EyeInvisibleOutlined /> : <EyeOutlined />}
-                onClick={() => setShowSharedTrack((v) => !v)}
+              <div
+                className="inline-flex items-center rounded-full border p-0.5"
+                style={{ borderRadius: 9999, borderColor: token.colorBorderSecondary, background: token.colorFillQuaternary }}
+                role="tablist"
+                aria-label="Chế độ xem buổi tập trực tiếp"
               >
-                {showSharedTrack ? 'Ẩn sân 3D' : 'Sân 3D chung'}
-              </Button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={effectiveMode === 'shared'}
+                  onClick={() => setViewMode('shared')}
+                  className="cursor-pointer rounded-full border-0 px-3 py-1 text-xs font-semibold transition-all"
+                  style={{
+                    borderRadius: 9999,
+                    background: effectiveMode === 'shared' ? GOLD : 'transparent',
+                    color: effectiveMode === 'shared' ? '#0f172a' : token.colorTextSecondary,
+                  }}
+                >
+                  Sân chạy chung 3D
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={effectiveMode === 'focus'}
+                  onClick={() => setViewMode('focus')}
+                  className="cursor-pointer rounded-full border-0 px-3 py-1 text-xs font-semibold transition-all"
+                  style={{
+                    borderRadius: 9999,
+                    background: effectiveMode === 'focus' ? GOLD : 'transparent',
+                    color: effectiveMode === 'focus' ? '#0f172a' : token.colorTextSecondary,
+                  }}
+                >
+                  Tiêu điểm
+                </button>
+              </div>
             )}
             <Button size="small" type="text" icon={folded ? <DownOutlined /> : <UpOutlined />} onClick={toggleFold}>
               {folded ? 'Mở' : 'Thu gọn'}
@@ -650,39 +868,84 @@ export default function LiveSessionMonitor({ sessions = [], horses = [], plans =
           </div>
         }
       >
-        {!folded && (
-          <div className="flex flex-col gap-2.5">
-            {multi && showSharedTrack && (
-              <MultiHorseTrack3D
-                items={trackItems}
-                surface={sharedSurface}
-                hour={sharedHour}
-                height={235}
-                selectedId={openNow}
-                onSelect={(id) => openTile(id)}
-              />
-            )}
-            <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gridAutoFlow: 'dense' }}>
+        {!folded && effectiveMode === 'shared' && (
+          <div className="flex flex-col gap-3">
+            <MultiHorseTrack3D
+              items={trackItems}
+              surface={sharedSurface}
+              hour={sharedHour}
+              height={255}
+              selectedId={focusedEntry?.session._id}
+              onSelect={(id) => focusHorse(id)}
+            />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
               {enriched.map((e) => (
-                <LiveTile
+                <LiveTelemetryCard
                   key={e.session._id}
                   session={e.session}
-                  readings={e.readings}
-                  horse={e.horse}
-                  surface={e.surface}
                   figures={e.figures}
                   motion={e.motion}
                   finishing={e.finishing}
                   stopped={e.stopped}
-                  open={openNow === e.session._id}
-                  onToggle={() => setOpenId(openNow === e.session._id ? null : e.session._id)}
+                  selected={String(focusedEntry?.session._id) === String(e.session._id)}
                   readOnly={readOnly}
+                  onFocus={() => focusHorse(e.session._id)}
                   onEnd={onEnd}
                   onAbort={onAbort}
                   onSimulated={handleSimulated}
                 />
               ))}
             </div>
+          </div>
+        )}
+
+        {!folded && effectiveMode === 'focus' && focusedEntry && (
+          <div className="flex flex-col gap-2.5">
+            {multi && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {enriched.map((e) => {
+                  const active = String(focusedEntry.session._id) === String(e.session._id);
+                  const alert = Boolean(e.figures.over || e.stopped || e.motion?.tone === 'alert');
+                  return (
+                    <button
+                      key={e.session._id}
+                      type="button"
+                      onClick={() => setSelectedId(e.session._id)}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-all"
+                      style={{
+                        borderRadius: 9999,
+                        borderColor: active ? GOLD : alert ? RED : token.colorBorderSecondary,
+                        background: active ? 'rgba(234, 179, 8, 0.14)' : token.colorBgContainer,
+                        color: token.colorText,
+                      }}
+                    >
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ background: alert ? RED : e.finishing ? GOLD : '#22c55e' }}
+                      />
+                      <span>{e.session.horse?.name}</span>
+                      <span className="tabular-nums opacity-75">
+                        · {num(e.figures.heartRate)} bpm
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <FocusDetailPanel
+              session={focusedEntry.session}
+              readings={focusedEntry.readings}
+              horse={focusedEntry.horse}
+              surface={focusedEntry.surface}
+              figures={focusedEntry.figures}
+              motion={focusedEntry.motion}
+              finishing={focusedEntry.finishing}
+              stopped={focusedEntry.stopped}
+              readOnly={readOnly}
+              onEnd={onEnd}
+              onAbort={onAbort}
+              onSimulated={handleSimulated}
+            />
           </div>
         )}
       </Card>

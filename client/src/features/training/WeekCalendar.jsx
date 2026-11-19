@@ -203,7 +203,7 @@ function SessionChip({ session, replaced = [], focused = false, onStart, onPreCh
         type="button"
         data-focus={focused ? 'session' : undefined}
         aria-label={`${kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}, ${slotLabel(session.scheduledAt)} ${timeWindow}, ${rescheduled ? 'Đã xếp lại lịch' : status.label}`}
-        className={`w-full cursor-pointer rounded-md border border-black/10 border-l-[3px] ${status.accent} ${status.fill} px-1.5 py-0.5 text-left transition-shadow hover:shadow-xs ${focused ? 'ring-2 ring-[var(--st-action,#EAB308)] ring-offset-1 shadow-sm' : ''} ${session.status === 'cancelled' ? 'opacity-60 line-through' : ''}`}
+        className={`w-full cursor-pointer rounded-md border border-black/10 border-l-[3px] ${status.accent} ${status.fill} px-2 py-1 text-left transition-shadow hover:shadow-xs ${focused ? 'ring-2 ring-[var(--st-action,#EAB308)] ring-offset-1 shadow-sm' : ''} ${session.status === 'cancelled' ? 'opacity-60 line-through' : ''}`}
       >
         <div className="flex flex-wrap items-baseline justify-between gap-x-1 text-[11px] leading-4">
           <span className="whitespace-nowrap font-semibold text-gray-900">{kind?.short || kind?.label || OBJECTIVE_LABELS[session.objective] || 'Buổi tập'}</span>
@@ -313,16 +313,16 @@ export default function WeekCalendar({
       ) : !shown.length ? (
         <p className="light-surface-box m-0 px-4 py-3 text-sm text-gray-600">Không có ngựa nào tên “{search}”.</p>
       ) : (
-        // Scrolls inside its frame when the club is large: the day row and the horse column stay put.
-        <div className="light-surface-box max-h-[calc(100vh-230px)] min-h-[240px] overflow-auto bg-white">
+        // Expands comfortably across the full viewport height (no clipped inner scroll box leaving empty whitespace below).
+        <div className="light-surface-box min-h-[calc(100vh-310px)] overflow-x-auto bg-white">
           <table className="w-full min-w-[860px] table-fixed border-collapse text-sm">
             <thead>
               <tr>
-                <th className="wc-sticky sticky left-0 top-0 z-[3] w-[168px] border-b border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-gray-700">Ngựa</th>
+                <th className="wc-sticky sticky left-0 top-0 z-[3] w-[176px] border-b border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] px-3.5 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-700">Ngựa</th>
                 {days.map((d) => {
                   const today = d.date.isSame(dayjs(), 'day');
                   return (
-                    <th key={d.day} className={`wc-sticky sticky top-0 z-[2] border-b px-1.5 py-2.5 text-left text-xs ${today ? 'border-[var(--st-action,#EAB308)] bg-[var(--st-primary-soft,#FEF3C7)] font-bold text-[var(--st-ink,#0F172A)]' : 'border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] font-bold text-gray-600'}`}>
+                    <th key={d.day} className={`wc-sticky sticky top-0 z-[2] border-b px-2 py-3 text-left text-xs ${today ? 'border-[var(--st-action,#EAB308)] bg-[var(--st-primary-soft,#FEF3C7)] font-bold text-[var(--st-ink,#0F172A)]' : 'border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] font-bold text-gray-600'}`}>
                       <span>{d.short}</span> <span className={`tabular-nums ${today ? '' : 'font-normal text-gray-500'}`}>{d.date.format('DD/MM')}</span>
                       {today && <span className="ml-1 inline-block whitespace-nowrap rounded bg-[var(--st-action,#EAB308)] px-1.5 py-px text-[10px] font-bold text-[var(--st-action-ink,#0F172A)]">Hôm nay</span>}
                     </th>
@@ -337,7 +337,7 @@ export default function WeekCalendar({
                 return (
                   <tr key={horse?._id} className="group align-top">
                     {/* The horse on one line (its race form a dot), what it is building to on a second, small. */}
-                    <td className="wc-sticky sticky left-0 z-[1] bg-white px-3 py-2 group-hover:bg-[var(--st-hover,#F1F5F9)]">
+                    <td className="wc-sticky sticky left-0 z-[1] bg-white px-3.5 py-3 group-hover:bg-[var(--st-hover,#F1F5F9)]">
                       <div className="flex items-center gap-1.5">
                         <RaceFormDot form={plan?.progress?.form} />
                         <Link to={`?horse=${horse?._id}`} title="Xem lịch của riêng ngựa này" className="min-w-0 truncate text-[13px] font-bold !text-[var(--st-ink,#0F172A)] hover:!text-[var(--st-primary,#B45309)]">
@@ -393,8 +393,8 @@ export default function WeekCalendar({
                       const planned = locked ? [] : due;
                       const today = d.date.isSame(dayjs(), 'day');
                       return (
-                        <td key={d.day} className={`px-1 py-1.5 ${today ? 'bg-[var(--st-primary-soft,#ecfdf5)]' : d.date.isBefore(dayjs(), 'day') ? 'bg-black/[0.015]' : ''}`}>
-                          <div className="flex flex-col gap-1">
+                        <td key={d.day} className={`px-1.5 py-2.5 ${today ? 'bg-[var(--st-primary-soft,#ecfdf5)]' : d.date.isBefore(dayjs(), 'day') ? 'bg-black/[0.015]' : ''}`}>
+                          <div className="flex flex-col gap-1.5">
                             {list.map((s) => (
                               <SessionChip
                                 key={s._id}
@@ -452,9 +452,6 @@ export default function WeekCalendar({
           </table>
         </div>
       )}
-      <p className="m-0 border-t border-[var(--st-border,#CBD5E1)] bg-[var(--st-sunk,#F1F5F9)] px-3.5 py-2 text-[11px] font-medium text-gray-500">
-        Viền nét đứt: buổi dự kiến theo kế hoạch, chưa xếp. Chấm cạnh tên: phong độ dự giải (rê chuột để xem).
-      </p>
     </div>
   );
 }

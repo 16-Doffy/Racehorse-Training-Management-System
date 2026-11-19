@@ -442,19 +442,42 @@ export default function TrainingSessionPage() {
     onCreateChange(values.objective ? { objective: values.objective } : { kind: values.kind }, values);
   };
 
-  // Start times in one press: the club's morning and afternoon slots, today and tomorrow.
+  // Start times in one press: immediate upcoming slot (+5 min) for quick booking/demo, next free slot after
+  // today's runs, plus the club's morning and afternoon slots (today & tomorrow).
+  const horseSessions = horseSessionsData?.data || [];
   const startChoices = (() => {
     const now = dayjs();
     const at = (day, hhmm) => {
       const [h, m] = String(hhmm).split(':').map(Number);
       return day.hour(h).minute(m || 0).second(0).millisecond(0);
     };
-    return [
+    const soon = now.add(5, 'minute').second(0).millisecond(0);
+    const items = [{ label: 'Sắp tới', value: soon }];
+    // If this horse already has sessions today, suggest a clean slot 15 minutes after its latest one ends.
+    if (draft.horse) {
+      const todayDay = horseDay(horseSessions, draft.horse, now);
+      if (todayDay.all.length > 0) {
+        const latestEnd = todayDay.all.reduce((max, s) => {
+          const end = s.actualEndAt
+            ? dayjs(s.actualEndAt)
+            : s.endAt
+              ? dayjs(s.endAt)
+              : dayjs(s.actualStartAt || s.scheduledAt).add(Number(s.prescription?.durationMinutes) || 60, 'minute');
+          return end.isAfter(max) ? end : max;
+        }, now);
+        const nextFree = latestEnd.add(15, 'minute').second(0).millisecond(0);
+        if (nextFree.isAfter(soon.add(5, 'minute')) && nextFree.hour() < 21) {
+          items.push({ label: 'Trống tiếp', value: nextFree });
+        }
+      }
+    }
+    const fixed = [
       { label: 'Sáng nay', value: at(now, policy.morningTime) },
       { label: 'Chiều nay', value: at(now, policy.afternoonTime) },
       { label: 'Sáng mai', value: at(now.add(1, 'day'), policy.morningTime) },
       { label: 'Chiều mai', value: at(now.add(1, 'day'), policy.afternoonTime) },
     ].filter((c) => c.value.isAfter(now.add(10, 'minute')));
+    return [...items, ...fixed];
   })();
   const pickStart = (value) => {
     createForm.setFieldValue('scheduledAt', value);
@@ -464,7 +487,6 @@ export default function TrainingSessionPage() {
 
   // The horse's day at the time picked (sessionDay.js): what it already has, and whether this booking fits.
   const draftMinutes = draftAt && draftEndAt && dayjs(draftEndAt).isAfter(draftAt) ? dayjs(draftEndAt).diff(draftAt, 'minute') : draftDuration;
-  const horseSessions = horseSessionsData?.data || [];
   const clashAt = (at) => (draft.horse && at ? dayClash(horseSessions, draft.horse, { at, minutes: draftMinutes }) : null);
   const draftClash = clashAt(draftAt);
   const draftDay = draft.horse && draftAt ? horseDay(horseSessions, draft.horse, draftAt) : null;
@@ -1417,7 +1439,11 @@ export default function TrainingSessionPage() {
                   <Form.Item
                     name="endAt"
                     label="Giờ kết thúc dự kiến"
-                    extra="Tự tính từ thời lượng hoặc chọn trực tiếp."
+                    extra={
+                      draftAt && draftEndAt && dayjs(draftEndAt).isAfter(draftAt)
+                        ? `Khung đặt sân ${dayjs(draftEndAt).diff(draftAt, 'minute')} phút (tự tính từ đoạn ghép/thời lượng). Khi chạy mô phỏng: 5s thực = 30s tập.`
+                        : 'Tự tính từ thời lượng/đoạn ghép, hoặc để trống hệ thống giữ khung 30–75 phút theo loại bài (mô phỏng: 5s thực = 30s tập).'
+                    }
                   >
                     <DatePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
                   </Form.Item>
@@ -1698,20 +1724,22 @@ export default function TrainingSessionPage() {
             </Col>
             <Col xs={24} lg={9}>
               <div className="lg:sticky lg:top-0">
-                {/* The picked horse, in its own coat, doing the picked work at the target speed. */}
-                {draftKind && (
-                  <div className="mb-3">
-                    <MovingHorse3D
-                      breed={draftHorse?.breed}
-                      color={draftHorse?.color}
-                      motion={motionOfKind(draftKind, draftSpeed)}
-                      surface={surfaceOf((plansData?.data || []).find((p) => p._id === draftPlanId), draft.scheduledAt || undefined)}
-                      hour={hourOf(draft.scheduledAt)}
-                      height={170}
-                      compact
-                    />
-                  </div>
-                )}
+                {/* Always keep the 3D horse preview visible beside ReadinessPanel: stands alert until a workout kind is chosen, then runs live at the target speed. */}
+                <div className="mb-3">
+                  <MovingHorse3D
+                    breed={draftHorse?.breed}
+                    color={draftHorse?.color}
+                    motion={
+                      draftKind
+                        ? motionOfKind(draftKind, draftSpeed)
+                        : { clip: 'Idle_Look', label: draftHorse ? `${draftHorse.name} · chọn loại buổi để xem dáng chạy` : 'Chọn ngựa và loại buổi tập' }
+                    }
+                    surface={surfaceOf((plansData?.data || []).find((p) => p._id === draftPlanId), draft.scheduledAt || undefined)}
+                    hour={hourOf(draft.scheduledAt)}
+                    height={175}
+                    compact
+                  />
+                </div>
                 <ReadinessPanel
                   horse={draft.horse}
                   scheduledAt={draft.scheduledAt}

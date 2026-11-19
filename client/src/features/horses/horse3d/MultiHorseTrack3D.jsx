@@ -4,8 +4,8 @@ import { coatFor } from './horseBreeds';
 import { MOVING_HORSE } from './horseMotion';
 import ModelCredit from './ModelCredit';
 
-const GLASS = { background: 'rgba(9,13,20,.72)', border: '1px solid rgba(255,255,255,.16)', backdropFilter: 'blur(6px)' };
-const SURFACE_WORDS = { turf: 'mặt cỏ', dirt: 'mặt đất', sand: 'mặt cát', synthetic: 'mặt tổng hợp' };
+const GLASS = { background: 'rgba(12, 18, 28, 0.78)', border: '1px solid rgba(255,255,255,0.16)', backdropFilter: 'blur(8px)' };
+const SURFACE_WORDS = { turf: 'Sân cỏ · Turf', dirt: 'Sân đất · Dirt', sand: 'Sân cát · Sand', synthetic: 'Sân tổng hợp · Polytrack' };
 
 /**
  * Panoramic shared 3D racetrack displaying ALL concurrent running horses side-by-side
@@ -115,15 +115,12 @@ export default function MultiHorseTrack3D({
           style={{ opacity: status === 'ready' ? 1 : 0, transition: 'opacity .35s ease', touchAction: 'pan-y' }}
         />
 
-        {/* Top-left compact live track indicator */}
+        {/* Subtle bottom-left surface label so the curved track bend on top-left stays completely unobstructed */}
         {status === 'ready' && (
-          <div className="pointer-events-none absolute left-3 top-2.5 flex flex-wrap items-center gap-1.5">
-            <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white" style={GLASS}>
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              Sân chạy chung 3D · {mappedItems.length} làn{overflowCount > 0 ? ` (+${overflowCount})` : ''}
-            </span>
-            <span className="hidden sm:inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] text-white/90" style={GLASS}>
-              {SURFACE_WORDS[surface] || 'mặt đất'}
+          <div className="pointer-events-none absolute bottom-2.5 left-3 flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium text-white/95" style={GLASS}>
+              {SURFACE_WORDS[surface] || 'Sân đất · Dirt'}
+              {overflowCount > 0 ? ` · +${overflowCount} ngựa` : ''}
             </span>
           </div>
         )}
@@ -146,6 +143,7 @@ export default function MultiHorseTrack3D({
                 style={{
                   ...GLASS,
                   opacity: 0,
+                  borderRadius: 9999,
                   borderColor: alert ? 'rgba(239,68,68,0.85)' : isSelected ? '#eab308' : 'rgba(255,255,255,0.2)',
                   boxShadow: isSelected ? '0 0 0 1.5px rgba(234,179,8,0.55)' : undefined,
                 }}

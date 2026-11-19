@@ -5,9 +5,8 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { MOVING_HORSE } from './horseMotion';
 import {
-  createSurfaceMaps,
-  createInfieldTexture,
-  createTreelineBackdrop,
+  createSkyEnvironment,
+  createCurvedTrackRig,
   createHoofParticles,
 } from './trackSurfacePbr';
 
@@ -35,14 +34,6 @@ const SURFACES = {
 const TILE_M = 4; // one texture tile along the track, in metres
 const POST_EVERY = 3; // rail posts, in metres
 const TRACK_LENGTH = 60;
-// The long grass of the pasture: one patch of blades repeated along the field, so it can stream back
-// with the horse's walk by shifting the whole field less than a patch.
-const GRASS_PATCH = 4; // metres along the field
-const GRASS_PATCHES = 9;
-const GRASS_PER_PATCH = 1900;
-// From near the camera to the far rail; the grass is cut short towards the camera (from `mown` on), where
-// long blades would stand taller than the horse.
-const GRASS_DEPTH = { near: 3.2, far: -3.3, mown: 1.0 };
 // The bones bent by hand, by the start of their names (the exporter adds numbers). The rig names them
 // after a human arm and leg, one joint off (heights measured standing): a foreleg's UpperArm turns at
 // the elbow (0.8 m), Forearm at the knee (0.45 m), Hand at the fetlock (0.15 m); a hind leg's Thing at
@@ -68,14 +59,9 @@ export const NECK = 'BN_Neck_00';
 // at LF 0, RH 0.175, RF 0.425, LH 0.75 of its cycle (measured).
 const TROT_SHIFT = { LF: 0, RH: -0.24, RF: 0.075, LH: -0.325 };
 
-// The pasture's tree and house, loaded with the pasture only (credits: PASTURE_CREDIT, horseMotion.js).
-// The maple: "Maple tree" by atrodler, its 2,071 pieces merged into a trunk and a crown of leaves. The
-// house: "Farm House" by BoredPain666, its 4096 px texture brought down to 1024. Both Sketchfab, CC BY 4.0.
+// Maple tree model along the racecourse infield ("Maple tree" by atrodler, Sketchfab CC BY 4.0).
 const MAPLE_TREE = `${import.meta.env.BASE_URL}models/maple-tree.glb`;
-const FARM_HOUSE = `${import.meta.env.BASE_URL}models/farm-house.glb`;
 const TREE_HEIGHT = 5.8; // metres, against a 1.6 m horse
-const HOUSE_WIDTH = 9;
-const HOUSE_TURN = Math.PI - 0.5; // which side of the house faces the camera
 const scenery = new Map();
 /** A model of the pasture, loaded once for every stage. */
 function loadScenery(src) {
@@ -166,269 +152,211 @@ export function surfaceTexture(kind) {
 }
 
 /**
- * The pasture's blades: thin tapered strips, a few hundred per square metre, each its own height, lean
- * and green. The wind is in the vertex shader (the tip moves most, the root not at all), so waving costs
- * nothing on the CPU. `time` is the uniform the stage moves on each frame.
+ * Deep emerald-and-obsidian 3D Studio backdrop texture (matches Horse3D & HorseInjuryViewer studio aesthetic).
  */
-function grassParts(time) {
-  const SEGMENTS = 4;
-  const positions = [];
-  const colors = [];
-  const indices = [];
-  const root = new THREE.Color('#24451a');
-  const tip = new THREE.Color('#9ccc5a');
-  for (let i = 0; i <= SEGMENTS; i += 1) {
-    const h = i / SEGMENTS; // 0 at the root, 1 at the tip
-    const half = 0.5 * (1 - h) ** 0.8;
-    const bend = 0.18 * h * h; // a natural droop forward
-    positions.push(-half, h, bend, half, h, bend);
-    const c = root.clone().lerp(tip, h);
-    colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
-    if (i < SEGMENTS) {
-      const a = i * 2;
-      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-    }
-  }
-  const blade = new THREE.BufferGeometry();
-  blade.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  blade.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  blade.setIndex(indices);
-  blade.computeVertexNormals();
+function makeStudioBackdropTexture() {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 1024;
+  const g = c.getContext('2d');
+  const bg = g.createLinearGradient(0, 0, 0, 1024);
+  bg.addColorStop(0, '#02120d');
+  bg.addColorStop(0.52, '#06271d');
+  bg.addColorStop(1, '#020e0a');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, 1024, 1024);
 
-  const material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = time;
-    shader.vertexShader = `uniform float uTime;
-${shader.vertexShader}`.replace(
-      '#include <project_vertex>',
-      `vec4 mvPosition = instanceMatrix * vec4(transformed, 1.0);
-      // Gusts roll along the field: the same wind for every blade, a little out of step with its neighbours.
-      float sway = position.y * position.y;
-      float gust = sin(uTime * 1.6 - mvPosition.x * 0.7 + mvPosition.z * 0.3) * 0.65 + sin(uTime * 3.1 + mvPosition.x * 2.3 + mvPosition.z * 1.7) * 0.2;
-      mvPosition.x += (0.06 + gust * 0.09) * sway;
-      mvPosition.z += sin(uTime * 2.2 + mvPosition.x * 1.3) * 0.025 * sway;
-      mvPosition = modelViewMatrix * mvPosition;
-      gl_Position = projectionMatrix * mvPosition;`,
-    );
-  };
-  return { blade, material };
+  const glow = g.createRadialGradient(512, 430, 30, 512, 430, 480);
+  glow.addColorStop(0, 'rgba(20, 130, 92, 0.42)');
+  glow.addColorStop(0.5, 'rgba(10, 72, 52, 0.16)');
+  glow.addColorStop(1, 'rgba(2, 14, 10, 0)');
+  g.fillStyle = glow;
+  g.fillRect(0, 0, 1024, 1024);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
-/** The field's grass: a strip along the track, one patch repeated, streaming back as the horse walks. */
-function makeGrass(time) {
-  const { blade, material } = grassParts(time);
-  const count = GRASS_PER_PATCH * GRASS_PATCHES;
-  const grass = new THREE.InstancedMesh(blade, material, count);
-  grass.frustumCulled = false;
-  let seed = 11;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  // One patch, then the same patch side by side: the field repeats every GRASS_PATCH metres.
-  const patch = Array.from({ length: GRASS_PER_PATCH }, () => {
-    const z = GRASS_DEPTH.far + rnd() * (GRASS_DEPTH.near - GRASS_DEPTH.far);
-    const mown = z > GRASS_DEPTH.mown ? 1 - 0.7 * ((z - GRASS_DEPTH.mown) / (GRASS_DEPTH.near - GRASS_DEPTH.mown)) : 1;
-    return {
-      x: rnd() * GRASS_PATCH,
-      z,
-      turn: rnd() * Math.PI * 2,
-      height: (0.12 + rnd() * 0.18) * mown,
-      width: 0.035 + rnd() * 0.03,
-      shade: 0.8 + rnd() * 0.35,
-    };
+/**
+ * High-precision 3D Studio Turntable & Biomechanics Calibration Dial floor texture.
+ */
+function makeStudioDialTexture(maxAniso = 8) {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 1024;
+  const g = c.getContext('2d');
+  const cx = 512;
+  const cy = 512;
+
+  // Radial spotlight glow on the studio floor
+  const spot = g.createRadialGradient(cx, cy, 20, cx, cy, 480);
+  spot.addColorStop(0, 'rgba(212, 175, 55, 0.22)');
+  spot.addColorStop(0.32, 'rgba(16, 120, 86, 0.20)');
+  spot.addColorStop(0.7, 'rgba(6, 42, 31, 0.08)');
+  spot.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  g.fillStyle = spot;
+  g.fillRect(0, 0, 1024, 1024);
+
+  // Subtle concentric calibration rings
+  const rings = [
+    { r: 190, width: 1.5, color: 'rgba(212, 175, 55, 0.32)' },
+    { r: 310, width: 2.5, color: 'rgba(212, 175, 55, 0.52)' },
+    { r: 332, width: 1.2, color: 'rgba(52, 211, 153, 0.28)' },
+    { r: 445, width: 1.5, color: 'rgba(212, 175, 55, 0.22)' },
+  ];
+  for (const ring of rings) {
+    g.beginPath();
+    g.arc(cx, cy, ring.r, 0, Math.PI * 2);
+    g.strokeStyle = ring.color;
+    g.lineWidth = ring.width;
+    g.stroke();
+  }
+
+  // Precision degree tick marks around the main 310px ring
+  for (let deg = 0; deg < 360; deg += 5) {
+    const rad = (deg * Math.PI) / 180;
+    const major = deg % 30 === 0;
+    const mid = deg % 15 === 0;
+    const r0 = 310;
+    const r1 = major ? 330 : mid ? 323 : 317;
+    g.beginPath();
+    g.moveTo(cx + Math.cos(rad) * r0, cy + Math.sin(rad) * r0);
+    g.lineTo(cx + Math.cos(rad) * r1, cy + Math.sin(rad) * r1);
+    g.strokeStyle = major ? 'rgba(250, 204, 21, 0.65)' : 'rgba(212, 175, 55, 0.28)';
+    g.lineWidth = major ? 2.5 : 1.2;
+    g.stroke();
+  }
+
+  // Subtle cross-hair biomechanics alignment axes
+  g.strokeStyle = 'rgba(52, 211, 153, 0.16)';
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.moveTo(cx - 440, cy);
+  g.lineTo(cx + 440, cy);
+  g.moveTo(cx, cy - 440);
+  g.lineTo(cx, cy + 440);
+  g.stroke();
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAniso;
+  return tex;
+}
+
+/**
+ * Streaming subtle grid strips under the turntable when the horse walks/trots in studio mode.
+ */
+function makeStudioMotionGridTexture(maxAniso = 8) {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 512;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 512, 512);
+  g.strokeStyle = 'rgba(52, 211, 153, 0.14)';
+  g.lineWidth = 2;
+  for (let x = 0; x < 512; x += 64) {
+    g.beginPath();
+    g.moveTo(x, 40);
+    g.lineTo(x, 472);
+    g.stroke();
+  }
+  for (let y = 64; y <= 448; y += 128) {
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(512, y);
+    g.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAniso;
+  return tex;
+}
+
+/**
+ * Sleek 3D Equine Studio Showroom & Biomechanics Podium for HorseDetailPage (/horses/:id).
+ * Matches the dark-emerald & gold studio aesthetic of Horse3D.jsx and HorseInjuryViewer.jsx
+ * with zero cartoon buildings, fences, or roads.
+ */
+function createStudioBiomechanicsPodium(maxAniso) {
+  const group = new THREE.Group();
+
+  // Subtle physical podium base cylinder under the horse (no infinite horizon plane -> zero horizon line!)
+  const plinthGeo = new THREE.CylinderGeometry(2.75, 2.95, 0.04, 64);
+  const plinthMat = new THREE.MeshStandardMaterial({
+    color: '#041f16',
+    roughness: 0.5,
+    metalness: 0.2,
   });
-  const m = new THREE.Matrix4();
-  const rotation = new THREE.Quaternion();
-  const up = new THREE.Vector3(0, 1, 0);
-  const color = new THREE.Color();
-  let i = 0;
-  for (let k = 0; k < GRASS_PATCHES; k += 1) {
-    const start = (k - Math.floor(GRASS_PATCHES / 2)) * GRASS_PATCH;
-    for (const b of patch) {
-      rotation.setFromAxisAngle(up, b.turn);
-      m.compose(new THREE.Vector3(start + b.x, 0, b.z), rotation, new THREE.Vector3(b.width, b.height, b.width));
-      grass.setMatrixAt(i, m);
-      grass.setColorAt(i, color.setScalar(b.shade));
-      i += 1;
-    }
-  }
-  grass.instanceMatrix.needsUpdate = true;
-  return grass;
-}
+  const plinth = new THREE.Mesh(plinthGeo, plinthMat);
+  plinth.position.y = -0.022;
+  plinth.receiveShadow = true;
+  group.add(plinth);
 
-// The round paddock of a horse at rest: looked at from any side it is the same field, fenced all round.
-const PADDOCK = { radius: 8.5, posts: 30, inner: 4.5, walk: 4.2 };
+  // Thin gold rim ring around the podium edge
+  const rimGeo = new THREE.RingGeometry(2.72, 2.76, 64);
+  const rimMat = new THREE.MeshBasicMaterial({
+    color: '#d4af37',
+    transparent: true,
+    opacity: 0.62,
+    side: THREE.DoubleSide,
+  });
+  const rim = new THREE.Mesh(rimGeo, rimMat);
+  rim.rotation.x = -Math.PI / 2;
+  rim.position.y = 0.002;
+  group.add(rim);
 
-/** The paddock's grass: long round the horse, shorter towards the fence. */
-function makePaddockGrass(time) {
-  const { blade, material } = grassParts(time);
-  const near = 6500;
-  const far = 7500;
-  const grass = new THREE.InstancedMesh(blade, material, near + far);
-  grass.frustumCulled = false;
-  let seed = 23;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const m = new THREE.Matrix4();
-  const rotation = new THREE.Quaternion();
-  const up = new THREE.Vector3(0, 1, 0);
-  const color = new THREE.Color();
-  for (let i = 0; i < near + far; i += 1) {
-    const inner = i < near;
-    const r = inner ? PADDOCK.inner * Math.sqrt(rnd()) : Math.sqrt(PADDOCK.inner ** 2 + rnd() * ((PADDOCK.radius - 0.2) ** 2 - PADDOCK.inner ** 2));
-    const a = rnd() * Math.PI * 2;
-    const toFence = inner ? 0 : (r - PADDOCK.inner) / (PADDOCK.radius - PADDOCK.inner);
-    const height = inner ? 0.14 + rnd() * 0.18 : (0.07 + rnd() * 0.13) * (1 - 0.4 * toFence);
-    const width = 0.035 + rnd() * 0.03;
-    rotation.setFromAxisAngle(up, rnd() * Math.PI * 2);
-    m.compose(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r), rotation, new THREE.Vector3(width, height, width));
-    grass.setMatrixAt(i, m);
-    grass.setColorAt(i, color.setScalar(0.8 + rnd() * 0.35));
-  }
-  grass.instanceMatrix.needsUpdate = true;
-  return grass;
-}
+  // Studio calibration dial disc
+  const dialTex = makeStudioDialTexture(maxAniso);
+  const dialGeo = new THREE.PlaneGeometry(5.5, 5.5);
+  const dialMat = new THREE.MeshBasicMaterial({
+    map: dialTex,
+    transparent: true,
+    depthWrite: false,
+  });
+  const dial = new THREE.Mesh(dialGeo, dialMat);
+  dial.rotation.x = -Math.PI / 2;
+  dial.position.y = 0.003;
+  group.add(dial);
 
-/**
- * A post-and-rail fence round the paddock: posts every couple of metres, two rails between them, and a
- * braced gate in the bay nearest `gateAngle` (radians round the paddock, towards the farm house).
- */
-function makePaddockFence(material, gateAngle) {
-  const { radius, posts: n } = PADDOCK;
-  const fence = new THREE.Group();
-  const bay = ((Math.round((gateAngle / (Math.PI * 2)) * n - 0.5) % n) + n) % n;
-  const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.11, 1.15, 0.11), material, n);
-  const rails = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.08, 0.05), material, n * 2);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const up = new THREE.Vector3(0, 1, 0);
-  for (let i = 0; i < n; i += 1) {
-    const a = (i / n) * Math.PI * 2;
-    const b = ((i + 1) / n) * Math.PI * 2;
-    const p = new THREE.Vector3(Math.cos(a) * radius, 0.575, Math.sin(a) * radius);
-    const next = new THREE.Vector3(Math.cos(b) * radius, 0, Math.sin(b) * radius);
-    posts.setMatrixAt(i, m.compose(p, q.identity(), new THREE.Vector3(1, 1, 1)));
-    const length = Math.hypot(next.x - p.x, next.z - p.z);
-    q.setFromAxisAngle(up, -Math.atan2(next.z - p.z, next.x - p.x));
-    if (i === bay) {
-      // The gate: three bars and a brace, in lighter wood, across the bay.
-      const gate = new THREE.Group();
-      const gateWood = new THREE.MeshStandardMaterial({ color: '#9a7048', roughness: 0.8 });
-      for (const y of [0.35, 0.68, 1.0]) {
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(length - 0.16, 0.07, 0.05), gateWood);
-        bar.position.y = y;
-        gate.add(bar);
-      }
-      const brace = new THREE.Mesh(new THREE.BoxGeometry(Math.hypot(length - 0.2, 0.65), 0.06, 0.05), gateWood);
-      brace.position.y = 0.68;
-      brace.rotation.z = Math.atan2(0.65, length - 0.2);
-      gate.add(brace);
-      gate.position.set((p.x + next.x) / 2, 0, (p.z + next.z) / 2);
-      gate.quaternion.copy(q);
-      fence.add(gate);
-    }
-    for (const [k, y] of [[0, 0.55], [1, 1.02]]) {
-      const scale = i === bay ? new THREE.Vector3(0, 0, 0) : new THREE.Vector3(length + 0.06, 1, 1);
-      rails.setMatrixAt(i * 2 + k, m.compose(new THREE.Vector3((p.x + next.x) / 2, y, (p.z + next.z) / 2), q, scale));
-    }
-  }
-  posts.instanceMatrix.needsUpdate = true;
-  rails.instanceMatrix.needsUpdate = true;
-  fence.add(posts, rails);
-  return fence;
-}
+  // Streaming biomechanics treadmill grid inside the podium when the horse walks/trots
+  const gridTex = makeStudioMotionGridTexture(maxAniso);
+  gridTex.repeat.set(3, 1);
+  const gridGeo = new THREE.PlaneGeometry(3.8, 1.8);
+  const gridMat = new THREE.MeshBasicMaterial({
+    map: gridTex,
+    transparent: true,
+    depthWrite: false,
+  });
+  const grid = new THREE.Mesh(gridGeo, gridMat);
+  grid.rotation.x = -Math.PI / 2;
+  grid.position.y = 0.004;
+  group.add(grid);
 
-/**
- * What surrounds the paddock, so every side of it has something to look at: a low ridge of hills and
- * a treeline on the horizon, the dirt track from the gate to the farm house, round hay bales and a
- * grain silo by the house, a water trough inside the fence. `house` is [x, z] of the farm house.
- */
-function makeFarmProps(house) {
-  const farm = new THREE.Group();
-  let seed = 41;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const houseAngle = Math.atan2(house[1], house[0]);
+  const backdropTex = makeStudioBackdropTexture();
 
-  // Hills: a low, overlapping ridge all round, green, behind the trees.
-  const hillMaterial = new THREE.MeshStandardMaterial({ color: '#3d6a30', roughness: 1 });
-  const dome = new THREE.SphereGeometry(1, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2);
-  for (let i = 0; i < 16; i += 1) {
-    const a = (i / 16) * Math.PI * 2 + rnd() * 0.2;
-    const r = 27 + rnd() * 7;
-    const hill = new THREE.Mesh(dome, hillMaterial);
-    hill.scale.set(9 + rnd() * 8, 2 + rnd() * 2.5, 6 + rnd() * 4);
-    hill.position.set(Math.cos(a) * r, -0.4, Math.sin(a) * r);
-    hill.rotation.y = -a;
-    farm.add(hill);
-  }
-
-  // A treeline: dark conifers in loose clumps, leaving the view to the house open.
-  const trees = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), new THREE.MeshStandardMaterial({ color: '#2c5427', roughness: 1 }), 80);
-  const treeColor = new THREE.Color();
-  let n = 0;
-  while (n < 80) {
-    const a = rnd() * Math.PI * 2;
-    if (Math.abs(Math.atan2(Math.sin(a - houseAngle), Math.cos(a - houseAngle))) < 0.35) continue;
-    const r = 17 + rnd() * 7;
-    const h = 2.6 + rnd() * 2.4;
-    m.compose(new THREE.Vector3(Math.cos(a) * r, h / 2 - 0.1, Math.sin(a) * r), q.identity(), new THREE.Vector3(0.8 + rnd() * 0.5, h, 0.8 + rnd() * 0.5));
-    trees.setMatrixAt(n, m);
-    trees.setColorAt(n, treeColor.setScalar(0.8 + rnd() * 0.4));
-    n += 1;
-  }
-  trees.instanceMatrix.needsUpdate = true;
-  farm.add(trees);
-
-  // The dirt track from the gate to the house.
-  const toHouse = new THREE.Vector3(Math.cos(houseAngle), 0, Math.sin(houseAngle));
-  const gate = toHouse.clone().multiplyScalar(PADDOCK.radius);
-  const door = new THREE.Vector3(house[0] * 0.78, 0, house[1] * 0.78);
-  const pathTexture = surfaceTexture('dirt');
-  pathTexture.repeat.set(4, 0.5);
-  const length = gate.distanceTo(door);
-  const path = new THREE.Mesh(new THREE.PlaneGeometry(length, 1.7), new THREE.MeshStandardMaterial({ map: pathTexture, roughness: 1 }));
-  path.rotation.x = -Math.PI / 2;
-  path.rotation.z = -Math.atan2(door.z - gate.z, door.x - gate.x);
-  path.position.set((gate.x + door.x) / 2, 0.004, (gate.z + door.z) / 2);
-  farm.add(path);
-
-  // Round hay bales beside the house, two on the ground and one on top.
-  const straw = new THREE.MeshStandardMaterial({ color: '#c9a45a', roughness: 0.95 });
-  const bale = new THREE.CylinderGeometry(0.62, 0.62, 1.1, 20);
-  const along = new THREE.Vector3(-toHouse.z, 0, toHouse.x); // along the house's front
-  const baleBase = door.clone().addScaledVector(along, 3.2);
-  for (const [dx, y] of [[0, 0.62], [1.35, 0.62], [0.68, 1.75]]) {
-    const b = new THREE.Mesh(bale, straw);
-    b.position.copy(baleBase).addScaledVector(along, dx);
-    b.position.y = y;
-    b.rotation.order = 'YZX';
-    b.rotation.y = -houseAngle;
-    b.rotation.z = Math.PI / 2;
-    farm.add(b);
-  }
-
-  // A grain silo on the house's other side: a tall drum with a grey cap.
-  const silo = new THREE.Group();
-  const drum = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 6.5, 24), new THREE.MeshStandardMaterial({ color: '#b8b1a4', roughness: 0.6, metalness: 0.2 }));
-  drum.position.y = 3.25;
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(1.55, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#8b8f93', roughness: 0.5, metalness: 0.3 }));
-  cap.position.y = 6.5;
-  silo.add(drum, cap);
-  silo.position.copy(door).addScaledVector(along, -6.5).addScaledVector(toHouse, 2);
-  farm.add(silo);
-
-  // A water trough inside the fence, round from the gate.
-  const trough = new THREE.Group();
-  const tub = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 0.62), new THREE.MeshStandardMaterial({ color: '#7d8a8f', roughness: 0.4, metalness: 0.4 }));
-  tub.position.y = 0.25;
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 0.48), new THREE.MeshStandardMaterial({ color: '#4c7e9b', roughness: 0.15, metalness: 0.1 }));
-  water.rotation.x = -Math.PI / 2;
-  water.position.y = 0.46;
-  trough.add(tub, water);
-  const troughAngle = houseAngle + Math.PI * 0.62;
-  trough.position.set(Math.cos(troughAngle) * (PADDOCK.radius - 1.1), 0, Math.sin(troughAngle) * (PADDOCK.radius - 1.1));
-  trough.rotation.y = -troughAngle + Math.PI / 2;
-  farm.add(trough);
-  return { farm, pathTexture };
+  return {
+    group,
+    backdropTex,
+    scroll(travelled) {
+      gridTex.offset.x = (travelled / 1.4) % 1;
+    },
+    dispose() {
+      plinthGeo.dispose();
+      plinthMat.dispose();
+      rimGeo.dispose();
+      rimMat.dispose();
+      dialGeo.dispose();
+      dialMat.dispose();
+      dialTex.dispose();
+      gridGeo.dispose();
+      gridMat.dispose();
+      gridTex.dispose();
+      backdropTex.dispose();
+    },
+  };
 }
 
 // The pasture's sky through the day in Vietnam, blended minute by minute between these moments: night,
@@ -439,13 +367,13 @@ const NIGHT = { sky: '#1a2c4e', horizon: '#4a5e86', sun: ['#c8d6ff', 2.1], fill:
 const PASTURE_SKIES = [
   { at: 0, ...NIGHT },
   { at: 5, ...NIGHT },
-  { at: 6, sky: '#9db8d9', horizon: '#f3d9b8', sun: ['#ffd9a8', 1.8], fill: ['#f4ead8', 1.15], clouds: '#fff0e0' },
-  { at: 8, sky: '#7fb2df', horizon: '#d3e6f0', sun: ['#fff3dd', 2.4], fill: ['#e8f2ff', 1.4], clouds: '#ffffff' },
-  { at: 12, sky: '#6aa6dc', horizon: '#d4e8f4', sun: ['#ffffff', 2.7], fill: ['#eef5ff', 1.5], clouds: '#ffffff' },
-  { at: 15.5, sky: '#78acd9', horizon: '#e9dfcb', sun: ['#fff0d6', 2.5], fill: ['#f3ecdf', 1.4], clouds: '#fffaf0' },
-  { at: 17.3, sky: '#7c9bcb', horizon: '#f4c590', sun: ['#ffc580', 2.3], fill: ['#f6e4d0', 1.3], clouds: '#ffe2c4' },
-  { at: 18.3, sky: '#3e5185', horizon: '#e59f70', sun: ['#ffa36b', 1.6], fill: ['#cdbcc9', 1.1], clouds: '#cf9f8e' },
-  { at: 19.2, ...NIGHT },
+  { at: 6, sky: '#7aaede', horizon: '#dbeaf6', sun: ['#ffe4b8', 2.2], fill: ['#eef5ff', 1.25], clouds: '#fff6ea' },
+  { at: 8, sky: '#65a3df', horizon: '#cfe6f7', sun: ['#fff5e0', 2.6], fill: ['#e8f2ff', 1.35], clouds: '#ffffff' },
+  { at: 12, sky: '#5c9cdc', horizon: '#cbe4f6', sun: ['#ffffff', 2.8], fill: ['#eef5ff', 1.4], clouds: '#ffffff' },
+  { at: 15.5, sky: '#63a0dd', horizon: '#cfe5f6', sun: ['#fff3dc', 2.65], fill: ['#ebf3fc', 1.35], clouds: '#ffffff' },
+  { at: 17.3, sky: '#6c9cd4', horizon: '#dfeaf4', sun: ['#ffd9a0', 2.45], fill: ['#f2ece4', 1.25], clouds: '#fff2de' },
+  { at: 18.5, sky: '#435b92', horizon: '#dfa87c', sun: ['#ffad75', 1.85], fill: ['#d2c4d0', 1.15], clouds: '#d9ad9c' },
+  { at: 19.4, ...NIGHT },
   { at: 24, ...NIGHT },
 ];
 const mix = (a, b, t) => `#${new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString()}`;
@@ -680,142 +608,103 @@ export const boneNamed = (root, prefix) => {
  * `recordable`: each frame stays readable after it is shown, so it can be copied into a video (SessionVideo).
  */
 export function createHorseStage(canvas, { view = 'side', recordable = false } = {}) {
-  // Light on purpose: several cards can run at once. No real-time shadows (they draw the skinned horse
-  // a second time), at most 1.5x the screen's pixels, at most FPS frames a second.
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: recordable });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.12;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
-  const sky = new THREE.Color('#bcd7e6');
+  const skyEnv = createSkyEnvironment(renderer);
+  scene.environment = skyEnv.texture;
+  const sky = new THREE.Color('#b6d6ec');
   scene.background = sky;
-  scene.fog = new THREE.Fog(sky, 14, 42);
-  const fill = new THREE.HemisphereLight('#e8f2ff', '#5b4a35', 1.3);
+  scene.fog = new THREE.Fog(sky, 50, 155);
+  const fill = new THREE.HemisphereLight('#dcedff', '#6a5a42', 0.78);
   scene.add(fill);
-  const sun = new THREE.DirectionalLight('#fff3dd', 2.2);
-  sun.position.set(4, 9, 6);
+  // Subtle front-right bounce fill so the camera-facing side of dark-bay/black coats shows sculpted muscle highlights.
+  const frontFill = new THREE.DirectionalLight('#fff8eb', 0.82);
+  frontFill.position.set(6.5, 5.5, 9.0);
+  scene.add(frontFill);
+  const sun = new THREE.DirectionalLight('#fff2d6', 2.85);
+  sun.position.set(-9.5, 11.2, -3.2);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.camera.near = 2;
+  sun.shadow.camera.far = 42;
+  sun.shadow.camera.left = -10;
+  sun.shadow.camera.right = 10;
+  sun.shadow.camera.top = 8;
+  sun.shadow.camera.bottom = -8;
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.02;
   scene.add(sun);
 
-  const camera = new THREE.PerspectiveCamera(30, 16 / 10, 0.1, 100);
-  const target = new THREE.Vector3(0.1, 0.95, 0);
-  camera.position.set(view === 'turntable' ? 4.2 : 0.4, 1.35, view === 'turntable' ? 5 : 7.6);
+  const camera = new THREE.PerspectiveCamera(view === 'turntable' ? 30 : 32, 16 / 10, 0.1, 165);
+  const trackTarget = new THREE.Vector3(-0.65, 0.88, -0.35);
+  const trackCamPos = new THREE.Vector3(3.85, 1.85, 5.85);
+  const target = view === 'turntable' ? new THREE.Vector3(0.1, 0.95, 0) : trackTarget.clone();
+  camera.position.set(view === 'turntable' ? 4.2 : trackCamPos.x, view === 'turntable' ? 1.35 : trackCamPos.y, view === 'turntable' ? 5 : trackCamPos.z);
   camera.lookAt(target);
   const controls = new OrbitControls(camera, canvas);
   controls.target.copy(target);
   controls.enablePan = false;
   controls.enableZoom = false;
   controls.enableDamping = true;
-  controls.minPolarAngle = 0.9;
-  controls.maxPolarAngle = 1.55;
+  controls.minPolarAngle = 0.72;
+  controls.maxPolarAngle = 1.5;
   controls.autoRotate = view === 'turntable';
   controls.autoRotateSpeed = 1.2;
 
-  // The world tilts on a slope (uphill work); the track and rails scroll inside it.
+  // The world tilts on a slope (uphill work); the closed-oval broadcast track & rails scroll inside it.
   const world = new THREE.Group();
   scene.add(world);
-  const maxAniso = renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 4;
+  const maxAniso = renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 8;
   let surfaceKind = null;
-  let surfaceMaps = null;
-  const track = new THREE.Mesh(
-    new THREE.PlaneGeometry(TRACK_LENGTH, 7.2),
-    new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0.02, bumpScale: 0.07 }),
-  );
-  track.rotation.x = -Math.PI / 2;
-  world.add(track);
-  // Crisp inner white curb & rail ground shadow along the far track edge.
-  const curb = new THREE.Mesh(
-    new THREE.BoxGeometry(TRACK_LENGTH, 0.09, 0.14),
-    new THREE.MeshStandardMaterial({ color: '#ece9e2', roughness: 0.78 }),
-  );
-  curb.position.set(0, 0.04, -3.55);
-  world.add(curb);
-  const railShadow = new THREE.Mesh(
-    new THREE.PlaneGeometry(TRACK_LENGTH, 0.65),
-    new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.14, depthWrite: false }),
-  );
-  railShadow.rotation.x = -Math.PI / 2;
-  railShadow.position.set(0, 0.008, -3.22);
-  world.add(railShadow);
-  // A soft shadow under the horse, painted once.
+  const curvedTrack = createCurvedTrackRig({
+    width: 8.6,
+    straightLen: 54,
+    straightJoin: -1.8,
+    bendRadius: 21,
+    tileM: TILE_M,
+    postEvery: POST_EVERY,
+    laneCount: 1,
+    maxAnisotropy: maxAniso,
+  });
+  world.add(curvedTrack.group);
+
+  // Subtle ambient contact shadow right under hooves (complements the real directional shadowMap).
   const shadowCanvas = document.createElement('canvas');
   shadowCanvas.width = 128;
   shadowCanvas.height = 128;
   const sg = shadowCanvas.getContext('2d');
   const gradient = sg.createRadialGradient(64, 64, 4, 64, 64, 64);
-  gradient.addColorStop(0, 'rgba(0,0,0,0.48)');
+  gradient.addColorStop(0, 'rgba(0,0,0,0.22)');
   gradient.addColorStop(1, 'rgba(0,0,0,0)');
   sg.fillStyle = gradient;
   sg.fillRect(0, 0, 128, 128);
   const shadowTexture = new THREE.CanvasTexture(shadowCanvas);
-  const blob = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.95), new THREE.MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false }));
+  const blob = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.85), new THREE.MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false }));
   blob.rotation.x = -Math.PI / 2;
   blob.position.y = 0.012;
   // The horse and its shadow stand together: in the paddock a walking horse takes them round it.
   const stand = new THREE.Group();
   world.add(stand);
   stand.add(blob);
-  // Hoof kickback particles (dirt dust, golden sand spray, turf divots, synthetic rubber flecks).
-  const hoofParticles = createHoofParticles(72);
+  // Two-layer volumetric billowing dust plumes + ballistic clods behind hooves.
+  const hoofParticles = createHoofParticles(100, 32);
   world.add(hoofParticles.points);
-  // Where a walking horse is on its round of the paddock: it starts on the far side, walking to the right.
-  let lap = -Math.PI / 2;
-  const UP = new THREE.Vector3(0, 1, 0);
-  const infieldTex = createInfieldTexture(maxAniso);
-  infieldTex.repeat.set(TRACK_LENGTH / 6, 42 / 6);
-  const infield = new THREE.Mesh(new THREE.PlaneGeometry(TRACK_LENGTH, 44), new THREE.MeshStandardMaterial({ map: infieldTex, roughness: 0.96 }));
-  infield.rotation.x = -Math.PI / 2;
-  infield.position.set(0, -0.012, -16);
-  world.add(infield);
-  const treeline = createTreelineBackdrop(TRACK_LENGTH + 36);
-  scene.add(treeline.group);
-  // A white rail on the far side: posts and a top rail; only the posts move, the rail is endless.
-  const postGeo = new THREE.BoxGeometry(0.08, 1.05, 0.08);
-  const white = new THREE.MeshStandardMaterial({ color: '#f4f2ec', roughness: 0.6 });
-  const postCount = Math.ceil(TRACK_LENGTH / POST_EVERY);
-  const posts = new THREE.InstancedMesh(postGeo, white, postCount);
-  world.add(posts);
-  // Only the far rail: one on the camera's side would stand in front of the horse.
-  const rail = new THREE.Mesh(new THREE.BoxGeometry(TRACK_LENGTH, 0.07, 0.07), white);
-  rail.position.set(0, 1.0, -3.4);
-  world.add(rail);
-  const placePosts = (travelled) => {
-    const m = new THREE.Matrix4();
-    for (let i = 0; i < postCount; i += 1) {
-      const x = ((((i * POST_EVERY - travelled) % TRACK_LENGTH) + TRACK_LENGTH) % TRACK_LENGTH) - TRACK_LENGTH / 2;
-      m.makeTranslation(x, 0.52, -3.4);
-      posts.setMatrixAt(i, m);
-    }
-    posts.instanceMatrix.needsUpdate = true;
-  };
-  placePosts(0);
-  // A trial: red race poles along the far rail every MARK_EVERY metres, and the finish post with its line
-  // across the track once the sensors say the end is near (motion.course.remaining).
-  // About one always in view (the camera sees some 10 m of the far rail); it divides TRACK_LENGTH, so the
-  // poles stay evenly spaced where the track wraps round.
-  const MARK_EVERY = 10;
-  const markCount = Math.ceil(TRACK_LENGTH / MARK_EVERY);
-  const raceMarks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.05, 1.7, 8), new THREE.MeshStandardMaterial({ color: '#c62828', roughness: 0.6 }), markCount);
-  raceMarks.visible = false;
-  world.add(raceMarks);
-  const placeMarks = (travelled) => {
-    const m = new THREE.Matrix4();
-    for (let i = 0; i < markCount; i += 1) {
-      const x = ((((i * MARK_EVERY - travelled) % TRACK_LENGTH) + TRACK_LENGTH) % TRACK_LENGTH) - TRACK_LENGTH / 2;
-      raceMarks.setMatrixAt(i, m.makeTranslation(x, 0.85, -3.15));
-    }
-    raceMarks.instanceMatrix.needsUpdate = true;
-  };
-  placeMarks(0);
   const checker = checkerTexture();
   const finish = new THREE.Group();
   const finishPole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 8), new THREE.MeshStandardMaterial({ color: '#f4f2ec', roughness: 0.6 }));
-  finishPole.position.set(0, 1.3, -3.2);
+  finishPole.position.set(0, 1.3, -4.1);
+  finishPole.castShadow = true;
   const finishBoard = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ map: checker }));
-  finishBoard.position.set(0, 2.5, -3.14);
-  const finishLine = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 7), new THREE.MeshBasicMaterial({ color: '#f4f2ec' }));
+  finishBoard.position.set(0, 2.5, -4.04);
+  const finishLine = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 8.4), new THREE.MeshBasicMaterial({ color: '#f4f2ec' }));
   finishLine.rotation.x = -Math.PI / 2;
-  finishLine.position.y = 0.015;
+  finishLine.position.y = 0.016;
   finish.add(finishPole, finishBoard, finishLine);
   finish.visible = false;
   world.add(finish);
@@ -831,26 +720,10 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
   }
   hills.visible = false;
   scene.add(hills);
-  // The pasture's long grass: made the first time the pasture is shown, then only hidden or shown.
-  let grass = null;
-  const grassTime = { value: 0 };
-  // The rest of the pasture, made with the grass: a wooden fence (the posts and rail in wood, a second
-  // rail lower down), the stable block far off, clouds drifting, and the sky of the hour in Vietnam.
-  // Elsewhere the rail is white and the sky plain.
-  const WOOD = '#7a5636';
-  const lowerRail = new THREE.Mesh(new THREE.BoxGeometry(TRACK_LENGTH, 0.07, 0.07), white);
-  lowerRail.position.set(0, 0.55, -3.4);
-  lowerRail.visible = false;
-  world.add(lowerRail);
-  let barn = null;
-  let tree = null;
   let disposed = false;
   let clouds = null;
   let pastureSky = null;
   let skyCheckedAt = -Infinity;
-  const BARN_X = -5.5;
-  const TREE_X = 4.2;
-  const BARN_LOOP = 40; // walking, the barn comes round again every 40 m
   // The hour the sky shows: a session's own (setHour), else the clock in Vietnam (the pasture).
   let fixedHour = null;
   const showSky = (now) => {
@@ -858,17 +731,24 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     skyCheckedAt = now;
     if (s.key === pastureSky?.key) return;
     pastureSky = s;
-    // The sun crosses the sky from the east at six to the west at six; at night the moon stands high.
+    // Keep the key sun at a crisp raking broadcast angle so both horse and white rail posts cast visible
+    // shadows across the textured track while gently reflecting the session's time-of-day warmth.
     const day = (s.hour - 6) / 12;
-    if (day > 0 && day < 1) sun.position.set(-9 * Math.cos(day * Math.PI), 2 + 9 * Math.sin(day * Math.PI), 6);
-    else sun.position.set(3, 9, 6);
+    if (day > 0 && day < 1) {
+      const arcX = -10.5 + 3.5 * day;
+      const arcY = 8.8 + 3.4 * Math.sin(day * Math.PI);
+      sun.position.set(arcX, arcY, -3.2);
+    } else {
+      sun.position.set(-7.5, 10.5, -2.8);
+    }
     if (scene.background?.isTexture) scene.background.dispose();
     scene.background = skyTexture(s.sky, s.horizon);
     scene.fog.color.set(s.horizon);
     sun.color.set(s.sun[0]);
-    sun.intensity = s.sun[1];
+    sun.intensity = Math.max(2.15, s.sun[1] * 1.25);
     fill.color.set(s.fill[0]);
-    fill.intensity = s.fill[1];
+    fill.intensity = Math.max(0.65, s.fill[1] * 0.62);
+    frontFill.intensity = day > 0 && day < 1 ? 0.82 : 0.58;
     for (const c of clouds?.children || []) c.material.color.set(s.clouds);
   };
   // The track's sky when no hour is given: plain and bright.
@@ -878,156 +758,124 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     if (scene.background?.isTexture) scene.background.dispose();
     scene.background = sky;
     scene.fog.color.copy(sky);
-    sun.color.set('#fff3dd');
-    sun.intensity = 2.2;
-    sun.position.set(4, 9, 6);
-    fill.color.set('#e8f2ff');
-    fill.intensity = 1.3;
+    sun.color.set('#fff2d6');
+    sun.intensity = 2.7;
+    sun.position.set(-9.5, 11.2, -3.2);
+    fill.color.set('#dcedff');
+    fill.intensity = 0.95;
+    frontFill.intensity = 0.85;
   };
   const ensureClouds = () => {
     if (clouds) return;
     clouds = new THREE.Group();
     const puff = cloudTexture();
-    // All round the sky, so the paddock has clouds whichever way it is turned.
-    for (let i = 0; i < 12; i += 1) {
-      const cloud = new THREE.Sprite(new THREE.SpriteMaterial({ map: puff, transparent: true, depthWrite: false, fog: false }));
-      const a = (i / 12) * Math.PI * 2 + 0.2;
-      const r = 32 + (i % 3) * 4;
-      cloud.position.set(Math.cos(a) * r, 7.5 + (i % 3) * 1.6, Math.sin(a) * r);
-      cloud.scale.set(9 + (i % 3) * 2, 4 + (i % 2), 1);
+    // Subtle high cirrus clouds well above the woodland horizon.
+    for (let i = 0; i < 10; i += 1) {
+      const cloud = new THREE.Sprite(new THREE.SpriteMaterial({ map: puff, transparent: true, opacity: 0.42, depthWrite: false, fog: false }));
+      const a = (i / 10) * Math.PI * 2 + 0.35;
+      const r = 42 + (i % 3) * 5;
+      cloud.position.set(Math.cos(a) * r, 11.5 + (i % 3) * 1.6, Math.sin(a) * r);
+      cloud.scale.set(11 + (i % 3) * 2.5, 3.6 + (i % 2) * 0.8, 1);
       clouds.add(cloud);
     }
     scene.add(clouds);
     if (pastureSky) for (const c of clouds.children) c.material.color.set(pastureSky.clouds);
   };
-  const setPasture = (on) => {
-    inPasture = on;
-    dress();
-    if (on && !barn) {
-      // The farm house far across the pasture (the drawn barn if it won't load).
-      barn = new THREE.Group();
-      barn.position.set(BARN_X, 0, -18);
-      barn.rotation.y = 0.1;
-      world.add(barn);
-      loadScenery(FARM_HOUSE)
-        .then((gltf) => {
-          if (disposed) return;
-          const house = sized(gltf, 'x', HOUSE_WIDTH);
-          house.rotation.y = HOUSE_TURN;
-          barn.add(house);
-        })
-        .catch(() => {
-          if (disposed) return;
-          const drawn = makeBarn();
-          drawn.scale.setScalar(0.75);
-          barn.add(drawn);
-        });
-      // A maple on the right, nearer than the barn, just behind the fence (the drawn tree if it won't load).
-      tree = new THREE.Group();
-      tree.position.set(TREE_X, 0, -15);
-      world.add(tree);
-      loadScenery(MAPLE_TREE)
-        .then((gltf) => !disposed && tree.add(sized(gltf, 'y', TREE_HEIGHT)))
-        .catch(() => !disposed && tree.add(makeTree().tree));
-      world.add(barn);
-    }
-    if (on) ensureClouds();
-    white.color.set(on ? WOOD : '#f4f2ec');
-    white.roughness = on ? 0.85 : 0.6;
-    lowerRail.visible = on;
-    if (barn) barn.visible = on;
-    if (tree) tree.visible = on;
-    if (clouds) clouds.visible = on || fixedHour != null;
-    if (on || fixedHour != null) showSky(performance.now());
-    else plainSky();
-    applyScene();
-  };
-
-  // A horse at rest in the pasture stands in a round paddock that holds from every side (the view can be
-  // dragged all round it): the fenced field, the grass round the horse, the farm house and maples outside,
-  // hills on the horizon. A horse on the move keeps the strip of track streaming by, seen from its side.
-  let paddock = null;
-  let paddockTexture = null;
-  let pathTexture = null;
-  let inPaddock = false;
-  const ensurePaddock = () => {
-    if (paddock) return;
-    paddock = new THREE.Group();
-    paddockTexture = surfaceTexture('pasture');
-    paddockTexture.repeat.set(36, 36);
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(70, 64), new THREE.MeshStandardMaterial({ map: paddockTexture, roughness: 1 }));
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.005;
-    // Turned to face the paddock from (x, z): the model's front is +z.
-    const facing = (x, z) => Math.atan2(-x, -z);
-    const HOUSE_AT = [-6, -17]; // a little left of the first view, so even a narrow frame shows it
-    const props = makeFarmProps(HOUSE_AT);
-    pathTexture = props.pathTexture;
-    paddock.add(ground, makePaddockGrass(grassTime), makePaddockFence(new THREE.MeshStandardMaterial({ color: WOOD, roughness: 0.85 }), Math.atan2(HOUSE_AT[1], HOUSE_AT[0])), props.farm);
-    const house = new THREE.Group();
-    house.position.set(HOUSE_AT[0], 0, HOUSE_AT[1]);
-    paddock.add(house);
-    loadScenery(FARM_HOUSE)
-      .then((gltf) => {
-        if (disposed) return;
-        const model = sized(gltf, 'x', HOUSE_WIDTH);
-        model.rotation.y = HOUSE_TURN + facing(...HOUSE_AT);
-        house.add(model);
-      })
-      .catch(() => {
-        if (disposed) return;
-        const drawn = makeBarn();
-        drawn.scale.setScalar(0.75);
-        drawn.rotation.y = facing(...HOUSE_AT);
-        house.add(drawn);
-      });
-    const TREES = [[12, -12, 1], [-16, 8, 0.85], [10, 15, 1.1]];
+  let racecourseTrees = null;
+  // Positioned strictly inside the green infield of the oval (x >= 1.5, z <= -8.5) so trees never cross the left turn track.
+  const TREE_ANCHORS = [
+    [2.2, -9.2, 1.05],
+    [9.5, -11.5, 1.15],
+    [17.5, -10.4, 0.98],
+    [25.5, -12.0, 1.12],
+    [5.8, -16.5, 1.08],
+  ];
+  const ensureRacecourseTrees = () => {
+    if (racecourseTrees) return;
+    racecourseTrees = new THREE.Group();
     loadScenery(MAPLE_TREE)
       .then((gltf) => {
         if (disposed) return;
-        for (const [x, z, s] of TREES) {
+        for (const [x, z, s] of TREE_ANCHORS) {
           const maple = sized(gltf, 'y', TREE_HEIGHT * s);
           maple.position.set(x, 0, z);
-          maple.rotation.y = x * 0.37;
-          paddock.add(maple);
+          maple.userData.anchorX = x;
+          maple.rotation.y = (x * 0.43 + z * 0.29) % (Math.PI * 2);
+          maple.traverse((o) => {
+            if (o.isMesh) {
+              o.castShadow = true;
+              o.receiveShadow = true;
+            }
+          });
+          racecourseTrees.add(maple);
         }
       })
-      .catch(() => {
-        if (disposed) return;
-        for (const [x, z] of TREES) {
-          const drawn = makeTree().tree;
-          drawn.position.set(x, 0, z);
-          paddock.add(drawn);
-        }
-      });
-    paddock.visible = false;
-    scene.add(paddock);
+      .catch(() => {});
+    world.add(racecourseTrees);
   };
-  // Which scene the horse is in, after any change to the surface or the motion.
+  ensureRacecourseTrees();
+
+  let clubCourtyard = null;
+  let courtyardCameraSet = false;
+  const ensureClubCourtyard = () => {
+    if (clubCourtyard) return;
+    clubCourtyard = createStudioBiomechanicsPodium(maxAniso);
+    world.add(clubCourtyard.group);
+  };
+
+  const applyStudioLighting = () => {
+    if (!clubCourtyard) ensureClubCourtyard();
+    if (scene.background && scene.background !== clubCourtyard.backdropTex && scene.background.isTexture) {
+      scene.background.dispose();
+    }
+    scene.background = clubCourtyard.backdropTex;
+    scene.fog.color.set('#02120d');
+    sun.color.set('#fff6e5');
+    sun.intensity = 2.9;
+    sun.position.set(-4.5, 9.2, 4.5);
+    fill.color.set('#a7f3d0');
+    fill.intensity = 1.08;
+    frontFill.intensity = 0.95;
+  };
+
+  const setPasture = (on) => {
+    inPasture = on;
+    dress();
+    if (on) {
+      ensureClubCourtyard();
+      if (clouds) clouds.visible = false;
+      applyStudioLighting();
+    } else {
+      if (fixedHour != null) ensureClouds();
+      if (clouds) clouds.visible = fixedHour != null;
+      if (fixedHour != null) showSky(performance.now());
+      else plainSky();
+    }
+    applyScene();
+  };
+
   const applyScene = () => {
-    const want = inPasture && view === 'side';
-    // Standing or grazing, the horse is in the middle; walking, it goes round (see the frame loop).
-    if ((!want || !((motion?.kmh || 0) > 0.5)) && stand.position.lengthSq() > 0) {
+    if (stand.position.lengthSq() > 0) {
       stand.position.set(0, 0, 0);
       stand.rotation.y = 0;
-      lap = -Math.PI / 2;
-      controls.target.copy(target);
-      camera.position.set(0.4, 1.35, 7.6);
     }
-    if (want) ensurePaddock();
-    inPaddock = want;
-    if (paddock) paddock.visible = want;
-    for (const o of [track, curb, railShadow, infield, posts, rail]) o.visible = !want;
-    treeline.group.visible = !want && !inPasture;
-    hoofParticles.points.visible = !want && !inPasture;
-    lowerRail.visible = inPasture && !want;
-    if (grass) grass.visible = Boolean(SURFACES[surfaceKind]?.grass) && !want;
-    if (barn) barn.visible = inPasture && !want;
-    if (tree) tree.visible = inPasture && !want;
-    // All round the horse in the paddock; on the track only from its side, where the strip has no edge in view.
-    const strip = view === 'side' && !want;
-    controls.minAzimuthAngle = strip ? -0.7 : -Infinity;
-    controls.maxAzimuthAngle = strip ? 0.7 : Infinity;
+    if (inPasture) {
+      if (!courtyardCameraSet && view === 'free') {
+        controls.target.set(0.0, 0.92, 0.0);
+        camera.position.set(0.28, 1.38, 4.35);
+        courtyardCameraSet = true;
+      }
+    } else if (view === 'side') {
+      controls.target.copy(trackTarget);
+      camera.position.copy(trackCamPos);
+    }
+    if (clubCourtyard) clubCourtyard.group.visible = inPasture;
+    if (racecourseTrees) racecourseTrees.visible = !inPasture;
+    curvedTrack.group.visible = !inPasture;
+    hoofParticles.points.visible = !inPasture;
+    const strip = view === 'side' && !inPasture;
+    controls.minAzimuthAngle = strip ? -0.35 : -Infinity;
+    controls.maxAzimuthAngle = strip ? 1.15 : Infinity;
   };
 
   // The sore leg: a pulsing red/orange ring at its hoof + soft ground halo underneath.
@@ -1067,10 +915,19 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     if (!horse || !coat) return;
     horse.traverse((o) => {
       if (!o.isMesh || !o.material) return;
+      o.material.envMapIntensity = 1.25;
       if (o.material.name === MOVING_HORSE.coatMaterials.body) {
-        o.material.color.setRGB(...coat.body);
-        if (coat.roughness) o.material.roughness = coat.roughness;
-      } else if (o.material.name === MOVING_HORSE.coatMaterials.hair) o.material.color.setRGB(...coat.hair);
+        // Gentle sheen & dark-coat lift so Bay/Dark Bay thoroughbreds show sculpted muscles under sunlight.
+        o.material.color.setRGB(
+          Math.min(1, coat.body[0] * 1.45 + 0.02),
+          Math.min(1, coat.body[1] * 1.4 + 0.01),
+          Math.min(1, coat.body[2] * 1.35 + 0.005),
+        );
+        o.material.roughness = Math.min(0.62, coat.roughness || 0.62);
+      } else if (o.material.name === MOVING_HORSE.coatMaterials.hair) {
+        o.material.color.setRGB(...coat.hair);
+        o.material.roughness = 0.78;
+      }
     });
   };
 
@@ -1108,6 +965,8 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     horse.traverse((o) => {
       if (o.isMesh) {
         o.frustumCulled = false;
+        o.castShadow = true;
+        o.receiveShadow = true;
         o.material = o.material.clone();
       }
     });
@@ -1222,33 +1081,13 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
 
     // The ground streams back at the horse's actual smooth speed.
     const mps = actualKmh / 3.6;
-    if (inPaddock) {
-      // In the paddock a walking horse goes round it, facing its way, instead of the ground streaming under it.
-      if (actualKmh > 0.5 && !reduceMotion) {
-        const from = stand.position.clone();
-        const yaw = stand.rotation.y;
-        lap += (mps / PADDOCK.walk) * dt;
-        stand.position.set(Math.cos(lap) * PADDOCK.walk, 0, Math.sin(lap) * PADDOCK.walk);
-        stand.rotation.y = -lap - Math.PI / 2;
-        // The camera goes with it and turns as it turns: the walking horse stays in view, seen from inside the paddock.
-        const move = stand.position.clone().sub(from);
-        controls.target.add(move);
-        camera.position.add(move);
-        const offset = camera.position.clone().sub(controls.target).applyAxisAngle(UP, stand.rotation.y - yaw);
-        camera.position.copy(controls.target).add(offset);
-      }
-    } else if (!reduceMotion && view === 'side') {
+    if (!reduceMotion) {
       travelled += mps * dt;
-      if (surfaceMaps) surfaceMaps.setOffsetX((travelled / TILE_M) % 1);
-      infieldTex.offset.x = (travelled / 6) % 1;
-      treeline.setOffsetX(((travelled * 0.012) % 1 + 1) % 1);
-      placePosts(travelled);
-      if (raceMarks.visible) placeMarks(travelled);
-      if (grass) grass.position.x = -(travelled % GRASS_PATCH);
-      // Walking, the barn and the tree go by and come round again every BARN_LOOP metres.
-      const loop = (x) => ((((x - travelled) % BARN_LOOP) + BARN_LOOP * 1.5) % BARN_LOOP) - BARN_LOOP / 2;
-      if (barn) barn.position.x = loop(BARN_X);
-      if (tree) tree.position.x = loop(TREE_X);
+      if (inPasture && clubCourtyard) {
+        clubCourtyard.scroll(travelled);
+      } else {
+        curvedTrack.scroll(travelled);
+      }
       if (hoofParticles.points.visible) {
         hoofParticles.emitForHorse(0, 0, actualKmh, dt);
         hoofParticles.update(dt, mps);
@@ -1261,13 +1100,6 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       finish.position.x = x;
     }
     hills.visible = tilt.now > 0.02;
-    if ((grass?.visible || inPaddock) && !reduceMotion) grassTime.value = now / 1000;
-    // The tree leans with the same gusts as the grass, a little, from its foot.
-    if (tree?.visible && !reduceMotion) {
-      const t = now / 1000;
-      tree.rotation.z = -0.006 - 0.008 * Math.sin(t * 1.6 - TREE_X * 0.7);
-      tree.rotation.x = 0.004 * Math.sin(t * 2.2);
-    }
     // Clouds drift slowly to the right, round and round; the sky follows the clock, checked each minute.
     if (clouds?.visible) {
       if (!reduceMotion) for (const c of clouds.children) c.position.x = ((c.position.x + dt * 0.35 + 40) % 80) - 40;
@@ -1297,10 +1129,8 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
         const stepImpact = Math.max(0, Math.sin(phase * Math.PI * 2));
         targetRoll = (rightSide ? -0.055 : 0.055) * stepImpact;
       }
-      if (!inPaddock) {
-        stand.rotation.x += (targetRoll - stand.rotation.x) * Math.min(1, dt * 8);
-        stand.rotation.z += (targetPitch - stand.rotation.z) * Math.min(1, dt * 8);
-      }
+      stand.rotation.x += (targetRoll - stand.rotation.x) * Math.min(1, dt * 8);
+      stand.rotation.z += (targetPitch - stand.rotation.z) * Math.min(1, dt * 8);
 
       // A lame leg: stiff (held near its rest pose). Lame in front, the head nods up as the sore leg
       // lands; lame behind, it dips instead.
@@ -1332,7 +1162,7 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       // The mark: on the sore leg's hoof, or on the part of the body the vet named (motion.markAt).
       const spot = motion.markAt ? markBones[motion.markAt] : sore.hoof;
       marker.visible = Boolean(motion.marker && spot);
-      groundHalo.visible = Boolean(motion.marker && !motion.markAt && spot && !inPaddock);
+      groundHalo.visible = Boolean(motion.marker && !motion.markAt && spot);
       if (marker.visible) {
         horse.updateMatrixWorld(true);
         spot.getWorldPosition(marker.position);
@@ -1381,7 +1211,7 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       // A trial: race poles; once the next reading ends the run, the finish post, reached a little before
       // that reading so the horse is seen crossing it (the readings' metres are not the stage's: the
       // simulated sensors compress the run).
-      raceMarks.visible = Boolean(motion.course);
+      curvedTrack.setShowPoles(Boolean(motion.course));
       if (motion.course?.finishIn == null) finishAt = null;
       else if (finishAt == null) finishAt = travelled + ((motion.kmh || 0) / 3.6) * Math.max(Math.min(0.4, motion.course.finishIn), motion.course.finishIn - 2);
       if (finishAt == null) finish.visible = false;
@@ -1392,9 +1222,14 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     /** The sky of an hour of the day (a session's), or null: the clock in Vietnam in the pasture, a plain sky on the track. */
     setHour(hour) {
       fixedHour = Number.isFinite(hour) ? hour : null;
+      if (inPasture) {
+        if (clouds) clouds.visible = false;
+        applyStudioLighting();
+        return;
+      }
       if (fixedHour != null) ensureClouds();
-      if (clouds) clouds.visible = inPasture || fixedHour != null;
-      if (inPasture || fixedHour != null) {
+      if (clouds) clouds.visible = fixedHour != null;
+      if (fixedHour != null) {
         pastureSky = null;
         showSky(performance.now());
       } else plainSky();
@@ -1403,21 +1238,9 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       const next = SURFACES[kind] ? kind : 'dirt';
       if (next === surfaceKind) return;
       surfaceKind = next;
-      surfaceMaps?.dispose();
-      surfaceMaps = createSurfaceMaps(next, maxAniso);
-      surfaceMaps.setRepeat(TRACK_LENGTH / TILE_M, 7.2 / TILE_M);
-      track.material.map = surfaceMaps.map;
-      track.material.bumpMap = surfaceMaps.bumpMap;
-      track.material.bumpScale = surfaceMaps.preset.bumpScale;
-      track.material.roughnessMap = surfaceMaps.roughnessMap;
-      track.material.roughness = surfaceMaps.preset.roughness;
-      track.material.needsUpdate = true;
-      hoofParticles.setSurface(next);
-      if (SURFACES[next].grass && !grass) {
-        grass = makeGrass(grassTime);
-        world.add(grass);
-      }
-      if (grass) grass.visible = Boolean(SURFACES[next].grass);
+      const trackSurface = next === 'pasture' ? 'turf' : next;
+      curvedTrack.setSurface(trackSurface);
+      hoofParticles.setSurface(trackSurface);
       setPasture(Boolean(SURFACES[next].grass));
     },
     resize(width, height) {
@@ -1431,15 +1254,13 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       io.disconnect();
       controls.dispose();
       mixer?.stopAllAction();
-      surfaceMaps?.dispose();
-      infieldTex.dispose();
-      treeline.dispose();
+      skyEnv.dispose();
+      curvedTrack.dispose();
+      clubCourtyard?.dispose();
       hoofParticles.dispose();
       shadowTexture.dispose();
-      paddockTexture?.dispose();
-      pathTexture?.dispose();
       checker.dispose();
-      if (scene.background?.isTexture) scene.background.dispose();
+      if (scene.background?.isTexture && scene.background !== clubCourtyard?.backdropTex) scene.background.dispose();
       clouds?.children[0]?.material.map?.dispose();
       scene.traverse((o) => {
         if (o.isSkinnedMesh) {
