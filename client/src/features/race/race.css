@@ -1,0 +1,503 @@
+/* The race page (RacePage) and its entry form (RaceEntryForm): each entry a card — the day, the horse and
+   the race, how its preparation stands phase by phase, the decision and the buttons. Colours from the
+   staff theme (staff-workspace.css / staff-ui.css), so the page follows the light and the dark canvas. */
+.rc,
+.rc-form {
+  --rc-surface: var(--st-surface, #ffffff);
+  --rc-sunk: var(--st-sunk, #f1f5f9);
+  --rc-border: var(--st-border, #e2e8f0);
+  --rc-ink: var(--st-ink, #0f172a);
+  --rc-ink-2: var(--st-ink-secondary, #334155);
+  --rc-muted: var(--st-ink-muted, #64748b);
+  --rc-accent: var(--st-action, #eab308);
+  --rc-accent-ink: var(--st-action-ink, #0f172a);
+  --rc-accent-soft: var(--st-accent-soft, #fef3c7);
+  --rc-shadow: var(--st-shadow, 0 1px 3px rgba(15, 23, 42, 0.06));
+  --rc-good: var(--st-good, #15803d);
+  --rc-good-bg: var(--st-good-bg, #dcfce7);
+  --rc-warn: var(--st-warn, #b45309);
+  --rc-warn-bg: var(--st-warn-bg, #fef3c7);
+  --rc-danger: var(--st-danger, #b91c1c);
+  --rc-danger-bg: var(--st-danger-bg, #fee2e2);
+  --rc-info: var(--st-info, #1d4ed8);
+  --rc-info-bg: var(--st-info-bg, #dbeafe);
+}
+
+/* ---------- The club's rule, above the list ---------- */
+.rc-rules {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--rc-border);
+  border-left: 4px solid var(--rc-accent);
+  border-radius: 14px;
+  background: var(--rc-surface);
+  box-shadow: var(--rc-shadow);
+  font-size: 13px;
+  color: var(--rc-ink-2);
+}
+.rc-rules strong {
+  color: var(--rc-ink);
+}
+.rc-rule-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--rc-sunk);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--rc-ink);
+  white-space: nowrap;
+}
+.rc-rule-chip em {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--rc-muted);
+}
+
+/* ---------- The list ---------- */
+.rc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rc-group-title {
+  margin: 10px 2px 2px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rc-muted);
+}
+
+.rc-group-title.is-result {
+  color: var(--rc-warn);
+}
+.rc-pager {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--rc-border);
+  border-radius: 14px;
+  background: var(--rc-surface);
+}
+
+/* ---------- An entry ---------- */
+.rc-card {
+  --tone: var(--rc-muted);
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 210px;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--rc-border);
+  border-radius: 16px;
+  background: var(--rc-surface);
+  box-shadow: var(--rc-shadow);
+  position: relative;
+  overflow: hidden;
+}
+.rc-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--tone);
+}
+.rc-card.is-registered {
+  --tone: var(--rc-accent);
+}
+.rc-card.is-confirmed {
+  --tone: var(--rc-info);
+}
+.rc-card.is-completed {
+  --tone: var(--rc-good);
+}
+.rc-card.is-withdrawn {
+  --tone: var(--rc-danger);
+  opacity: 0.86;
+}
+.rc-card.needs-review {
+  border-color: var(--rc-warn);
+}
+@media (max-width: 900px) {
+  .rc-card {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+  .rc-actions {
+    grid-column: 1 / -1;
+    flex-direction: row !important;
+    flex-wrap: wrap;
+  }
+}
+
+/* The day: a calendar leaf, and how far off it is. */
+.rc-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: start;
+  padding: 8px 4px 10px;
+  border: 1px solid var(--rc-border);
+  border-radius: 12px;
+  background: var(--rc-sunk);
+  text-align: center;
+}
+.rc-date-day {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--rc-ink);
+  font-variant-numeric: tabular-nums;
+}
+.rc-date-month {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rc-ink-2);
+}
+.rc-date-left {
+  margin-top: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--rc-accent-soft);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--rc-warn);
+  white-space: nowrap;
+}
+.rc-date-left.is-soon {
+  background: var(--rc-danger-bg);
+  color: var(--rc-danger);
+}
+.rc-date-left.is-past {
+  background: var(--rc-sunk);
+  color: var(--rc-muted);
+}
+
+.rc-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.rc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+.rc-horse {
+  font-size: 16px;
+  font-weight: 750;
+  color: var(--rc-ink);
+}
+.rc-race {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--rc-ink-2);
+  overflow-wrap: anywhere;
+}
+.rc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--rc-muted);
+}
+.rc-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Its preparation: the plan's phases, each judged done or not, the trial, the vet. */
+.rc-prep {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--rc-sunk);
+}
+.rc-prep-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--rc-muted);
+}
+.rc-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.rc-step {
+  --step: var(--rc-muted);
+  --step-bg: var(--rc-surface);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  border: 1px solid var(--rc-border);
+  border-radius: 999px;
+  background: var(--step-bg);
+  font-size: 12.5px;
+  color: var(--rc-ink);
+  line-height: 1.25;
+}
+.rc-step-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--step);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  flex: none;
+}
+.rc-step small {
+  color: var(--rc-muted);
+  font-size: 11.5px;
+}
+.rc-step.is-ok {
+  --step: var(--rc-good);
+  border-color: color-mix(in srgb, var(--rc-good) 35%, transparent);
+}
+.rc-step.is-bad {
+  --step: var(--rc-danger);
+  --step-bg: var(--rc-danger-bg);
+  border-color: color-mix(in srgb, var(--rc-danger) 45%, transparent);
+}
+.rc-step.is-now {
+  --step: var(--rc-info);
+  border-color: color-mix(in srgb, var(--rc-info) 45%, transparent);
+}
+.rc-step-arrow {
+  color: var(--rc-muted);
+  font-size: 11px;
+}
+.rc-why {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--rc-warn);
+}
+.rc-why.is-bad {
+  color: var(--rc-danger);
+}
+.rc-noplan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--rc-warn);
+  border-radius: 12px;
+  background: var(--rc-warn-bg);
+  font-size: 13px;
+  color: var(--rc-ink);
+}
+
+/* The decision and, once run, the result. */
+.rc-decision {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--rc-ink-2);
+}
+.rc-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--rc-good-bg);
+  font-size: 13px;
+  color: var(--rc-ink);
+}
+.rc-medal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--rc-accent);
+  color: var(--rc-accent-ink);
+  font-weight: 800;
+}
+
+.rc-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.rc-actions .ant-btn {
+  justify-content: flex-start;
+}
+.rc .rc-primary.ant-btn,
+.rc-form .rc-primary.ant-btn {
+  border: 0;
+  background: var(--rc-accent);
+  color: var(--rc-accent-ink);
+  font-weight: 700;
+}
+.rc .rc-primary.ant-btn:hover,
+.rc-form .rc-primary.ant-btn:hover {
+  filter: brightness(1.06);
+  background: var(--rc-accent) !important;
+  color: var(--rc-accent-ink) !important;
+}
+
+/* ---------- The entry form ---------- */
+.rc-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+@media (min-width: 900px) {
+  .rc-form-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 0.95fr);
+  }
+}
+.rc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.rc-chip {
+  padding: 4px 11px;
+  border: 1px solid var(--rc-border);
+  border-radius: 999px;
+  background: var(--rc-surface);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--rc-ink-2);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.rc-chip:hover {
+  border-color: var(--rc-accent);
+}
+.rc-chip.is-on {
+  border-color: var(--rc-accent);
+  background: var(--rc-accent-soft);
+  color: var(--rc-ink);
+}
+.rc-chip small {
+  margin-left: 4px;
+  font-weight: 500;
+  color: var(--rc-muted);
+}
+
+.rc-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--rc-border);
+  border-radius: 16px;
+  background: var(--rc-sunk);
+}
+.rc-plan-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--rc-muted);
+}
+/* What is checked before a horse is entered: one row each, its state by colour and icon. */
+.rc-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rc-check {
+  --check: var(--rc-muted);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rc-border);
+  border-radius: 12px;
+  background: var(--rc-surface);
+}
+.rc-check.is-ok {
+  --check: var(--rc-good);
+}
+.rc-check.is-warn {
+  --check: var(--rc-warn);
+  border-color: color-mix(in srgb, var(--rc-warn) 45%, transparent);
+  background: var(--rc-warn-bg);
+}
+.rc-check.is-bad {
+  --check: var(--rc-danger);
+  border-color: color-mix(in srgb, var(--rc-danger) 45%, transparent);
+  background: var(--rc-danger-bg);
+}
+.rc-check-icon {
+  flex: none;
+  margin-top: 1px;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--check);
+}
+.rc-check-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--rc-ink);
+}
+.rc-check-detail {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--rc-ink-2);
+}
+.rc-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, auto));
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--rc-surface);
+}
+.rc-summary span {
+  display: block;
+  font-size: 11.5px;
+  color: var(--rc-muted);
+}
+.rc-summary b {
+  font-size: 13.5px;
+  font-weight: 750;
+  color: var(--rc-ink);
+  font-variant-numeric: tabular-nums;
+}
+.rc-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--rc-muted);
+}

@@ -1036,7 +1036,7 @@ module.exports = {
       get: {
         tags: ['Training (Head Trainer)'],
         summary: 'Phases to propose for a new cycle, counted back from the race',
-        description: 'Includes race week, followed by 2 weeks recovery. Base/strength/speed/peak shares depend on race distance: sprint <=1200 m 30/25/30/15%, middle <=2000 m 35/25/25/15%, long 45/25/15/15%. Short preparation keeps the last phases; without a race, proposes 4/3/3 weeks base/strength/speed. Each phase includes its normal AM/PM template. Returns error/warning advice for race alignment, phase order, short preparation and unusual distance.',
+        description: 'With a race: the taper ends with the trial 8 days before race day (the odd days go to the taper), then 4 days of recovery (light work), and the 3 days before race day are left free (rest, pre-race vet check, travel). Base/strength/speed/peak shares depend on race distance: sprint <=1200 m 30/25/30/15%, middle <=2000 m 35/25/25/15%, long 45/25/15/15%. Short preparation keeps the last phases; without a race, proposes 4/3/3 weeks base/strength/speed. Each phase includes its normal AM/PM template. Returns error/warning advice for race alignment, phase order, short preparation and unusual distance.',
         parameters: [
           { name: 'horse', in: 'query', required: true, schema: { type: 'string' } },
           { name: 'targetRace', in: 'query', schema: { type: 'string' } },

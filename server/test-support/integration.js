@@ -16,6 +16,10 @@ async function startIntegration(label = 'flow') {
   process.env.JWT_SECRET = 'integration-test-secret-not-for-deployment';
   process.env.APP_TIMEZONE = 'Asia/Ho_Chi_Minh';
   process.env.AFTERNOON_LIGHT_ONLY = 'false';
+  // The flows enter races days ahead and confirm them on a trial; the race-entry lead time and the
+  // phases-done rule have their own tests (test/racePrep.test.js).
+  process.env.POLICY_RACE_ENTRY_MIN_PREP = 'off';
+  process.env.POLICY_RACE_NEEDS_PHASES_DONE = 'off';
   process.env.ENABLE_SENSOR_SIMULATOR = 'false';
   // Tests book their own sessions; the timetable that books plans ahead is turned on where tested.
   process.env.AUTO_SCHEDULE_PLANS = 'false';

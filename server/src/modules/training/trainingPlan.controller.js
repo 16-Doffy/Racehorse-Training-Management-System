@@ -234,7 +234,7 @@ function withProgress(plan, stats, upcoming, form = {}) {
     totalCompleted: (stats || []).filter((s) => SESSION_DONE_STATUSES.includes(s.status)).length,
     raceInDays: raceDate ? Math.ceil((startOfDay(raceDate) - startOfDay(now)) / DAY_MS) : null,
     upcoming: upcoming || [],
-    form: raceForm({ stats, trials: form.trials, race: json.targetRace, raceBlock: form.raceBlock, now }),
+    form: raceForm({ stats, trials: form.trials, race: json.targetRace, raceBlock: form.raceBlock, now, phases, checkpoints: json.checkpoints || [] }),
     // The current phase's end-of-phase checkpoint as it stands (planProgress.service.js).
     checkpoint: checkpointView(plan, stats || [], { clearance: form.clearance || null, now }),
   };

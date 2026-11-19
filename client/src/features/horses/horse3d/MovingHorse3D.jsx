@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from 'antd';
+import { ThunderboltOutlined } from '@ant-design/icons';
 import { coatFor } from './horseBreeds';
 import { MOVING_HORSE, PASTURE_CREDIT } from './horseMotion';
 import ModelCredit from './ModelCredit';
@@ -16,6 +17,21 @@ function vietnamClock() {
   return `${part}, ${String(h).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
+// A neigh to go with a rear, if the site has one (public/sounds/horse-neigh.mp3): checked once, silent without it.
+const NEIGH = `${import.meta.env.BASE_URL}sounds/horse-neigh.mp3`;
+let neighFile = null;
+function neigh() {
+  neighFile ??= fetch(NEIGH, { method: 'HEAD' })
+    .then((r) => r.ok && (r.headers.get('content-type') || '').startsWith('audio/'))
+    .catch(() => false);
+  neighFile.then((ok) => {
+    if (!ok) return;
+    const audio = new Audio(NEIGH);
+    audio.volume = 0.6;
+    audio.play().catch(() => {});
+  });
+}
+
 /**
  * A horse in 3D doing something — walking, trotting, galloping, lame, pulled up, grazing, resting —
  * `motion` from horseMotion.js, on the track `surface` its plan trains on (turf, dirt, sand,
@@ -27,8 +43,10 @@ function vietnamClock() {
  * it the pasture shows the sky of now and a track a plain one.
  * `fill`: the frame grows to the height of its parent (a grid cell beside a taller card), `height`
  * being its least. `recordable`: its frames can be copied into a video (SessionVideo).
+ * `rearable`: a sound horse standing still rears up and neighs now and then, and when it is clicked
+ * (or its button is); never one that is injured, lame, held back or lying down.
  */
-export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', hour = null, height = 260, view = 'side', compact = false, showCoat = false, fill = false, recordable = false, className = '' }) {
+export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', hour = null, height = 260, view = 'side', compact = false, showCoat = false, fill = false, recordable = false, rearable = false, className = '' }) {
   const canvas = useRef(null);
   const box = useRef(null);
   const stage = useRef(null);
@@ -98,6 +116,23 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
   const kmh = motion?.kmh || 0;
   const caption = motion?.label;
 
+  // Rearing: only a sound horse standing still (the stage checks it again).
+  const canRear = rearable && status === 'ready' && kmh <= 0.5 && motion?.tone !== 'alert' && !motion?.hold && !motion?.limp && motion?.clip !== 'Sleep';
+  const rear = useCallback((withSound) => {
+    if (stage.current?.rear() && withSound) setTimeout(neigh, 900);
+  }, []);
+  // On its own: soon after it appears, then every half minute to a minute (not for those who ask for less motion).
+  useEffect(() => {
+    if (!canRear || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
+    let timer = setTimeout(function again() {
+      stage.current?.rear();
+      timer = setTimeout(again, 30000 + Math.random() * 25000);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [canRear]);
+  // A click on the horse, not the end of a drag to look round it.
+  const pressedAt = useRef(null);
+
   return (
     <div className={`${fill ? "flex h-full flex-col" : ""} ${className}`}>
       <div ref={box} className={`@container relative overflow-hidden rounded-xl select-none bg-[#9fbfcf] ${fill ? "flex-1" : ""}`} style={fill ? { minHeight: height } : { height }}>
@@ -106,7 +141,28 @@ export default function MovingHorse3D({ breed, color, motion, surface = 'dirt', 
           aria-label={`Ngựa 3D — ${caption || 'đứng yên'}${view === 'side' ? `, trên ${SURFACE_WORDS[surface] || 'mặt đất'}` : ''}`}
           className="absolute inset-0 block h-full w-full"
           style={{ opacity: status === 'ready' ? 1 : 0, transition: 'opacity .4s ease', touchAction: 'pan-y' }}
+          onPointerDown={canRear ? (e) => (pressedAt.current = [e.clientX, e.clientY]) : undefined}
+          onClick={
+            canRear
+              ? (e) => {
+                  const [x, y] = pressedAt.current || [e.clientX, e.clientY];
+                  if (Math.hypot(e.clientX - x, e.clientY - y) < 6) rear(true);
+                }
+              : undefined
+          }
         />
+        {canRear && !showCoat && (
+          <button
+            type="button"
+            onClick={() => rear(true)}
+            title="Bấm vào ngựa hoặc nút này: ngựa chồm lên bằng hai chân sau và hí"
+            className={`absolute inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold text-white transition hover:brightness-125 ${compact ? 'left-2 bottom-2' : 'left-3 bottom-3'}`}
+            style={{ ...GLASS, fontSize: compact ? 10 : 12 }}
+          >
+            <ThunderboltOutlined aria-hidden="true" />
+            Chồm lên &amp; hí
+          </button>
+        )}
 
         {caption && status === 'ready' && (
           <div className={`absolute pointer-events-none ${compact ? 'left-2 top-2' : 'left-3 top-3'}`}>

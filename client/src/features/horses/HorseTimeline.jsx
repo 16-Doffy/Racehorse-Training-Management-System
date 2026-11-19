@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Card, Empty, Input, Segmented, Tag, Typography, theme } from 'antd';
+import { Button, Card, Empty, Input, Pagination, Segmented, Tag, Typography, theme } from 'antd';
 import {
   CalendarOutlined,
   CheckCircleOutlined,
@@ -40,6 +40,10 @@ const RANGE_OPTIONS = [
   { value: 30, label: '30 ngày' },
   { value: 90, label: '90 ngày' },
 ];
+
+// Ten events a page; a detail longer than this is folded to two lines until asked for.
+const PAGE_SIZE = 10;
+const LONG_DETAIL = 160;
 
 const SEVERITY_META = {
   critical: { label: 'Khẩn cấp', color: 'error', border: '#ef4444' },
@@ -117,16 +121,31 @@ export default function HorseTimeline({ horseId }) {
     [allEvents, role, onlyFlagged, q],
   );
 
-  // Group events by calendar day (YYYY-MM-DD) while preserving server order within each day.
+  // Ten events a page. The page goes back to the first whenever the filters, the search or the range change.
+  const filterKey = `${role}|${onlyFlagged}|${q}|${days}`;
+  const [paging, setPaging] = useState({ key: filterKey, page: 1 });
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const page = paging.key === filterKey ? Math.min(paging.page, pages) : 1;
+  const pageEvents = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const [openDetails, setOpenDetails] = useState(() => new Set());
+  const toggleDetail = (k) =>
+    setOpenDetails((s) => {
+      const next = new Set(s);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+
+  // The page's events by calendar day (YYYY-MM-DD), keeping the server's order within each day.
   const groupedDays = useMemo(() => {
     const map = new Map();
-    for (const e of filtered) {
+    for (const e of pageEvents) {
       const key = dayjs(e.at).format('YYYY-MM-DD');
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(e);
     }
     return [...map.entries()];
-  }, [filtered]);
+  }, [pageEvents]);
 
   const kpiCards = [
     { key: 'all', label: 'Tổng hoạt động', count: counts.all, dot: '#eab308', active: role === 'all' && !onlyFlagged, onClick: () => { setRole('all'); setOnlyFlagged(false); } },
@@ -265,8 +284,8 @@ export default function HorseTimeline({ horseId }) {
                     >
                       {/* Colored timeline dot on the guide rail */}
                       <span
-                        className="absolute -left-[20px] top-3.5 h-2.5 w-2.5 rounded-full ring-2"
-                        style={{ background: sev ? sev.border : meta.dot, ringColor: token.colorBgContainer }}
+                        className="absolute -left-[20px] top-3.5 h-2.5 w-2.5 rounded-full"
+                        style={{ background: sev ? sev.border : meta.dot, boxShadow: `0 0 0 2px ${token.colorBgContainer}` }}
                         aria-hidden="true"
                       />
 
@@ -316,9 +335,14 @@ export default function HorseTimeline({ horseId }) {
                       </div>
 
                       {e.detail && (
-                        <div className="mt-0.5 text-xs leading-relaxed" style={{ color: token.colorTextSecondary }}>
+                        <div className={`mt-0.5 text-xs leading-relaxed ${openDetails.has(`${e.kind}-${e.refId}-${e.at}`) ? '' : 'line-clamp-2'}`} style={{ color: token.colorTextSecondary }}>
                           {e.detail}
                         </div>
+                      )}
+                      {e.detail?.length > LONG_DETAIL && (
+                        <Button type="link" size="small" className="!h-auto !p-0 !text-xs" onClick={() => toggleDetail(`${e.kind}-${e.refId}-${e.at}`)}>
+                          {openDetails.has(`${e.kind}-${e.refId}-${e.at}`) ? 'Thu gọn' : 'Xem thêm'}
+                        </Button>
                       )}
                     </div>
                   );
@@ -326,6 +350,20 @@ export default function HorseTimeline({ horseId }) {
               </div>
             </div>
           ))}
+
+          {filtered.length > PAGE_SIZE && (
+            <div className="flex justify-end border-t pt-3" style={{ borderColor: token.colorBorderSecondary }}>
+              <Pagination
+                size="small"
+                current={page}
+                pageSize={PAGE_SIZE}
+                total={filtered.length}
+                onChange={(p) => setPaging({ key: filterKey, page: p })}
+                showSizeChanger={false}
+                showTotal={(total, [from, to]) => `${from}–${to} / ${total} hoạt động`}
+              />
+            </div>
+          )}
         </div>
       )}
     </Card>

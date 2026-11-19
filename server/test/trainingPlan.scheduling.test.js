@@ -24,7 +24,7 @@ notifications.notifyCaretaker = async () => {};
 
 const { generatePlanWeek, mondayOf, DAY_MS } = require('../src/modules/training/trainingPlan.service');
 const controller = require('../src/modules/training/trainingPlan.controller');
-const { suggestPhases, planWarnings } = require('../src/constants/training');
+const { suggestPhases, planWarnings, PRE_RACE_DAYS, RECOVERY_DAYS_BEFORE_RACE, TRIAL_DAYS_BEFORE_RACE } = require('../src/constants/training');
 
 let existing = [];
 let created = [];
@@ -154,15 +154,26 @@ test('invalid generator dates and swapped slot clocks are rejected before bookin
   assert.equal(created.length, 0);
 });
 
-test('suggestions include the race week and vary base work with race distance', () => {
+test('suggestions end with the trial, recover before the race, are done PRE_RACE_DAYS before it, and vary base work with race distance', () => {
   const start = new Date('2030-01-07');
-  for (const days of [1, 6, 7, 13, 14, 83]) {
+  for (const days of [8, 9, 13, 14, 20, 57, 83]) {
     const raceDate = new Date(start.getTime() + days * DAY_MS);
     const phases = suggestPhases(start, raceDate, 1600);
-    assert.equal(phases.filter((p) => p.key !== 'recovery').reduce((n, p) => n + p.weeks, 0), Math.ceil((days + 1) / 7));
+    const length = (p) => p.weeks * 7 + (p.extraDays || 0);
+    assert.equal(phases.reduce((n, p) => n + length(p), 0), days - PRE_RACE_DAYS, 'the last day of the plan is PRE_RACE_DAYS + 1 before race day');
     assert.equal(phases.at(-1).key, 'recovery');
+    assert.equal(length(phases.at(-1)), RECOVERY_DAYS_BEFORE_RACE, 'a few days of light work before the race');
+    assert.equal(phases.at(-2).key, 'peak');
+    assert.equal(phases.slice(0, -1).reduce((n, p) => n + length(p), 0), days - TRIAL_DAYS_BEFORE_RACE + 1, 'the taper ends with the trial');
     assert.deepEqual(planWarnings(phases, { startDate: start, raceDate, distance: 1600 }).filter((w) => w.level === 'error'), []);
   }
+  // A plan that runs into the days before the race, or past race day, or recovers before other work, is refused.
+  const race = new Date(start.getTime() + 57 * DAY_MS);
+  const errorsOf = (phases) => planWarnings(phases, { startDate: start, raceDate: race, distance: 1600 }).filter((w) => w.level === 'error');
+  assert.equal(errorsOf([{ key: 'base_building', weeks: 5 }, { key: 'speed', weeks: 2 }, { key: 'peak', weeks: 1 }, { key: 'recovery', weeks: 0, extraDays: 1 }]).length, 1, 'only 2 days left before the race');
+  assert.equal(errorsOf([{ key: 'base_building', weeks: 5 }, { key: 'speed', weeks: 2 }, { key: 'peak', weeks: 2 }]).length, 1, 'runs past race day');
+  assert.equal(errorsOf([{ key: 'base_building', weeks: 3 }, { key: 'recovery', weeks: 1 }, { key: 'speed', weeks: 2 }, { key: 'peak', weeks: 1 }]).length, 1, 'recovery before other work');
+  assert.ok(planWarnings([{ key: 'base_building', weeks: 4 }, { key: 'speed', weeks: 2 }, { key: 'peak', weeks: 1 }], { startDate: start, raceDate: race, distance: 1600 }).some((w) => w.text.includes('Hồi phục')), 'no recovery: a warning');
   const raceDate = new Date(start.getTime() + 83 * DAY_MS);
   const sprint = suggestPhases(start, raceDate, 1000);
   const long = suggestPhases(start, raceDate, 2400);

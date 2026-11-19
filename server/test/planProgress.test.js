@@ -5,15 +5,15 @@ const rules = require('../src/modules/training/planProgress');
 const DAY = 86400000;
 const start = new Date('2026-09-07T00:00:00'); // a Monday
 const day = (n) => new Date(start.getTime() + n * DAY);
-// 4 + 3 + 3 + 1 weeks to a race at the end of the taper, then two weeks of recovery.
+// 4 + 3 + 3 + 1 weeks ending with the trial, 4 days of recovery, done PRE_RACE_DAYS before the race.
 const cycle = () => [
   { key: 'base_building', weeks: 4, extraDays: 0 },
   { key: 'strength', weeks: 3, extraDays: 0 },
   { key: 'speed', weeks: 3, extraDays: 0 },
   { key: 'peak', weeks: 1, extraDays: 0 },
-  { key: 'recovery', weeks: 2, extraDays: 0 },
+  { key: 'recovery', weeks: 1, extraDays: -3 },
 ];
-const raceDate = day(11 * 7 - 1); // the taper's last day
+const raceDate = day(11 * 7 + 7); // the taper ends on day 76, recovery 77–80; 81–83 are free for rest, the vet and the trip
 
 test('days off: a couple absorbed, the rest made up, time to rebuild after a long stop', () => {
   assert.equal(rules.addedDaysFor(0), 0);
@@ -39,8 +39,8 @@ test('a phase made longer: the phases ahead are cut to keep the race, the latest
   grown[1].extraDays = 6; // strength runs 6 days more
   const fit = rules.fitToRace({ startDate: start, phases: grown, before, raceDate, from: 1 });
   assert.equal(fit.short, 0);
-  // The race may come a few days into the taper (MIN_TAPER_DAYS): 3 of the 6 days fit there, speed gives the rest.
-  assert.deepEqual(fit.cuts, [{ index: 2, key: 'speed', days: 3 }], 'speed gives the days, the taper is kept');
+  // The days before the race stay free: speed gives all 6 days, the taper is kept.
+  assert.deepEqual(fit.cuts, [{ index: 2, key: 'speed', days: 6 }], 'speed gives the days, the taper is kept');
   assert.equal(rules.raceShortfall(start, fit.phases, raceDate), 0);
 
   // Too much to make up: speed down to its least, still short — the horse cannot be ready.

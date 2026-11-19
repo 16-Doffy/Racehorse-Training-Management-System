@@ -1,5 +1,5 @@
 const clubPolicy = require('../../config/clubPolicy');
-const { SESSION_DONE_STATUSES, PHASE_LABELS } = require('../../constants/training');
+const { SESSION_DONE_STATUSES, PHASE_LABELS, PRE_RACE_DAYS } = require('../../constants/training');
 const { allows } = require('../health/trainingClearance');
 
 /**
@@ -10,10 +10,12 @@ const { allows } = require('../health/trainingClearance');
  *   days longer as were lost (a couple of days are absorbed), plus time to rebuild after a long stop, so
  *   no phase is skipped; the phases after it move back.
  * - Each build-up phase ends with a checkpoint on its own sessions — attendance, targets met, the
- *   trainer's rating — and the vet's clearance for the next phase's work. Not met, the phase runs
- *   another week; after MAX_EXTENSIONS weeks more it has failed.
- * - Whenever the phases move, the race must still come after a taper: the build-up phases still ahead
- *   are shortened, the latest first, to no less than they need. When that is not enough, or a phase
+ *   trainer's rating — and the vet's clearance for the next phase's work. Only the trainer moves the
+ *   horse on, once these are met ("phase done"); a phase that ended without that runs another week,
+ *   as many times as it takes: no phase is skipped.
+ * - Whenever the phases move, the plan must still be done PRE_RACE_DAYS before the race (rest, the vet's
+ *   pre-race check, the trip): the build-up phases still ahead are shortened, the latest first, to no
+ *   less than they need. When that is not enough, or a phase
  *   failed, the horse cannot be ready in time and is withdrawn from the race.
  */
 
@@ -36,8 +38,6 @@ const EXTEND_DAYS = 7;
 const MAX_EXTENSIONS = 2;
 // The least a build-up phase still ahead may be cut to, to keep the race: what still does its job.
 const MIN_PHASE_DAYS = { base_building: 14, strength: 7, speed: 7, peak: 5 };
-// The race comes at least this many days into the taper (the last build-up phase).
-const MIN_TAPER_DAYS = 3;
 // The checkpoint looks at a phase that ended at most this long ago: older ones (a plan from before
 // checkpoints) are not judged afterwards.
 const CHECK_WITHIN_DAYS = 3;
@@ -70,13 +70,16 @@ function lastBuildUp(phases) {
   return -1;
 }
 
-/** Days the race comes too early for the taper (0 when it fits, or with no race). */
+/**
+ * Days the plan — the build-up and the recovery after the trial — runs too late to leave PRE_RACE_DAYS
+ * free before the race (0 when it fits, or with no race).
+ */
 function raceShortfall(startDate, phases, raceDate) {
-  const last = lastBuildUp(phases);
-  if (!raceDate || last < 0) return 0;
+  if (!raceDate || lastBuildUp(phases) < 0) return 0;
   const laid = layout(startDate, phases);
-  const taperFrom = laid[last].startDate.getTime() + MIN_TAPER_DAYS * DAY_MS;
-  return Math.max(0, Math.ceil((taperFrom - startOfDay(raceDate).getTime()) / DAY_MS));
+  const lastDay = startOfDay(laid[laid.length - 1].endDate).getTime();
+  const latest = startOfDay(raceDate).getTime() - (PRE_RACE_DAYS + 1) * DAY_MS;
+  return Math.max(0, Math.round((lastDay - latest) / DAY_MS));
 }
 
 /**
@@ -176,6 +179,26 @@ function checkpointDue(phases, checkpoints = [], now = new Date()) {
   return -1;
 }
 
+/**
+ * Where each build-up phase before the taper stands, for the race: 'passed' (the trainer judged it
+ * done), 'current' (being trained, a week more included), 'ahead' (not started) or 'unfinished' (over
+ * without being judged done). A horse goes to its race only with all of them passed; the taper ends with
+ * the race's trial, which the race decision judges. `phases` with startDate/endDate.
+ * [{ index, key, state, at, startDate, endDate }]
+ */
+function phaseCompletion(phases = [], checkpoints = [], now = new Date()) {
+  const taper = lastBuildUp(phases);
+  const out = [];
+  for (let j = 0; j < taper; j += 1) {
+    const p = phases[j];
+    if (p.key === 'recovery') continue;
+    const passed = checkpoints.filter((c) => c.phaseIndex === j && c.result === 'passed').at(-1);
+    const state = passed ? 'passed' : now < new Date(p.startDate) ? 'ahead' : now <= new Date(p.endDate) ? 'current' : 'unfinished';
+    out.push({ index: j, key: p.key, state, at: passed?.at || null, startDate: p.startDate, endDate: p.endDate });
+  }
+  return out;
+}
+
 /** How many times a phase already ran a week more. */
 const extensionsOf = (checkpoints = [], index) => checkpoints.filter((c) => c.phaseIndex === index && c.result === 'extended').length;
 
@@ -186,7 +209,6 @@ module.exports = {
   EXTEND_DAYS,
   MAX_EXTENSIONS,
   MIN_PHASE_DAYS,
-  MIN_TAPER_DAYS,
   DECIDE_LAST_DAYS,
   startOfDay,
   phaseDays,
@@ -198,5 +220,6 @@ module.exports = {
   fitToRace,
   phaseVerdict,
   checkpointDue,
+  phaseCompletion,
   extensionsOf,
 };

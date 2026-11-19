@@ -19,21 +19,21 @@ const GUIDE = {
     strength: { weeks: [2, 3], km: [12, 16] },
     speed: { weeks: [2, 3], km: [12, 16] },
     peak: { weeks: [1, 2], km: [7, 10] },
-    recovery: { weeks: [1, 2], km: [5, 8] },
+    recovery: { weeks: [1, 1], km: [5, 8] },
   },
   middle: {
     base_building: { weeks: [4, 6], km: [12, 18] },
     strength: { weeks: [3, 4], km: [14, 20] },
     speed: { weeks: [2, 3], km: [13, 18] },
     peak: { weeks: [1, 2], km: [8, 12] },
-    recovery: { weeks: [2, 2], km: [6, 10] },
+    recovery: { weeks: [1, 1], km: [6, 10] },
   },
   staying: {
     base_building: { weeks: [6, 8], km: [16, 24] },
     strength: { weeks: [3, 4], km: [18, 24] },
     speed: { weeks: [2, 3], km: [15, 20] },
     peak: { weeks: [2, 2], km: [10, 14] },
-    recovery: { weeks: [2, 2], km: [8, 12] },
+    recovery: { weeks: [1, 1], km: [8, 12] },
   },
 };
 
@@ -123,12 +123,15 @@ export const PHASE_FOCUS = {
     hrMax: 145,
     durationMin: '25–35 phút',
     rationHint: 'Giảm mạnh tinh bột, tăng cỏ thô mát + điện giải hồi phục.',
-    focus: 'Đi bộ, chạy kiệu nhẹ để hồi phục sau giải.',
+    focus: 'Sau buổi chạy thử, trước ngày đua (thường 4 ngày): đi bộ, chạy kiệu, phi nhẹ để ngựa hồi sức rồi mới đi thi đấu.',
+    // Light work every day but Sunday, so any few days of it have some.
     recommendedWeek: [
       { day: 1, preset: 'walk' },
       { day: 2, preset: 'trot' },
+      { day: 3, preset: 'walk' },
       { day: 4, preset: 'canter_easy' },
-      { day: 6, preset: 'canter_easy' },
+      { day: 5, preset: 'walk' },
+      { day: 6, preset: 'trot' },
     ],
   },
 };

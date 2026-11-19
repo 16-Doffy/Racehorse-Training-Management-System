@@ -8,6 +8,7 @@ const { logAction } = require('../audit/audit.service');
 const { getMedicalBlock } = require('./readiness.service');
 const { getTrainingClearance } = require('../health/trainingClearance');
 const rules = require('./planProgress');
+const { PRE_RACE_DAYS } = require('../../constants/training');
 
 const { phasesOf, currentPhaseIndex } = TrainingPlan;
 const { startOfDay, label, EXTEND_DAYS, MAX_EXTENSIONS, DECIDE_LAST_DAYS, DAY_MS } = rules;
@@ -115,7 +116,7 @@ async function lengthen(plan, index, days, why, now) {
   if (race && fit.short > 0) {
     withdrawn = await withdrawFromRace(
       plan,
-      `${why}; dù đã rút ngắn các giai đoạn sau tới mức tối thiểu vẫn thiếu ${fit.short} ngày để ngựa kịp giảm tải trước ngày đua ${ddmm(race.raceDate)}.`,
+      `${why}; dù đã rút ngắn các giai đoạn sau tới mức tối thiểu vẫn thiếu ${fit.short} ngày để kế hoạch xong trước ngày đua ${ddmm(race.raceDate)} (cần chừa ${PRE_RACE_DAYS} ngày nghỉ, khám và di chuyển).`,
       now
     );
   }
@@ -200,7 +201,12 @@ async function verdictFor(plan, phases, index, now) {
 }
 const metricsOf = (v) => ({ due: v.due, done: v.done, rated: v.rated, met: v.met, avgRating: v.avgRating });
 
-/** The checkpoint of the build-up phase that just ended (rules.checkpointDue), if one is due. */
+/**
+ * The build-up phase that just ended (rules.checkpointDue) without the trainer judging it done: the horse
+ * is not moved on by the calendar. It stays in the phase a week more — whether its sessions met the
+ * phase's marks or not — and the trainer is asked to judge it (decideCheckpoint). Each week more is
+ * fitted to the race like a stop for illness; when the horse can no longer be ready it leaves the race.
+ */
 async function checkpoint(plan, now) {
   const phases = plainPhases(plan);
   const index = rules.checkpointDue(phases, plan.checkpoints, now);
@@ -208,46 +214,24 @@ async function checkpoint(plan, now) {
   const p = phases[index];
   const next = phases[index + 1];
   const v = await verdictFor(plan, phases, index, now);
-  const base = { phaseIndex: index, phaseKey: p.key, at: now, auto: true, metrics: metricsOf(v), reasons: v.reasons };
-  const name = nameOf(plan);
-  if (v.pass) {
-    plan.checkpoints.push({ ...base, result: 'passed' });
-    await plan.save();
-    await notifyHorseStaff({
-      staff: 'trainer',
-      horse: horseOf(plan),
-      type: 'plan_checkpoint',
-      severity: 'info',
-      message: `✅ ${name} đạt đánh giá cuối giai đoạn ${label(p.key)}${v.due ? ` (${v.done}/${v.due} buổi)` : ''}: sang giai đoạn ${label(next.key)}.`,
-    });
-    return { index, result: 'passed' };
-  }
-  const reasons = v.reasons.join('; ');
-  if (rules.extensionsOf(plan.checkpoints, index) < MAX_EXTENSIONS) {
-    const moved = await lengthen(plan, index, EXTEND_DAYS, `chưa đạt giai đoạn ${label(p.key)} (${reasons}) nên phải tập thêm`, now);
-    plan.checkpoints.push({ ...base, result: 'extended', extendedDays: EXTEND_DAYS });
-    await plan.save();
-    await rebookAhead(plan, now);
-    await notifyHorseStaff({
-      staff: 'trainer',
-      horse: horseOf(plan),
-      type: 'plan_checkpoint',
-      severity: 'warning',
-      message: `⚠️ ${name} chưa đạt đánh giá cuối giai đoạn ${label(p.key)} (${reasons}): tập thêm ${EXTEND_DAYS} ngày giai đoạn này, đánh giá lại ngày ${ddmm(new Date(moved.end.getTime() + 1))}.${cutsText(moved.cuts)}${moved.withdrawn ? ' Không còn kịp ngày đua: ngựa đã được rút khỏi giải.' : ''}`,
-    });
-    return { index, result: 'extended', withdrawn: Boolean(moved.withdrawn) };
-  }
-  plan.checkpoints.push({ ...base, result: 'failed' });
+  const waiting = v.pass; // met, only the trainer's word is missing
+  const reasons = waiting ? ['HLV chưa đánh giá hoàn thành giai đoạn'] : v.reasons;
+  const why = waiting ? `hết giai đoạn ${label(p.key)} nhưng HLV chưa đánh giá hoàn thành` : `chưa đạt giai đoạn ${label(p.key)} (${v.reasons.join('; ')})`;
+  const moved = await lengthen(plan, index, EXTEND_DAYS, `${why} nên tập thêm`, now);
+  plan.checkpoints.push({ phaseIndex: index, phaseKey: p.key, at: now, auto: true, metrics: metricsOf(v), reasons, result: 'extended', extendedDays: EXTEND_DAYS });
   await plan.save();
-  const withdrawn = await withdrawFromRace(plan, `không đạt đánh giá cuối giai đoạn ${label(p.key)} sau ${MAX_EXTENSIONS} lần tập thêm (${reasons}).`, now);
+  await rebookAhead(plan, now);
+  const until = ddmm(moved.end);
   await notifyHorseStaff({
     staff: 'trainer',
     horse: horseOf(plan),
     type: 'plan_checkpoint',
     severity: 'warning',
-    message: `❌ ${name} không đạt giai đoạn ${label(p.key)} sau ${MAX_EXTENSIONS} lần tập thêm (${reasons}).${withdrawn ? ' Ngựa đã được rút khỏi giải.' : ''} Kế hoạch sang giai đoạn ${label(next.key)} theo lịch — HLV xem lại kế hoạch.`,
+    message: `${waiting ? '⏳' : '⚠️'} ${nameOf(plan)} ${why}: ở lại giai đoạn ${label(p.key)} thêm ${EXTEND_DAYS} ngày (tới ${until}), chưa sang ${label(next.key)}. ${
+      waiting ? `HLV vào Kế hoạch huấn luyện, bấm "Hoàn thành giai đoạn" để ngựa sang ${label(next.key)}.` : 'HLV đánh giá lại khi ngựa đạt.'
+    }${cutsText(moved.cuts)}${moved.withdrawn ? ' Không còn kịp ngày đua: ngựa đã được rút khỏi giải.' : ''}`,
   });
-  return { index, result: 'failed', withdrawn: Boolean(withdrawn) };
+  return { index, result: 'extended', withdrawn: Boolean(moved.withdrawn) };
 }
 
 /**
@@ -328,6 +312,13 @@ async function decideCheckpoint({ plan, user, decision, note = '', now = new Dat
   const phases = plainPhases(plan);
   const index = view.phaseIndex;
   const v = await verdictFor(plan, phases, index, now);
+  // "Phase done" only for a horse that did the phase's work: no step up before it is ready.
+  if (decision === 'pass' && !v.pass) {
+    return {
+      error: `Ngựa chưa hoàn thành giai đoạn ${label(phases[index].key)}: ${v.reasons.join('; ')} — chưa được sang ${label(phases[index + 1].key)}. Cho ngựa tập thêm rồi đánh giá lại.`,
+      status: 409,
+    };
+  }
   const base = { phaseIndex: index, phaseKey: phases[index].key, at: now, auto: false, by: user._id, note: String(note || '').trim().slice(0, 300), metrics: metricsOf(v), reasons: v.reasons };
   let withdrawn = null;
   let cuts = [];

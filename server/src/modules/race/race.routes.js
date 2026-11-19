@@ -6,6 +6,10 @@ const crudFactory = require('../../utils/crudFactory');
 const RaceEntry = require('../../models/RaceEntry');
 const Horse = require('../../models/Horse');
 const { getRaceBlock } = require('../training/readiness.service');
+const { minPrepFor, earliestRaceDate, PHASE_LABELS } = require('../../constants/training');
+const clubPolicy = require('../../config/clubPolicy');
+const TrainingPlan = require('../../models/TrainingPlan');
+const { phaseCompletion } = require('../training/planProgress');
 
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, fail } = require('../../utils/apiResponse');
@@ -99,6 +103,21 @@ function entryProblem(body, existing) {
   if (body.surface !== undefined && body.surface !== null && body.surface !== '' && !RaceEntry.SURFACES.includes(body.surface)) {
     return 'Mặt sân không hợp lệ.';
   }
+  // Time to prepare: a race is entered (or moved, or made longer) only far enough ahead for the horse to
+  // go through a whole training cycle for its distance (constants/training.js minPrepFor).
+  const raceDate = body.raceDate !== undefined ? body.raceDate : existing?.raceDate;
+  const distance = body.distance !== undefined && body.distance !== null && body.distance !== '' ? Number(body.distance) : existing?.distance;
+  const changed =
+    !existing ||
+    (body.raceDate !== undefined && new Date(body.raceDate).toDateString() !== new Date(existing.raceDate).toDateString()) ||
+    (body.distance !== undefined && Number(body.distance) !== Number(existing.distance));
+  if (clubPolicy.raceEntryMinPrep && changed && raceDate && ['registered', 'confirmed', undefined].includes(existing?.status)) {
+    const earliest = earliestRaceDate(distance);
+    if (new Date(raceDate) < earliest) {
+      const need = minPrepFor(distance);
+      return `Giải ${distance} m (cự ly ${need.label}) cần ít nhất ${need.weeks} tuần huấn luyện và ${need.prepDays} ngày chuẩn bị (khởi động kế hoạch, hồi phục sau chạy thử, nghỉ – khám – di chuyển trước giải): ngày đua sớm nhất ${earliest.toLocaleDateString('vi-VN')}. Ngựa không kịp chuẩn bị cho ngày ${new Date(raceDate).toLocaleDateString('vi-VN')}.`;
+    }
+  }
   return null;
 }
 
@@ -128,6 +147,19 @@ const recordDecision = asyncHandler(async (req, res) => {
   if (decision === 'confirmed') {
     const block = await getRaceBlock(entry.horse);
     if (block) return fail(res, `Không xác nhận được: ${block}`, 409);
+    // The horse goes only having come through its plan for this race: each build-up phase before the
+    // taper judged done by the trainer (planProgress.js phaseCompletion), none skipped.
+    if (clubPolicy.raceNeedsPhasesDone) {
+      const plan = await TrainingPlan.findOne({ horse: entry.horse, targetRace: entry._id, status: { $in: ['active', 'completed'] } });
+      if (!plan?.phases?.length) {
+        return fail(res, 'Ngựa chưa có kế hoạch huấn luyện cho giải này — lập kế hoạch và hoàn thành các giai đoạn trước khi xác nhận dự giải.', 409);
+      }
+      const left = phaseCompletion(TrainingPlan.phasesOf(plan), plan.checkpoints || []).filter((s) => s.state !== 'passed');
+      if (left.length) {
+        const names = left.map((s) => PHASE_LABELS[s.key] || s.key).join(', ');
+        return fail(res, `Ngựa chưa hoàn thành giai đoạn ${names} của kế hoạch — HLV đánh giá hoàn thành từng giai đoạn trước, rồi mới xác nhận dự giải.`, 409);
+      }
+    }
     const trials = await trialsForEntry(entry);
     if (trialSession) {
       trial = trials.find((t) => String(t._id) === String(trialSession));

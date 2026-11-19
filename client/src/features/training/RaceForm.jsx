@@ -41,7 +41,10 @@ export function RaceFormBlock({ form }) {
   if (!form) return null;
   const reasons = Array.isArray(form.reasons) ? form.reasons : [];
   const pct = (share) => `${Math.round(share * 100)}%`;
-  const rule = `Theo quy định CLB: tập từ ${pct(policy.raceFormMinDone)} số buổi đến hạn, đạt chỉ tiêu từ ${pct(policy.raceFormMinMet)} số buổi đã tập, điểm đánh giá HLV TB từ ${policy.raceFormMinAvgRating}/10, chạy thử cho giải đạt, bác sĩ không khóa tập.`;
+  const byPhases = Array.isArray(form.phases) && form.phases.length > 0;
+  const rule = byPhases
+    ? `Theo quy định CLB: ngựa phải được HLV đánh giá hoàn thành lần lượt từng giai đoạn (Nền tảng → Sức mạnh → Tốc độ), không nhảy bậc — mỗi giai đoạn cần tập từ ${pct(policy.raceFormMinDone)} số buổi, đạt chỉ tiêu từ ${pct(policy.raceFormMinMet)}, điểm HLV TB từ ${policy.raceFormMinAvgRating}/10; sau đó chạy thử cho giải đạt và bác sĩ không khóa tập.`
+    : `Theo quy định CLB: tập từ ${pct(policy.raceFormMinDone)} số buổi đến hạn, đạt chỉ tiêu từ ${pct(policy.raceFormMinMet)} số buổi đã tập, điểm đánh giá HLV TB từ ${policy.raceFormMinAvgRating}/10, chạy thử cho giải đạt, bác sĩ không khóa tập.`;
 
   return (
     <div className="flex flex-col gap-1.5">

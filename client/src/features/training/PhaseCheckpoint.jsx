@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, Input, Popconfirm } from 'antd';
+import { Alert, Button, Input, Popconfirm, Tooltip } from 'antd';
 import { CheckCircleOutlined, ClockCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -42,8 +42,9 @@ const CHECK_TONE = {
 
 /**
  * The current phase's end-of-phase checkpoint (progress.checkpoint): what it judges, how the phase stands
- * on it so far, and — in its last days or while it runs a week more — the trainer's call: move on now, or
- * a week more. Without a call the system judges it the day after the phase ends.
+ * on it so far, and — in its last days or while it runs a week more — the trainer's call: "phase done"
+ * (only once its marks are met) or a week more. Only the trainer moves the horse on: a phase that ends
+ * without their "done" runs a week more (server planProgress.service.js), so no phase is skipped.
  */
 export function PhaseCheckBlock({ plan }) {
   const check = plan.progress?.checkpoint;
@@ -55,7 +56,7 @@ export function PhaseCheckBlock({ plan }) {
       const data = res?.data || {};
       message[data.withdrawn ? 'warning' : 'success'](
         decision === 'pass'
-          ? `Đã cho sang giai đoạn ${label(check.nextKey)} từ ngày mai.`
+          ? `Đã đánh giá hoàn thành ${label(check.phaseKey)}: sang giai đoạn ${label(check.nextKey)} từ ngày mai.`
           : `Giai đoạn ${label(check.phaseKey)} tập thêm 7 ngày.${data.withdrawn ? ' Không còn kịp ngày đua: ngựa đã được rút khỏi giải.' : ''}`
       );
       setNote('');
@@ -67,12 +68,13 @@ export function PhaseCheckBlock({ plan }) {
   });
   if (!check) return null;
   const when = check.daysLeft === 0 ? 'hôm nay' : `${ddmm(check.endDate)} · còn ${check.daysLeft} ngày`;
+  const opensOn = dayjs(check.endDate).subtract(2, 'day');
 
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
         <span className="text-xs font-semibold text-gray-900">
-          Đánh giá cuối giai đoạn {label(check.phaseKey)} → {label(check.nextKey)}
+          Đánh giá hoàn thành giai đoạn {label(check.phaseKey)} → {label(check.nextKey)}
         </span>
         <span className="text-[11px] tabular-nums text-gray-500">
           <ClockCircleOutlined className="mr-1" />
@@ -88,26 +90,37 @@ export function PhaseCheckBlock({ plan }) {
           </span>
         ))}
       </div>
-      <p className="m-0 text-xs leading-snug text-gray-600">
+      <p className={`m-0 text-xs leading-snug ${check.pass || check.decided === 'passed' ? 'text-gray-600' : 'text-amber-700'}`}>
         {check.decided === 'passed'
-          ? `Đã đạt: sang giai đoạn ${label(check.nextKey)} từ ngày mai.`
+          ? `HLV đã đánh giá hoàn thành: sang giai đoạn ${label(check.nextKey)} từ ngày mai.`
           : check.decided === 'failed'
-            ? `Không đạt sau ${check.maxExtensions} lần tập thêm — HLV xem lại kế hoạch.`
-            : `${check.extensions > 0 ? `Đang tập thêm lần ${check.extensions}/${check.maxExtensions}. ` : ''}${
+            ? 'Không đạt — HLV xem lại kế hoạch.'
+            : `${check.extensions > 0 ? `Đã tập thêm ${check.extensions} lần. ` : ''}${
                 check.pass
-                  ? 'Đang đạt: hết giai đoạn ngựa tự sang giai đoạn sau.'
-                  : `Chưa đạt: hết giai đoạn ngựa tập thêm 7 ngày${check.extensions + 1 >= check.maxExtensions ? '; không đạt sau lần này thì ngựa rút khỏi giải' : ''}.`
+                  ? `Đủ tiêu chí. Ngựa chỉ sang ${label(check.nextKey)} khi HLV bấm "Hoàn thành giai đoạn"; chưa đánh giá thì hết giai đoạn ngựa ở lại tập thêm 7 ngày.`
+                  : `Chưa đạt tiêu chí: chưa được sang ${label(check.nextKey)}. Hết giai đoạn ngựa tập thêm 7 ngày; không còn kịp ngày đua thì ngựa tự rút khỏi giải.`
               }`}
       </p>
+      {!check.canDecide && !check.decided && (
+        <p className="m-0 text-[11px] text-gray-500">HLV đánh giá được trong 3 ngày cuối giai đoạn (từ {opensOn.format('DD/MM')}).</p>
+      )}
       {check.canDecide && (
         <div className="flex flex-col gap-1.5 rounded-md border border-gray-200 bg-gray-50 p-2">
           <Input.TextArea value={note} onChange={(e) => setNote(e.target.value)} rows={1} maxLength={300} placeholder="Nhận xét của HLV (không bắt buộc)" autoSize={{ minRows: 1, maxRows: 3 }} />
           <div className="flex flex-wrap gap-2">
-            <Popconfirm title={`Kết thúc ${label(check.phaseKey)} hôm nay, sang ${label(check.nextKey)} từ ngày mai?`} okText="Sang giai đoạn" cancelText="Thôi" onConfirm={() => decide.mutate('pass')}>
-              <Button size="small" type="primary" icon={<CheckCircleOutlined />} loading={decide.isPending && decide.variables === 'pass'}>
-                Sang giai đoạn tiếp
-              </Button>
-            </Popconfirm>
+            {check.pass ? (
+              <Popconfirm title={`Xác nhận ngựa đã hoàn thành ${label(check.phaseKey)}? Từ ngày mai sang ${label(check.nextKey)}.`} okText="Hoàn thành" cancelText="Thôi" onConfirm={() => decide.mutate('pass')}>
+                <Button size="small" type="primary" icon={<CheckCircleOutlined />} loading={decide.isPending && decide.variables === 'pass'}>
+                  Hoàn thành giai đoạn
+                </Button>
+              </Popconfirm>
+            ) : (
+              <Tooltip title="Ngựa chưa đạt các tiêu chí của giai đoạn này — chưa thể sang giai đoạn sau (không nhảy bậc).">
+                <Button size="small" type="primary" icon={<CheckCircleOutlined />} disabled>
+                  Hoàn thành giai đoạn
+                </Button>
+              </Tooltip>
+            )}
             <Popconfirm title={`Tập thêm 7 ngày ${label(check.phaseKey)}? Các giai đoạn sau lùi lại; không kịp ngày đua thì ngựa rút khỏi giải.`} okText="Tập thêm" cancelText="Thôi" onConfirm={() => decide.mutate('extend')}>
               <Button size="small" loading={decide.isPending && decide.variables === 'extend'}>
                 Tập thêm 1 tuần
@@ -120,7 +133,7 @@ export function PhaseCheckBlock({ plan }) {
   );
 }
 
-const RESULT_WORDS = { passed: 'đạt, sang giai đoạn sau', extended: 'chưa đạt, tập thêm', failed: 'không đạt' };
+const RESULT_WORDS = { passed: 'HLV đánh giá hoàn thành, sang giai đoạn sau', extended: 'ở lại tập thêm', failed: 'không đạt' };
 
 /** What moved the plan: the vet's stops and the end-of-phase checkpoints, oldest first. */
 export function PlanJournal({ plan }) {

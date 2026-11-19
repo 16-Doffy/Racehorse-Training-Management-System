@@ -5,13 +5,13 @@ const { getMedicalBlock } = require('./readiness.service');
 const { getTrainingClearance, allows } = require('../health/trainingClearance');
 const { notifyCaretaker } = require('../alerts/notification.service');
 const { buildFromKind } = require('./trainingSession.service');
-const { PHASE_LABELS, SESSION_KINDS, KIND_BY_INTENSITY, slotTimeProblem } = require('../../constants/training');
+// A race is prepared by a timed run over its distance about a week before (TRIAL_DAYS_BEFORE_RACE: the
+// taper's last day, before recovery and the days kept free before the race).
+const { PHASE_LABELS, SESSION_KINDS, KIND_BY_INTENSITY, slotTimeProblem, TRIAL_DAYS_BEFORE_RACE } = require('../../constants/training');
 
 const { phasesOf, currentPhaseIndex } = TrainingPlan;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// A race is prepared by a timed run over its distance about a week before.
-const TRIAL_DAYS_BEFORE_RACE = 8;
 
 const startOfDay = (d) => {
   const x = new Date(d);

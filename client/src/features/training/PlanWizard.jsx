@@ -15,6 +15,9 @@ import {
   surfaceOptions,
   layPhases,
   planWarnings,
+  RECOVERY_DAYS_BEFORE_RACE,
+  TRIAL_DAYS_BEFORE_RACE,
+  racePhaseWeeks,
 } from './trainingVocab';
 import { distanceClass, phaseGuide, midKm, PLAN_RULES } from './planGuide';
 
@@ -160,7 +163,17 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
       setRace(res.data.race);
       // Each phase starts from its detailed week (planGuide.js): every day's sessions in parts, on the clock.
       const distance = res.data.race?.distance || values.distanceTarget;
-      const proposed = res.data.phases.map((p) => {
+      // For a race, the weeks are counted here too (the same rule as the server): the taper ends with the
+      // trial, a few days of recovery follow, and the plan is done PRE_RACE_DAYS before race day,
+      // whatever version of the server answered.
+      const suggested = res.data.race
+        ? racePhaseWeeks(values.startDate.toDate(), res.data.race.raceDate, distance).map((p) => {
+            const fromServer = res.data.phases.find((x) => x.key === p.key);
+            const g = phaseGuide(distance, p.key);
+            return { intensity: g?.intensity, weeklyVolumeKm: g ? midKm(g.km) : undefined, week: [], ...fromServer, ...p };
+          })
+        : res.data.phases;
+      const proposed = suggested.map((p) => {
         const g = phaseGuide(distance, p.key);
         return { ...p, surface: values.surface, week: g?.recommendedWeek ? g.recommendedWeek.map(fromPreset) : (p.week || []).map(withParts) };
       });
@@ -203,6 +216,35 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
     return undefined;
   };
   const preRaceWeeks = phases.filter((p) => p.key !== 'recovery').reduce((n, p) => n + (Number(p.weeks) || 0), 0);
+  // With a race: the end of the build-up (the trial), the recovery after it, the plan's last day and the
+  // days left free before race day (rest, the vet, the trip).
+  const planEnd = laid.length ? laid[laid.length - 1].end : null;
+  const lastWork = [...laid].reverse().find((p) => p.key !== 'recovery');
+  const recoveryFrom = laid.find((p) => p.key === 'recovery')?.start;
+  const freeDays = race && planEnd ? dayjs(race.raceDate).startOf('day').diff(dayjs(planEnd).startOf('day'), 'day') - 1 : null;
+  const raceIntro = () => {
+    const ddmm = (d) => dayjs(d).format('DD/MM');
+    const parts = [];
+    if (lastWork) parts.push(`tập tới hết ${PHASE_LABELS[lastWork.key]} ngày ${ddmm(lastWork.end)} (chạy thử đủ cự ly ngày ${ddmm(dayjs(race.raceDate).subtract(TRIAL_DAYS_BEFORE_RACE, 'day'))})`);
+    if (recoveryFrom) parts.push(`Hồi phục tập nhẹ ${ddmm(recoveryFrom)} – ${ddmm(planEnd)}`);
+    if (freeDays > 0) parts.push(`chừa ${freeDays} ngày (${ddmm(dayjs(planEnd).add(1, 'day'))} – ${ddmm(dayjs(race.raceDate).subtract(1, 'day'))}) để ngựa nghỉ, khám trước giải và di chuyển tới trường đua`);
+    return `Chia ngược từ ngày đua ${dayjs(race.raceDate).format('DD/MM/YYYY')} (${race.distance || basics.distanceTarget} m): ${parts.join(', ')}.`;
+  };
+  /** Another phase: with a race, a week more work before the taper (the weeks before the race kept); else recovery at the end. */
+  const addPhase = () => {
+    const surface = basics?.surface;
+    if (!race) {
+      setPhases((list) => [...list, { key: 'recovery', weeks: 2, intensity: 'light', weeklyVolumeKm: 8, surface, week: [{ day: 1, kind: 'walk' }, { day: 3, kind: 'walk' }, { day: 5, kind: 'canter' }].map(withParts) }]);
+      return;
+    }
+    const taper = phases.map((p) => p.key).lastIndexOf('peak');
+    const firstRecovery = phases.findIndex((p) => p.key === 'recovery');
+    const at = taper >= 0 ? taper : firstRecovery >= 0 ? firstRecovery : phases.length;
+    const g = phaseGuide(guideDistance, 'speed');
+    const added = { key: 'speed', weeks: 1, intensity: g?.intensity || 'high', weeklyVolumeKm: g ? midKm(g.km) : 15, surface, week: g?.recommendedWeek ? g.recommendedWeek.map(fromPreset) : [] };
+    const list = [...phases.slice(0, at), added, ...phases.slice(at)];
+    setPhases(raceBudget ? fitRaceWeeks(list, at, raceBudget, (key) => phaseGuide(guideDistance, key)).phases : list);
+  };
   const hasError = warnings.some((w) => w.level === 'error');
   const shownTab = Math.min(phaseTab, Math.max(0, phases.length - 1));
 
@@ -220,6 +262,7 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
       phases: phases.map((p) => ({
         key: p.key,
         weeks: p.weeks,
+        extraDays: p.extraDays || 0,
         weeklyVolumeKm: p.weeklyVolumeKm,
         intensity: p.intensity,
         surface: p.surface,
@@ -348,7 +391,7 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
         <div className="flex flex-col gap-4">
           <Text type="secondary" className="!text-sm">
             {race
-              ? `Chia ngược từ ngày đua ${dayjs(race.raceDate).format('DD/MM/YYYY')} (${race.distance || basics.distanceTarget} m): tuần đua thuộc giai đoạn Giảm tải, sau đó 2 tuần hồi phục.`
+              ? raceIntro()
               : 'Chưa gắn giải: gợi ý 4 tuần nền tảng, 3 tuần sức mạnh, 3 tuần tốc độ.'}{' '}
             Chỉnh số tuần và thông số nếu cần.
           </Text>
@@ -380,9 +423,7 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
                 <Button
                   size="small"
                   icon={<PlusOutlined />}
-                  onClick={() =>
-                    setPhases((list) => [...list, { key: 'recovery', weeks: 2, intensity: 'light', weeklyVolumeKm: 8, surface: basics?.surface, week: [{ day: 1, kind: 'walk' }, { day: 3, kind: 'walk' }, { day: 5, kind: 'canter' }].map(withParts) }])
-                  }
+                  onClick={addPhase}
                 >
                   Thêm giai đoạn
                 </Button>
@@ -410,8 +451,33 @@ export default function PlanWizard({ open, onClose, horses = [], races = [], pla
                           <Select size="small" className="!w-44" value={p.key} options={phaseOptions} onChange={(key) => updatePhase(i, { key })} />
                         </td>
                         <td className="whitespace-nowrap px-3 py-2">
-                          <InputNumber size="small" className="!w-16" min={1} max={raceBudget && p.key !== 'recovery' ? Math.max(1, raceBudget - (phases.filter((x) => x.key !== 'recovery').length - 1)) : 12} value={p.weeks} onChange={(weeks) => setWeeks(i, weeks || 1)} />
-                          <Hint range={g?.weeks} value={p.weeks} />
+                          {race && p.key === 'recovery' ? (
+                            // Before a race, recovery is a few days: counted in days.
+                            <Tooltip title={`Tập nhẹ sau buổi chạy thử, trước ngày đua — thường ${RECOVERY_DAYS_BEFORE_RACE}–7 ngày.`}>
+                              <InputNumber
+                                size="small"
+                                className="!w-24"
+                                min={1}
+                                max={14}
+                                suffix="ngày"
+                                value={Math.max(1, (Number(p.weeks) || 0) * 7 + (Number(p.extraDays) || 0))}
+                                onChange={(days) => updatePhase(i, { weeks: 1, extraDays: (days || 1) - 7 })}
+                              />
+                            </Tooltip>
+                          ) : (
+                            <>
+                              <InputNumber size="small" className="!w-16" min={1} max={raceBudget && p.key !== 'recovery' ? Math.max(1, raceBudget - (phases.filter((x) => x.key !== 'recovery').length - 1)) : 12} value={p.weeks} onChange={(weeks) => setWeeks(i, weeks || 1)} />
+                              {p.extraDays ? (
+                                <Tooltip title={race ? `Ngày lẻ dồn vào đây để giai đoạn kết thúc đúng buổi chạy thử (${TRIAL_DAYS_BEFORE_RACE} ngày trước giải).` : 'Ngày thêm hoặc bớt so với số tuần.'}>
+                                  <span className="ml-1.5 cursor-default text-xs tabular-nums text-gray-500">
+                                    {p.extraDays > 0 ? '+' : '−'}
+                                    {Math.abs(p.extraDays)} ngày
+                                  </span>
+                                </Tooltip>
+                              ) : null}
+                              <Hint range={g?.weeks} value={p.weeks} />
+                            </>
+                          )}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gray-600">{laid[i] ? `${dayjs(laid[i].start).format('DD/MM')} – ${dayjs(laid[i].end).format('DD/MM')}` : ''}</td>
                         <td className="whitespace-nowrap px-3 py-2">

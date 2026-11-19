@@ -275,8 +275,36 @@ function slotKindProblem(kind, scheduledAt) {
   if (new Date(scheduledAt).getHours() < 12 || AFTERNOON_KINDS.includes(kind)) return null;
   return `Theo quy định CLB, buổi chiều chỉ tập nhẹ (đi bộ hoặc phi chậm) — "${SESSION_KINDS[kind]?.label || kind}" xếp vào buổi sáng.`;
 }
-const RECOVERY_WEEKS_AFTER_RACE = 2;
+// The end of a plan for a race: the build-up ends with the timed trial (TRIAL_DAYS_BEFORE_RACE before
+// race day), then RECOVERY_DAYS_BEFORE_RACE of light work to recover from it, and the plan is done
+// PRE_RACE_DAYS before the race: those days are for rest, the vet's pre-race check and the trip to the
+// course; race day is not a training day.
+const PRE_RACE_DAYS = 3;
+const RECOVERY_DAYS_BEFORE_RACE = 4;
+const TRIAL_DAYS_BEFORE_RACE = PRE_RACE_DAYS + RECOVERY_DAYS_BEFORE_RACE + 1;
+// The least time a race can be prepared for, by its distance: weeks of build-up (base, strength, speed,
+// taper; a stayer needs two months), then the recovery and the days before the race, and up to a week
+// before the plan starts. A race sooner than that is not entered: the horse could not be ready.
+const MIN_BUILD_UP_WEEKS = [
+  { upTo: 1200, weeks: 6, label: 'nước rút' },
+  { upTo: 2000, weeks: 7, label: 'trung bình' },
+  { upTo: Infinity, weeks: 8, label: 'đường dài' },
+];
+const PLAN_START_DAYS = 7;
+// The taper is a week or two, however long the build-up: more time goes to the base.
+const MAX_TAPER_WEEKS = 2;
+/** What a race of this distance needs: { weeks (build-up), prepDays (recovery, before the race, plan start), days, label }. */
+function minPrepFor(distance) {
+  const band = MIN_BUILD_UP_WEEKS.find((b) => (Number(distance) || 1600) <= b.upTo);
+  const prepDays = RECOVERY_DAYS_BEFORE_RACE + PRE_RACE_DAYS + PLAN_START_DAYS;
+  return { weeks: band.weeks, label: band.label, prepDays, days: band.weeks * 7 + prepDays };
+}
+/** The earliest race day a horse can be entered for today (midnight), for a race of this distance. */
+function earliestRaceDate(distance, today = new Date()) {
+  return new Date(new Date(today).setHours(0, 0, 0, 0) + minPrepFor(distance).days * DAY_MS);
+}
 const DAY_MS = 24 * 60 * 60 * 1000;
+const midnight = (d) => new Date(d).setHours(0, 0, 0, 0);
 
 /** The two daily slots must stay on their own side of noon, including for API clients. */
 function slotTimeProblem(sessionTime, afternoonTime) {
@@ -296,19 +324,28 @@ function slotTimeProblem(sessionTime, afternoonTime) {
 }
 
 /**
- * The phases leading to a race: the weeks between start and race day (race week included) shared
- * out by the race's distance (see SHARE_BY_DISTANCE; at least one week each, dropping the earliest
- * phases when time is short), then two weeks of recovery. Without a race: 4 base, 3 strength, 3 speed.
+ * The phases leading to a race: the days from the start to the trial (TRIAL_DAYS_BEFORE_RACE before
+ * race day) in weeks shared out by the race's distance (see SHARE_BY_DISTANCE; at least one week each,
+ * dropping the earliest phases when time is short), the odd days (under a week) on the taper, so every
+ * phase before it starts on the start's weekday and the taper ends with the trial; then recovery,
+ * RECOVERY_DAYS_BEFORE_RACE of light work, done PRE_RACE_DAYS before race day.
+ * Without a race: 4 base, 3 strength, 3 speed.
  */
 function suggestPhases(startDate, raceDate, distance) {
   const BUILD_UP_SHARE = shareFor(distance).share;
   let plan;
   if (raceDate) {
-    // The race's own week belongs to the build-up; recovery starts the Monday after.
-    const totalWeeks = Math.max(1, Math.ceil((new Date(raceDate) - new Date(startDate) + 1) / (7 * DAY_MS)));
+    const days = Math.max(1, Math.round((midnight(raceDate) - midnight(startDate)) / DAY_MS) - PRE_RACE_DAYS - RECOVERY_DAYS_BEFORE_RACE);
+    const totalWeeks = Math.max(1, Math.floor(days / 7));
     const keys = BUILD_UP.slice(Math.max(0, BUILD_UP.length - totalWeeks)); // too few weeks: keep the last phases
     const weeks = keys.map((k) => Math.max(1, Math.round(totalWeeks * BUILD_UP_SHARE[k])));
-    // Make the build-up end on race week: give or take from the longest phases.
+    // A long build-up keeps the taper short: what it would take beyond MAX_TAPER_WEEKS goes to the base.
+    const taper = keys.indexOf('peak');
+    if (taper > 0 && weeks[taper] > MAX_TAPER_WEEKS) {
+      weeks[0] += weeks[taper] - MAX_TAPER_WEEKS;
+      weeks[taper] = MAX_TAPER_WEEKS;
+    }
+    // Make the phases add up to those weeks: give or take from the longest phases.
     let diff = totalWeeks - weeks.reduce((a, b) => a + b, 0);
     while (diff !== 0) {
       const order = weeks.map((w, i) => i).sort((a, b) => weeks[b] - weeks[a]);
@@ -318,7 +355,9 @@ function suggestPhases(startDate, raceDate, distance) {
       diff += diff > 0 ? -1 : 1;
     }
     plan = keys.map((k, i) => ({ key: k, weeks: weeks[i] }));
-    plan.push({ key: 'recovery', weeks: RECOVERY_WEEKS_AFTER_RACE });
+    const extraDays = days - totalWeeks * 7;
+    if (extraDays) plan[plan.length - 1].extraDays = extraDays;
+    plan.push({ key: 'recovery', weeks: 1, extraDays: RECOVERY_DAYS_BEFORE_RACE - 7 });
   } else {
     plan = [{ key: 'base_building', weeks: 4 }, { key: 'strength', weeks: 3 }, { key: 'speed', weeks: 3 }];
   }
@@ -400,9 +439,10 @@ const pad = (n) => String(n).padStart(2, '0');
 const ddmm = (d) => { const x = new Date(d); return `${pad(x.getDate())}/${pad(x.getMonth() + 1)}`; };
 
 /**
- * What is wrong or risky about a cycle's phases. 'error' makes the plan unusable (the race falls
- * outside the build-up, recovery before the race); 'warning' is the trainer's call (too rushed, odd
- * order, unusual distance). Same rules on the client (trainingVocab.js) to show them while typing.
+ * What is wrong or risky about a cycle's phases. 'error' makes the plan unusable (recovery before other
+ * work; with a race, the plan not done PRE_RACE_DAYS before it); 'warning' is the trainer's call (done
+ * too early, no taper last, no or too long recovery before the race, too rushed, odd order, unusual
+ * distance). Same rules on the client (trainingVocab.js) to show them while typing.
  */
 function planWarnings(phases, { startDate, raceDate, distance } = {}) {
   const out = [];
@@ -412,36 +452,33 @@ function planWarnings(phases, { startDate, raceDate, distance } = {}) {
   const buildUpWeeks = buildUp.reduce((n, p) => n + p.weeks, 0);
   const firstRecovery = laid.findIndex((p) => p.key === 'recovery');
   if (firstRecovery >= 0 && laid.slice(firstRecovery).some((p) => p.key !== 'recovery')) {
-    out.push({ level: 'error', text: 'Giai đoạn Hồi phục phải đứng cuối, sau ngày đua.' });
+    out.push({ level: 'error', text: `Giai đoạn Hồi phục phải đứng cuối kế hoạch${raceDate ? ', ngay trước ngày đua' : ''}.` });
   }
 
   if (raceDate) {
     const race = new Date(raceDate);
-    const inPhase = laid.find((p) => race >= p.start && race <= p.end);
-    const buildUpEnd = buildUp.length ? buildUp[buildUp.length - 1].end : null;
     const daysLeft = Math.ceil((race - new Date(startDate)) / DAY_MS);
-    if (!inPhase) {
-      out.push({ level: 'error', text: `Ngày đua ${ddmm(race)} nằm ngoài lộ trình (${ddmm(laid[0].start)} – ${ddmm(laid[laid.length - 1].end)}).` });
-    } else if (inPhase.key === 'recovery') {
-      out.push({ level: 'error', text: `Ngày đua ${ddmm(race)} rơi vào giai đoạn Hồi phục — cần thêm tuần cho các giai đoạn trước giải.` });
-    } else if (buildUpEnd && buildUpEnd - race > 7 * DAY_MS) {
-      out.push({ level: 'error', text: `Các giai đoạn trước giải kéo dài tới ${ddmm(buildUpEnd)}, quá ngày đua ${ddmm(race)} hơn một tuần — bớt số tuần.` });
-    } else if (inPhase.key !== 'peak') {
-      out.push({ level: 'warning', text: `Ngày đua rơi vào giai đoạn ${PHASE_LABELS[inPhase.key]} — thường đua ở cuối giai đoạn Giảm tải.` });
+    // Light work after the trial, before the race.
+    const recoveryDays = laid.filter((p) => p.key === 'recovery').reduce((n, p) => n + Math.round((p.end - p.start + 1) / DAY_MS), 0);
+    if (!recoveryDays) {
+      out.push({ level: 'warning', text: `Chưa có giai đoạn Hồi phục trước giải — nên cho ngựa tập nhẹ khoảng ${RECOVERY_DAYS_BEFORE_RACE} ngày sau buổi chạy thử rồi mới đi thi đấu.` });
+    } else if (recoveryDays > 10) {
+      out.push({ level: 'warning', text: `Hồi phục trước giải ${recoveryDays} ngày là dài — ngựa dễ xuống phong độ; thường ${RECOVERY_DAYS_BEFORE_RACE}–7 ngày.` });
     }
-    // The taper is the days before the race. Race day early in the taper block leaves almost none
-    // before it, and the rest of that block's taper work falls after the race.
-    if (inPhase?.key === 'peak') {
-      const midnight = (d) => new Date(d).setHours(0, 0, 0, 0);
-      const before = Math.round((midnight(race) - midnight(inPhase.start)) / DAY_MS);
-      if (before < 3) {
-        const days = Math.round((midnight(race) - midnight(startDate)) / DAY_MS);
-        const aligned = new Date(midnight(startDate) + ((days + 1) % 7) * DAY_MS);
-        out.push({
-          level: 'warning',
-          text: `Ngày đua ${ddmm(race)} là ngày thứ ${before + 1} của giai đoạn Giảm tải — chỉ còn ${before} ngày giảm tải trước giải, phần còn lại rơi sau ngày đua. Bắt đầu kế hoạch từ ${ddmm(aligned)} để giai đoạn Giảm tải kết thúc đúng ngày đua.`,
-        });
-      }
+    // The days left free between the plan's last day and race day.
+    const lastDay = laid[laid.length - 1].end;
+    const free = Math.round((midnight(race) - midnight(lastDay)) / DAY_MS) - 1;
+    if (free < PRE_RACE_DAYS) {
+      const cut = PRE_RACE_DAYS - free;
+      out.push({
+        level: 'error',
+        text: `Kế hoạch kéo dài tới ${ddmm(lastDay)}${free < 0 ? `, qua cả ngày đua ${ddmm(race)}` : `, chỉ còn ${free} ngày trước ngày đua ${ddmm(race)}`} — kế hoạch phải xong trước ngày đua ít nhất ${PRE_RACE_DAYS} ngày để ngựa nghỉ, khám trước giải và di chuyển. Bớt ${cut} ngày (giảm số tuần một giai đoạn).`,
+      });
+    } else if (free > 7) {
+      out.push({ level: 'warning', text: `Kế hoạch xong ${ddmm(lastDay)}, còn ${free} ngày mới tới ngày đua ${ddmm(race)} — ngựa dễ xuống phong độ và không kịp chạy thử trước giải; thêm tuần cho các giai đoạn.` });
+    }
+    if (buildUp.length && buildUp[buildUp.length - 1].key !== 'peak') {
+      out.push({ level: 'warning', text: `Giai đoạn cuối trước giải là ${PHASE_LABELS[buildUp[buildUp.length - 1].key]} — thường kết thúc bằng Giảm tải để ngựa sung sức vào ngày đua.` });
     }
     if (daysLeft < 14) out.push({ level: 'warning', text: `Chỉ còn ${daysLeft} ngày tới giải — không đủ thời gian xây thể lực, chỉ nên giữ phong độ.` });
   }
@@ -491,6 +528,11 @@ module.exports = {
   KIND_BY_INTENSITY,
   PHASE_DEFAULTS,
   suggestPhases,
+  PRE_RACE_DAYS,
+  RECOVERY_DAYS_BEFORE_RACE,
+  TRIAL_DAYS_BEFORE_RACE,
+  minPrepFor,
+  earliestRaceDate,
   layPhases,
   planWarnings,
   shareFor,

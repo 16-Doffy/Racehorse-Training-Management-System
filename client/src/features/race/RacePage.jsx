@@ -1,18 +1,21 @@
+import { Button, Typography, Modal, Form, Select, InputNumber, Input, Tag, Tooltip, Radio, Alert, Empty, Segmented, Skeleton, Pagination } from 'antd';
 import { useState } from 'react';
-import { Table, Button, Typography, Modal, Form, Select, DatePicker, InputNumber, Input, Tag, Tooltip, Radio, Alert, Empty, Card, Segmented, Grid } from 'antd';
 import { message } from '../../lib/antdStatic';
-import { PlusOutlined, EditOutlined, FlagOutlined, ScheduleOutlined, WarningOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, FlagOutlined, ScheduleOutlined, WarningOutlined, EnvironmentOutlined, ColumnWidthOutlined, AppstoreOutlined, TrophyOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { raceApi } from './raceApi';
 import { horsesApi } from '../horses/horsesApi';
 import { trainingSessionApi, trainingPlanApi } from '../training/trainingApi';
-import { SURFACE_LABELS, surfaceOptions, DONE_STATUSES } from '../training/trainingVocab';
+import { SURFACE_LABELS, DONE_STATUSES, minPrepFor } from '../training/trainingVocab';
 import { RaceFormTag } from '../training/RaceForm';
+import PlanTimeline from '../training/PlanTimeline';
 import PageHeroBanner from '../../components/common/PageHeroBanner';
-import { newestFirst } from '../../utils/newestFirst';
 import ReviewExamNote from '../health/ReviewExamNote';
+import RaceEntryForm from './RaceEntryForm';
+import { useClubPolicy } from '../training/useClubPolicy';
+import './race.css';
 
 const { Text } = Typography;
 
@@ -24,6 +27,7 @@ const STATUS_LABELS = {
 };
 const STATUS_COLORS = { registered: 'default', confirmed: 'blue', completed: 'green', withdrawn: 'red' };
 const refId = (x) => String(x?._id || x || '');
+const PHASE_WORDS = { base_building: 'Nền tảng', strength: 'Sức mạnh', speed: 'Tốc độ', peak: 'Giảm tải', recovery: 'Hồi phục' };
 const raceDayOf = (entry) => dayjs(entry.raceDate).startOf('day');
 const isBeforeRaceDay = (entry) => raceDayOf(entry).isAfter(dayjs().startOf('day'));
 const isPast = (entry) => raceDayOf(entry).isBefore(dayjs().startOf('day'));
@@ -44,65 +48,88 @@ const metricsLine = (m = {}) =>
     .filter(Boolean)
     .join(' · ');
 
-function TrialCell({ trial }) {
-  if (!trial) return <Text type="secondary" className="!text-xs">Chưa có chạy thử cho giải này</Text>;
-  const when = dayjs(trial.scheduledAt).format('DD/MM');
-  if (!DONE_STATUSES.includes(trial.status)) {
+
+/** Race day as a calendar leaf, and how far off it is. */
+function DateLeaf({ entry }) {
+  const day = raceDayOf(entry);
+  const days = day.diff(dayjs().startOf('day'), 'day');
+  const open = ['registered', 'confirmed'].includes(entry.status);
+  return (
+    <div className="rc-date" aria-label={`Ngày đua ${day.format('DD/MM/YYYY')}`}>
+      <span className="rc-date-day">{day.format('DD')}</span>
+      <span className="rc-date-month">Th{day.format('M')} · {day.format('YYYY')}</span>
+      {open && days >= 0 && <span className={`rc-date-left${days <= 7 ? ' is-soon' : ''}`}>{days === 0 ? 'Hôm nay' : `Còn ${days} ngày`}</span>}
+      {days < 0 && <span className="rc-date-left is-past">Đã qua</span>}
+    </div>
+  );
+}
+
+const STEP_CLASS = (c) => (c.ok === true ? 'is-ok' : c.ok === false ? 'is-bad' : /^Đang tập/.test(c.detail || '') ? 'is-now' : '');
+const STEP_ICON = (c) => (c.ok === true ? '✓' : c.ok === false ? '!' : /^Đang tập/.test(c.detail || '') ? '▸' : '•');
+
+/**
+ * How the horse's preparation for this race stands: its plan's phases on a bar, then the steps it must
+ * clear in order — the vet, each phase judged done by the trainer, the race's trial — and why it is not
+ * ready yet (server training/raceForm.js). Without a plan for this race, the call to make one.
+ */
+function PrepBlock({ entry, plan, otherPlan, trial, onPlan }) {
+  const form = plan?.progress?.form;
+  if (!plan) {
     return (
-      <Text className="!text-xs">
-        {trial.status === 'in_progress' ? 'Đang chạy' : 'Đã lên lịch'} {when} · {dayjs(trial.scheduledAt).format('HH:mm')}
-      </Text>
+      <div className="rc-noplan">
+        <span>
+          <WarningOutlined className="mr-1.5 text-amber-600" />
+          {otherPlan
+            ? `Ngựa đang theo kế hoạch cho mục tiêu khác — chưa có kế hoạch cho giải này, nên chưa thể xác nhận dự giải.`
+            : 'Chưa có kế hoạch huấn luyện cho giải này — ngựa phải hoàn thành từng giai đoạn của kế hoạch mới được dự giải.'}
+        </span>
+        {!otherPlan && (
+          <Button size="small" className="rc-primary" icon={<ScheduleOutlined />} onClick={onPlan}>
+            Lập kế hoạch
+          </Button>
+        )}
+      </div>
     );
   }
-  const met = trial.outcome?.met;
+  const steps = (form?.checks || []).filter((c) => c.key !== 'trial');
+  const trialCheck = (form?.checks || []).find((c) => c.key === 'trial');
+  const reasons = Array.isArray(form?.reasons) ? form.reasons : [];
   return (
-    <Tooltip title={trial.outcome?.summary}>
-      <div className="flex flex-col gap-0.5">
-        <span>
-          {met === true && <Tag color="green" className="!m-0">Đạt</Tag>}
-          {met === false && <Tag color="red" className="!m-0">Chưa đạt</Tag>}
-          {met == null && <Tag className="!m-0">Đã chạy</Tag>}
-          <Text type="secondary" className="!text-xs ml-1">{when}</Text>
-        </span>
-        <Text type="secondary" className="!text-xs">{metricsLine(trial.metrics)}</Text>
+    <div className="rc-prep">
+      <div className="rc-prep-head">
+        <span>Chuẩn bị cho giải</span>
+        {form && <RaceFormTag form={form} />}
       </div>
-    </Tooltip>
-  );
-}
-
-/** The horse, the race and where it is run: the row's title. */
-function EntryTitle({ entry }) {
-  return (
-    <div className="min-w-0 leading-5">
-      <Link to={`/horses/${entry.horse?._id}`} className="block truncate text-[13px] font-semibold">
-        {entry.horse?.name || 'Ngựa'}
-      </Link>
-      <div className="break-words text-[13px] text-gray-800">{entry.raceName}</div>
-      {entry.venue && <div className="break-words text-xs text-gray-500">{entry.venue}</div>}
+      {plan.phases?.length > 0 && <PlanTimeline phases={plan.phases} raceDate={entry.raceDate} compact />}
+      <div className="rc-steps" aria-label="Các bước trước khi dự giải">
+        {[...steps, ...(trialCheck ? [trialCheck] : [])].map((c, i) => (
+          <span key={c.key} className="contents">
+            {i > 0 && <span className="rc-step-arrow" aria-hidden="true">→</span>}
+            <Tooltip title={`${c.label}: ${c.detail}`}>
+              <span className={`rc-step ${STEP_CLASS(c)}`}>
+                <span className="rc-step-dot" aria-hidden="true">{STEP_ICON(c)}</span>
+                {c.label === 'Y tế bác sĩ' ? 'Y tế' : c.label}
+                <small>{c.detail}</small>
+              </span>
+            </Tooltip>
+          </span>
+        ))}
+      </div>
+      {trial && DONE_STATUSES.includes(trial.status) && (
+        <div className="text-xs text-gray-600">
+          Chạy thử {dayjs(trial.scheduledAt).format('DD/MM')}: {trial.outcome?.met === true ? 'đạt' : trial.outcome?.met === false ? 'chưa đạt' : 'đã chạy'}
+          {metricsLine(trial.metrics) ? ` · ${metricsLine(trial.metrics)}` : ''}
+        </div>
+      )}
+      {reasons.length > 0 && <p className={`rc-why${form?.status === 'not_ready' || form?.status === 'blocked' ? ' is-bad' : ''}`}>{reasons.join(' ')}</p>}
     </div>
   );
 }
 
-/** Race day, how many days are left, and the distance and surface under it. */
-function RaceWhen({ entry }) {
-  const days = raceDayOf(entry).diff(dayjs().startOf('day'), 'day');
-  const course = [entry.distance ? `${entry.distance} m` : null, SURFACE_LABELS[entry.surface]].filter(Boolean).join(' · ');
-  return (
-    <div className="leading-5">
-      <div className="text-[13px] font-medium tabular-nums text-gray-900">{dayjs(entry.raceDate).format('DD/MM/YYYY')}</div>
-      {['registered', 'confirmed'].includes(entry.status) && days >= 0 && <div className="text-xs text-amber-700">{days === 0 ? 'Hôm nay' : `Còn ${days} ngày`}</div>}
-      {course && <div className="text-xs text-gray-500">{course}</div>}
-    </div>
-  );
-}
-
-function DecisionCell({ entry, form }) {
+function DecisionCell({ entry }) {
   const d = entry.decision;
   return (
     <div className="flex flex-col gap-1">
-      <Tag color={STATUS_COLORS[entry.status]} className="!m-0 w-fit">
-        {STATUS_LABELS[entry.status] || entry.status}
-      </Tag>
       {d?.at && (
         <Text type="secondary" className="!text-xs line-clamp-3" title={d.reason || undefined}>
           {/* Withdrawn by the system: the horse could not be ready in time (server: planProgress.service.js). */}
@@ -125,14 +152,6 @@ function DecisionCell({ entry, form }) {
           <ReviewExamNote horseId={entry.horse?._id || entry.horse} since={entry.reviewFlaggedAt} />
         </>
       )}
-      {form && ['registered', 'confirmed'].includes(entry.status) && (
-        <span className="flex flex-wrap items-center gap-1">
-          <Text type="secondary" className="!text-xs">
-            Phong độ theo kế hoạch:
-          </Text>
-          <RaceFormTag form={form} />
-        </span>
-      )}
     </div>
   );
 }
@@ -142,9 +161,21 @@ function DecisionCell({ entry, form }) {
  * medical state; a passed trial is not the same as being fit to race, and the server checks the medical
  * state again when the decision is filed.
  */
-function DecisionModal({ entry, horse, onClose, onDone }) {
+function DecisionModal({ entry, horse, plan, onClose, onDone }) {
   const [form] = Form.useForm();
   const decision = Form.useWatch('decision', form);
+  const policy = useClubPolicy();
+  // The horse goes only having come through its plan for this race, every phase judged done (the server checks it too).
+  const stages = plan?.progress?.form?.phases || [];
+  const left = stages.filter((s) => s.state !== 'passed');
+  const prepBlocked =
+    policy.raceNeedsPhasesDone === false
+      ? null
+      : !plan
+        ? 'Ngựa chưa có kế hoạch huấn luyện cho giải này.'
+        : left.length
+          ? `Ngựa chưa hoàn thành giai đoạn ${left.map((s) => PHASE_WORDS[s.key] || s.key).join(', ')} — HLV đánh giá hoàn thành từng giai đoạn trên trang Kế hoạch huấn luyện trước.`
+          : null;
   const trialId = Form.useWatch('trialSession', form);
   const { data, isLoading } = useQuery({ queryKey: ['race-trials', entry?._id], queryFn: () => raceApi.trials(entry._id), enabled: Boolean(entry) });
   const linked = data?.data || [];
@@ -174,6 +205,7 @@ function DecisionModal({ entry, horse, onClose, onDone }) {
       onCancel={onClose}
       onOk={() => form.submit()}
       confirmLoading={mutation.isPending}
+      okButtonProps={{ disabled: decision === 'confirmed' && Boolean(prepBlocked) }}
       width={640}
       destroyOnHidden
     >
@@ -181,11 +213,29 @@ function DecisionModal({ entry, horse, onClose, onDone }) {
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ decision: 'confirmed', trialSession: done[0]?._id }}
+          initialValues={{ decision: prepBlocked ? 'withdrawn' : 'confirmed', trialSession: done[0]?._id }}
           key={done[0]?._id || 'none'}
           onFinish={(values) => mutation.mutate({ decision: values.decision, trialSession: values.decision === 'confirmed' ? values.trialSession : undefined, reason: values.reason })}
         >
-          <Text strong className="block mb-1">Bằng chứng</Text>
+          <Text strong className="block mb-1">Tiến độ các giai đoạn</Text>
+          <div className="mb-3 flex flex-col gap-2">
+            {stages.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {stages.map((s) => (
+                  <Tag key={s.index} color={s.state === 'passed' ? 'green' : s.state === 'unfinished' ? 'red' : 'default'} className="!m-0">
+                    {s.state === 'passed' ? '✓' : s.state === 'unfinished' ? '✗' : '•'} {PHASE_WORDS[s.key] || s.key}
+                    {s.state === 'passed' && s.at ? ` · đạt ${dayjs(s.at).format('DD/MM')}` : s.state === 'current' ? ' · đang tập' : s.state === 'ahead' ? ' · chưa tới' : s.state === 'unfinished' ? ' · chưa hoàn thành' : ''}
+                  </Tag>
+                ))}
+              </div>
+            )}
+            {prepBlocked ? (
+              <Alert type="error" showIcon title="Chưa thể xác nhận tham gia" description={`${prepBlocked} Có thể rút khỏi giải.`} />
+            ) : stages.length > 0 ? (
+              <Alert type="success" showIcon title="Đã hoàn thành các giai đoạn của kế hoạch" />
+            ) : null}
+          </div>
+          <Text strong className="block mb-1">Bằng chứng chạy thử & y tế</Text>
           <div className="mb-3 flex flex-col gap-2">
             {isLoading ? (
               <Text type="secondary">Đang tải buổi chạy thử…</Text>
@@ -213,7 +263,7 @@ function DecisionModal({ entry, horse, onClose, onDone }) {
           <Form.Item name="decision" label="Quyết định">
             <Radio.Group
               options={[
-                { value: 'confirmed', label: 'Tham gia giải' },
+                { value: 'confirmed', label: 'Tham gia giải', disabled: Boolean(prepBlocked) },
                 { value: 'withdrawn', label: 'Rút khỏi giải' },
               ]}
               optionType="button"
@@ -234,25 +284,40 @@ function DecisionModal({ entry, horse, onClose, onDone }) {
   );
 }
 
-// Registration, the trial run that decides whether the horse goes, and the result after the race.
+// The list in the order of work, a title over each group.
+const GROUPS = [
+  { key: 'result', label: 'Đã đua — cần nhập kết quả' },
+  { key: 'upcoming', label: 'Sắp diễn ra' },
+  { key: 'completed', label: 'Đã thi đấu xong' },
+  { key: 'withdrawn', label: 'Đã rút' },
+];
+const PAGE_SIZES = [6, 12, 24];
+
+// The club's rule, by distance: how long before a race it can be entered (trainingVocab minPrepFor).
+const RULE_DISTANCES = [
+  { m: 1200, label: '≤ 1200 m' },
+  { m: 2000, label: '≤ 2000 m' },
+  { m: 2400, label: '> 2000 m' },
+];
+
+// Registration, the plan that prepares the horse phase by phase, the trial, the decision and the result.
 export default function RacePage() {
   const [open, setOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [resultRace, setResultRace] = useState(null);
   const [decisionRace, setDecisionRace] = useState(null);
-  const [form] = Form.useForm();
+  const [paging, setPaging] = useState({ key: '', page: 1 });
+  const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
   const [resultForm] = Form.useForm();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const screens = Grid.useBreakpoint();
-  // Narrow screens: one card per entry instead of a table squeezed sideways.
-  const asCards = screens.md === false;
+  const policy = useClubPolicy();
 
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['races'], queryFn: () => raceApi.list() });
   // A notification about one horse's race (?horse=<id>) shows that horse's entries only.
   const [searchParams, setSearchParams] = useSearchParams();
   const focusHorse = searchParams.get('horse');
-  const baseRaces = focusHorse ? (data?.data || []).filter((r) => String(r.horse?._id || r.horse) === focusHorse) : (data?.data || []);
+  const baseRaces = focusHorse ? (data?.data || []).filter((r) => String(r.horse?._id || r.horse) === focusHorse) : data?.data || [];
   const shownRaces = baseRaces.filter((r) => {
     if (statusFilter === 'all') return true;
     if (statusFilter === 'reviewNeeded') return Boolean(r.reviewNeeded);
@@ -267,11 +332,12 @@ export default function RacePage() {
   });
   const trials = trialsData?.data || [];
   const horseById = new Map((horsesData?.data || []).map((h) => [String(h._id), h]));
-  const activePlanByHorse = new Map((plansData?.data || []).filter((p) => p.status === 'active').map((p) => [refId(p.horse), p]));
-  // The horse's form for this race, judged by the active plan that prepares it (server training/raceForm.js).
-  const formFor = (entry) => {
-    const plan = activePlanByHorse.get(refId(entry.horse));
-    return plan && refId(plan.targetRace) === String(entry._id) ? plan.progress?.form : null;
+  const plans = plansData?.data || [];
+  const activePlanByHorse = new Map(plans.filter((p) => p.status === 'active').map((p) => [refId(p.horse), p]));
+  // The plan that prepares the horse for this race: active, or completed (it ends a few days before the race).
+  const planFor = (entry) => {
+    const mine = plans.filter((p) => refId(p.targetRace) === String(entry._id) && ['active', 'completed'].includes(p.status));
+    return mine.find((p) => p.status === 'active') || mine[0] || null;
   };
 
   // A horse the vet has grounded or is still recovering can't be entered (the server refuses it too).
@@ -294,10 +360,9 @@ export default function RacePage() {
   const createMutation = useMutation({
     mutationFn: (payload) => raceApi.create(payload),
     onSuccess: () => {
-      message.success('Đã đăng ký giải đua. Bấm "Lập kế hoạch" trên dòng giải để chuẩn bị cho giải này.');
+      message.success('Đã đăng ký giải đua. Bấm "Lập kế hoạch" trên thẻ giải để bắt đầu chuẩn bị cho ngựa.');
       refresh();
       setOpen(false);
-      form.resetFields();
     },
     onError: (err) => message.error(err.message || 'Đăng ký thất bại.'),
   });
@@ -316,34 +381,30 @@ export default function RacePage() {
   const firstWaitingId = waiting.length ? String(waiting.reduce((a, b) => (raceDayOf(b).isBefore(raceDayOf(a)) ? b : a))._id) : null;
   const decisionLabel = (r) => (r.reviewNeeded ? 'Xem lại quyết định' : r.status === 'registered' ? 'Quyết định dự giải' : 'Đổi quyết định');
 
-  // The buttons of one entry, one per line in the table (`stacked`), side by side on a card.
-  const actionsFor = (record, { stacked = true } = {}) => {
+  // The buttons of one entry.
+  const actionsFor = (record) => {
     const open = ['registered', 'confirmed'].includes(record.status);
-    const plan = activePlanByHorse.get(refId(record.horse));
-    const planForThis = plan && refId(plan.targetRace) === String(record._id);
-    // Full width in the column, the label wrapping inside the button rather than cut off when the column is tight.
-    const btn = stacked ? '!h-auto !min-h-7 !w-full !justify-start !whitespace-normal !py-1 !text-left !leading-snug' : '';
+    const plan = planFor(record);
+    const otherPlan = !plan && activePlanByHorse.get(refId(record.horse));
     return (
-      <div className={stacked ? 'flex flex-col items-stretch gap-1.5' : 'flex flex-wrap gap-1.5'}>
-        {open && !isPast(record) && !plan && (
-          <Button size="small" className={btn} icon={<ScheduleOutlined />} onClick={() => navigate(`/training/plans?race=${record._id}`)}>
+      <div className="rc-actions">
+        {open && !isPast(record) && !plan && !otherPlan && (
+          <Button icon={<ScheduleOutlined />} onClick={() => navigate(`/training/plans?race=${record._id}`)}>
             Lập kế hoạch
           </Button>
         )}
-        {open && planForThis && (
-          <Button size="small" className={btn} icon={<ScheduleOutlined />} onClick={() => navigate('/training/plans')}>
+        {plan && (
+          <Button icon={<ScheduleOutlined />} onClick={() => navigate(`/training/plans?plan=${plan._id}`)}>
             Xem kế hoạch
           </Button>
         )}
         {['registered', 'confirmed', 'withdrawn'].includes(record.status) && !isPast(record) && (
-          <Button size="small" className={btn} type={String(record._id) === firstWaitingId ? 'primary' : 'default'} icon={<FlagOutlined />} onClick={() => setDecisionRace(record)}>
+          <Button className={String(record._id) === firstWaitingId ? 'rc-primary' : ''} icon={<FlagOutlined />} onClick={() => setDecisionRace(record)}>
             {decisionLabel(record)}
           </Button>
         )}
         {!isBeforeRaceDay(record) && record.status !== 'withdrawn' && (
           <Button
-            size="small"
-            className={btn}
             icon={<EditOutlined />}
             onClick={() => {
               setResultRace(record);
@@ -356,63 +417,88 @@ export default function RacePage() {
       </div>
     );
   };
-  const trialOf = (r) => (r.status === 'withdrawn' ? <Text type="secondary" className="!text-xs">—</Text> : <TrialCell trial={trialFor(r, trials)} />);
-  const decisionOf = (r) => (
-    <div className="flex flex-col gap-1">
-      <DecisionCell entry={r} form={formFor(r)} />
-      {r.result && (
-        <div className="text-[13px] leading-5">
-          <span className="font-medium text-gray-900">{r.result}</span>
-          {r.prizeMoney > 0 && (
-            <Text type="success" className="block !text-xs">
-              Thưởng {Number(r.prizeMoney).toLocaleString('vi-VN')} ₫
-            </Text>
-          )}
-        </div>
-      )}
-    </div>
-  );
-  // Every cell reads from its top line: rows of different heights stay lined up.
-  const top = () => ({ style: { verticalAlign: 'top' } });
 
-  // Five columns that fit the page (no sideways scrolling): who and which race, when and how far, the
-  // trial, the decision with the result under it, and the buttons.
-  const columns = [
-    {
-      title: 'Ngựa · giải đua',
-      key: 'horse',
-      width: '24%',
-      onCell: top,
-      render: (_, r) => <EntryTitle entry={r} />,
-    },
-    {
-      title: 'Ngày đua · cự ly',
-      key: 'raceDate',
-      width: '15%',
-      onCell: top,
-      render: (_, r) => <RaceWhen entry={r} />,
-    },
-    {
-      title: 'Chạy thử',
-      key: 'trial',
-      width: '18%',
-      onCell: top,
-      render: (_, r) => trialOf(r),
-    },
-    {
-      title: 'Quyết định · kết quả',
-      key: 'status',
-      onCell: top,
-      render: (_, r) => decisionOf(r),
-    },
-    {
-      title: 'Thao tác',
-      key: 'actions',
-      width: 212,
-      onCell: top,
-      render: (_, record) => actionsFor(record),
-    },
-  ];
+  /** One entry: the day, the horse and the race, its preparation (or result), the decision, the buttons. */
+  const card = (r) => {
+    const plan = planFor(r);
+    const otherPlan = !plan && activePlanByHorse.get(refId(r.horse));
+    const open = ['registered', 'confirmed'].includes(r.status);
+    return (
+      <article key={r._id} className={`rc-card is-${r.status}${r.reviewNeeded ? ' needs-review' : ''}`}>
+        <DateLeaf entry={r} />
+        <div className="rc-main">
+          <div className="rc-head">
+            <div className="min-w-0">
+              <Link to={`/horses/${r.horse?._id || r.horse}`} className="rc-horse">
+                {r.horse?.name || 'Ngựa'}
+              </Link>
+              <div className="rc-race">{r.raceName}</div>
+              <div className="rc-meta">
+                {r.venue && (
+                  <span>
+                    <EnvironmentOutlined /> {r.venue}
+                  </span>
+                )}
+                {r.distance && (
+                  <span>
+                    <ColumnWidthOutlined /> {r.distance} m
+                  </span>
+                )}
+                {r.surface && (
+                  <span>
+                    <AppstoreOutlined /> {SURFACE_LABELS[r.surface]}
+                  </span>
+                )}
+              </div>
+            </div>
+            <Tag color={STATUS_COLORS[r.status]} className="!m-0">
+              {STATUS_LABELS[r.status] || r.status}
+            </Tag>
+          </div>
+          {open && !isPast(r) && <PrepBlock entry={r} plan={plan} otherPlan={otherPlan} trial={trialFor(r, trials)} onPlan={() => navigate(`/training/plans?race=${r._id}`)} />}
+          {r.status === 'completed' && (r.position || r.result || r.prizeMoney > 0) && (
+            <div className="rc-result">
+              {r.position && <span className="rc-medal">#{r.position}</span>}
+              {r.finishTime && <span>Về đích {r.finishTime}</span>}
+              {r.result && <span className="font-medium">{r.result}</span>}
+              {r.prizeMoney > 0 && (
+                <span>
+                  <TrophyOutlined /> Thưởng {Number(r.prizeMoney).toLocaleString('vi-VN')} ₫
+                </span>
+              )}
+            </div>
+          )}
+          <div className="rc-decision">
+            <DecisionCell entry={r} />
+          </div>
+        </div>
+        {actionsFor(r)}
+      </article>
+    );
+  };
+  // Coming races soonest first, then the ones run or dropped, latest first.
+  const today = dayjs().startOf('day');
+  // The order of work: races run but without a result first, then the coming ones (one to look at again
+  // first, then the soonest), then those run (latest first), and last those withdrawn.
+  const groupOf = (r) => {
+    if (r.status === 'withdrawn') return 'withdrawn';
+    if (r.status === 'completed') return 'completed';
+    return raceDayOf(r).isBefore(today) ? 'result' : 'upcoming';
+  };
+  const byDate = (dir) => (a, b) => dir * (new Date(a.raceDate) - new Date(b.raceDate));
+  const ordered = GROUPS.flatMap((g) =>
+    shownRaces
+      .filter((r) => groupOf(r) === g.key)
+      .sort((a, b) => (g.key === 'upcoming' ? Number(Boolean(b.reviewNeeded)) - Number(Boolean(a.reviewNeeded)) || byDate(1)(a, b) : byDate(g.key === 'result' ? 1 : -1)(a, b)))
+      .map((r) => ({ r, group: g.key }))
+  );
+  const groupCounts = Object.fromEntries(GROUPS.map((g) => [g.key, ordered.filter((x) => x.group === g.key).length]));
+  // Pages: back to the first whenever the filter changes.
+  const pageKey = `${statusFilter}|${focusHorse || ''}`;
+  const page = paging.key === pageKey ? paging.page : 1;
+  const lastPage = Math.max(1, Math.ceil(ordered.length / pageSize));
+  const shownPage = Math.min(page, lastPage);
+  const pageItems = ordered.slice((shownPage - 1) * pageSize, shownPage * pageSize);
 
   const racesList = data?.data || [];
   const registeredCount = racesList.filter((r) => r.status === 'registered').length;
@@ -421,11 +507,12 @@ export default function RacePage() {
   const upcomingCount = racesList.filter((r) => isBeforeRaceDay(r)).length;
 
   return (
-    <div>
+    <div className="rc">
       <PageHeroBanner
         eyebrow="Thi đấu & giải thưởng"
         roleLabel="HLV trưởng"
         title="Đăng ký & quản lý giải đua"
+        subtitle="Đăng ký đủ sớm theo cự ly, chuẩn bị theo kế hoạch từng giai đoạn, rồi quyết định dự giải dựa trên đánh giá của HLV và buổi chạy thử."
         stats={[
           { label: 'Đã đăng ký', value: `${registeredCount} giải` },
           { label: 'Đã xác nhận tham gia', value: `${confirmedCount} ngựa` },
@@ -443,6 +530,31 @@ export default function RacePage() {
           </Button>
         }
       />
+
+      {/* The club's rules, in one line above the list. */}
+      <div className="rc-rules">
+        <InfoCircleOutlined />
+        {policy.raceEntryMinPrep !== false && (
+          <>
+            <strong>Đăng ký trước tối thiểu:</strong>
+            {RULE_DISTANCES.map((d) => {
+              const need = minPrepFor(d.m);
+              return (
+                <Tooltip key={d.m} title={`${need.weeks} tuần huấn luyện + ${need.prepDays} ngày chuẩn bị (khởi động kế hoạch, hồi phục, nghỉ – khám – di chuyển)`}>
+                  <span className="rc-rule-chip">
+                    {d.label} <em>{need.days} ngày</em>
+                  </span>
+                </Tooltip>
+              );
+            })}
+          </>
+        )}
+        <span>
+          {policy.raceNeedsPhasesDone !== false
+            ? 'Ngựa dự giải khi HLV đã đánh giá hoàn thành từng giai đoạn (không nhảy bậc) và chạy thử đạt.'
+            : 'Ngựa dự giải dựa trên đánh giá của HLV và buổi chạy thử.'}
+        </span>
+      </div>
 
       {isError && (
         <Alert
@@ -473,100 +585,74 @@ export default function RacePage() {
             { value: 'all', label: `Tất cả (${baseRaces.length})` },
             { value: 'registered', label: `Đã đăng ký (${baseRaces.filter((r) => r.status === 'registered').length})` },
             { value: 'confirmed', label: `Đã xác nhận (${baseRaces.filter((r) => r.status === 'confirmed').length})` },
-            ...(baseRaces.some((r) => r.reviewNeeded)
-              ? [{ value: 'reviewNeeded', label: `Cần xem lại (${baseRaces.filter((r) => r.reviewNeeded).length})` }]
-              : []),
+            ...(baseRaces.some((r) => r.reviewNeeded) ? [{ value: 'reviewNeeded', label: `Cần xem lại (${baseRaces.filter((r) => r.reviewNeeded).length})` }] : []),
             { value: 'completed', label: `Đã thi đấu xong (${baseRaces.filter((r) => r.status === 'completed').length})` },
+            { value: 'withdrawn', label: `Đã rút (${baseRaces.filter((r) => r.status === 'withdrawn').length})` },
           ]}
         />
       </div>
 
-      {asCards && (
-        <div className="flex flex-col gap-3">
-          {newestFirst(shownRaces).map((r) => (
-            <div key={r._id} className="light-surface-box rounded-xl border border-[#E5DEC9] bg-white p-3 shadow-xs">
-              <div className="flex items-start justify-between gap-3">
-                <EntryTitle entry={r} />
-                <div className="shrink-0 text-right">
-                  <RaceWhen entry={r} />
-                </div>
+      {isLoading && !data ? (
+        <Skeleton active paragraph={{ rows: 6 }} />
+      ) : shownRaces.length ? (
+        <>
+          <div className="rc-list">
+            {pageItems.map(({ r, group }, i) => (
+              <div key={r._id} className="contents">
+                {/* A group's title wherever it starts, and again at the top of a page it runs on to. */}
+                {(i === 0 || pageItems[i - 1].group !== group) && (
+                  <div className={`rc-group-title is-${group}`}>
+                    {GROUPS.find((g) => g.key === group).label} · {groupCounts[group]}
+                    {i === 0 && (shownPage - 1) * pageSize > 0 && ordered[(shownPage - 1) * pageSize - 1]?.group === group ? ' (tiếp)' : ''}
+                  </div>
+                )}
+                {card(r)}
               </div>
-              <div className="mt-2 border-t border-gray-100 pt-2">
-                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Chạy thử</div>
-                {trialOf(r)}
-              </div>
-              <div className="mt-2 border-t border-gray-100 pt-2">
-                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Quyết định · kết quả</div>
-                {decisionOf(r)}
-              </div>
-              <div className="mt-2 border-t border-gray-100 pt-2">{actionsFor(r, { stacked: false })}</div>
+            ))}
+          </div>
+          {ordered.length > PAGE_SIZES[0] && (
+            <div className="rc-pager">
+              <Pagination
+                current={shownPage}
+                pageSize={pageSize}
+                total={ordered.length}
+                showSizeChanger
+                pageSizeOptions={PAGE_SIZES}
+                showTotal={(total, [from, to]) => `${from}–${to} / ${total} giải`}
+                onChange={(p, size) => {
+                  if (size !== pageSize) {
+                    setPageSize(size);
+                    setPaging({ key: pageKey, page: 1 });
+                  } else setPaging({ key: pageKey, page: p });
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              />
             </div>
-          ))}
-          {!isLoading && !shownRaces.length && <Empty description='Chưa có giải đua nào được đăng ký. Nhấn "Đăng ký giải mới" để bắt đầu.' />}
-        </div>
+          )}
+        </>
+      ) : (
+        <Empty description='Chưa có giải đua nào. Nhấn "Đăng ký giải mới" để bắt đầu.'>
+          <Button className="rc-primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+            Đăng ký giải mới
+          </Button>
+        </Empty>
       )}
 
-      <Card className={`!rounded-xl !border-[#E5DEC9] shadow-xs overflow-hidden${asCards ? ' !hidden' : ''}`} styles={{ body: { padding: 0 } }}>
-        <Table
-          rowKey="_id"
-          columns={columns}
-          dataSource={newestFirst(shownRaces)}
-          loading={isLoading && !data}
-          tableLayout="fixed"
-          locale={{
-            emptyText: (
-              <Empty description='Chưa có giải đua nào được đăng ký. Nhấn "Đăng ký giải mới" để bắt đầu.'>
-                <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-                  Đăng ký giải mới
-                </Button>
-              </Empty>
-            ),
-          }}
-        />
-      </Card>
-
-      <Modal
-        title="Đăng ký giải đua"
+      <RaceEntryForm
         open={open}
-        onCancel={() => setOpen(false)}
-        onOk={() => form.submit()}
-        okText="Đăng ký"
-        cancelText="Hủy"
-        confirmLoading={createMutation.isPending}
-        destroyOnHidden
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ surface: 'turf' }}
-          onFinish={(values) => createMutation.mutate({ ...values, raceDate: values.raceDate?.startOf('day').toISOString() })}
-        >
-          <Form.Item name="horse" label="Ngựa" rules={[{ required: true, message: 'Chọn ngựa' }]} extra="Ngựa đang bị khóa hoặc đang hồi phục không đăng ký được.">
-            <Select placeholder="Chọn ngựa" options={horseOptions} />
-          </Form.Item>
-          <Form.Item name="raceName" label="Tên giải đua" rules={[{ required: true, whitespace: true, message: 'Nhập tên giải' }]}>
-            <Input placeholder="VD: Cúp Mùa Đông 2026" />
-          </Form.Item>
-          <Form.Item name="venue" label="Trường đua">
-            <Input placeholder="VD: Trường đua Đại Nam" />
-          </Form.Item>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4">
-            <Form.Item name="raceDate" label="Ngày đua" rules={[{ required: true, message: 'Chọn ngày đua' }]}>
-              <DatePicker className="w-full" format="DD/MM/YYYY" disabledDate={(d) => d && d.isBefore(dayjs(), 'day')} />
-            </Form.Item>
-            <Form.Item name="distance" label="Cự ly (m)" rules={[{ required: true, message: 'Nhập cự ly' }]} extra="Kế hoạch chia giai đoạn theo cự ly này.">
-              <InputNumber min={400} max={6000} step={100} className="w-full" placeholder="1600" />
-            </Form.Item>
-            <Form.Item name="surface" label="Mặt sân">
-              <Select options={surfaceOptions} />
-            </Form.Item>
-          </div>
-        </Form>
-      </Modal>
+        onClose={() => setOpen(false)}
+        onSubmit={(values) => createMutation.mutate(values)}
+        loading={createMutation.isPending}
+        horseOptions={horseOptions}
+        horses={horsesData?.data || []}
+        entries={data?.data || []}
+        plans={plans}
+      />
 
       <DecisionModal
         entry={decisionRace}
         horse={decisionRace ? horseById.get(refId(decisionRace.horse)) : null}
+        plan={decisionRace ? planFor(decisionRace) : null}
         onClose={() => setDecisionRace(null)}
         onDone={() => {
           setDecisionRace(null);

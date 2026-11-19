@@ -34,13 +34,18 @@ export default function PlanTimeline({ phases = [], startDate, raceDate, compact
     return [...list, { ...p, start, end, days }];
   }, []);
   const from = laid[0].start;
-  const to = laid[laid.length - 1].end;
+  const planTo = laid[laid.length - 1].end;
+  const race = raceDate ? new Date(raceDate).getTime() : null;
+  const raceDay = race ? new Date(race).setHours(0, 0, 0, 0) : null;
+  // A race after the plan's last day: the days before it (rest, the vet's pre-race check, the trip) and
+  // race day close the bar.
+  const tail = raceDay && raceDay > planTo ? { start: planTo + 1, end: raceDay + DAY_MS - 1, days: Math.round((raceDay - (planTo + 1)) / DAY_MS) + 1 } : null;
+  const to = tail ? tail.end : planTo;
   const span = to - from;
   const percent = (t) => Math.min(100, Math.max(0, ((t - from) / span) * 100));
-  const race = raceDate ? new Date(raceDate).getTime() : null;
   const running = now >= from && now <= to;
   const raceShown = race && race >= from && race <= to;
-  const totalDays = laid.reduce((n, x) => n + x.days, 0);
+  const totalDays = laid.reduce((n, x) => n + x.days, 0) + (tail ? tail.days : 0);
   const height = mini ? 18 : compact ? 28 : 32;
 
   return (
@@ -64,7 +69,8 @@ export default function PlanTimeline({ phases = [], startDate, raceDate, compact
         <div className="flex w-full overflow-hidden rounded-md" style={{ height }}>
           {laid.map((p, i) => {
             const current = running && now >= p.start && now <= p.end;
-            const extra = p.extraDays ? ` ${p.extraDays > 0 ? '+' : ''}${p.extraDays}n` : '';
+            // Its length: whole weeks, days when under a week (recovery before a race), else weeks and days.
+            const length = p.days % 7 === 0 ? `${p.days / 7}t` : p.days < 7 ? `${p.days}n` : `${Math.floor(p.days / 7)}t +${p.days % 7}n`;
             return (
               <Tooltip
                 key={`${p.key}-${i}`}
@@ -75,10 +81,10 @@ export default function PlanTimeline({ phases = [], startDate, raceDate, compact
                       {current ? ' · đang ở giai đoạn này' : ''}
                     </div>
                     <div>
-                      {p.weeks} tuần{p.extraDays ? ` ${p.extraDays > 0 ? '+' : ''}${p.extraDays} ngày` : ''} · {ddmm(p.start)} – {ddmm(p.end)}
+                      {p.days} ngày · {ddmm(p.start)} – {ddmm(p.end)}
                     </div>
-                    {p.extraDays > 0 && <div className="opacity-80">Kéo dài do ngựa nghỉ bệnh hoặc tập thêm sau đánh giá.</div>}
-                    {p.extraDays < 0 && <div className="opacity-80">Rút ngắn để kịp ngày đua.</div>}
+                    {p.extraDays > 0 && <div className="opacity-80">Thêm ngày: để kế hoạch xong đúng hạn trước giải, hoặc do ngựa nghỉ bệnh / tập thêm sau đánh giá.</div>}
+                    {p.extraDays < 0 && <div className="opacity-80">Bớt ngày để kế hoạch xong trước ngày đua.</div>}
                     <div className="opacity-80">{PHASE_DESCRIPTIONS[p.key]}</div>
                   </div>
                 }
@@ -89,17 +95,44 @@ export default function PlanTimeline({ phases = [], startDate, raceDate, compact
                     width: `${(p.days / totalDays) * 100}%`,
                     background: PHASE_COLORS[p.key],
                     color: inkOn(PHASE_COLORS[p.key]),
-                    borderRight: i < laid.length - 1 ? '2px solid rgba(255,255,255,0.75)' : 'none',
+                    borderRight: i < laid.length - 1 || tail ? '2px solid rgba(255,255,255,0.75)' : 'none',
                     fontWeight: current ? 700 : 500,
                     // The phase the horse is in, ringed.
                     boxShadow: current ? `inset 0 0 0 2.5px ${INK}` : undefined,
                   }}
                 >
-                  {!mini && <span className="truncate">{`${PHASE_SHORT[p.key]} · ${p.weeks}t${extra}`}</span>}
+                  {!mini && <span className="truncate">{`${PHASE_SHORT[p.key]} · ${length}`}</span>}
                 </div>
               </Tooltip>
             );
           })}
+          {tail && (
+            <Tooltip
+              title={
+                <div>
+                  <div className="font-semibold">Chuẩn bị thi đấu</div>
+                  {tail.days > 1 && (
+                    <div>
+                      {tail.days - 1} ngày · {ddmm(tail.start)} – {ddmm(raceDay - DAY_MS)}
+                    </div>
+                  )}
+                  <div className="opacity-80">Không tập theo kế hoạch: ngựa nghỉ, bác sĩ khám trước giải, di chuyển tới trường đua.</div>
+                  <div>Ngày đua {ddmm(raceDay)}</div>
+                </div>
+              }
+            >
+              <div
+                className="flex min-w-0 items-center justify-center overflow-hidden whitespace-nowrap px-1.5 text-[11px] font-medium"
+                style={{
+                  width: `${(tail.days / totalDays) * 100}%`,
+                  color: INK,
+                  background: `repeating-linear-gradient(135deg, #F3E3C3 0 6px, #EAD3A4 6px 12px)`,
+                }}
+              >
+                {!mini && <span className="truncate">{`Chuẩn bị đua · ${Math.max(0, tail.days - 1)}n`}</span>}
+              </div>
+            </Tooltip>
+          )}
         </div>
         {running && (
           <>

@@ -23,6 +23,8 @@ export const DEFAULT_POLICY = {
   raceFormMinDone: 0.8,
   raceFormMinMet: 0.7,
   raceFormMinAvgRating: 6.5,
+  raceEntryMinPrep: true,
+  raceNeedsPhasesDone: true,
 };
 
 /** The club's training and care policy, so every screen words the rules the same way the server applies them. */

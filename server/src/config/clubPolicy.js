@@ -51,6 +51,12 @@ const clubPolicy = Object.freeze({
   raceFormMinDone: num('POLICY_RACE_FORM_MIN_DONE', 0.8),
   raceFormMinMet: num('POLICY_RACE_FORM_MIN_MET', 0.7),
   raceFormMinAvgRating: num('POLICY_RACE_FORM_MIN_AVG_RATING', 6.5),
+  // A race is entered (or moved, or made longer) only far enough ahead for the horse to go through a whole
+  // training cycle for its distance (constants/training.js minPrepFor).
+  raceEntryMinPrep: flag('POLICY_RACE_ENTRY_MIN_PREP', true),
+  // A horse is confirmed for its race only with a plan for it whose phases before the taper were each
+  // judged done by the trainer (training/planProgress.js phaseCompletion).
+  raceNeedsPhasesDone: flag('POLICY_RACE_NEEDS_PHASES_DONE', true),
 });
 
 module.exports = clubPolicy;

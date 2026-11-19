@@ -51,6 +51,22 @@ export const HOLD = {
   fore: { upper: 0.25, knee: -1.5, fetlock: -0.6 },
   hind: { upper: 0.35, stifle: -0.5, knee: 1.3, fetlock: -0.8 },
 };
+// Rearing (rear()): the horse gathers itself, goes up onto its hind legs about its hips, paws the air
+// with its forelegs folded and neighs, head tossing, then comes down and settles. The model has no such
+// clip, so it is made from the standing one: the body tipped up, the bones bent each frame.
+export const REAR = { seconds: 3.6, pitch: 1.06, drop: 0.13, lift: 0.32 };
+const ease = (t, from, to) => THREE.MathUtils.smoothstep(t, from, to);
+/** How far into each part of a rear the horse is, `t` seconds after it began (each 0 to 1). */
+function rearPose(t) {
+  return {
+    // Its hind legs bend to push off, stay bent under it while it is up, and bounce as it lands.
+    crouch: ease(t, 0, 0.55) * (1 - ease(t, 2.75, 3.35)) + 0.35 * Math.sin(Math.PI * Math.min(1, Math.max(0, (t - 2.85) / 0.6))),
+    rise: ease(t, 0.3, 1.2) * (1 - ease(t, 2.35, 3.15)),
+    fold: ease(t, 0.35, 0.9) * (1 - ease(t, 2.45, 3.05)),
+    paw: ease(t, 0.9, 1.3) * (1 - ease(t, 2.1, 2.5)),
+    neigh: ease(t, 1.1, 1.35) * (1 - ease(t, 2.0, 2.35)),
+  };
+}
 // Where a mark goes for an injury that is not in a leg (vet's body regions, horseMotion.js markAt).
 export const MARK_BONES = { head: 'BN_Head_00', neck: 'BN_Neck_02', back: 'BN_Spine_02', shoulder: 'BN_R_Clavicle', croup: 'BN_Pelvis', chest: 'BN_Spine_00', belly: 'BN_Stomach' };
 export const NECK = 'BN_Neck_00';
@@ -59,9 +75,14 @@ export const NECK = 'BN_Neck_00';
 // at LF 0, RH 0.175, RF 0.425, LH 0.75 of its cycle (measured).
 const TROT_SHIFT = { LF: 0, RH: -0.24, RF: 0.075, LH: -0.325 };
 
-// Maple tree model along the racecourse infield ("Maple tree" by atrodler, Sketchfab CC BY 4.0).
+// The racecourse's and the pasture's maples, and the pasture's farm house (credits: PASTURE_CREDIT,
+// horseMotion.js). The maple: "Maple tree" by atrodler; the house: "Farm House" by BoredPain666, its
+// 4096 px texture brought down to 1024. Both Sketchfab, CC BY 4.0.
 const MAPLE_TREE = `${import.meta.env.BASE_URL}models/maple-tree.glb`;
+const FARM_HOUSE = `${import.meta.env.BASE_URL}models/farm-house.glb`;
 const TREE_HEIGHT = 5.8; // metres, against a 1.6 m horse
+const HOUSE_WIDTH = 9;
+const HOUSE_TURN = Math.PI - 0.5; // which side of the house faces the paddock
 const scenery = new Map();
 /** A model of the pasture, loaded once for every stage. */
 function loadScenery(src) {
@@ -152,209 +173,442 @@ export function surfaceTexture(kind) {
 }
 
 /**
- * Deep emerald-and-obsidian 3D Studio backdrop texture (matches Horse3D & HorseInjuryViewer studio aesthetic).
+ * The wind of the pasture, in the vertex shader: gusts roll along the field, the same for every blade and
+ * flower, a little out of step with their neighbours. `sway` is how much a vertex moves (0 at the root).
+ * Costs nothing on the CPU: the stage only moves `time` each frame.
  */
-function makeStudioBackdropTexture() {
-  const c = document.createElement('canvas');
-  c.width = 1024;
-  c.height = 1024;
-  const g = c.getContext('2d');
-  const bg = g.createLinearGradient(0, 0, 0, 1024);
-  bg.addColorStop(0, '#02120d');
-  bg.addColorStop(0.52, '#06271d');
-  bg.addColorStop(1, '#020e0a');
-  g.fillStyle = bg;
-  g.fillRect(0, 0, 1024, 1024);
+function windy(material, time, sway) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = time;
+    shader.vertexShader = `uniform float uTime;
+${shader.vertexShader}`.replace(
+      '#include <project_vertex>',
+      `vec4 mvPosition = instanceMatrix * vec4(transformed, 1.0);
+      float sway = ${sway};
+      float gust = sin(uTime * 1.6 - mvPosition.x * 0.7 + mvPosition.z * 0.3) * 0.65 + sin(uTime * 3.1 + mvPosition.x * 2.3 + mvPosition.z * 1.7) * 0.2;
+      mvPosition.x += (0.06 + gust * 0.09) * sway;
+      mvPosition.z += sin(uTime * 2.2 + mvPosition.x * 1.3) * 0.025 * sway;
+      mvPosition = modelViewMatrix * mvPosition;
+      gl_Position = projectionMatrix * mvPosition;`,
+    );
+  };
+  return material;
+}
 
-  const glow = g.createRadialGradient(512, 430, 30, 512, 430, 480);
-  glow.addColorStop(0, 'rgba(20, 130, 92, 0.42)');
-  glow.addColorStop(0.5, 'rgba(10, 72, 52, 0.16)');
-  glow.addColorStop(1, 'rgba(2, 14, 10, 0)');
-  g.fillStyle = glow;
-  g.fillRect(0, 0, 1024, 1024);
+/** The pasture's blades: thin tapered strips, each its own height, lean and green, waving in the wind. */
+function grassParts(time) {
+  const SEGMENTS = 4;
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  const root = new THREE.Color('#24451a');
+  const tip = new THREE.Color('#a4d364');
+  for (let i = 0; i <= SEGMENTS; i += 1) {
+    const h = i / SEGMENTS; // 0 at the root, 1 at the tip
+    const half = 0.5 * (1 - h) ** 0.8;
+    const bend = 0.18 * h * h; // a natural droop forward
+    positions.push(-half, h, bend, half, h, bend);
+    const c = root.clone().lerp(tip, h);
+    colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    if (i < SEGMENTS) {
+      const a = i * 2;
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+  const blade = new THREE.BufferGeometry();
+  blade.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  blade.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  blade.setIndex(indices);
+  blade.computeVertexNormals();
+  const material = windy(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), time, 'position.y * position.y');
+  return { blade, material };
+}
 
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+// The round paddock of a horse at rest: looked at from any side it is the same field, fenced all round.
+const PADDOCK = { radius: 8.5, posts: 30, inner: 4.5, walk: 4.2 };
+// Where the farm house stands, [x, z]: a little left of the first view, so even a narrow frame shows it.
+const HOUSE_AT = [-9, -16];
+// The first view of the paddock: the horse three-quarters on, from inside the fence.
+const PADDOCK_VIEW = { target: [0.15, 0.95, 0], camera: [2.3, 1.48, 7.3] };
+
+/** The paddock's grass: long round the horse, shorter towards the fence. */
+function makePaddockGrass(time) {
+  const { blade, material } = grassParts(time);
+  const near = 6500;
+  const far = 7500;
+  const grass = new THREE.InstancedMesh(blade, material, near + far);
+  grass.frustumCulled = false;
+  let seed = 23;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const m = new THREE.Matrix4();
+  const rotation = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const color = new THREE.Color();
+  for (let i = 0; i < near + far; i += 1) {
+    const inner = i < near;
+    const r = inner ? PADDOCK.inner * Math.sqrt(rnd()) : Math.sqrt(PADDOCK.inner ** 2 + rnd() * ((PADDOCK.radius - 0.2) ** 2 - PADDOCK.inner ** 2));
+    const a = rnd() * Math.PI * 2;
+    const toFence = inner ? 0 : (r - PADDOCK.inner) / (PADDOCK.radius - PADDOCK.inner);
+    const height = inner ? 0.14 + rnd() * 0.18 : (0.07 + rnd() * 0.13) * (1 - 0.4 * toFence);
+    const width = 0.035 + rnd() * 0.03;
+    rotation.setFromAxisAngle(up, rnd() * Math.PI * 2);
+    m.compose(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r), rotation, new THREE.Vector3(width, height, width));
+    grass.setMatrixAt(i, m);
+    grass.setColorAt(i, color.setScalar(0.8 + rnd() * 0.35));
+  }
+  grass.instanceMatrix.needsUpdate = true;
+  return grass;
+}
+
+/** Wild flowers dotted through the grass (white daisies, buttercups, a little pink and lilac), nodding with it. */
+function makeWildflowers(time) {
+  const COUNT = 900;
+  // A small flat head on top of a stem that is all wind: the head sits at y = 1, where the grass tips are.
+  const head = new THREE.SphereGeometry(0.5, 8, 5);
+  head.scale(1, 0.12, 1);
+  head.translate(0, 1, 0);
+  const flowers = new THREE.InstancedMesh(head, windy(new THREE.MeshLambertMaterial({ color: '#ffffff' }), time, '1.0'), COUNT);
+  flowers.frustumCulled = false;
+  const PALETTE = ['#ffffff', '#ffffff', '#fff7d6', '#fde047', '#facc15', '#f9a8d4', '#c4b5fd', '#fdba74'];
+  let seed = 61;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const color = new THREE.Color();
+  for (let i = 0; i < COUNT; i += 1) {
+    // In clumps: most flowers gather round a few spots, the rest scattered.
+    const clump = i % 3 !== 0;
+    const ca = (Math.floor(i / 60) * 2.4) % (Math.PI * 2);
+    const cr = 2.5 + (Math.floor(i / 60) % 4) * 1.4;
+    const a = clump ? ca + (rnd() - 0.5) * 0.9 : rnd() * Math.PI * 2;
+    const r = clump ? cr + (rnd() - 0.5) * 1.6 : 1.2 + rnd() * (PADDOCK.radius - 1.6);
+    const size = 0.035 + rnd() * 0.03;
+    const height = 0.12 + rnd() * 0.16;
+    m.compose(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r), q.identity(), new THREE.Vector3(size, height, size));
+    flowers.setMatrixAt(i, m);
+    flowers.setColorAt(i, color.set(PALETTE[Math.floor(rnd() * PALETTE.length)]));
+  }
+  flowers.instanceMatrix.needsUpdate = true;
+  return flowers;
 }
 
 /**
- * High-precision 3D Studio Turntable & Biomechanics Calibration Dial floor texture.
+ * A post-and-rail fence round the paddock: posts every couple of metres, two rails between them, and a
+ * braced gate in the bay nearest `gateAngle` (radians round the paddock, towards the farm house).
  */
-function makeStudioDialTexture(maxAniso = 8) {
-  const c = document.createElement('canvas');
-  c.width = 1024;
-  c.height = 1024;
-  const g = c.getContext('2d');
-  const cx = 512;
-  const cy = 512;
-
-  // Radial spotlight glow on the studio floor
-  const spot = g.createRadialGradient(cx, cy, 20, cx, cy, 480);
-  spot.addColorStop(0, 'rgba(212, 175, 55, 0.22)');
-  spot.addColorStop(0.32, 'rgba(16, 120, 86, 0.20)');
-  spot.addColorStop(0.7, 'rgba(6, 42, 31, 0.08)');
-  spot.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  g.fillStyle = spot;
-  g.fillRect(0, 0, 1024, 1024);
-
-  // Subtle concentric calibration rings
-  const rings = [
-    { r: 190, width: 1.5, color: 'rgba(212, 175, 55, 0.32)' },
-    { r: 310, width: 2.5, color: 'rgba(212, 175, 55, 0.52)' },
-    { r: 332, width: 1.2, color: 'rgba(52, 211, 153, 0.28)' },
-    { r: 445, width: 1.5, color: 'rgba(212, 175, 55, 0.22)' },
-  ];
-  for (const ring of rings) {
-    g.beginPath();
-    g.arc(cx, cy, ring.r, 0, Math.PI * 2);
-    g.strokeStyle = ring.color;
-    g.lineWidth = ring.width;
-    g.stroke();
+function makePaddockFence(material, gateAngle) {
+  const { radius, posts: n } = PADDOCK;
+  const fence = new THREE.Group();
+  const bay = ((Math.round((gateAngle / (Math.PI * 2)) * n - 0.5) % n) + n) % n;
+  const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.11, 1.15, 0.11), material, n);
+  const rails = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.08, 0.05), material, n * 2);
+  posts.castShadow = true;
+  rails.castShadow = true;
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  for (let i = 0; i < n; i += 1) {
+    const a = (i / n) * Math.PI * 2;
+    const b = ((i + 1) / n) * Math.PI * 2;
+    const p = new THREE.Vector3(Math.cos(a) * radius, 0.575, Math.sin(a) * radius);
+    const next = new THREE.Vector3(Math.cos(b) * radius, 0, Math.sin(b) * radius);
+    posts.setMatrixAt(i, m.compose(p, q.identity(), new THREE.Vector3(1, 1, 1)));
+    const length = Math.hypot(next.x - p.x, next.z - p.z);
+    q.setFromAxisAngle(up, -Math.atan2(next.z - p.z, next.x - p.x));
+    if (i === bay) {
+      // The gate: three bars and a brace, in lighter wood, across the bay.
+      const gate = new THREE.Group();
+      const gateWood = new THREE.MeshStandardMaterial({ color: '#a07850', roughness: 0.8 });
+      for (const y of [0.35, 0.68, 1.0]) {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(length - 0.16, 0.07, 0.05), gateWood);
+        bar.position.y = y;
+        gate.add(bar);
+      }
+      const brace = new THREE.Mesh(new THREE.BoxGeometry(Math.hypot(length - 0.2, 0.65), 0.06, 0.05), gateWood);
+      brace.position.y = 0.68;
+      brace.rotation.z = Math.atan2(0.65, length - 0.2);
+      gate.add(brace);
+      gate.position.set((p.x + next.x) / 2, 0, (p.z + next.z) / 2);
+      gate.quaternion.copy(q);
+      fence.add(gate);
+    }
+    for (const [k, y] of [[0, 0.55], [1, 1.02]]) {
+      const scale = i === bay ? new THREE.Vector3(0, 0, 0) : new THREE.Vector3(length + 0.06, 1, 1);
+      rails.setMatrixAt(i * 2 + k, m.compose(new THREE.Vector3((p.x + next.x) / 2, y, (p.z + next.z) / 2), q, scale));
+    }
   }
-
-  // Precision degree tick marks around the main 310px ring
-  for (let deg = 0; deg < 360; deg += 5) {
-    const rad = (deg * Math.PI) / 180;
-    const major = deg % 30 === 0;
-    const mid = deg % 15 === 0;
-    const r0 = 310;
-    const r1 = major ? 330 : mid ? 323 : 317;
-    g.beginPath();
-    g.moveTo(cx + Math.cos(rad) * r0, cy + Math.sin(rad) * r0);
-    g.lineTo(cx + Math.cos(rad) * r1, cy + Math.sin(rad) * r1);
-    g.strokeStyle = major ? 'rgba(250, 204, 21, 0.65)' : 'rgba(212, 175, 55, 0.28)';
-    g.lineWidth = major ? 2.5 : 1.2;
-    g.stroke();
-  }
-
-  // Subtle cross-hair biomechanics alignment axes
-  g.strokeStyle = 'rgba(52, 211, 153, 0.16)';
-  g.lineWidth = 1.5;
-  g.beginPath();
-  g.moveTo(cx - 440, cy);
-  g.lineTo(cx + 440, cy);
-  g.moveTo(cx, cy - 440);
-  g.lineTo(cx, cy + 440);
-  g.stroke();
-
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = maxAniso;
-  return tex;
+  posts.instanceMatrix.needsUpdate = true;
+  rails.instanceMatrix.needsUpdate = true;
+  fence.add(posts, rails);
+  return fence;
 }
 
 /**
- * Streaming subtle grid strips under the turntable when the horse walks/trots in studio mode.
+ * What surrounds the paddock, so every side of it has something to look at: a low ridge of hills and
+ * a treeline on the horizon, the dirt track from the gate to the farm house, round hay bales and a
+ * grain silo by the house, a water trough inside the fence. `house` is [x, z] of the farm house.
  */
-function makeStudioMotionGridTexture(maxAniso = 8) {
-  const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 512;
-  const g = c.getContext('2d');
-  g.clearRect(0, 0, 512, 512);
-  g.strokeStyle = 'rgba(52, 211, 153, 0.14)';
-  g.lineWidth = 2;
-  for (let x = 0; x < 512; x += 64) {
-    g.beginPath();
-    g.moveTo(x, 40);
-    g.lineTo(x, 472);
-    g.stroke();
+function makeFarmProps(house) {
+  const farm = new THREE.Group();
+  let seed = 41;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const houseAngle = Math.atan2(house[1], house[0]);
+
+  // Hills: two overlapping ridges all round, the far one bluer in the haze, behind the trees.
+  const dome = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+  for (const [count, from, spread, color, height] of [[18, 40, 8, '#5d8a63', 4.2], [16, 27, 7, '#4a7a3a', 2.4]]) {
+    const hillMaterial = new THREE.MeshStandardMaterial({ color, roughness: 1 });
+    for (let i = 0; i < count; i += 1) {
+      const a = (i / count) * Math.PI * 2 + rnd() * 0.2;
+      const r = from + rnd() * spread;
+      const hill = new THREE.Mesh(dome, hillMaterial);
+      hill.scale.set(9 + rnd() * 9, height + rnd() * height, 6 + rnd() * 4);
+      hill.position.set(Math.cos(a) * r, -0.4, Math.sin(a) * r);
+      hill.rotation.y = -a;
+      farm.add(hill);
+    }
   }
-  for (let y = 64; y <= 448; y += 128) {
-    g.beginPath();
-    g.moveTo(0, y);
-    g.lineTo(512, y);
-    g.stroke();
+
+  // A treeline: conifers in loose clumps, two greens, leaving the view to the house open.
+  const trees = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 8), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1 }), 96);
+  const treeColor = new THREE.Color();
+  const greens = [new THREE.Color('#2c5427'), new THREE.Color('#3b6b2f'), new THREE.Color('#24461f')];
+  let n = 0;
+  while (n < 96) {
+    const a = rnd() * Math.PI * 2;
+    if (Math.abs(Math.atan2(Math.sin(a - houseAngle), Math.cos(a - houseAngle))) < 0.35) continue;
+    const r = 17 + rnd() * 7;
+    const h = 2.6 + rnd() * 2.6;
+    m.compose(new THREE.Vector3(Math.cos(a) * r, h / 2 - 0.1, Math.sin(a) * r), q.identity(), new THREE.Vector3(0.8 + rnd() * 0.5, h, 0.8 + rnd() * 0.5));
+    trees.setMatrixAt(n, m);
+    trees.setColorAt(n, treeColor.copy(greens[n % 3]).multiplyScalar(0.85 + rnd() * 0.3));
+    n += 1;
   }
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = maxAniso;
-  return tex;
+  trees.instanceMatrix.needsUpdate = true;
+  farm.add(trees);
+
+  // The dirt track from the gate to the house.
+  const toHouse = new THREE.Vector3(Math.cos(houseAngle), 0, Math.sin(houseAngle));
+  const gate = toHouse.clone().multiplyScalar(PADDOCK.radius);
+  const door = new THREE.Vector3(house[0] * 0.78, 0, house[1] * 0.78);
+  const pathTexture = surfaceTexture('dirt');
+  pathTexture.repeat.set(4, 0.5);
+  const length = gate.distanceTo(door);
+  const path = new THREE.Mesh(new THREE.PlaneGeometry(length, 1.7), new THREE.MeshStandardMaterial({ map: pathTexture, roughness: 1 }));
+  path.rotation.x = -Math.PI / 2;
+  path.rotation.z = -Math.atan2(door.z - gate.z, door.x - gate.x);
+  path.position.set((gate.x + door.x) / 2, 0.004, (gate.z + door.z) / 2);
+  path.receiveShadow = true;
+  farm.add(path);
+
+  // Round hay bales beside the house, two on the ground and one on top, clear of the horse in the first view.
+  const straw = new THREE.MeshStandardMaterial({ color: '#d1ab5f', roughness: 0.95 });
+  const bale = new THREE.CylinderGeometry(0.62, 0.62, 1.1, 20);
+  const along = new THREE.Vector3(-toHouse.z, 0, toHouse.x); // along the house's front
+  const baleBase = door.clone().addScaledVector(along, -5);
+  for (const [dx, y] of [[0, 0.62], [1.35, 0.62], [0.68, 1.75]]) {
+    const b = new THREE.Mesh(bale, straw);
+    b.position.copy(baleBase).addScaledVector(along, dx);
+    b.position.y = y;
+    b.rotation.order = 'YZX';
+    b.rotation.y = -houseAngle;
+    b.rotation.z = Math.PI / 2;
+    farm.add(b);
+  }
+
+  // A grain silo on the house's other side: a tall drum with a grey cap.
+  const silo = new THREE.Group();
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 6.5, 24), new THREE.MeshStandardMaterial({ color: '#c4bcae', roughness: 0.6, metalness: 0.2 }));
+  drum.position.y = 3.25;
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(1.55, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#8b8f93', roughness: 0.5, metalness: 0.3 }));
+  cap.position.y = 6.5;
+  silo.add(drum, cap);
+  silo.position.copy(door).addScaledVector(along, -10.5).addScaledVector(toHouse, 2.5);
+  farm.add(silo);
+
+  // A water trough inside the fence, round from the gate.
+  const trough = new THREE.Group();
+  const tub = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 0.62), new THREE.MeshStandardMaterial({ color: '#7d8a8f', roughness: 0.4, metalness: 0.4 }));
+  tub.position.y = 0.25;
+  tub.castShadow = true;
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 0.48), new THREE.MeshStandardMaterial({ color: '#4c7e9b', roughness: 0.15, metalness: 0.1 }));
+  water.rotation.x = -Math.PI / 2;
+  water.position.y = 0.46;
+  trough.add(tub, water);
+  const troughAngle = houseAngle + Math.PI * 0.62;
+  trough.position.set(Math.cos(troughAngle) * (PADDOCK.radius - 1.1), 0, Math.sin(troughAngle) * (PADDOCK.radius - 1.1));
+  trough.rotation.y = -troughAngle + Math.PI / 2;
+  farm.add(trough);
+  return { farm, pathTexture };
 }
 
 /**
- * Sleek 3D Equine Studio Showroom & Biomechanics Podium for HorseDetailPage (/horses/:id).
- * Matches the dark-emerald & gold studio aesthetic of Horse3D.jsx and HorseInjuryViewer.jsx
- * with zero cartoon buildings, fences, or roads.
+ * The pasture's small life, moved by the stage each frame: butterflies fluttering over the grass and a
+ * few birds wheeling high up by day, fireflies blinking round the paddock at night.
  */
-function createStudioBiomechanicsPodium(maxAniso) {
-  const group = new THREE.Group();
+function makePastureLife() {
+  const life = new THREE.Group();
+  let seed = 83;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
-  // Subtle physical podium base cylinder under the horse (no infinite horizon plane -> zero horizon line!)
-  const plinthGeo = new THREE.CylinderGeometry(2.75, 2.95, 0.04, 64);
-  const plinthMat = new THREE.MeshStandardMaterial({
-    color: '#041f16',
-    roughness: 0.5,
-    metalness: 0.2,
+  // A pair of wings on a hinge along the body (the body's forward is +x): `span` from tip to tip.
+  const wings = (span, chord, material) => {
+    const left = new THREE.PlaneGeometry(chord, span / 2);
+    left.rotateX(-Math.PI / 2);
+    left.translate(0, 0, span / 4);
+    const right = left.clone();
+    right.translate(0, 0, -span / 2);
+    const body = new THREE.Group();
+    const l = new THREE.Mesh(left, material);
+    const r = new THREE.Mesh(right, material);
+    body.add(l, r);
+    return { body, l, r };
+  };
+
+  const butterflies = ['#fde047', '#ffffff', '#fb923c', '#fef08a', '#c7d2fe', '#ffffff'].map((color) => {
+    const material = new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, emissive: color, emissiveIntensity: 0.25 });
+    const b = wings(0.2, 0.13, material);
+    life.add(b.body);
+    return { ...b, cx: (rnd() - 0.5) * 7, cz: (rnd() - 0.5) * 7, rx: 1.2 + rnd() * 1.8, rz: 1 + rnd() * 1.6, h: 0.45 + rnd() * 0.7, speed: 0.35 + rnd() * 0.3, phase: rnd() * 10 };
   });
-  const plinth = new THREE.Mesh(plinthGeo, plinthMat);
-  plinth.position.y = -0.022;
-  plinth.receiveShadow = true;
-  group.add(plinth);
 
-  // Thin gold rim ring around the podium edge
-  const rimGeo = new THREE.RingGeometry(2.72, 2.76, 64);
-  const rimMat = new THREE.MeshBasicMaterial({
-    color: '#d4af37',
-    transparent: true,
-    opacity: 0.62,
-    side: THREE.DoubleSide,
+  const birdMaterial = new THREE.MeshBasicMaterial({ color: '#2b3038', side: THREE.DoubleSide });
+  const birds = Array.from({ length: 7 }, (_, i) => {
+    const b = wings(1.15, 0.32, birdMaterial);
+    life.add(b.body);
+    return { ...b, lag: i * 0.07 + rnd() * 0.04, dr: (rnd() - 0.5) * 4, dy: (rnd() - 0.5) * 1.6, phase: rnd() * 10 };
   });
-  const rim = new THREE.Mesh(rimGeo, rimMat);
-  rim.rotation.x = -Math.PI / 2;
-  rim.position.y = 0.002;
-  group.add(rim);
 
-  // Studio calibration dial disc
-  const dialTex = makeStudioDialTexture(maxAniso);
-  const dialGeo = new THREE.PlaneGeometry(5.5, 5.5);
-  const dialMat = new THREE.MeshBasicMaterial({
-    map: dialTex,
-    transparent: true,
-    depthWrite: false,
+  // Fireflies: soft glowing points, each blinking on its own beat.
+  const FIREFLIES = 54;
+  const glow = document.createElement('canvas');
+  glow.width = 64;
+  glow.height = 64;
+  const gg = glow.getContext('2d');
+  const halo = gg.createRadialGradient(32, 32, 0, 32, 32, 32);
+  halo.addColorStop(0, 'rgba(255,255,255,1)');
+  halo.addColorStop(0.25, 'rgba(255,255,255,0.65)');
+  halo.addColorStop(1, 'rgba(255,255,255,0)');
+  gg.fillStyle = halo;
+  gg.fillRect(0, 0, 64, 64);
+  const glowTexture = new THREE.CanvasTexture(glow);
+  const fly = new THREE.BufferGeometry();
+  fly.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(FIREFLIES * 3), 3));
+  fly.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(FIREFLIES * 3), 3));
+  const fireflies = new THREE.Points(
+    fly,
+    new THREE.PointsMaterial({ size: 0.24, map: glowTexture, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }),
+  );
+  fireflies.frustumCulled = false;
+  life.add(fireflies);
+  const flies = Array.from({ length: FIREFLIES }, () => ({ a: rnd() * Math.PI * 2, r: 1.4 + rnd() * 6.6, h: 0.25 + rnd() * 1.2, speed: 0.05 + rnd() * 0.12, beat: 0.6 + rnd() * 1.4, phase: rnd() * 10 }));
+  const glowColor = new THREE.Color('#e4ff9a');
+
+  // The night sky: stars on a dome far off, twinkling, and the moon rising over the farm in the first view.
+  const STARS = 420;
+  const starAt = new Float32Array(STARS * 3);
+  const starLight = Array.from({ length: STARS }, (_, i) => {
+    const a = rnd() * Math.PI * 2;
+    const up = Math.asin(0.07 + rnd() * 0.9); // from just over the hills to high up
+    starAt.set([Math.cos(a) * Math.cos(up) * 120, Math.sin(up) * 120, Math.sin(a) * Math.cos(up) * 120], i * 3);
+    return { base: 0.35 + rnd() ** 2 * 0.65, beat: 0.8 + rnd() * 2.5, phase: rnd() * 10 };
   });
-  const dial = new THREE.Mesh(dialGeo, dialMat);
-  dial.rotation.x = -Math.PI / 2;
-  dial.position.y = 0.003;
-  group.add(dial);
-
-  // Streaming biomechanics treadmill grid inside the podium when the horse walks/trots
-  const gridTex = makeStudioMotionGridTexture(maxAniso);
-  gridTex.repeat.set(3, 1);
-  const gridGeo = new THREE.PlaneGeometry(3.8, 1.8);
-  const gridMat = new THREE.MeshBasicMaterial({
-    map: gridTex,
-    transparent: true,
-    depthWrite: false,
-  });
-  const grid = new THREE.Mesh(gridGeo, gridMat);
-  grid.rotation.x = -Math.PI / 2;
-  grid.position.y = 0.004;
-  group.add(grid);
-
-  const backdropTex = makeStudioBackdropTexture();
+  const starGeometry = new THREE.BufferGeometry();
+  starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starAt, 3));
+  starGeometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(STARS * 3), 3));
+  const stars = new THREE.Points(
+    starGeometry,
+    new THREE.PointsMaterial({ size: 2.4, sizeAttenuation: false, map: glowTexture, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }),
+  );
+  stars.frustumCulled = false;
+  life.add(stars);
+  const moonCanvas = document.createElement('canvas');
+  moonCanvas.width = 128;
+  moonCanvas.height = 128;
+  const mg = moonCanvas.getContext('2d');
+  const moonGlow = mg.createRadialGradient(64, 64, 10, 64, 64, 64);
+  moonGlow.addColorStop(0, 'rgba(255,248,225,0.55)');
+  moonGlow.addColorStop(0.35, 'rgba(220,230,255,0.16)');
+  moonGlow.addColorStop(1, 'rgba(220,230,255,0)');
+  mg.fillStyle = moonGlow;
+  mg.fillRect(0, 0, 128, 128);
+  mg.fillStyle = '#fbf6e6';
+  mg.beginPath();
+  mg.arc(64, 64, 17, 0, Math.PI * 2);
+  mg.fill();
+  // A few grey seas on its face.
+  mg.fillStyle = 'rgba(190,186,170,0.55)';
+  for (const [x, y, r] of [[58, 58, 5], [70, 66, 4], [62, 72, 3]]) {
+    mg.beginPath();
+    mg.arc(x, y, r, 0, Math.PI * 2);
+    mg.fill();
+  }
+  const moonTexture = new THREE.CanvasTexture(moonCanvas);
+  moonTexture.colorSpace = THREE.SRGBColorSpace;
+  const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: moonTexture, transparent: true, depthWrite: false, fog: false }));
+  moon.position.set(-14, 12, -70);
+  moon.scale.setScalar(13);
+  life.add(moon);
+  const night = { on: false };
 
   return {
-    group,
-    backdropTex,
-    scroll(travelled) {
-      gridTex.offset.x = (travelled / 1.4) % 1;
+    life,
+    setNight(next) {
+      night.on = next;
+      for (const b of [...butterflies, ...birds]) b.body.visible = !next;
+      fireflies.visible = next;
+      stars.visible = next;
+      moon.visible = next;
+    },
+    update(t) {
+      if (!night.on) {
+        for (const b of butterflies) {
+          const s = t * b.speed + b.phase;
+          const x = b.cx + b.rx * Math.sin(s);
+          const z = b.cz + b.rz * Math.sin(s * 1.37 + 1.1);
+          b.body.position.set(x, b.h + 0.22 * Math.sin(s * 3.1) + 0.06 * Math.sin(t * 9 + b.phase), z);
+          // Facing the way it flies; the wings beat fast, now and then held up for a short glide.
+          b.body.rotation.y = -Math.atan2(b.rz * 1.37 * Math.cos(s * 1.37 + 1.1), b.rx * Math.cos(s));
+          const flap = 0.25 + 1.05 * Math.abs(Math.sin(t * 17 + b.phase));
+          b.l.rotation.x = -flap;
+          b.r.rotation.x = flap;
+        }
+        // The flock wheels slowly round the farm, high over the hills, each bird a little behind the last.
+        for (const b of birds) {
+          const a = t * 0.045 - b.lag + 0.6;
+          const r = 34 + b.dr;
+          b.body.position.set(Math.cos(a) * r, 6.8 + b.dy + Math.sin(t * 0.4 + b.phase) * 0.6, Math.sin(a) * r);
+          b.body.rotation.y = -a - Math.PI / 2;
+          // Beat, beat, glide.
+          const beat = Math.sin(t * 6.5 + b.phase);
+          const flap = (t * 0.6 + b.phase) % 3 < 1.2 ? 0.15 : 0.12 + 0.55 * beat;
+          b.l.rotation.x = -flap;
+          b.r.rotation.x = flap;
+        }
+      } else {
+        const pos = fly.attributes.position;
+        const col = fly.attributes.color;
+        flies.forEach((f, i) => {
+          const a = f.a + t * f.speed;
+          pos.setXYZ(i, Math.cos(a) * f.r + 0.4 * Math.sin(t * 0.7 + f.phase), f.h + 0.25 * Math.sin(t * 0.9 + f.phase), Math.sin(a) * f.r + 0.4 * Math.cos(t * 0.6 + f.phase));
+          const k = 0.12 + 0.88 * Math.max(0, Math.sin(t * f.beat + f.phase)) ** 2;
+          col.setXYZ(i, glowColor.r * k, glowColor.g * k, glowColor.b * k);
+        });
+        pos.needsUpdate = true;
+        col.needsUpdate = true;
+        const shine = starGeometry.attributes.color;
+        starLight.forEach((s, i) => {
+          const k = s.base * (0.75 + 0.25 * Math.sin(t * s.beat + s.phase));
+          shine.setXYZ(i, k, k, k * 1.05);
+        });
+        shine.needsUpdate = true;
+      }
     },
     dispose() {
-      plinthGeo.dispose();
-      plinthMat.dispose();
-      rimGeo.dispose();
-      rimMat.dispose();
-      dialGeo.dispose();
-      dialMat.dispose();
-      dialTex.dispose();
-      gridGeo.dispose();
-      gridMat.dispose();
-      gridTex.dispose();
-      backdropTex.dispose();
+      glowTexture.dispose();
+      moonTexture.dispose();
     },
   };
 }
@@ -731,25 +985,36 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     skyCheckedAt = now;
     if (s.key === pastureSky?.key) return;
     pastureSky = s;
-    // Keep the key sun at a crisp raking broadcast angle so both horse and white rail posts cast visible
-    // shadows across the textured track while gently reflecting the session's time-of-day warmth.
     const day = (s.hour - 6) / 12;
-    if (day > 0 && day < 1) {
-      const arcX = -10.5 + 3.5 * day;
-      const arcY = 8.8 + 3.4 * Math.sin(day * Math.PI);
-      sun.position.set(arcX, arcY, -3.2);
-    } else {
-      sun.position.set(-7.5, 10.5, -2.8);
-    }
+    const daytime = day > 0 && day < 1;
     if (scene.background?.isTexture) scene.background.dispose();
     scene.background = skyTexture(s.sky, s.horizon);
     scene.fog.color.set(s.horizon);
     sun.color.set(s.sun[0]);
-    sun.intensity = Math.max(2.15, s.sun[1] * 1.25);
     fill.color.set(s.fill[0]);
-    fill.intensity = Math.max(0.65, s.fill[1] * 0.62);
-    frontFill.intensity = day > 0 && day < 1 ? 0.82 : 0.58;
     for (const c of clouds?.children || []) c.material.color.set(s.clouds);
+    if (inPasture) {
+      // The pasture: the sun crosses the sky from the east at six to the west at six, lighting the horse
+      // from the front; at night the moon stands high, and the fireflies come out.
+      if (daytime) sun.position.set(-9 * Math.cos(day * Math.PI), 2 + 9 * Math.sin(day * Math.PI), 6);
+      else sun.position.set(3, 9, 6);
+      // By night the moonlight is dimmer and bluer, and the sky's reflections (the environment) fade.
+      const dark = nightAt(s.hour);
+      sun.intensity = s.sun[1] * (dark ? 0.62 : 1);
+      fill.intensity = s.fill[1] * (dark ? 0.5 : 1);
+      frontFill.intensity = dark ? 0.22 : 0.45;
+      scene.environmentIntensity = dark ? 0.3 : 1;
+      pastureLife?.setNight(dark);
+      return;
+    }
+    // Keep the key sun at a crisp raking broadcast angle so both horse and white rail posts cast visible
+    // shadows across the textured track while gently reflecting the session's time-of-day warmth.
+    if (daytime) sun.position.set(-10.5 + 3.5 * day, 8.8 + 3.4 * Math.sin(day * Math.PI), -3.2);
+    else sun.position.set(-7.5, 10.5, -2.8);
+    sun.intensity = Math.max(2.15, s.sun[1] * 1.25);
+    fill.intensity = Math.max(0.65, s.fill[1] * 0.62);
+    frontFill.intensity = daytime ? 0.82 : 0.58;
+    scene.environmentIntensity = 1;
   };
   // The track's sky when no hour is given: plain and bright.
   const plainSky = () => {
@@ -764,18 +1029,20 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     fill.color.set('#dcedff');
     fill.intensity = 0.95;
     frontFill.intensity = 0.85;
+    scene.environmentIntensity = 1;
   };
   const ensureClouds = () => {
     if (clouds) return;
     clouds = new THREE.Group();
     const puff = cloudTexture();
-    // Subtle high cirrus clouds well above the woodland horizon.
-    for (let i = 0; i < 10; i += 1) {
+    // Subtle high cirrus clouds well above the woodland horizon (the pasture lowers them and fills them out).
+    for (let i = 0; i < 14; i += 1) {
       const cloud = new THREE.Sprite(new THREE.SpriteMaterial({ map: puff, transparent: true, opacity: 0.42, depthWrite: false, fog: false }));
-      const a = (i / 10) * Math.PI * 2 + 0.35;
+      const a = (i / 14) * Math.PI * 2 + 0.35;
       const r = 42 + (i % 3) * 5;
       cloud.position.set(Math.cos(a) * r, 11.5 + (i % 3) * 1.6, Math.sin(a) * r);
       cloud.scale.set(11 + (i % 3) * 2.5, 3.6 + (i % 2) * 0.8, 1);
+      cloud.userData.home = { at: cloud.position.clone(), size: cloud.scale.clone() };
       clouds.add(cloud);
     }
     scene.add(clouds);
@@ -815,64 +1082,129 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
   };
   ensureRacecourseTrees();
 
-  let clubCourtyard = null;
-  let courtyardCameraSet = false;
-  const ensureClubCourtyard = () => {
-    if (clubCourtyard) return;
-    clubCourtyard = createStudioBiomechanicsPodium(maxAniso);
-    world.add(clubCourtyard.group);
+  // A horse at rest in the pasture stands in a round paddock that holds from every side (the view can be
+  // dragged all round it): waving grass and wild flowers round the horse, a wooden fence, the farm house,
+  // maples and conifers outside, hills on the horizon; butterflies and a wheeling flock of birds by day,
+  // fireflies at night, all under the sky of the hour in Vietnam. A horse on the move keeps the track.
+  let paddock = null;
+  let paddockTexture = null;
+  let pathTexture = null;
+  let pastureLife = null;
+  let paddockCameraSet = false;
+  const paddockMaples = [];
+  const grassTime = { value: 0 };
+  const nightAt = (hour) => hour < 5.6 || hour >= 18.6;
+  // Where a walking horse is on its round of the paddock: it starts on the far side, walking to the right.
+  let lap = -Math.PI / 2;
+  const UP = new THREE.Vector3(0, 1, 0);
+  const placePaddockCamera = () => {
+    if (view === 'turntable') return;
+    controls.target.set(...PADDOCK_VIEW.target);
+    camera.position.set(...PADDOCK_VIEW.camera);
+    rearLift = 0;
   };
-
-  const applyStudioLighting = () => {
-    if (!clubCourtyard) ensureClubCourtyard();
-    if (scene.background && scene.background !== clubCourtyard.backdropTex && scene.background.isTexture) {
-      scene.background.dispose();
-    }
-    scene.background = clubCourtyard.backdropTex;
-    scene.fog.color.set('#02120d');
-    sun.color.set('#fff6e5');
-    sun.intensity = 2.9;
-    sun.position.set(-4.5, 9.2, 4.5);
-    fill.color.set('#a7f3d0');
-    fill.intensity = 1.08;
-    frontFill.intensity = 0.95;
+  const ensurePaddock = () => {
+    if (paddock) return;
+    paddock = new THREE.Group();
+    paddockTexture = surfaceTexture('pasture');
+    paddockTexture.repeat.set(36, 36);
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(70, 64), new THREE.MeshStandardMaterial({ map: paddockTexture, roughness: 1 }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.005;
+    ground.receiveShadow = true;
+    // Turned to face the paddock from (x, z): the model's front is +z.
+    const facing = (x, z) => Math.atan2(-x, -z);
+    const props = makeFarmProps(HOUSE_AT);
+    pathTexture = props.pathTexture;
+    pastureLife = makePastureLife();
+    pastureLife.setNight(nightAt(pastureSky?.hour ?? vietnamHour()));
+    const fenceWood = new THREE.MeshStandardMaterial({ color: '#7a5636', roughness: 0.85 });
+    paddock.add(ground, makePaddockGrass(grassTime), makeWildflowers(grassTime), makePaddockFence(fenceWood, Math.atan2(HOUSE_AT[1], HOUSE_AT[0])), props.farm, pastureLife.life);
+    const house = new THREE.Group();
+    house.position.set(HOUSE_AT[0], 0, HOUSE_AT[1]);
+    paddock.add(house);
+    loadScenery(FARM_HOUSE)
+      .then((gltf) => {
+        if (disposed) return;
+        const farmHouse = sized(gltf, 'x', HOUSE_WIDTH);
+        farmHouse.rotation.y = HOUSE_TURN + facing(...HOUSE_AT);
+        house.add(farmHouse);
+      })
+      .catch(() => {
+        if (disposed) return;
+        const drawn = makeBarn();
+        drawn.scale.setScalar(0.75);
+        drawn.rotation.y = facing(...HOUSE_AT);
+        house.add(drawn);
+      });
+    // Maples round the paddock: one in the first view, behind the fence on the right; the rest all round.
+    const TREES = [[3.2, -14.5, 1.05], [14, -8, 0.95], [-17, 4, 0.9], [9, 15, 1.1], [-7, 16, 0.95]];
+    const plant = (make) => {
+      for (const [x, z, s] of TREES) {
+        const maple = make(s);
+        maple.position.set(x, 0, z);
+        maple.rotation.y = x * 0.37;
+        paddockMaples.push(maple);
+        paddock.add(maple);
+      }
+    };
+    loadScenery(MAPLE_TREE)
+      .then((gltf) => !disposed && plant((s) => sized(gltf, 'y', TREE_HEIGHT * s)))
+      .catch(() => !disposed && plant(() => makeTree().tree));
+    paddock.visible = false;
+    world.add(paddock);
   };
 
   const setPasture = (on) => {
     inPasture = on;
     dress();
-    if (on) {
-      ensureClubCourtyard();
-      if (clouds) clouds.visible = false;
-      applyStudioLighting();
-    } else {
-      if (fixedHour != null) ensureClouds();
-      if (clouds) clouds.visible = fixedHour != null;
-      if (fixedHour != null) showSky(performance.now());
-      else plainSky();
+    // The pasture's haze is further off, its clouds lower and fuller, sitting over the hills.
+    scene.fog.near = on ? 26 : 50;
+    scene.fog.far = on ? 95 : 155;
+    if (on || fixedHour != null) ensureClouds();
+    if (clouds) {
+      clouds.visible = on || fixedHour != null;
+      for (const c of clouds.children) {
+        const { at, size } = c.userData.home;
+        c.position.set(at.x * (on ? 1.4 : 1), at.y - (on ? 3.4 : 0), at.z * (on ? 1.4 : 1));
+        c.scale.set(size.x * (on ? 1.45 : 1), size.y * (on ? 1.45 : 1), 1);
+        c.material.opacity = on ? 0.92 : 0.42;
+      }
     }
+    if (on || fixedHour != null) {
+      pastureSky = null;
+      showSky(performance.now());
+    } else plainSky();
     applyScene();
   };
 
+  // Which scene the horse is in, after any change to the surface or the motion.
   const applyScene = () => {
-    if (stand.position.lengthSq() > 0) {
+    // Standing or grazing, the horse is in the middle of the paddock; walking, it goes round (the frame loop).
+    const walking = inPasture && (motion?.kmh || 0) > 0.5;
+    if (!walking && stand.position.lengthSq() > 0) {
       stand.position.set(0, 0, 0);
       stand.rotation.y = 0;
+      lap = -Math.PI / 2;
+      if (inPasture) placePaddockCamera();
     }
     if (inPasture) {
-      if (!courtyardCameraSet && view === 'free') {
-        controls.target.set(0.0, 0.92, 0.0);
-        camera.position.set(0.28, 1.38, 4.35);
-        courtyardCameraSet = true;
+      ensurePaddock();
+      if (!paddockCameraSet) {
+        placePaddockCamera();
+        paddockCameraSet = true;
       }
     } else if (view === 'side') {
+      paddockCameraSet = false;
       controls.target.copy(trackTarget);
       camera.position.copy(trackCamPos);
+      rearLift = 0;
     }
-    if (clubCourtyard) clubCourtyard.group.visible = inPasture;
+    if (paddock) paddock.visible = inPasture;
     if (racecourseTrees) racecourseTrees.visible = !inPasture;
     curvedTrack.group.visible = !inPasture;
     hoofParticles.points.visible = !inPasture;
+    // All round the horse in the paddock; on the track only from its side, where the strip has no edge in view.
     const strip = view === 'side' && !inPasture;
     controls.minAzimuthAngle = strip ? -0.35 : -Infinity;
     controls.maxAzimuthAngle = strip ? 1.15 : Infinity;
@@ -910,6 +1242,13 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
   const rest = new Map();
   let baseY = 0;
   const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  // The horse stands in a rig, which tips it up onto its hind legs when it rears (rear()).
+  const rig = new THREE.Group();
+  stand.add(rig);
+  const hip = new THREE.Vector2(-0.6, 1.1);
+  let rearAt = null;
+  // How far the view has been raised to keep a rearing horse's head in the frame.
+  let rearLift = 0;
 
   const paint = () => {
     if (!horse || !coat) return;
@@ -984,14 +1323,22 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     const c2 = b2.getCenter(new THREE.Vector3());
     horse.position.set(-c2.x, -b2.min.y, -c2.z);
     baseY = horse.position.y;
-    stand.add(horse);
+    rig.add(horse);
     for (const [leg, def] of Object.entries(LEGS)) {
       bones[leg] = {};
       for (const key of ['upper', 'stifle', 'knee', 'fetlock', 'hoof']) if (def[key]) bones[leg][key] = boneNamed(horse, def[key]);
       for (const key of ['upper', 'stifle', 'knee', 'fetlock']) if (bones[leg][key]) rest.set(bones[leg][key], bones[leg][key].quaternion.clone());
     }
     bones.neck = boneNamed(horse, NECK);
-    if (bones.neck) rest.set(bones.neck, bones.neck.quaternion.clone());
+    // Rearing also moves the head, the jaw (the neigh) and the tail.
+    bones.head = boneNamed(horse, 'BN_Head_00');
+    bones.jaw = boneNamed(horse, 'BN_Jaw');
+    bones.tail = [boneNamed(horse, 'BN_Tail_00'), boneNamed(horse, 'BN_Tail_01'), boneNamed(horse, 'BN_Tail_02')];
+    for (const bone of [bones.neck, bones.head, bones.jaw, ...bones.tail]) if (bone) rest.set(bone, bone.quaternion.clone());
+    // The horse rears about its hips: where the hind legs meet the body, in the rig's space.
+    rig.updateMatrixWorld(true);
+    const hips = [bones.RH.upper, bones.LH.upper].filter(Boolean).map((bone) => rig.worldToLocal(bone.getWorldPosition(new THREE.Vector3())));
+    if (hips.length) hip.set(hips.reduce((x, p) => x + p.x, 0) / hips.length, hips.reduce((y, p) => y + p.y, 0) / hips.length);
     for (const [region, prefix] of Object.entries(MARK_BONES)) markBones[region] = boneNamed(horse, prefix);
     mixer = new THREE.AnimationMixer(horse);
     for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
@@ -1075,19 +1422,55 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       } else if (actualKmh > 0.6) {
         switchClip('Walk', Math.min(1.25, Math.max(0.52, actualKmh / 6.5)), 0.35);
       }
-    } else if (mixer && targetKmh === 0 && actualKmh <= 0.35 && current !== actions[motion.clip || 'Idle']) {
+    } else if (mixer && rearAt == null && targetKmh === 0 && actualKmh <= 0.35 && current !== actions[motion.clip || 'Idle']) {
       switchClip(motion.clip || 'Idle', motion.timeScale || 1, 0.45, motion.then);
+    }
+
+    // Rearing: the rig tips the horse up about its hips, which sink a little as the hind legs bend.
+    let pose = null;
+    let rt = 0;
+    if (rearAt != null) {
+      rt = (now - rearAt) / 1000;
+      if (rt >= REAR.seconds) {
+        rearAt = null;
+        play();
+      } else pose = rearPose(rt);
+    }
+    const pitch = pose ? REAR.pitch * pose.rise : 0;
+    if (pose || rig.rotation.z !== 0) {
+      const c = Math.cos(pitch);
+      const s = Math.sin(pitch);
+      rig.rotation.z = pitch;
+      rig.position.set(hip.x - (c * hip.x - s * hip.y), hip.y - (s * hip.x + c * hip.y) - (pose ? REAR.drop * pose.crouch : 0), 0);
+    }
+    // The view rises with the head and comes back down with it.
+    const lift = (pose ? REAR.lift * pose.rise : 0) - rearLift;
+    if (lift !== 0) {
+      controls.target.y += lift;
+      camera.position.y += lift;
+      rearLift += lift;
     }
 
     // The ground streams back at the horse's actual smooth speed.
     const mps = actualKmh / 3.6;
-    if (!reduceMotion) {
-      travelled += mps * dt;
-      if (inPasture && clubCourtyard) {
-        clubCourtyard.scroll(travelled);
-      } else {
-        curvedTrack.scroll(travelled);
+    if (inPasture) {
+      // In the paddock a walking horse goes round it, facing its way, instead of the ground streaming under it.
+      if (actualKmh > 0.5 && !reduceMotion) {
+        const from = stand.position.clone();
+        const yaw = stand.rotation.y;
+        lap += (mps / PADDOCK.walk) * dt;
+        stand.position.set(Math.cos(lap) * PADDOCK.walk, 0, Math.sin(lap) * PADDOCK.walk);
+        stand.rotation.y = -lap - Math.PI / 2;
+        // The camera goes with it and turns as it turns: the walking horse stays in view, seen from inside the paddock.
+        const move = stand.position.clone().sub(from);
+        controls.target.add(move);
+        camera.position.add(move);
+        const offset = camera.position.clone().sub(controls.target).applyAxisAngle(UP, stand.rotation.y - yaw);
+        camera.position.copy(controls.target).add(offset);
       }
+    } else if (!reduceMotion) {
+      travelled += mps * dt;
+      curvedTrack.scroll(travelled);
       if (hoofParticles.points.visible) {
         hoofParticles.emitForHorse(0, 0, actualKmh, dt);
         hoofParticles.update(dt, mps);
@@ -1100,17 +1483,52 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       finish.position.x = x;
     }
     hills.visible = tilt.now > 0.02;
-    // Clouds drift slowly to the right, round and round; the sky follows the clock, checked each minute.
+    // Clouds drift slowly round the sky; the sky follows the clock, checked each minute.
     if (clouds?.visible) {
-      if (!reduceMotion) for (const c of clouds.children) c.position.x = ((c.position.x + dt * 0.35 + 40) % 80) - 40;
+      if (!reduceMotion) clouds.rotation.y += dt * 0.008;
       if (now - skyCheckedAt > 60000) showSky(now);
+    }
+    // The paddock's grass and flowers wave, the maples lean a little with the same gusts, and the
+    // butterflies, birds or fireflies go about their business.
+    if (paddock?.visible && !reduceMotion) {
+      const t = now / 1000;
+      grassTime.value = t;
+      for (const maple of paddockMaples) {
+        maple.rotation.z = -0.006 - 0.008 * Math.sin(t * 1.6 - maple.position.x * 0.7);
+        maple.rotation.x = 0.004 * Math.sin(t * 2.2 + maple.position.z);
+      }
+      pastureLife?.update(t);
     }
     if (mixer) {
       // Bones a clip doesn't drive keep what they were given last frame: start each frame from rest,
       // so the bends below are applied once, not added up frame after frame.
       for (const [bone, quaternion] of rest) bone.quaternion.copy(quaternion);
       mixer.update(dt);
-      horse.updateMatrixWorld(true);
+      rig.updateMatrixWorld(true);
+      if (pose) {
+        // The hind legs stay upright under the tipped body (turned back by as much as it tips), bent at
+        // the stifle and hock; the forelegs fold up and paw the air, one after the other.
+        for (const leg of [bones.RH, bones.LH]) {
+          swing(leg.upper, -pitch + 0.3 * pose.crouch);
+          swing(leg.stifle, -0.5 * pose.crouch);
+          swing(leg.knee, 0.42 * pose.crouch);
+          swing(leg.fetlock, -0.12 * pose.crouch);
+        }
+        for (const [leg, offset] of [[bones.RF, 0], [bones.LF, 1.9]]) {
+          const beat = Math.sin(rt * 7.5 + offset);
+          swing(leg.upper, (0.42 + 0.3 * beat * pose.paw) * pose.fold);
+          swing(leg.knee, (-1.55 - 0.3 * Math.sin(rt * 7.5 + offset + 0.7) * pose.paw) * pose.fold);
+          swing(leg.fetlock, -0.45 * pose.fold);
+        }
+        // The neck comes down against the climb so the head stays in front; neighing, it tosses its head
+        // and opens its mouth. The tail hangs from the croup and swishes.
+        swing(bones.neck, -0.42 * pose.rise + pose.neigh * (0.16 + 0.1 * Math.sin(rt * 15)));
+        swing(bones.head, -0.22 * pose.rise + 0.12 * pose.neigh);
+        swing(bones.jaw, -0.32 * pose.neigh * (0.75 + 0.25 * Math.sin(rt * 22)));
+        const swish = Math.sin(rt * 4.5) * 0.18 * pose.rise;
+        swing(bones.tail[0], -0.8 * pitch + swish);
+        swing(bones.tail[1], 0.6 * swish);
+      }
       const phase = current ? (current.time / current.getClip().duration) % 1 : 0;
       const leg = LEGS[motion.leg] ? motion.leg : 'RF';
       const fore = leg.endsWith('F');
@@ -1189,6 +1607,18 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
 
   return {
     ready,
+    /**
+     * The horse rears up on its hind legs and neighs (REAR.seconds), then goes back to what it was doing.
+     * Only a horse standing sound and still: not one that is moving, lame, injured, held back or lying
+     * down. Returns whether it reared.
+     */
+    rear() {
+      const sound = !(motion.hold || motion.limp || motion.injuryPhase || motion.tired || motion.tone === 'alert' || motion.clip === 'Sleep');
+      if (!mixer || rearAt != null || actualKmh > 0.5 || (motion.kmh || 0) > 0.5 || !sound) return false;
+      rearAt = performance.now();
+      switchClip('Idle', 1, 0.3);
+      return true;
+    },
     setCoat(next) {
       coat = next;
       paint();
@@ -1222,14 +1652,10 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
     /** The sky of an hour of the day (a session's), or null: the clock in Vietnam in the pasture, a plain sky on the track. */
     setHour(hour) {
       fixedHour = Number.isFinite(hour) ? hour : null;
-      if (inPasture) {
-        if (clouds) clouds.visible = false;
-        applyStudioLighting();
-        return;
-      }
-      if (fixedHour != null) ensureClouds();
-      if (clouds) clouds.visible = fixedHour != null;
-      if (fixedHour != null) {
+      const skyOfHour = inPasture || fixedHour != null;
+      if (skyOfHour) ensureClouds();
+      if (clouds) clouds.visible = skyOfHour;
+      if (skyOfHour) {
         pastureSky = null;
         showSky(performance.now());
       } else plainSky();
@@ -1256,11 +1682,13 @@ export function createHorseStage(canvas, { view = 'side', recordable = false } =
       mixer?.stopAllAction();
       skyEnv.dispose();
       curvedTrack.dispose();
-      clubCourtyard?.dispose();
       hoofParticles.dispose();
       shadowTexture.dispose();
       checker.dispose();
-      if (scene.background?.isTexture && scene.background !== clubCourtyard?.backdropTex) scene.background.dispose();
+      paddockTexture?.dispose();
+      pathTexture?.dispose();
+      pastureLife?.dispose();
+      if (scene.background?.isTexture) scene.background.dispose();
       clouds?.children[0]?.material.map?.dispose();
       scene.traverse((o) => {
         if (o.isSkinnedMesh) {
