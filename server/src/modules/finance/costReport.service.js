@@ -58,12 +58,40 @@ function* days(from, to) {
 }
 
 const emptyMonth = (month) => ({ month, feed: 0, medical: 0, upkeep: 0, feedAhead: 0, medicalAhead: 0, total: 0 });
-const LINE = (label, unit) => ({ label, unit, quantity: 0, unitPrice: null, cost: 0, ahead: 0 });
+// A line of a horse's costs. `key` is the same for the same thing on every horse (an item, a kind of stall,
+// the groom's care, a kind of visit), so lines add up across horses; `note` says which (the stall's code).
+const LINE = (key, label, unit) => ({ key, label, unit, quantity: 0, unitPrice: null, cost: 0, ahead: 0 });
+const STALL_KINDS = { standard: 'chuồng thường', recovery: 'chuồng hồi phục', isolation: 'chuồng cách ly' };
+const VISIT_LABELS = { farrier: 'Đóng / chăm sóc móng', vaccination: 'Tiêm phòng', deworming: 'Tẩy giun' };
+
+/** Every feed and medicine item in stock with its price: what a pack costs and what one unit comes to. */
+async function stockPrices() {
+  const list = await InventoryItem.find({ category: { $in: ['feed', 'medicine'] } })
+    .select('name code category unit price packUnit packSize')
+    .sort({ category: 1, name: 1 })
+    .lean();
+  return list.map((i) => {
+    const unitPrice = unitPriceOf(i);
+    return {
+      _id: i._id,
+      name: i.name,
+      code: i.code || null,
+      category: i.category,
+      unit: i.unit,
+      price: typeof i.price === 'number' ? i.price : null,
+      packUnit: i.packUnit || null,
+      packSize: i.packUnit && i.packSize > 0 ? i.packSize : null,
+      unitPrice: unitPrice == null ? null : Math.round(unitPrice * 100) / 100,
+    };
+  });
+}
 
 /**
  * The cost report for `horseIds` (null: every horse not archived) over `year`.
- * Returns { year, today, rates, horses: [{ horse, feed, medical, upkeep, total, ahead, months, details, missingPrices }],
- * totals: { feed, medical, upkeep, total, ahead, months } }.
+ * Returns { year, today, rates, prices, horses: [{ horse, feed, medical, upkeep, total, ahead, months, details, missingPrices }],
+ * totals } — each month with its lines of each kind (months[i].lines.feed…), details the year's lines;
+ * a line: { key, label, note, unit, quantity, unitPrice, cost, ahead, aheadQuantity }. Totals:
+ * { feed, medical, upkeep, total, ahead, months }.
  */
 async function costReport({ horseIds = null, year = new Date().getFullYear(), now = new Date() } = {}) {
   const rates = clubPolicy.costRates;
@@ -115,31 +143,37 @@ async function costReport({ horseIds = null, year = new Date().getFullYear(), no
     const id = String(horse._id);
     const months = new Map(monthKeys.map((k) => [k, emptyMonth(k)]));
     const missing = new Set();
-    const feedLines = new Map();
-    const medLines = new Map();
-    const upkeepLines = [];
-    const add = (date, field, amount) => {
-      const month = months.get(dayKey(date).slice(0, 7));
-      if (!month || !amount) return;
-      month[field] += amount;
-      if (date > today && (field === 'feed' || field === 'medical')) month[`${field}Ahead`] += amount;
+    // Each month's lines of each kind, keyed alike on every horse; the year's lines add them up.
+    const monthLines = new Map(monthKeys.map((k) => [k, { feed: new Map(), medical: new Map(), upkeep: new Map() }]));
+    /**
+     * `quantity` of a thing (`line`: key, label, unit, unitPrice — null when it has no price, counting 0) on
+     * `date`: into its month's line and its month's total. Feed and medicine after today are planned (ahead).
+     */
+    const put = (date, field, line, quantity) => {
+      const key = dayKey(date).slice(0, 7);
+      const month = months.get(key);
+      if (!month || !quantity) return;
+      const lines = monthLines.get(key)[field];
+      if (!lines.has(line.key)) lines.set(line.key, { ...LINE(line.key, line.label, line.unit), unitPrice: line.unitPrice, note: line.note || null, aheadQuantity: 0 });
+      const l = lines.get(line.key);
+      const cost = line.unitPrice == null ? 0 : quantity * line.unitPrice;
+      const ahead = date > today && field !== 'upkeep';
+      l.quantity += quantity;
+      l.cost += cost;
+      month[field] += cost;
+      if (ahead) {
+        l.aheadQuantity += quantity;
+        l.ahead += cost;
+        month[`${field}Ahead`] += cost;
+      }
     };
-    /** One stock item eaten or given: its line (quantity and cost), and the month. */
-    const consume = (lines, field, ref, name, unit, amount, date) => {
+    /** One stock item eaten or given, at its stock price per unit (none: named in missingPrices). */
+    const consume = (field, ref, name, unit, amount, date) => {
       const stock = ref ? items.get(idOf(ref)) : null;
       const price = unitPriceOf(stock);
-      const key = stock ? String(stock._id) : `name:${name}`;
-      if (!lines.has(key)) lines.set(key, { ...LINE(stock?.name || name || 'Không rõ', stock?.unit || unit || ''), unitPrice: price });
-      const line = lines.get(key);
-      line.quantity += amount;
-      if (price == null) {
-        missing.add(line.label);
-        return;
-      }
-      const cost = amount * price;
-      line.cost += cost;
-      if (date > today) line.ahead += cost;
-      add(date, field, cost);
+      const label = stock?.name || name || 'Không rõ';
+      if (price == null) missing.add(label);
+      put(date, field, { key: stock ? String(stock._id) : `name:${name}`, label, unit: stock?.unit || unit || '', unitPrice: price }, amount);
     };
 
     // Feed: the calendar's days, else the standing rations up to today.
@@ -147,14 +181,14 @@ async function costReport({ horseIds = null, year = new Date().getFullYear(), no
     for (const day of calendarOf.get(id) || []) {
       calendarDates.add(day.date);
       const date = new Date(`${day.date}T00:00:00`);
-      for (const meal of day.meals || []) for (const i of meal.items || []) consume(feedLines, 'feed', i.inventoryItem, i.name, i.unit, Number(i.amount) || 0, date);
+      for (const meal of day.meals || []) for (const i of meal.items || []) consume('feed', i.inventoryItem, i.name, i.unit, Number(i.amount) || 0, date);
     }
     const standing = rationsOf.get(id) || [];
     if (standing.length) {
       const since = new Date(Math.max(yearStart, ...standing.map((r) => midnight(r.createdAt || yearStart).getTime())));
       for (const date of days(since, lastPast)) {
         if (calendarDates.has(dayKey(date))) continue;
-        for (const r of standing) for (const i of r.items || []) consume(feedLines, 'feed', i.inventoryItem, i.type, i.unit, Number(i.amount) || 0, date);
+        for (const r of standing) for (const i of r.items || []) consume('feed', i.inventoryItem, i.type, i.unit, Number(i.amount) || 0, date);
       }
     }
 
@@ -166,55 +200,71 @@ async function costReport({ horseIds = null, year = new Date().getFullYear(), no
         const endAt = m.endDate || t.endDate || (t.status === 'ongoing' && m.status !== 'completed' && m.status !== 'cancelled' ? today : t.updatedAt || today);
         const to = new Date(Math.min(yearEnd, midnight(endAt).getTime()));
         const perDay = Number(m.amount) * dosesPerDay(m);
-        for (const date of days(from, to)) consume(medLines, 'medical', m.inventoryItem, m.name, null, perDay, date);
+        for (const date of days(from, to)) consume('medical', m.inventoryItem, m.name, null, perDay, date);
       }
     }
-    const examList = examsOf.get(id) || [];
-    if (examList.length) {
-      medLines.set('exam', { ...LINE('Phí khám của bác sĩ', 'lần'), unitPrice: rates.exam, quantity: examList.length, cost: examList.length * rates.exam });
-      for (const e of examList) add(midnight(e.date), 'medical', rates.exam);
-    }
+    const exam = { key: 'exam', label: 'Phí khám của bác sĩ', unit: 'lần', unitPrice: rates.exam };
+    for (const e of examsOf.get(id) || []) put(midnight(e.date), 'medical', exam, 1);
 
     // Upkeep: stall days and the groom's care, up to today; the routine care visits.
     const assignment = assignmentOf.get(id);
     if (assignment) {
-      const kind = assignment.stall?.type || 'standard';
+      const kind = STALL_KINDS[assignment.stall?.type] ? assignment.stall.type : 'standard';
       const since = new Date(Math.max(yearStart, midnight(assignment.createdAt || horse.createdAt || yearStart).getTime()));
-      const list = [...days(since, lastPast)];
-      if (list.length) {
-        const stallRate = rates.stallDay[kind] ?? rates.stallDay.standard;
-        const kindLabel = { standard: 'chuồng thường', recovery: 'chuồng hồi phục', isolation: 'chuồng cách ly' }[kind] || 'chuồng';
-        upkeepLines.push({ ...LINE(`Tiền ${kindLabel}${assignment.stall?.code ? ` ${assignment.stall.code}` : ''}`, 'ngày'), quantity: list.length, unitPrice: stallRate, cost: list.length * stallRate });
-        list.forEach((d) => add(d, 'upkeep', stallRate));
-        if (assignment.assignedCaretaker) {
-          upkeepLines.push({ ...LINE('Công chăm sóc hằng ngày', 'ngày'), quantity: list.length, unitPrice: rates.groomDay, cost: list.length * rates.groomDay });
-          list.forEach((d) => add(d, 'upkeep', rates.groomDay));
-        }
+      const stall = {
+        key: `stall:${kind}`,
+        label: `Tiền ${STALL_KINDS[kind]}`,
+        note: assignment.stall?.code ? `Chuồng ${assignment.stall.code}` : null,
+        unit: 'ngày',
+        unitPrice: rates.stallDay[kind] ?? rates.stallDay.standard,
+      };
+      const groom = { key: 'groom', label: 'Công chăm sóc hằng ngày', unit: 'ngày', unitPrice: rates.groomDay };
+      for (const date of days(since, lastPast)) {
+        put(date, 'upkeep', stall, 1);
+        if (assignment.assignedCaretaker) put(date, 'upkeep', groom, 1);
       }
     }
-    const VISIT_LABELS = { farrier: 'Đóng / chăm sóc móng', vaccination: 'Tiêm phòng', deworming: 'Tẩy giun' };
-    for (const kind of Object.keys(VISIT_LABELS)) {
-      const list = (visitsOf.get(id) || []).filter((v) => v.kind === kind);
-      if (!list.length) continue;
-      const rate = rates.visit[kind];
-      upkeepLines.push({ ...LINE(VISIT_LABELS[kind], 'lần'), quantity: list.length, unitPrice: rate, cost: list.length * rate });
-      list.forEach((v) => add(midnight(v.date), 'upkeep', rate));
+    for (const v of visitsOf.get(id) || []) {
+      if (!VISIT_LABELS[v.kind]) continue;
+      put(midnight(v.date), 'upkeep', { key: `visit:${v.kind}`, label: VISIT_LABELS[v.kind], unit: 'lần', unitPrice: rates.visit[v.kind] }, 1);
     }
 
-    const monthList = [...months.values()].map((m) => ({
-      ...m,
-      feed: round(m.feed),
-      medical: round(m.medical),
-      upkeep: round(m.upkeep),
-      feedAhead: round(m.feedAhead),
-      medicalAhead: round(m.medicalAhead),
-      total: round(m.feed + m.medical + m.upkeep),
-    }));
-    const sum = (field) => monthList.reduce((n, m) => n + m[field], 0);
-    const lines = (map) =>
-      [...map.values()]
-        .map((l) => ({ ...l, quantity: Math.round(l.quantity * 100) / 100, cost: round(l.cost), ahead: round(l.ahead), unitPrice: l.unitPrice == null ? null : round(l.unitPrice) }))
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const tidy = (list) =>
+      list
+        .map((l) => ({ ...l, quantity: round2(l.quantity), aheadQuantity: round2(l.aheadQuantity), cost: round(l.cost), ahead: round(l.ahead), unitPrice: l.unitPrice == null ? null : round(l.unitPrice) }))
         .sort((a, b) => b.cost - a.cost);
+    /** The year's lines of a kind: each month's added up. */
+    const yearLines = (field) => {
+      const map = new Map();
+      for (const ml of monthLines.values()) {
+        for (const l of ml[field].values()) {
+          if (!map.has(l.key)) map.set(l.key, { ...l, quantity: 0, aheadQuantity: 0, cost: 0, ahead: 0 });
+          const y = map.get(l.key);
+          y.quantity += l.quantity;
+          y.aheadQuantity += l.aheadQuantity;
+          y.cost += l.cost;
+          y.ahead += l.ahead;
+        }
+      }
+      return tidy([...map.values()]);
+    };
+
+    const monthList = [...months.values()].map((m) => {
+      const ml = monthLines.get(m.month);
+      return {
+        ...m,
+        feed: round(m.feed),
+        medical: round(m.medical),
+        upkeep: round(m.upkeep),
+        feedAhead: round(m.feedAhead),
+        medicalAhead: round(m.medicalAhead),
+        total: round(m.feed + m.medical + m.upkeep),
+        // What the month's amounts are made of, line by line (the ledger opens a month's line on these).
+        lines: { feed: tidy([...ml.feed.values()]), medical: tidy([...ml.medical.values()]), upkeep: tidy([...ml.upkeep.values()]) },
+      };
+    });
+    const sum = (field) => monthList.reduce((n, m) => n + m[field], 0);
     return {
       horse: { _id: horse._id, name: horse.name, isArchived: Boolean(horse.isArchived) },
       feed: sum('feed'),
@@ -223,7 +273,7 @@ async function costReport({ horseIds = null, year = new Date().getFullYear(), no
       ahead: sum('feedAhead') + sum('medicalAhead'),
       total: sum('total'),
       months: monthList,
-      details: { feed: lines(feedLines), medical: lines(medLines), upkeep: upkeepLines.map((l) => ({ ...l, cost: round(l.cost) })) },
+      details: { feed: yearLines('feed'), medical: yearLines('medical'), upkeep: yearLines('upkeep') },
       missingPrices: [...missing],
     };
   });
@@ -240,7 +290,8 @@ async function costReport({ horseIds = null, year = new Date().getFullYear(), no
       return m;
     }),
   };
-  return { year, today: dayKey(today), rates, horses: report, totals };
+  // The prices it all was worked out at, for the Manager and the owners to read: the club's rates and the stock's.
+  return { year, today: dayKey(today), rates, prices: await stockPrices(), horses: report, totals };
 }
 
-module.exports = { costReport, unitPriceOf, dosesPerDay };
+module.exports = { costReport, unitPriceOf, dosesPerDay, stockPrices };

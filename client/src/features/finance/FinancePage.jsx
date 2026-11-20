@@ -61,7 +61,7 @@ export default function FinancePage() {
         eyebrow="Sổ cái thu chi"
         roleLabel="Quản lý CLB"
         title="Sổ thu chi & tài chính câu lạc bộ"
-        subtitle="Báo cáo chi phí vận hành (thức ăn, y tế, nuôi dưỡng chuồng trại) do hệ thống tính từ dữ liệu, và doanh thu tiền thưởng giải. Chỉ để theo dõi — thanh toán thực hiện ngoài hệ thống."
+        subtitle="Báo cáo chi phí vận hành (thức ăn, y tế, nuôi dưỡng chuồng trại) do hệ thống tính từ dữ liệu, và doanh thu tiền thưởng giải."
         actionButton={
             <div className="flex flex-wrap gap-2">
               <Button

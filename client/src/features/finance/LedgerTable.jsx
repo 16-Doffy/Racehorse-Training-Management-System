@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Empty, Input, Table, Tag } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { DownOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { categoryLabel } from './financeLabels';
 import './costReport.css';
 
 const KINDS = ['feed', 'medical', 'upkeep'];
 const num = (n) => (n ? Math.round(n).toLocaleString('vi-VN') : '—');
+const qty = (n) => Number(n || 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+const per = (price, unit) => `${Math.round(price).toLocaleString('vi-VN')} đ${unit ? `/${unit}` : ''}`;
 const SOURCE_TAGS = {
   system: <Tag color="blue">Hệ thống tính</Tag>,
   race_prize: <Tag color="gold">Kết quả giải</Tag>,
@@ -21,14 +23,62 @@ const fold = (s) =>
     .replace(/đ/g, 'd');
 
 /**
+ * What a worked-out cost of a month is made of: each item, how much at what price, and what it comes to,
+ * adding up to the entry. From a server without month lines, the horse's year instead (said so).
+ */
+function EntryLines({ entry }) {
+  const lines = entry.lines || entry.yearLines || [];
+  return (
+    <div className="cr-el">
+      {!entry.lines && <p className="cr-el-hint">Đang hiện chi tiết cả năm của ngựa này — chi tiết từng tháng có sau khi máy chủ được cập nhật.</p>}
+      <div className="cr-el-row is-head">
+        <span>Khoản</span>
+        <span>Số lượng × đơn giá</span>
+        <span>Thành tiền</span>
+      </div>
+      {lines.map((l) => (
+        <div key={l.key || l.label} className="cr-el-row">
+          <span className="min-w-0">
+            <b>{l.label}</b>
+            {l.note && <small> · {l.note}</small>}
+          </span>
+          <span className="cr-el-calc">
+            {qty(l.quantity)} {l.unit || ''}
+            {l.unitPrice != null ? ` × ${per(l.unitPrice, l.unit)}` : ' · chưa có đơn giá'}
+          </span>
+          <b>{l.unitPrice != null ? num(l.cost) : '—'}</b>
+        </div>
+      ))}
+      {!lines.length && <p className="cr-el-hint">Không có khoản nào.</p>}
+      {entry.lines && lines.length > 0 && (
+        <div className="cr-el-row is-foot">
+          <span>Cộng</span>
+          <span />
+          <b>{num(entry.amount)}</b>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * The ledger as a short table: a row for each horse in each month, its money in columns — what came in,
  * feed, medical, upkeep, anything else written by hand, and what is left — so a glance says which horse
  * cost what. A row opens on the entries behind it (written by hand, a race result, or worked out by the
- * system). A page at a time, found by horse, with the totals at the foot.
+ * system); one worked out by the system opens in turn on its items (quantity × unit price). A page at a
+ * time, found by horse, with the totals at the foot.
  * `entries`: ledger entries (manual records and the system's cost lines, costEntries.js).
  */
 export default function LedgerTable({ entries = [], loading = false, pageSize = 8, emptyText = 'Chưa có khoản thu chi nào.' }) {
   const [search, setSearch] = useState('');
+  const [openEntries, setOpenEntries] = useState(() => new Set());
+  const toggleEntry = (id) =>
+    setOpenEntries((open) => {
+      const next = new Set(open);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const rows = useMemo(() => {
     const map = new Map();
     for (const e of entries) {
@@ -74,7 +124,7 @@ export default function LedgerTable({ entries = [], loading = false, pageSize = 
   return (
     <div className="cr-ledger">
       <div className="cr-ledger-bar">
-        <span className="cr-muted">Số tiền tính bằng đồng · bấm “+” đầu dòng để xem từng khoản</span>
+        <span className="cr-muted">Số tiền tính bằng đồng · bấm một dòng để xem từng khoản, bấm khoản để xem chi tiết</span>
         <Input size="small" allowClear prefix={<SearchOutlined />} placeholder="Tìm ngựa" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-48" aria-label="Tìm ngựa trong sổ" />
       </div>
       <Table
@@ -87,21 +137,45 @@ export default function LedgerTable({ entries = [], loading = false, pageSize = 
         pagination={{ pageSize, size: 'small', hideOnSinglePage: true, showSizeChanger: false, showTotal: (n, [from, to]) => `${from}–${to} / ${n} dòng` }}
         locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={term ? 'Không có ngựa nào khớp.' : emptyText} /> }}
         expandable={{
+          expandRowByClick: true,
           expandedRowRender: (r) => (
             <ul className="cr-entries">
-              {r.entries.map((e) => (
-                <li key={e._id}>
-                  <span className="tabular-nums cr-muted">{dayjs(e.date).format('DD/MM')}</span>
-                  <span className="min-w-0">
-                    <b>{categoryLabel(e.category)}</b> {SOURCE_TAGS[e.source] || SOURCE_TAGS.manual}
-                    <small>{e.note || (e.type === 'revenue' ? 'Khoản thu' : 'Khoản chi')}</small>
-                  </span>
-                  <b className={e.type === 'revenue' ? 'cr-in' : 'cr-out'}>
-                    {e.type === 'revenue' ? '+' : '−'}
-                    {num(e.amount)}
-                  </b>
-                </li>
-              ))}
+              {r.entries.map((e) => {
+                const detailed = Boolean(e.lines?.length || e.yearLines?.length);
+                const open = detailed && openEntries.has(e._id);
+                const body = (
+                  <>
+                    <span className="tabular-nums cr-muted">{dayjs(e.date).format('DD/MM')}</span>
+                    <span className="min-w-0">
+                      <b>{categoryLabel(e.category)}</b> {SOURCE_TAGS[e.source] || SOURCE_TAGS.manual}
+                      <small>{e.note || (e.type === 'revenue' ? 'Khoản thu' : 'Khoản chi')}</small>
+                    </span>
+                    <b className={e.type === 'revenue' ? 'cr-in' : 'cr-out'}>
+                      {e.type === 'revenue' ? '+' : '−'}
+                      {num(e.amount)}
+                    </b>
+                    <span className="cr-entry-more">
+                      {detailed && (
+                        <>
+                          {open ? 'Thu gọn' : 'Chi tiết'} <DownOutlined className={open ? 'is-open' : ''} />
+                        </>
+                      )}
+                    </span>
+                  </>
+                );
+                return (
+                  <li key={e._id} className={open ? 'is-open' : ''}>
+                    {detailed ? (
+                      <button type="button" className="cr-entry-row is-button" onClick={() => toggleEntry(e._id)} aria-expanded={open}>
+                        {body}
+                      </button>
+                    ) : (
+                      <div className="cr-entry-row">{body}</div>
+                    )}
+                    {open && <EntryLines entry={e} />}
+                  </li>
+                );
+              })}
             </ul>
           ),
         }}

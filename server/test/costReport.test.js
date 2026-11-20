@@ -81,4 +81,30 @@ test('the cost report adds feed, medicines and exams, and the stall, the groom a
   assert.equal(horse.months[0].upkeep, rates.visit.farrier, 'the farrier visit in January');
   assert.equal(horse.total, horse.feed + horse.medical + horse.upkeep);
   assert.equal(r.totals.total, horse.total);
+
+  // Each line keyed alike on every horse (so lines add up across horses), the stall's code apart.
+  const upkeep = Object.fromEntries(horse.details.upkeep.map((l) => [l.key, l]));
+  assert.deepEqual(Object.keys(upkeep).sort(), ['groom', 'stall:standard', 'visit:farrier']);
+  assert.equal(upkeep['stall:standard'].label, 'Tiền chuồng thường');
+  assert.equal(upkeep['stall:standard'].note, 'Chuồng A-01');
+  assert.equal(upkeep['stall:standard'].quantity, stallDays);
+  assert.equal(upkeep['visit:farrier'].unitPrice, rates.visit.farrier);
+  assert.ok(horse.details.medical.some((l) => l.key === 'exam' && l.quantity === 1));
+  assert.ok(horse.details.feed.some((l) => l.key === HAY && l.unitPrice === 20000));
+
+  // Each month's amounts line by line: March's hay, one of its two days planned; January's farrier visit.
+  const marchHay = horse.months[2].lines.feed.find((l) => l.key === HAY);
+  assert.equal(marchHay.quantity, 20);
+  assert.equal(marchHay.aheadQuantity, 10);
+  assert.equal(marchHay.cost, horse.months[2].feed);
+  assert.deepEqual(horse.months[0].lines.upkeep.map((l) => [l.key, l.quantity, l.cost]), [['visit:farrier', 1, rates.visit.farrier]]);
+  assert.equal(horse.months[2].lines.upkeep.reduce((n, l) => n + l.cost, 0), horse.months[2].upkeep);
+
+  // The prices it was worked out at: the club's rates, and each stock item's pack price and unit price.
+  assert.deepEqual(r.rates, rates);
+  const hay = r.prices.find((p) => String(p._id) === HAY);
+  assert.equal(hay.price, 500000);
+  assert.equal(hay.packSize, 25);
+  assert.equal(hay.unitPrice, 20000);
+  assert.equal(r.prices.find((p) => String(p._id) === BUTE).packSize, null, 'no pack: the price is one unit');
 });

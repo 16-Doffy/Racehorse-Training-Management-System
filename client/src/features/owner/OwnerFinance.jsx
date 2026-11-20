@@ -73,7 +73,7 @@ export default function OwnerFinance() {
 
   return (
     <OwnerPage>
-      <PageHead eyebrow="Chủ sở hữu" title="Thu chi" sub="Báo cáo tổng hợp: chi phí thức ăn, y tế, nuôi dưỡng do hệ thống tính từ dữ liệu của CLB, và doanh thu tiền thưởng giải. Chỉ để theo dõi — thanh toán thực hiện ngoài hệ thống." />
+      <PageHead eyebrow="Chủ sở hữu" title="Thu chi" sub="Báo cáo tổng hợp: chi phí thức ăn, y tế, nuôi dưỡng do hệ thống tính từ dữ liệu của CLB, và doanh thu tiền thưởng giải." />
 
       <div className="own-fin-pick">
         <Select value={year} onChange={setYear} options={years.map((y) => ({ value: y, label: `Năm ${y}` }))} aria-label="Năm" style={{ width: 130 }} />
